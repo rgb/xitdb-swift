@@ -8,13 +8,47 @@
 /// A conforming type is not required to be safe to use from several threads
 /// at once.
 public protocol ReadableStorage {
+    /// Reads the bytes that start at `offset` into a part of `buffer`, as
+    /// many as fit there.
+    ///
+    /// The bytes are written from the start of `range`. Fewer bytes than
+    /// `range` holds are read only when the storage ends first, so a result
+    /// smaller than `range.count` means the end of the storage was reached.
+    /// Reading at or beyond the end reads nothing and is not an error.
+    /// Everything in `buffer` that was not read into is left as it was.
+    ///
+    /// The range lets a caller fill part of a buffer in one call, for
+    /// example when the value it is reading is smaller than the buffer it
+    /// has.
+    ///
+    /// - Parameters:
+    ///   - buffer: Where to put the bytes.
+    ///   - range: The part of `buffer` to read into. Its size is the most
+    ///     that will be read. It must lie within `buffer`.
+    ///   - offset: The position in the storage of the first byte to read.
+    /// - Returns: The number of bytes read, from zero to `range.count`.
+    /// - Throws: ``XitDBError/storageFailure(errno:)`` if the storage
+    ///   underneath fails.
+    func read(
+        into buffer: inout MutableSpan<UInt8>,
+        range: Range<Int>,
+        at offset: UInt64
+    ) throws(XitDBError) -> Int
+
+    /// The number of bytes in the storage, including any that were written
+    /// and not yet flushed.
+    ///
+    /// - Throws: ``XitDBError/storageFailure(errno:)`` if the storage
+    ///   underneath fails.
+    func length() throws(XitDBError) -> UInt64
+}
+
+extension ReadableStorage {
     /// Reads the bytes that start at `offset` into `buffer`, as many as fit.
     ///
     /// The bytes are written from the start of `buffer`. Fewer bytes than
-    /// `buffer` holds are read only when the storage ends first, so a result
-    /// smaller than `buffer.count` means the end of the storage was reached.
-    /// Reading at or beyond the end reads nothing and is not an error. The
-    /// part of `buffer` that was not read into is left as it was.
+    /// `buffer` holds are read only when the storage ends first. The part of
+    /// `buffer` that was not read into is left as it was.
     ///
     /// - Parameters:
     ///   - buffer: Where to put the bytes. Its size is the most that will be
@@ -23,14 +57,9 @@ public protocol ReadableStorage {
     /// - Returns: The number of bytes read, from zero to `buffer.count`.
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the storage
     ///   underneath fails.
-    func read(into buffer: inout MutableSpan<UInt8>, at offset: UInt64) throws(XitDBError) -> Int
-
-    /// The number of bytes in the storage, including any that were written
-    /// and not yet flushed.
-    ///
-    /// - Throws: ``XitDBError/storageFailure(errno:)`` if the storage
-    ///   underneath fails.
-    func length() throws(XitDBError) -> UInt64
+    public func read(into buffer: inout MutableSpan<UInt8>, at offset: UInt64) throws(XitDBError) -> Int {
+        try read(into: &buffer, range: 0..<buffer.count, at: offset)
+    }
 }
 
 /// Somewhere a database's bytes can be read from and written to.

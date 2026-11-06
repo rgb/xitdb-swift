@@ -158,22 +158,22 @@ public final class FileStorage: WritableStorage {
         if case .readOnly = access { true } else { false }
     }
 
-    /// Reads the bytes of the file that start at `offset` into `buffer`, as
-    /// many as fit.
+    /// Reads the bytes of the file that start at `offset` into a part of
+    /// `buffer`, as many as fit there.
     ///
     /// - Parameters:
     ///   - buffer: Where to put the bytes.
+    ///   - range: The part of `buffer` to read into, which must lie within
+    ///     it.
     ///   - offset: The position in the file of the first byte to read.
-    /// - Returns: The number of bytes read, which is less than `buffer.count`
+    /// - Returns: The number of bytes read, which is less than `range.count`
     ///   only when the file ends first.
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if reading fails.
-    public func read(into buffer: inout MutableSpan<UInt8>, at offset: UInt64) throws(XitDBError) -> Int {
-        try read(into: &buffer, range: 0..<buffer.count, at: offset)
-    }
-
-    /// Reads into `buffer[range]`, for the buffered storage, which fills a
-    /// buffer piece by piece.
-    func read(into buffer: inout MutableSpan<UInt8>, range: Range<Int>, at offset: UInt64) throws(XitDBError) -> Int {
+    public func read(
+        into buffer: inout MutableSpan<UInt8>,
+        range: Range<Int>,
+        at offset: UInt64
+    ) throws(XitDBError) -> Int {
         try Platform.readFile(descriptor.rawValue, into: &buffer, range: range, at: offset)
     }
 

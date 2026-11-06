@@ -65,25 +65,10 @@ extension DatabaseReader {
             if size > UInt64(buffer.count) { throw .streamTooLong }
             let count = Int(size)
             let start = try slot.value.offset(by: ByteArrayFormat.lengthByteCount)
-            if count == buffer.count {
-                let read = try storage.read(into: &buffer, at: start)
-                guard read == count else { throw .endOfStream }
-            } else {
-                // The value is shorter than the buffer, and a storage reads
-                // as many bytes as the buffer it is given holds. So that the
-                // rest of the caller's buffer is left alone, the value is
-                // read through a small buffer on the stack.
-                var chunk = InlineArray<512, UInt8>(repeating: 0)
-                var done = 0
-                while done < count {
-                    var span = chunk.mutableSpan
-                    let read = try storage.read(into: &span, at: try start.offset(by: UInt64(done)))
-                    let taken = min(read, count - done)
-                    guard taken > 0 else { throw .endOfStream }
-                    buffer.copyBytes(from: chunk.span, count: taken, to: done)
-                    done += taken
-                }
-            }
+            // One call, into the part of the buffer the value takes. The
+            // rest of the caller's buffer is left alone.
+            let read = try storage.read(into: &buffer, range: 0..<count, at: start)
+            guard read == count else { throw .endOfStream }
             return (count, try formatTag(of: slot, valueStart: start, size: size))
         case .shortBytes:
             let count = ByteArrayFormat.shortByteCount(of: slot)

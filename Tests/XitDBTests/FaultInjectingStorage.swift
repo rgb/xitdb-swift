@@ -26,14 +26,21 @@ final class FaultInjectingStorage: WritableStorage {
     var faults: [Fault]
     private(set) var writeCount = 0
     private(set) var syncCount = 0
+    /// The number of read calls made, for tests of how many a read takes.
+    private(set) var readCount = 0
 
     init(_ base: any WritableStorage, faults: [Fault] = []) {
         self.base = base
         self.faults = faults
     }
 
-    func read(into buffer: inout MutableSpan<UInt8>, at offset: UInt64) throws(XitDBError) -> Int {
-        try base.read(into: &buffer, at: offset)
+    func read(
+        into buffer: inout MutableSpan<UInt8>,
+        range: Range<Int>,
+        at offset: UInt64
+    ) throws(XitDBError) -> Int {
+        readCount += 1
+        return try base.read(into: &buffer, range: range, at: offset)
     }
 
     func length() throws(XitDBError) -> UInt64 {

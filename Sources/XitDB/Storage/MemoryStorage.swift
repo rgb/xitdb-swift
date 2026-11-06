@@ -111,17 +111,24 @@ public final class MemoryStorage: WritableStorage {
         buffer.bytes
     }
 
-    /// Reads the bytes that start at `offset` into `buffer`, as many as fit.
+    /// Reads the bytes that start at `offset` into a part of `buffer`, as
+    /// many as fit there.
     ///
     /// This never throws.
     ///
     /// - Parameters:
     ///   - buffer: Where to put the bytes.
+    ///   - range: The part of `buffer` to read into, which must lie within
+    ///     it.
     ///   - offset: The position of the first byte to read.
-    /// - Returns: The number of bytes read, which is less than `buffer.count`
+    /// - Returns: The number of bytes read, which is less than `range.count`
     ///   only when the storage ends first.
-    public func read(into buffer: inout MutableSpan<UInt8>, at offset: UInt64) throws(XitDBError) -> Int {
-        self.buffer.read(into: &buffer, range: 0..<buffer.count, at: offset)
+    public func read(
+        into buffer: inout MutableSpan<UInt8>,
+        range: Range<Int>,
+        at offset: UInt64
+    ) throws(XitDBError) -> Int {
+        self.buffer.read(into: &buffer, range: range, at: offset)
     }
 
     /// The number of bytes in the storage. This never throws.

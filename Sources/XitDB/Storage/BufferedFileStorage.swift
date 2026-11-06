@@ -70,30 +70,38 @@ public final class BufferedFileStorage: WritableStorage {
         )
     }
 
-    /// Reads the bytes that start at `offset` into `buffer`, as many as fit,
-    /// taking them from the buffer where it holds them and from the file
-    /// elsewhere.
+    /// Reads the bytes that start at `offset` into a part of `buffer`, as
+    /// many as fit there, taking them from the storage's own buffer where it
+    /// holds them and from the file elsewhere.
     ///
     /// - Parameters:
     ///   - buffer: Where to put the bytes.
+    ///   - range: The part of `buffer` to read into, which must lie within
+    ///     it.
     ///   - offset: The position of the first byte to read.
-    /// - Returns: The number of bytes read, which is less than `buffer.count`
+    /// - Returns: The number of bytes read, which is less than `range.count`
     ///   only when the storage ends first.
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if reading the file
     ///   fails.
-    public func read(into buffer: inout MutableSpan<UInt8>, at offset: UInt64) throws(XitDBError) -> Int {
+    public func read(
+        into buffer: inout MutableSpan<UInt8>,
+        range: Range<Int>,
+        at offset: UInt64
+    ) throws(XitDBError) -> Int {
+        precondition(range.lowerBound >= 0 && range.upperBound <= buffer.count, "the range is out of bounds")
         var total = 0
-        while total < buffer.count {
+        while total < range.count {
             let (position, overflow) = offset.addingReportingOverflow(UInt64(total))
             if overflow { break }
-            let remaining = buffer.count - total
+            let remaining = range.count - total
+            let destination = range.lowerBound + total
             let windowEnd = memoryPosition + UInt64(memory.count)
 
             if position >= memoryPosition && position < windowEnd {
                 // from the window
                 let read = memory.read(
                     into: &buffer,
-                    range: total..<buffer.count,
+                    range: destination..<range.upperBound,
                     at: position - memoryPosition
                 )
                 // The window holds at least one byte at this position, so
@@ -109,7 +117,7 @@ public final class BufferedFileStorage: WritableStorage {
                 position < memoryPosition
                 ? Int(min(UInt64(remaining), memoryPosition - position))
                 : remaining
-            let read = try file.read(into: &buffer, range: total..<(total + wanted), at: position)
+            let read = try file.read(into: &buffer, range: destination..<(destination + wanted), at: position)
             total += read
             if read == wanted { continue }
 
@@ -118,7 +126,7 @@ public final class BufferedFileStorage: WritableStorage {
             // will be zeros once the window is flushed, so it reads as zeros
             // now. Zig reports the end of the stream here.
             guard position < memoryPosition && memory.count > 0 else { break }
-            for index in total..<(total + wanted - read) {
+            for index in (destination + read)..<(destination + wanted) {
                 buffer[index] = 0
             }
             total += wanted - read
