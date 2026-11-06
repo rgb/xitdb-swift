@@ -132,7 +132,7 @@ import Testing
                             let pair = try entry.readKeyValuePair()
                             _ = try pair.keyCursor.readBytesAlloc(maxSize: 64)
                             _ = try pair.valueCursor.slot()
-                            _ = try pair.withHash { $0.count }
+                            _ = pair.withHash { $0.count }
                         }
                     }
                 }
