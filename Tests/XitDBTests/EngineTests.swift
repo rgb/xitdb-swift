@@ -483,6 +483,107 @@ import Testing
         let list = try #require(try reopened.rootCursor().readPath([.hashMapGet(.value, sha1("list"))]))
         #expect(try list.readPath([.arrayListGet(0)]) != nil)
     }
+
+    /// The committed size in the root header must leave room for a trailer
+    /// after the two headers. A smaller one is refused even when the bytes
+    /// that end there pass for a trailer.
+    @Test func aCommittedSizeThatReachesIntoTheHeadersIsRefused() throws {
+        let storage = MemoryStorage()
+        _ = try makeDatabase(storage)
+        var bytes = storage.bytes
+        try #require(bytes.count == 62)
+
+        // A size of 60 puts the trailer at 35, over the last two bytes of
+        // the size itself. Those read as the tag of an empty slot and the
+        // first byte of its value, so a checksum can be made to fit.
+        bytes.replaceSubrange(29..<37, with: bigEndianBytes(60))
+        var crc = CRC64XZ()
+        crc.updateBigEndian(3 as UInt64)
+        crc.updateBigEndian(35 as UInt64)
+        crc.update(bytes.span, at: 35, count: 17)
+        bytes.replaceSubrange(52..<60, with: bigEndianBytes(crc.checksum))
+        let trailer = try RootTrailer(decoding: bytes.span, at: 35, fileID: 3, position: 35)
+        #expect(trailer.root.tag == .none)
+
+        #expect(throws: XitDBError.invalidDatabase) {
+            let database = try Database(
+                storage: MemoryStorage(bytes: bytes), hashSize: 20, hashID: nil, fileID: nil, random: FixedRandom([1]))
+            _ = try database.committedSize()
+        }
+    }
+
+    /// The engine's writer of a byte array is refused once its transaction
+    /// has ended, as Zig's is. A cursor's `writer` cannot get there, because
+    /// its writer does not outlive the call, but the engine does not rely
+    /// on that.
+    @Test func aRecordWriterKeptPastItsTransactionIsRefused() throws {
+        final class Kept {
+            var writer: ByteRecordWriter?
+            var slotPosition: UInt64?
+        }
+        let storage = MemoryStorage()
+        let database = try makeDatabase(storage)
+        let kept = Kept()
+        let first: [UInt8] = [1, 2, 3]
+        try database.runContext { cursor in
+            let slot = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("bytes"))])
+            var writer = try ByteRecordWriter(database: database, at: slot.slotPointer)
+            try writer.write(first.span)
+            kept.slotPosition = slot.slotPointer.position
+            kept.writer = consume writer
+        }
+        let committed = storage.bytes
+
+        guard var writer = kept.writer.take() else {
+            Issue.record("the writer was not kept")
+            return
+        }
+        do throws(XitDBError) {
+            try writer.write(first.span)
+            Issue.record("a write after the transaction was accepted")
+        } catch {
+            #expect(error == .expectedTxStart)
+        }
+        do throws(XitDBError) {
+            _ = try writer.finish(slotPosition: kept.slotPosition)
+            Issue.record("the array was finished after the transaction")
+        } catch {
+            #expect(error == .expectedTxStart)
+        }
+        #expect(storage.bytes == committed)
+    }
+
+    /// Removing the only entry of an inner block of a map's trie leaves the
+    /// block nothing to hold, and the slot above it is emptied, as in Zig.
+    /// The engine never leaves a block with one entry itself; here one is
+    /// made by writing to a slot of the trie.
+    @Test func removingTheOnlyEntryOfAnInnerBlockEmptiesTheSlotAboveIt() throws {
+        let database = try makeDatabase()
+        // two hashes that share the four bits the trie looks at first, and
+        // differ in the next four
+        let first = KeyHash([UInt8](repeating: 0xAA, count: 19) + [0x00])
+        let second = KeyHash([UInt8](repeating: 0xBB, count: 19) + [0x10])
+        try database.runContext { cursor in
+            let map = try cursor.writePath([.hashMapInit()])
+            _ = try map.writePath([.hashMapGet(.value, first), .write(.uint(1))])
+            _ = try map.writePath([.hashMapGet(.value, second), .write(.uint(2))])
+            let rootBlock = try map.slot().value
+            let inner = try database.reader.slot(at: rootBlock)
+            #expect(inner.tag == .index)
+
+            _ = try map.writePath([.hashMapGet(.kvPair, second), .write(.slot(nil))])
+            let gone = try map.readPath([.hashMapGet(.value, second)])
+            #expect(gone == nil)
+            let kept = try map.readPath([.hashMapGet(.value, first)])
+            #expect(try kept?.readUint() == 1)
+
+            let size = try database.storage.length()
+            _ = try map.writePath([.hashMapRemove(first)])
+            let emptied = try database.reader.slot(at: rootBlock)
+            #expect(emptied == Slot())
+            #expect(try database.storage.length() == size)
+        }
+    }
 }
 
 /// What is copied and what is changed in place, and what a transaction

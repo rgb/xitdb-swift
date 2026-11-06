@@ -361,8 +361,10 @@ extension Cursor where Access == ReadWrite {
         // including the ones that commit nothing: an empty path, and
         // initialising a root that is already initialised. With full
         // durability that would be a drive flush each time a collection is
-        // wrapped around a root cursor, for no bytes written.
-        if database.transactionStart == nil && database.commitCount != commitsBefore {
+        // wrapped around a root cursor, for no bytes written. So this syncs
+        // only after a commit, which only the outermost write makes, as it
+        // ends: there is no transaction left by then.
+        if database.commitCount != commitsBefore {
             do throws(XitDBError) {
                 try database.storage.sync(.afterRootHeader)
             } catch {
