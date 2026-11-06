@@ -1,0 +1,790 @@
+import Testing
+
+@testable import XitDB
+
+// A port of `testHighLevelApi` from the Zig original (`src/test.zig`, lines 216 to 957), of "hash map with u64
+// hashes" (lines 2936 to 2954) and of the array-list half of `testIteratorFrom` (lines 3641 to 3755), through
+// the public collections. Zig runs the first and the last once for each of the memory, file and buffered-file
+// databases (test.zig 7-36 and 3641-3670), so those tests take the storage kind as their argument; the u64 test
+// runs on a memory database only, as in Zig.
+//
+// The comments inside the tests are Zig's. Zig's `history.appendContext(.{ .slot = ... }, Ctx{})` with a `Ctx`
+// whose `run` method does the writing is `history.appendContext(.slot(...)) { cursor in ... }` here. Zig's
+// allocator arguments and `defer allocator.free` lines have no counterpart, nor do the buffers it hands to
+// `cursor.reader` and `cursor.writer`.
+//
+// Leaving a part out changes the file the test writes, so nothing here compares bytes or lengths with a run of
+// the Zig test; what remains is every assertion Zig makes on what is kept.
+//
+// Left out, with what each part tests and the feature it waits for:
+//
+// - 262-271, in the first transaction: the `todos` linked array list, appended to, inserted into, given a map
+//   with `insertCursor`, and removed from. Linked array lists (M5).
+// - 346-353, 593-600 and 638-645: reading `todos` in the first moment, after the second transaction and after
+//   the slice: it has three elements and the first is "Pay the bills". Linked array lists (M5).
+// - 480-484, in the second transaction: `todos` concatenated with itself, sliced and removed from. Linked array
+//   lists (M5).
+// - 537-544: reading `todos` in the second moment: it has one element, "Wash the car". Linked array lists (M5).
+// - 816, 823, 832 and 843, in the freeze-callback loop: its `.linked_get` case, which writes the first element
+//   of a linked array list through a path and checks the list from the callback. Linked array lists (M5). The
+//   `.append` and `.slice` cases are ported.
+// - 853-955: the secondary index, a `SortedMap` from username to user ID paged through with
+//   `iteratorFromIndex` and searched by prefix with `iteratorFrom`. Sorted maps (M6).
+// - 3692-3695, 3709, 3726-3734 and 3752-3753, in `testIteratorFrom`: the `linked` list, filled with two hundred
+//   numbers and iterated from each start alongside the array list. Linked array lists (M5).
+//
+// Everything else in those lines is ported.
+//
+// Zig fills `random-number` with thirty-two bytes from its default PRNG seeded with 12345 (line 295) and never
+// asserts on them, only on the format tag. Here they come from the SplitMix64 generator of the test support,
+// seeded the same way; the bytes differ from Zig's.
+
+/// Zig's "high level api" test: the collections, used as the readme shows.
+@Suite struct HighLevelAPITests {
+    /// The storage kinds of the three databases Zig runs the test for.
+    static let storageKinds: [StorageKind] = [.memory, .file, .bufferedFile]
+
+    /// Zig's `MAX_READ_BYTES`.
+    private let maxReadBytes = 1024
+
+    /// Zig's `error.UnexpectedTagType`.
+    private struct UnexpectedTagType: Error {}
+
+    /// The UTF-8 bytes of a string.
+    private func utf8(_ text: String) -> [UInt8] {
+        Array(text.utf8)
+    }
+
+    /// Zig's `hashInt(text)`: the SHA-1 of the text, as the twenty bytes the collections take.
+    private func hashInt(_ text: String) -> [UInt8] {
+        sha1(text).bytes
+    }
+
+    /// A format tag from its two characters, Zig's `"bi".*`.
+    private func makeFormatTag(_ name: String) -> InlineArray<2, UInt8> {
+        let bytes = utf8(name)
+        precondition(bytes.count == 2)
+        return [bytes[0], bytes[1]]
+    }
+
+    /// Zig's `cursor.readBytes(&buffer)` with a buffer of `bufferSize` zero bytes: the part of the buffer that
+    /// holds the value.
+    private func readBytes<Access>(_ cursor: Cursor<Access>, bufferSize: Int) throws -> [UInt8] {
+        var buffer = [UInt8](repeating: 0, count: bufferSize)
+        var span = buffer.mutableSpan
+        let count = try cursor.readBytes(into: &span)
+        return Array(buffer[..<count])
+    }
+
+    /// Zig's `cursor.readBytesObject(&buffer)` with a buffer of `bufferSize` zero bytes: the part of the buffer
+    /// that holds the value, and the value's format tag.
+    private func readBytesObject<Access>(_ cursor: Cursor<Access>, bufferSize: Int) throws -> Bytes {
+        var buffer = [UInt8](repeating: 0, count: bufferSize)
+        var span = buffer.mutableSpan
+        let read = try cursor.readBytesObject(into: &span)
+        return Bytes(Array(buffer[..<read.count]), formatTag: read.formatTag)
+    }
+
+    /// Zig's `reader.interface.readSliceShort(&buffer)` with a buffer of `size` zero bytes: the number of bytes
+    /// read, and the buffer.
+    private func readShort(_ reader: inout ByteReader, size: Int) throws -> (count: Int, buffer: [UInt8]) {
+        var buffer = [UInt8](repeating: 0, count: size)
+        var span = buffer.mutableSpan
+        let count = try reader.read(into: &span)
+        return (count, buffer)
+    }
+
+    /// test.zig 216-957: `testHighLevelApi`. The function is one database from start to finish, each block
+    /// reading what the blocks before it wrote, so it is one test; its blocks are the methods below, in order.
+    @Test(arguments: storageKinds)
+    func highLevelApi(kind: StorageKind) throws {
+        // init the db
+        let subject = try StorageUnderTest(kind)
+        var database = try Database(storage: subject.storage, hashSize: 20)
+
+        try writesTheFirstTransaction(database)
+        try changesTheDataInANewTransaction(database)
+        try theOldDataHasNotChanged(database)
+        try removesTheLastTransactionWithSlice(database)
+        database = try opensTheDatabaseWithTrailingData(database, subject: subject, kind: kind)
+        try clones(database)
+        try mutatesAccidentallyWhenCloningInsideATransaction(database)
+        try preventsAccidentalMutationWithFreezing(database)
+    }
+
+    /// test.zig 221-449: the first transaction, and reading the moment it makes.
+    ///
+    /// Left out: `todos` at 262-271 and 346-353.
+    private func writesTheFirstTransaction(_ database: Database) throws {
+        // to get the benefits of immutability, the top-level data structure
+        // must be an ArrayList, so each transaction is stored as an item in it
+        let history = try ArrayList<ReadWrite>(database.rootCursor())
+
+        // this is how a transaction is executed. we call history.appendContext,
+        // providing it with the most recent copy of the db and a context
+        // object. the context object has a method that will run before the
+        // transaction has completed. this method is where we can write
+        // changes to the db. if any error happens in it, the transaction
+        // will not complete and the db will be unaffected.
+        try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+
+            try moment.put(hashInt("foo"), .bytes(utf8("foo")))
+            try moment.put(hashInt("bar"), .bytes(utf8("bar")))
+
+            let fruitsCursor = try moment.putCursor(hashInt("fruits"))
+            let fruits = try ArrayList<ReadWrite>(fruitsCursor)
+            try fruits.append(.bytes(utf8("apple")))
+            try fruits.append(.bytes(utf8("pear")))
+            try fruits.append(.bytes(utf8("grape")))
+
+            let peopleCursor = try moment.putCursor(hashInt("people"))
+            let people = try ArrayList<ReadWrite>(peopleCursor)
+
+            let aliceCursor = try people.appendCursor()
+            let alice = try HashMap<ReadWrite>(aliceCursor)
+            try alice.putKey(hashInt("name"), .bytes(utf8("name")))
+            try alice.put(hashInt("name"), .bytes(utf8("Alice")))
+            try alice.putKey(hashInt("age"), .bytes(utf8("age")))
+            try alice.put(hashInt("age"), .uint(25))
+
+            let bobCursor = try people.appendCursor()
+            let bob = try HashMap<ReadWrite>(bobCursor)
+            try bob.putKey(hashInt("name"), .bytes(utf8("name")))
+            try bob.put(hashInt("name"), .bytes(utf8("Bob")))
+            try bob.putKey(hashInt("age"), .bytes(utf8("age")))
+            try bob.put(hashInt("age"), .uint(42))
+
+            // 262-271 left out: the `todos` linked array list (M5)
+
+            let lettersCountedMapCursor = try moment.putCursor(hashInt("letters-counted-map"))
+            let lettersCountedMap = try CountedHashMap<ReadWrite>(lettersCountedMapCursor)
+            try lettersCountedMap.put(hashInt("a"), .uint(1))
+            try lettersCountedMap.putKey(hashInt("a"), .bytes(utf8("a")))
+            try lettersCountedMap.put(hashInt("a"), .uint(2))
+            try lettersCountedMap.putKey(hashInt("a"), .bytes(utf8("b")))
+            try lettersCountedMap.put(hashInt("c"), .uint(3))
+            try lettersCountedMap.putKey(hashInt("c"), .bytes(utf8("c")))
+
+            let lettersSetCursor = try moment.putCursor(hashInt("letters-set"))
+            let lettersSet = try HashSet<ReadWrite>(lettersSetCursor)
+            try lettersSet.put(hashInt("a"), .bytes(utf8("a")))
+            try lettersSet.put(hashInt("a"), .bytes(utf8("a")))
+            try lettersSet.put(hashInt("c"), .bytes(utf8("c")))
+
+            let lettersCountedSetCursor = try moment.putCursor(hashInt("letters-counted-set"))
+            let lettersCountedSet = try CountedHashSet<ReadWrite>(lettersCountedSetCursor)
+            try lettersCountedSet.put(hashInt("a"), .bytes(utf8("a")))
+            try lettersCountedSet.put(hashInt("a"), .bytes(utf8("a")))
+            try lettersCountedSet.put(hashInt("c"), .bytes(utf8("c")))
+
+            var prng = SeededGenerator(seed: 12345)
+            var randomNumberBuffer: [UInt8] = []
+            for _ in 0..<4 {
+                randomNumberBuffer += bigEndianBytes(prng.next())
+            }
+            try moment.put(
+                hashInt("random-number"),
+                .bytesObject(Bytes(randomNumberBuffer, formatTag: makeFormatTag("bi")))
+            )
+
+            var longTextCursor = try moment.putCursor(hashInt("long-text"))
+            try longTextCursor.writer { writer in
+                for _ in 0..<50 {
+                    try writer.write(utf8("hello, world!\n"))
+                }
+            }
+        }
+
+        // get the most recent copy of the database, like a moment
+        // in time. the -1 index will return the last index in the list.
+        let momentCursor = try #require(try history.getCursor(-1))
+        let moment = try HashMap<ReadOnly>(momentCursor)
+
+        // we can read the value of "foo" from the map by getting
+        // the cursor to "foo" and then calling readBytesAlloc on it
+        let fooCursor = try #require(try moment.getCursor(hashInt("foo")))
+        let fooValue = try fooCursor.readBytesAlloc(maxSize: maxReadBytes)
+        #expect(fooValue == utf8("foo"))
+
+        #expect(try #require(try moment.getSlot(hashInt("foo"))).tag == .shortBytes)
+        #expect(try #require(try moment.getSlot(hashInt("bar"))).tag == .shortBytes)
+
+        // to get the "fruits" list, we get the cursor to it and
+        // then pass it to the ArrayList.init method
+        let fruitsCursor = try #require(try moment.getCursor(hashInt("fruits")))
+        let fruits = try ArrayList<ReadOnly>(fruitsCursor)
+        #expect(try fruits.count() == 3)
+
+        // now we can get the first item from the fruits list and read it
+        let appleCursor = try #require(try fruits.getCursor(0))
+        let appleValue = try appleCursor.readBytesAlloc(maxSize: maxReadBytes)
+        #expect(appleValue == utf8("apple"))
+
+        let peopleCursor = try #require(try moment.getCursor(hashInt("people")))
+        let people = try ArrayList<ReadOnly>(peopleCursor)
+        #expect(try people.count() == 2)
+
+        let aliceCursor = try #require(try people.getCursor(0))
+        let alice = try HashMap<ReadOnly>(aliceCursor)
+        let aliceAgeCursor = try #require(try alice.getCursor(hashInt("age")))
+        #expect(try aliceAgeCursor.readUint() == 25)
+
+        // 346-353 left out: reading `todos` (M5)
+
+        var fruitsIter = try fruits.iterator()
+        while let fruitCursor = try fruitsIter.next() {
+            _ = try readBytes(fruitCursor, bufferSize: 100)
+        }
+
+        var peopleIter = try people.iterator()
+        while let personCursor = try peopleIter.next() {
+            let person = try HashMap<ReadOnly>(personCursor)
+            var personIter = try person.iterator()
+            while let kvPairCursor = try personIter.next() {
+                let kvPair = try kvPairCursor.readKeyValuePair()
+                _ = try readBytes(kvPair.keyCursor, bufferSize: 100)
+
+                switch try kvPair.valueCursor.slot().tag {
+                case .shortBytes, .bytes:
+                    _ = try readBytes(kvPair.valueCursor, bufferSize: 100)
+                case .uint: _ = try kvPair.valueCursor.readUint()
+                case .int: _ = try kvPair.valueCursor.readInt()
+                case .float: _ = try kvPair.valueCursor.readFloat()
+                default: throw UnexpectedTagType()
+                }
+            }
+        }
+
+        do {
+            let lettersCountedMapCursor = try #require(try moment.getCursor(hashInt("letters-counted-map")))
+            let lettersCountedMap = try CountedHashMap<ReadOnly>(lettersCountedMapCursor)
+            #expect(try lettersCountedMap.count() == 2)
+
+            var iter = try lettersCountedMap.iterator()
+            var count = 0
+            while let kvPairCursor = try iter.next() {
+                let kvPair = try kvPairCursor.readKeyValuePair()
+                _ = try readBytes(kvPair.keyCursor, bufferSize: 8)
+                count += 1
+            }
+            #expect(count == 2)
+        }
+
+        do {
+            let lettersSetCursor = try #require(try moment.getCursor(hashInt("letters-set")))
+            let lettersSet = try HashSet<ReadOnly>(lettersSetCursor)
+            #expect(try lettersSet.getCursor(hashInt("a")) != nil)
+            #expect(try lettersSet.getCursor(hashInt("c")) != nil)
+
+            var iter = try lettersSet.iterator()
+            var count = 0
+            while let kvPairCursor = try iter.next() {
+                let kvPair = try kvPairCursor.readKeyValuePair()
+                _ = try readBytes(kvPair.keyCursor, bufferSize: 8)
+                count += 1
+            }
+            #expect(count == 2)
+        }
+
+        do {
+            let lettersCountedSetCursor = try #require(try moment.getCursor(hashInt("letters-counted-set")))
+            let lettersCountedSet = try CountedHashSet<ReadOnly>(lettersCountedSetCursor)
+            #expect(try lettersCountedSet.count() == 2)
+
+            var iter = try lettersCountedSet.iterator()
+            var count = 0
+            while let kvPairCursor = try iter.next() {
+                let kvPair = try kvPairCursor.readKeyValuePair()
+                _ = try readBytes(kvPair.keyCursor, bufferSize: 8)
+                count += 1
+            }
+            #expect(count == 2)
+        }
+
+        do {
+            let randomNumberCursor = try #require(try moment.getCursor(hashInt("random-number")))
+            let randomNumber = try readBytesObject(randomNumberCursor, bufferSize: 32)
+            let formatTag = try #require(randomNumber.formatTag)
+            #expect(array(formatTag) == utf8("bi"))
+        }
+
+        do {
+            let longTextCursor = try #require(try moment.getCursor(hashInt("long-text")))
+            var reader = try longTextCursor.reader()
+            // Zig: `while (try reader.interface.takeDelimiter('\n')) |_| count += 1`, which gives each line
+            // up to its newline, and what follows the last newline if anything does
+            var count = 0
+            var lineStarted = false
+            while true {
+                let read = try readShort(&reader, size: 1024)
+                if read.count == 0 { break }
+                for byte in read.buffer[..<read.count] {
+                    if byte == UInt8(ascii: "\n") {
+                        count += 1
+                        lineStarted = false
+                    } else {
+                        lineStarted = true
+                    }
+                }
+            }
+            if lineStarted { count += 1 }
+            #expect(count == 50)
+        }
+    }
+
+    /// test.zig 451-558: "make a new transaction and change the data".
+    ///
+    /// Left out: `todos` at 480-484 and 537-544.
+    private func changesTheDataInANewTransaction(_ database: Database) throws {
+        let history = try ArrayList<ReadWrite>(database.rootCursor())
+
+        try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+
+            #expect(try moment.remove(hashInt("bar")))
+            #expect(try !moment.remove(hashInt("doesn't exist")))
+
+            // this associates the hash of "fruits" with the actual string.
+            // hash maps use hashes directly as keys so they are not able
+            // to get the original bytes of the key unless we store it
+            // explicitly this way.
+            try moment.putKey(hashInt("fruits"), .bytes(utf8("fruits")))
+
+            let fruitsCursor = try moment.putCursor(hashInt("fruits"))
+            let fruits = try ArrayList<ReadWrite>(fruitsCursor)
+            try fruits.put(0, .bytes(utf8("lemon")))
+            try fruits.slice(2)
+
+            let peopleCursor = try moment.putCursor(hashInt("people"))
+            let people = try ArrayList<ReadWrite>(peopleCursor)
+
+            let aliceCursor = try people.putCursor(0)
+            let alice = try HashMap<ReadWrite>(aliceCursor)
+            try alice.put(hashInt("age"), .uint(26))
+
+            // 480-484 left out: `todos` concatenated, sliced and removed from (M5)
+
+            let lettersCountedMapCursor = try moment.putCursor(hashInt("letters-counted-map"))
+            let lettersCountedMap = try CountedHashMap<ReadWrite>(lettersCountedMapCursor)
+            _ = try lettersCountedMap.remove(hashInt("b"))
+            _ = try lettersCountedMap.remove(hashInt("c"))
+
+            let lettersSetCursor = try moment.putCursor(hashInt("letters-set"))
+            let lettersSet = try HashSet<ReadWrite>(lettersSetCursor)
+            _ = try lettersSet.remove(hashInt("b"))
+            _ = try lettersSet.remove(hashInt("c"))
+
+            let lettersCountedSetCursor = try moment.putCursor(hashInt("letters-counted-set"))
+            let lettersCountedSet = try CountedHashSet<ReadWrite>(lettersCountedSetCursor)
+            _ = try lettersCountedSet.remove(hashInt("b"))
+            _ = try lettersCountedSet.remove(hashInt("c"))
+        }
+
+        let momentCursor = try #require(try history.getCursor(-1))
+        let moment = try HashMap<ReadOnly>(momentCursor)
+
+        #expect(try moment.getCursor(hashInt("bar")) == nil)
+
+        let fruitsKeyCursor = try #require(try moment.getKeyCursor(hashInt("fruits")))
+        let fruitsKeyValue = try fruitsKeyCursor.readBytesAlloc(maxSize: maxReadBytes)
+        #expect(fruitsKeyValue == utf8("fruits"))
+
+        let fruitsCursor = try #require(try moment.getCursor(hashInt("fruits")))
+        let fruits = try ArrayList<ReadOnly>(fruitsCursor)
+        #expect(try fruits.count() == 2)
+
+        // you can get both the key and value cursor this way
+        let fruitsKvCursor = try #require(try moment.getKeyValuePair(hashInt("fruits")))
+        #expect(try fruitsKvCursor.keyCursor.slot().tag == .shortBytes)
+        #expect(try fruitsKvCursor.valueCursor.slot().tag == .arrayList)
+
+        let lemonCursor = try #require(try fruits.getCursor(0))
+        let lemonValue = try lemonCursor.readBytesAlloc(maxSize: maxReadBytes)
+        #expect(lemonValue == utf8("lemon"))
+
+        let peopleCursor = try #require(try moment.getCursor(hashInt("people")))
+        let people = try ArrayList<ReadOnly>(peopleCursor)
+        #expect(try people.count() == 2)
+
+        let aliceCursor = try #require(try people.getCursor(0))
+        let alice = try HashMap<ReadOnly>(aliceCursor)
+        let aliceAgeCursor = try #require(try alice.getCursor(hashInt("age")))
+        #expect(try aliceAgeCursor.readUint() == 26)
+
+        // 537-544 left out: reading `todos` (M5)
+
+        let lettersCountedMapCursor = try #require(try moment.getCursor(hashInt("letters-counted-map")))
+        let lettersCountedMap = try CountedHashMap<ReadOnly>(lettersCountedMapCursor)
+        #expect(try lettersCountedMap.count() == 1)
+
+        let lettersSetCursor = try #require(try moment.getCursor(hashInt("letters-set")))
+        let lettersSet = try HashSet<ReadOnly>(lettersSetCursor)
+        #expect(try lettersSet.getCursor(hashInt("a")) != nil)
+        #expect(try lettersSet.getCursor(hashInt("b")) == nil)
+
+        let lettersCountedSetCursor = try #require(try moment.getCursor(hashInt("letters-counted-set")))
+        let lettersCountedSet = try CountedHashSet<ReadOnly>(lettersCountedSetCursor)
+        #expect(try lettersCountedSet.count() == 1)
+    }
+
+    /// test.zig 560-601: "the old data hasn't changed".
+    ///
+    /// Left out: `todos` at 593-600.
+    private func theOldDataHasNotChanged(_ database: Database) throws {
+        let history = try ArrayList<ReadWrite>(database.rootCursor())
+
+        let momentCursor = try #require(try history.getCursor(0))
+        let moment = try HashMap<ReadOnly>(momentCursor)
+
+        let fooCursor = try #require(try moment.getCursor(hashInt("foo")))
+        let fooValue = try fooCursor.readBytesAlloc(maxSize: maxReadBytes)
+        #expect(fooValue == utf8("foo"))
+
+        #expect(try #require(try moment.getSlot(hashInt("foo"))).tag == .shortBytes)
+        #expect(try #require(try moment.getSlot(hashInt("bar"))).tag == .shortBytes)
+
+        let fruitsCursor = try #require(try moment.getCursor(hashInt("fruits")))
+        let fruits = try ArrayList<ReadOnly>(fruitsCursor)
+        #expect(try fruits.count() == 3)
+
+        let appleCursor = try #require(try fruits.getCursor(0))
+        let appleValue = try appleCursor.readBytesAlloc(maxSize: maxReadBytes)
+        #expect(appleValue == utf8("apple"))
+
+        let peopleCursor = try #require(try moment.getCursor(hashInt("people")))
+        let people = try ArrayList<ReadOnly>(peopleCursor)
+        #expect(try people.count() == 2)
+
+        let aliceCursor = try #require(try people.getCursor(0))
+        let alice = try HashMap<ReadOnly>(aliceCursor)
+        let aliceAgeCursor = try #require(try alice.getCursor(hashInt("age")))
+        #expect(try aliceAgeCursor.readUint() == 25)
+
+        // 593-600 left out: reading `todos` (M5)
+    }
+
+    /// test.zig 603-646: "remove the last transaction with `slice`".
+    ///
+    /// Left out: `todos` at 638-645.
+    private func removesTheLastTransactionWithSlice(_ database: Database) throws {
+        let history = try ArrayList<ReadWrite>(database.rootCursor())
+
+        try history.slice(1)
+
+        let momentCursor = try #require(try history.getCursor(-1))
+        let moment = try HashMap<ReadOnly>(momentCursor)
+
+        let fooCursor = try #require(try moment.getCursor(hashInt("foo")))
+        let fooValue = try fooCursor.readBytesAlloc(maxSize: maxReadBytes)
+        #expect(fooValue == utf8("foo"))
+
+        #expect(try #require(try moment.getSlot(hashInt("foo"))).tag == .shortBytes)
+        #expect(try #require(try moment.getSlot(hashInt("bar"))).tag == .shortBytes)
+
+        let fruitsCursor = try #require(try moment.getCursor(hashInt("fruits")))
+        let fruits = try ArrayList<ReadOnly>(fruitsCursor)
+        #expect(try fruits.count() == 3)
+
+        let appleCursor = try #require(try fruits.getCursor(0))
+        let appleValue = try appleCursor.readBytesAlloc(maxSize: maxReadBytes)
+        #expect(appleValue == utf8("apple"))
+
+        let peopleCursor = try #require(try moment.getCursor(hashInt("people")))
+        let people = try ArrayList<ReadOnly>(peopleCursor)
+        #expect(try people.count() == 2)
+
+        let aliceCursor = try #require(try people.getCursor(0))
+        let alice = try HashMap<ReadOnly>(aliceCursor)
+        let aliceAgeCursor = try #require(try alice.getCursor(hashInt("age")))
+        #expect(try aliceAgeCursor.readUint() == 25)
+
+        // 638-645 left out: reading `todos` (M5)
+    }
+
+    /// test.zig 648-688: "opening the db leaves trailing data alone". Zig writes the trailing data through the
+    /// database's core and opens the database again on the same storage; here the data is written to the
+    /// storage and a second database opened on it, which the rest of the test goes on with.
+    private func opensTheDatabaseWithTrailingData(
+        _ database: Database,
+        subject: StorageUnderTest,
+        kind: StorageKind
+    ) throws -> Database {
+        // opening the db leaves trailing data alone, because it may
+        // belong to another writer's unfinished transaction. the next
+        // write transaction truncates it before allocating new data.
+        let sizeBefore = try subject.storage.length()
+
+        try writeBytes(subject.storage, utf8("this is trailing data from an unfinished transaction"), at: sizeBefore)
+        try subject.storage.flush()
+        let sizeWithTail = try subject.storage.length()
+
+        // no error is thrown if db file is opened in read-only mode
+        switch kind {
+        case .memory:
+            break
+        case .file:
+            let file = try FileStorage(path: try #require(subject.path), access: .readOnly)
+            _ = try Database(storage: file, hashSize: 20)
+        case .bufferedFile, .bufferedFileSmallWindow:
+            let file = try BufferedFileStorage(path: try #require(subject.path), access: .readOnly)
+            _ = try Database(storage: file, hashSize: 20)
+        }
+
+        let reopened = try Database(storage: subject.storage, hashSize: 20)
+
+        let sizeAfter = try subject.storage.length()
+
+        #expect(sizeWithTail == sizeAfter)
+
+        _ = try ArrayList<ReadWrite>(reopened.rootCursor())
+        #expect(try subject.storage.length() == sizeBefore)
+
+        return reopened
+    }
+
+    /// test.zig 690-726: "cloning".
+    private func clones(_ database: Database) throws {
+        let history = try ArrayList<ReadWrite>(database.rootCursor())
+
+        try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+
+            let fruitsCursor = try #require(try moment.getCursor(hashInt("fruits")))
+            let fruits = try ArrayList<ReadOnly>(fruitsCursor)
+
+            // create a new key called "food" whose initial value is
+            // based on the "fruits" list
+            var foodCursor = try moment.putCursor(hashInt("food"))
+            try foodCursor.write(.slot(try fruits.slot()))
+
+            let food = try ArrayList<ReadWrite>(foodCursor)
+            try food.append(.bytes(utf8("eggs")))
+            try food.append(.bytes(utf8("rice")))
+            try food.append(.bytes(utf8("fish")))
+        }
+
+        let momentCursor = try #require(try history.getCursor(-1))
+        let moment = try HashMap<ReadOnly>(momentCursor)
+
+        // the food list includes the fruits
+        let foodCursor = try #require(try moment.getCursor(hashInt("food")))
+        let food = try ArrayList<ReadOnly>(foodCursor)
+        #expect(try food.count() == 6)
+
+        // ...but the fruits list hasn't been changed
+        let fruitsCursor = try #require(try moment.getCursor(hashInt("fruits")))
+        let fruits = try ArrayList<ReadOnly>(fruitsCursor)
+        #expect(try fruits.count() == 3)
+    }
+
+    /// test.zig 728-770: "accidental mutation when cloning inside a transaction".
+    private func mutatesAccidentallyWhenCloningInsideATransaction(_ database: Database) throws {
+        let history = try ArrayList<ReadWrite>(database.rootCursor())
+
+        let historyIndex = try history.count() - 1
+
+        try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+
+            let bigCitiesCursor = try moment.putCursor(hashInt("big-cities"))
+            let bigCities = try ArrayList<ReadWrite>(bigCitiesCursor)
+            try bigCities.append(.bytes(utf8("New York, NY")))
+            try bigCities.append(.bytes(utf8("Los Angeles, CA")))
+
+            // create a new key called "cities" whose initial value is
+            // based on the "big-cities" list
+            var citiesCursor = try moment.putCursor(hashInt("cities"))
+            try citiesCursor.write(.slot(try bigCities.slot()))
+
+            let cities = try ArrayList<ReadWrite>(citiesCursor)
+            try cities.append(.bytes(utf8("Charleston, SC")))
+            try cities.append(.bytes(utf8("Louisville, KY")))
+        }
+
+        let momentCursor = try #require(try history.getCursor(-1))
+        let moment = try HashMap<ReadOnly>(momentCursor)
+
+        // the cities list contains all four
+        let citiesCursor = try #require(try moment.getCursor(hashInt("cities")))
+        let cities = try ArrayList<ReadOnly>(citiesCursor)
+        #expect(try cities.count() == 4)
+
+        // ..but so does big-cities! we did not intend to mutate this
+        let bigCitiesCursor = try #require(try moment.getCursor(hashInt("big-cities")))
+        let bigCities = try ArrayList<ReadOnly>(bigCitiesCursor)
+        #expect(try bigCities.count() == 4)
+
+        // revert that change
+        try history.append(.slot(try history.getSlot(Int64(historyIndex))))
+    }
+
+    /// The operations of the freeze-callback loop (test.zig 816) that are ported; `.linked_get` is left out.
+    private enum FreezeOp {
+        case append
+        case slice
+    }
+
+    /// test.zig 772-851: "preventing accidental mutation with freezing", with the freeze-callback loop.
+    ///
+    /// Left out: the loop's `.linked_get` case (816, 823, 832 and 843).
+    private func preventsAccidentalMutationWithFreezing(_ database: Database) throws {
+        let history = try ArrayList<ReadWrite>(database.rootCursor())
+
+        try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+
+            let bigCitiesCursor = try moment.putCursor(hashInt("big-cities"))
+            let bigCities = try ArrayList<ReadWrite>(bigCitiesCursor)
+            try bigCities.append(.bytes(utf8("New York, NY")))
+            try bigCities.append(.bytes(utf8("Los Angeles, CA")))
+
+            // create a new key called "cities" whose initial value is
+            // based on the "big-cities" list
+            var citiesCursor = try moment.putCursor(hashInt("cities"))
+            try citiesCursor.write(.slot(try bigCities.slot()))
+
+            // freeze here, so writes to cities won't mutate big-cities
+            // note: you can also freeze globally with `cursor.db.freeze()`,
+            // but call it before `putCursor` creates the cities cursor
+            try citiesCursor.freeze()
+
+            let cities = try ArrayList<ReadWrite>(citiesCursor)
+            try cities.append(.bytes(utf8("Charleston, SC")))
+            try cities.append(.bytes(utf8("Louisville, KY")))
+        }
+
+        let momentCursor = try #require(try history.getCursor(-1))
+        let moment = try HashMap<ReadOnly>(momentCursor)
+
+        // the cities list contains all four
+        let citiesCursor = try #require(try moment.getCursor(hashInt("cities")))
+        let cities = try ArrayList<ReadOnly>(citiesCursor)
+        #expect(try cities.count() == 4)
+
+        // and big-cities only contains the original two
+        let bigCitiesCursor = try #require(try moment.getCursor(hashInt("big-cities")))
+        let bigCities = try ArrayList<ReadOnly>(bigCitiesCursor)
+        #expect(try bigCities.count() == 2)
+
+        // callbacks must see complete headers before freezing their collections
+        for op in [FreezeOp.append, .slice] {
+            try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+                var map = try HashMap<ReadWrite>(cursor)
+                try map.put(hashInt("freeze-callback"), .slot(nil))
+                var list = try ArrayList<ReadWrite>(try map.putCursor(hashInt("freeze-callback")))
+                try list.append(.uint(1))
+                if op == .slice { try list.append(.uint(2)) }
+                try database.freeze()
+                map = try HashMap<ReadWrite>(map.cursor)
+                list = try ArrayList<ReadWrite>(try map.putCursor(hashInt("freeze-callback")))
+                // Zig's `FreezeCtx`, with the list's read-only cursor as its field
+                let frozenList = list.cursor.readOnly()
+                let path: [PathPart] =
+                    switch op {
+                    case .append: [.arrayListAppend, .write(.uint(2)), .ctx]
+                    case .slice: [.arrayListSlice(size: 1), .ctx]
+                    }
+                _ = try list.cursor.writePath(path) { _ in
+                    try database.freeze()
+                    #expect(try frozenList.count() == (op == .append ? 2 : 1))
+                    let value = try #require(try frozenList.readPath([.arrayListGet(-1)]))
+                    #expect(try value.readUint() == (op == .slice ? 1 : 2))
+                }
+            }
+        }
+
+        // 853-955 left out: the secondary index with a sorted map (M6)
+    }
+
+    /// test.zig 2936-2954: "hash map with u64 hashes". Zig's `Database(.memory, u64)` is a database with a hash
+    /// size of eight; a `u64` hash is its eight big-endian bytes.
+    @Test func hashMapWithU64Hashes() throws {
+        let database = try Database(storage: MemoryStorage(), hashSize: 8)
+        let map = try HashMap<ReadWrite>(database.rootCursor())
+
+        // the first two keys share all but their highest nibble, exercising
+        // the full trie depth with the narrower shift type required by u64.
+        let hashes: [UInt64] = [0, 1 << 60, .max]
+        for (i, hash) in hashes.enumerated() {
+            try map.put(bigEndianBytes(hash), .uint(UInt64(i)))
+        }
+        for (i, hash) in hashes.enumerated() {
+            #expect(try #require(try map.getCursor(bigEndianBytes(hash))).readUint() == UInt64(i))
+        }
+        for hash in hashes {
+            #expect(try map.remove(bigEndianBytes(hash)))
+            #expect(try map.getCursor(bigEndianBytes(hash)) == nil)
+        }
+    }
+
+    /// test.zig 3672-3755: `testIteratorFrom`, the array list half.
+    ///
+    /// Left out: the `linked` list at 3692-3695, 3709, 3726-3734 and 3752-3753.
+    @Test(arguments: storageKinds)
+    func iteratorFromIndex(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let database = try Database(storage: subject.storage, hashSize: 20)
+        let rootCursor = database.rootCursor()
+
+        // enough items to force several tiers in both the array-list radix trie
+        // (16^2 = 256 > 200) and the linked-array-list b-tree
+        let count: Int64 = 200
+
+        _ = try rootCursor.writePath([
+            .arrayListInit,
+            .arrayListAppend,
+            .hashMapInit(),
+            .ctx,
+        ]) { (cursor: inout Cursor<ReadWrite>) in
+            let moment = try HashMap<ReadWrite>(cursor)
+
+            let list = try ArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            for i in 0..<count {
+                try list.append(.uint(UInt64(i)))
+            }
+
+            // 3692-3695 left out: the `linked` list (M5)
+        }
+
+        let history = try ArrayList<ReadOnly>(database.rootCursor().readOnly())
+        let moment = try HashMap<ReadOnly>(try #require(try history.getCursor(-1)))
+        let list = try ArrayList<ReadOnly>(try #require(try moment.getCursor(hashInt("list"))))
+
+        // iteratorFrom(k) yields exactly k, k+1, .., COUNT-1 in order, for both types.
+        // negative indexes count from the end: -1 starts at the last element, -COUNT
+        // at the first.
+        let starts: [Int64] = [0, 1, 15, 16, 17, 100, count - 2, count - 1, -1, -2, -16, -100, -count]
+        for start in starts {
+            let resolved: UInt64 = start < 0 ? UInt64(count + start) : UInt64(start)
+            var iter = try list.iteratorFrom(start)
+            var expected = resolved
+            while let c = try iter.next() {
+                #expect(try c.readUint() == expected)
+                expected += 1
+            }
+            #expect(expected == UInt64(count))
+            // 3726-3734 left out: the same over the `linked` list (M5)
+        }
+
+        // iteratorFrom(0) matches a plain iterator()
+        do {
+            var a = try list.iterator()
+            var b = try list.iteratorFrom(0)
+            while let ca = try a.next() {
+                let cb = try #require(try b.next())
+                #expect(try ca.readUint() == (try cb.readUint()))
+            }
+            let afterLast = try b.next()
+            #expect(afterLast == nil)
+        }
+
+        // a start out of range (past the end, or more negative than -COUNT) yields nothing
+        for start in [count, count + 1, count + 1000, -count - 1, -count - 1000] {
+            var li = try list.iteratorFrom(start)
+            let first = try li.next()
+            #expect(first == nil)
+            // 3752-3753 left out: the same over the `linked` list (M5)
+        }
+    }
+}

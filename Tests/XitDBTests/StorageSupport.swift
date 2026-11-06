@@ -77,6 +77,9 @@ struct StorageUnderTest {
     let storage: any WritableStorage
     /// The bytes in memory or on disk. For a buffered file, flush first.
     let stored: () throws -> [UInt8]
+    /// The path of the file, for a test that opens it a second time, or
+    /// `nil` for a memory storage.
+    let path: String?
 
     init(_ kind: StorageKind) throws {
         switch kind {
@@ -84,18 +87,22 @@ struct StorageUnderTest {
             let memory = MemoryStorage()
             storage = memory
             stored = { memory.bytes }
+            path = nil
         case .file:
             let directory = try TemporaryDirectory()
             storage = try FileStorage(path: directory.path(), durability: .none)
             stored = { try directory.contents() }
+            path = directory.path()
         case .bufferedFile:
             let directory = try TemporaryDirectory()
             storage = try BufferedFileStorage(path: directory.path(), durability: .none)
             stored = { try directory.contents() }
+            path = directory.path()
         case .bufferedFileSmallWindow:
             let directory = try TemporaryDirectory()
             storage = try BufferedFileStorage(path: directory.path(), durability: .none, bufferLimit: 200)
             stored = { try directory.contents() }
+            path = directory.path()
         }
     }
 }

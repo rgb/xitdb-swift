@@ -9,29 +9,29 @@ import Testing
 // The tests are in the order of the Zig function, one for each of its top-level blocks, and each one says which
 // lines it ports. The comments inside them are Zig's. Where Zig clears the storage and makes a database, a test
 // makes a new storage and a database in it. Zig's allocator arguments and `defer allocator.free` lines have no
-// counterpart, nor do the buffers it hands to `cursor.writer`.
+// counterpart, nor do the buffers it hands to `cursor.reader` and `cursor.writer`. Zig's
+// `reader.interface.readSliceAll` is `readAll(into:)` here, `readSliceShort` is `read(into:)`, `takeInt(u8)` is
+// a read of one byte, `allocRemaining` is `readRemaining(maxSize:)` and `seekTo` is `seek(to:)`.
+//
+// The port also has the tests that the fix branch of the Zig original (`xitdb-fixes`) added to this function,
+// in the places that branch's test.zig has them. They pin three read behaviours that the Swift port has from
+// the start (findings 8, 9 and 21 of the director's list of Zig behaviours to correct); the line numbers are
+// those of the fix branch's test.zig at its commit d6f3fee:
+//
+// - 1672-1695, after "write bar -> shortstr" (commit 1486fbf): a reader gives the value its cursor was made
+//   with, even if the slot was overwritten since. 1762-1774, in the "shorts" block (the same commit): a cursor
+//   with no position can stream a short value.
+// - 2506-2524, in "iterate over inner array_list" (commits f1550c2 and 7312ad8): a slot set to nothing reads
+//   as empty bytes into any buffer, and streams as nothing.
 //
 // Left out, with what each part tests and the feature it waits for:
 //
-// - 1461-1496, in "read foo from ctx": reads "bar" through `cursor.reader`, into a buffer, again after seeking
-//   back, and one byte at a time, with `EndOfStream` at the end and after seeking beyond it. Streaming reads
-//   (M4).
-// - 1665-1669, in "write bar -> shortstr": reads the short byte array through `cursor.reader`. Streaming reads
-//   (M4).
-// - 1699-1703, 1731-1735 and 1763-1767, in "write bytes with a format tag": read each of the three values
-//   through `cursor.reader`. Streaming reads (M4).
-// - 2432-2442, in "iterate over inner array_list": iterates over the list and compares each of its ten
-//   elements. Iterators (M4).
-// - 2460-2465, in the same block: iterates again after the first element was set to none, and still counts
-//   ten. Iterators (M4).
-// - 2537-2553, in "iterate over inner hash_map": iterates over the map, checks the key or the value of each
-//   entry, and counts ten. Iterators (M4).
-// - 2563-2572, in the same block: iterates over the map through a writeable cursor, reads foo's value, and
-//   counts ten. Iterators (M4).
+// - 3650-3675 of the fix branch's test.zig, in `testSortedMap` (commit 1486fbf): a short key of a sorted set,
+//   whose cursor has no position, read with a reader. Sorted maps and sets (M6).
 // - 2576-2599: `testSlice`, `testConcat` and `testInsertAndRemove` (test.zig 958-1312), which slice,
 //   concatenate, insert into and remove from linked array lists. Linked array lists (M5).
 // - 2601-2688, "concat linked_array_list multiple times": concatenates a linked array list with itself sixteen
-//   times and appends to the result. Linked array lists (M5); it also iterates (M4).
+//   times and appends to the result. Linked array lists (M5).
 // - 2690-2718, "append items to linked_array_list without setting their value". Linked array lists (M5).
 // - 2720-2745, "insert at beginning of linked_array_list many times". Linked array lists (M5).
 // - 2747-2772, "insert at end of linked_array_list many times". Linked array lists (M5).
@@ -39,7 +39,8 @@ import Testing
 // Everything else in lines 1313 to 2774 is ported.
 //
 // Beyond what Zig asserts, the tests check the length of the storage at the points where a run of the Zig test
-// was made to print it (a copy of test.zig with prints added, run with Zig 0.17.1 against the original lib.zig):
+// was made to print it (a copy of the fix branch's test.zig with prints added, run with Zig 0.17.1 against that
+// branch's lib.zig; the fix branch's extra transaction in "array_list of hash_maps" moves the numbers after it):
 // the lengths are the same on Zig's three kinds of database. They pin how much a transaction appends, which
 // the values read back do not show: an engine that copied more than Zig does would still read back right.
 
@@ -151,6 +152,23 @@ import Testing
         return Bytes(Array(buffer[..<read.count]), formatTag: read.formatTag)
     }
 
+    /// Zig's `reader.interface.readSliceAll(&buffer)` with a buffer of `size` zero bytes: the buffer, filled.
+    private func readAll(_ reader: inout ByteReader, size: Int) throws -> [UInt8] {
+        var buffer = [UInt8](repeating: 0, count: size)
+        var span = buffer.mutableSpan
+        try reader.readAll(into: &span)
+        return buffer
+    }
+
+    /// Zig's `reader.interface.readSliceShort(&buffer)` with a buffer of `size` zero bytes: the number of bytes
+    /// read, and the buffer.
+    private func readShort(_ reader: inout ByteReader, size: Int) throws -> (count: Int, buffer: [UInt8]) {
+        var buffer = [UInt8](repeating: 0, count: size)
+        var span = buffer.mutableSpan
+        let count = try reader.read(into: &span)
+        return (count, buffer)
+    }
+
     /// Reads a slot straight from the storage, behind the engine. Zig seeks `db.core.reader()` to the position
     /// and casts the nine bytes there, as a big-endian `u72`, to a `Slot`.
     private func storedSlot(_ storage: any WritableStorage, at position: UInt64) throws -> Slot {
@@ -225,9 +243,8 @@ import Testing
     }
 
     /// test.zig 1394-2177: "array_list of hash_maps". The block is one database from start to finish, each
-    /// part reading what the parts before it wrote, so it is one test.
-    ///
-    /// Left out: the streaming reads at 1461-1496, 1665-1669, 1699-1703, 1731-1735 and 1763-1767.
+    /// part reading what the parts before it wrote, so it is one test. It has the fix branch's two additions,
+    /// after "write bar -> shortstr" and in the "shorts" block.
     @Test(arguments: storageKinds)
     func arrayListOfHashMaps(kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
@@ -297,7 +314,37 @@ import Testing
                 let value = try cursor.readBytesAlloc(maxSize: maxReadBytes)
                 #expect(value == utf8("bar"))
 
-                // 1461-1496 left out: the same value read through `cursor.reader` (M4)
+                var barReader = try cursor.reader()
+
+                // read into buffer
+                // Zig reads into the first three bytes of a ten-byte buffer, then into all ten
+                #expect(try readAll(&barReader, size: 3) == utf8("bar"))
+                barReader.seek(to: 0)
+                let barBytes = try readShort(&barReader, size: 10)
+                #expect(barBytes.count == 3)
+                #expect(Array(barBytes.buffer[0..<3]) == utf8("bar"))
+
+                // read one char at a time
+                do {
+                    barReader.seek(to: 0)
+
+                    #expect(try readAll(&barReader, size: 1) == utf8("b"))
+
+                    #expect(try readAll(&barReader, size: 1) == utf8("a"))
+
+                    #expect(try readAll(&barReader, size: 1) == utf8("r"))
+
+                    #expect(throws: XitDBError.endOfStream) { try readAll(&barReader, size: 1) }
+
+                    barReader.seek(to: 1)
+                    #expect(try readAll(&barReader, size: 1)[0] == UInt8(ascii: "a"))
+
+                    barReader.seek(to: 0)
+                    #expect(try readAll(&barReader, size: 1)[0] == UInt8(ascii: "b"))
+
+                    barReader.seek(to: 4)
+                    #expect(throws: XitDBError.endOfStream) { try readAll(&barReader, size: 1) }
+                }
             }
         }
 
@@ -451,7 +498,32 @@ import Testing
             #expect(try barCursor.slot().tag == .shortBytes)
             #expect(try barCursor.count() == 8)
 
-            // 1665-1669 left out: make sure .short_bytes can be read with a reader (M4)
+            // make sure .short_bytes can be read with a reader
+            var barReader = try barCursor.reader()
+            let barValue = try barReader.readRemaining(maxSize: maxReadBytes)
+            #expect(barValue == utf8("shortstr"))
+        }
+
+        // a reader gives the value its cursor was made with, like readBytes,
+        // even if the slot was overwritten since then
+        do {
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .hashMapInit(),
+                .hashMapGet(.value, barKey),
+                .ctx,
+            ]) { (cursor: inout Cursor<ReadWrite>) in
+                let oldCursor = cursor
+                try cursor.write(.bytes(utf8("changed")))
+
+                #expect(try readBytesIntoBuffer(oldCursor, bufferSize: 8) == utf8("shortstr"))
+                var oldReader = try oldCursor.reader()
+                let read = try readShort(&oldReader, size: 8)
+                #expect(read.count == 8)
+                #expect(read.buffer == utf8("shortstr"))
+            }
         }
 
         // write bytes with a format tag
@@ -483,7 +555,10 @@ import Testing
                 let tag = try #require(bytes.formatTag)
                 #expect(array(tag) == utf8("st"))
 
-                // 1699-1703 left out: make sure .bytes can be read with a reader (M4)
+                // make sure .bytes can be read with a reader
+                var barReader = try barCursor.reader()
+                let barValue = try barReader.readRemaining(maxSize: maxReadBytes)
+                #expect(barValue == utf8("shortstr"))
             }
 
             // shorts
@@ -513,7 +588,25 @@ import Testing
                 let tag = try #require(bytes.formatTag)
                 #expect(array(tag) == utf8("st"))
 
-                // 1731-1735 left out: make sure .short_bytes can be read with a reader (M4)
+                // make sure .short_bytes can be read with a reader
+                var barReader = try barCursor.reader()
+                let barValue = try barReader.readRemaining(maxSize: maxReadBytes)
+                #expect(barValue == utf8("shorts"))
+
+                // the value is in the slot, so a cursor with no position can be
+                // read with a reader too. the format tag is not part of the value.
+                let slotCursor = Cursor<ReadOnly>(
+                    slotPointer: SlotPointer(position: nil, slot: try barCursor.slot()),
+                    database: database
+                )
+                var slotReader = try slotCursor.reader()
+                let slotBytes = try readShort(&slotReader, size: 8)
+                #expect(slotBytes.count == 6)
+                #expect(Array(slotBytes.buffer[0..<6]) == utf8("shorts"))
+                slotReader.seek(to: 4)
+                let slotTail = try readShort(&slotReader, size: 8)
+                #expect(slotTail.count == 2)
+                #expect(Array(slotTail.buffer[0..<2]) == utf8("ts"))
             }
 
             // short
@@ -543,7 +636,10 @@ import Testing
                 let tag = try #require(bytes.formatTag)
                 #expect(array(tag) == utf8("st"))
 
-                // 1763-1767 left out: make sure .short_bytes can be read with a reader (M4)
+                // make sure .short_bytes can be read with a reader
+                var barReader = try barCursor.reader()
+                let barValue = try barReader.readRemaining(maxSize: maxReadBytes)
+                #expect(barValue == utf8("short"))
             }
         }
 
@@ -688,7 +784,7 @@ import Testing
                     ])
                 )
                 let indexPosition = try mapCursor.slot().value
-                #expect(indexPosition == 7599)  // as in a run of the Zig test
+                #expect(indexPosition == 7975)  // as in a run of the fix branch's Zig test
                 #expect(try mapCursor.slot().tag == .hashMap)
 
                 let slotSize = Slot.byteCount
@@ -741,7 +837,7 @@ import Testing
                     ])
                 )
                 let indexPosition = try mapCursor.slot().value
-                #expect(indexPosition == 8551)  // as in a run of the Zig test
+                #expect(indexPosition == 9215)  // as in a run of the fix branch's Zig test
                 #expect(try mapCursor.slot().tag == .hashMap)
 
                 let slotSize = Slot.byteCount
@@ -784,7 +880,7 @@ import Testing
                     ])
                 )
                 let indexPosition = try mapCursor.slot().value
-                #expect(indexPosition == 9465)  // as in a run of the Zig test
+                #expect(indexPosition == 9985)  // as in a run of the fix branch's Zig test
                 #expect(try mapCursor.slot().tag == .hashMap)
 
                 let slotSize = Slot.byteCount
@@ -992,8 +1088,8 @@ import Testing
             #expect(grapeValue == utf8("grape"))
         }
 
-        // the length of the storage here in a run of the Zig test, on every kind of storage
-        #expect(try subject.storage.length() == 14396)
+        // the length of the storage here in a run of the fix branch's Zig test, on every kind of storage
+        #expect(try subject.storage.length() == 14916)
     }
 
     /// test.zig 2179-2283: "append to top-level array_list many times, filling up the array_list until a root
@@ -1230,12 +1326,10 @@ import Testing
         #expect(try subject.storage.length() == 8294)
     }
 
-    /// test.zig 2399-2473: "iterate over inner array_list", without the iterating.
-    ///
-    /// Left out: the two iterations at 2432-2442 and 2460-2465. What is left adds ten values to an inner list
-    /// and reads each back, sets the first to none, and counts the list.
+    /// test.zig 2399-2473: "iterate over inner array_list", with the fix branch's reads of the slot set to
+    /// none.
     @Test(arguments: storageKinds)
-    func innerArrayList(kind: StorageKind) throws {
+    func iteratesOverAnInnerArrayList(kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let database = try Database(storage: subject.storage, hashSize: 20)
         let rootCursor = database.rootCursor()
@@ -1264,12 +1358,20 @@ import Testing
 
         // iterate over array_list
         do {
-            _ = try #require(
+            let innerCursor = try #require(
                 try rootCursor.readPath([
                     .arrayListGet(-1)
                 ])
             )
-            // 2432-2442 left out: iterating over the cursor and comparing each element (M4)
+            var iter = try innerCursor.iterator()
+            var i = 0
+            while let nextCursor = try iter.next() {
+                let value = "wat\(i)"
+                let value2 = try nextCursor.readBytesAlloc(maxSize: maxReadBytes)
+                #expect(value2 == utf8(value))
+                i += 1
+            }
+            #expect(i == 10)
         }
 
         // set first slot to .none and make sure iteration still works.
@@ -1284,12 +1386,37 @@ import Testing
                 .arrayListGet(0),
                 .write(.slot(nil)),
             ])
-            _ = try #require(
+            let innerCursor = try #require(
                 try rootCursor.readPath([
                     .arrayListGet(-1)
                 ])
             )
-            // 2460-2465 left out: iterating over the cursor still counts ten (M4)
+            var iter = try innerCursor.iterator()
+            var i = 0
+            while try iter.next() != nil {
+                i += 1
+            }
+            #expect(i == 10)
+
+            // a .none slot is read as an empty byte array,
+            // whether or not the buffer has room for more
+            let noneCursor = try #require(
+                try innerCursor.readPath([
+                    .arrayListGet(0)
+                ])
+            )
+            #expect(try noneCursor.slot().tag == .none)
+            let noneValue = try noneCursor.readBytesAlloc(maxSize: maxReadBytes)
+            #expect(noneValue == [])
+            #expect(try readBytesIntoBuffer(noneCursor, bufferSize: 8) == [])
+            #expect(try readBytesIntoBuffer(noneCursor, bufferSize: 0) == [])
+            #expect(try readBytesObjectIntoBuffer(noneCursor, bufferSize: 8).formatTag == nil)
+
+            // and with a reader as an empty stream
+            var noneReader = try noneCursor.reader()
+            #expect(try readShort(&noneReader, size: 8).count == 0)
+            noneReader.seek(to: 0)
+            #expect(throws: XitDBError.endOfStream) { try readAll(&noneReader, size: 1) }
         }
 
         // get list slot
@@ -1304,13 +1431,9 @@ import Testing
         #expect(try subject.storage.length() == 3956)
     }
 
-    /// test.zig 2475-2574: "iterate over inner hash_map", without the iterating.
-    ///
-    /// Left out: the two iterations at 2537-2553 and 2563-2572. What is left adds ten values to an inner map
-    /// and reads each back, adds an entry with a key and a value, removes an entry, and appends one more
-    /// moment.
+    /// test.zig 2475-2574: "iterate over inner hash_map".
     @Test(arguments: storageKinds)
-    func innerHashMap(kind: StorageKind) throws {
+    func iteratesOverAnInnerHashMap(kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let database = try Database(storage: subject.storage, hashSize: 20)
         let rootCursor = database.rootCursor()
@@ -1368,22 +1491,45 @@ import Testing
 
         // iterate over hash_map
         do {
-            _ = try #require(
+            let innerCursor = try #require(
                 try rootCursor.readPath([
                     .arrayListGet(-1)
                 ])
             )
-            // 2537-2553 left out: iterating over the cursor and checking each entry (M4)
+            var iter = try innerCursor.iterator()
+            var i = 0
+            while let kvPairCursor = try iter.next() {
+                let kvPair = try kvPairCursor.readKeyValuePair()
+                if kvPair.hash == fooKey.bytes {
+                    let key = try kvPair.keyCursor.readBytesAlloc(maxSize: maxReadBytes)
+                    #expect(key == utf8("foo"))
+                    #expect(kvPair.valueCursor.slotPointer.slot.value == 42)
+                } else {
+                    let value = try kvPair.valueCursor.readBytesAlloc(maxSize: maxReadBytes)
+                    #expect(kvPair.hash == sha1(String(decoding: value, as: UTF8.self)).bytes)
+                }
+                i += 1
+            }
+            #expect(i == 10)
         }
 
         // iterate over hash_map with writeable cursor
         do {
-            _ = try rootCursor.writePath([
+            let innerCursor = try rootCursor.writePath([
                 .arrayListInit,
                 .arrayListAppend,
                 .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
             ])
-            // 2563-2572 left out: iterating over the cursor and reading foo's value (M4)
+            var iter = try innerCursor.iterator()
+            var i = 0
+            while let kvPairCursor = try iter.next() {
+                let kvPair = try kvPairCursor.readKeyValuePair()
+                if kvPair.hash == fooKey.bytes {
+                    #expect(try kvPair.valueCursor.readUint() == 42)
+                }
+                i += 1
+            }
+            #expect(i == 10)
         }
 
         // the length of the storage here in a run of the Zig test, on every kind of storage
