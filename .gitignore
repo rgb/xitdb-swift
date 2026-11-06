@@ -10,3 +10,6 @@ DerivedData/
 
 # macOS
 .DS_Store
+
+# Worktrees of helper agents
+.claude/worktrees/

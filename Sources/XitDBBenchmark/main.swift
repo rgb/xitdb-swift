@@ -4,13 +4,14 @@
 //
 //     swift run -c release XitDBBenchmark [workload ...]
 //
-// With no arguments every workload runs. Each prints two lines of JSON, one
-// for its write phase and one for its read phase.
+// With no arguments every workload runs. Each prints three lines of JSON,
+// one for its write phase, one for its read phase and one for its iterate
+// phase.
 //
 // For a profiler, one phase of one workload on one kind of storage can be
 // run over and over for a number of seconds:
 //
-//     XitDBBenchmark --repeat <seconds> <workload> <kind> <write|read>
+//     XitDBBenchmark --repeat <seconds> <workload> <kind> <write|read|iterate>
 
 import CryptoKit
 import Foundation
@@ -98,6 +99,29 @@ func readMap(_ moment: Cursor<ReadOnly>, _ hashes: [KeyHash]) throws {
     }
 }
 
+/// Goes through every entry of a map and checks that it is one of the keys
+/// written, that its value is that key's index, and that nothing is missing
+/// or given twice.
+func iterateMap(_ moment: Cursor<ReadOnly>, _ hashes: [KeyHash]) throws {
+    let map = try HashMap(moment)
+    var iterator = try map.iterator()
+    var count: UInt64 = 0
+    var sum: UInt64 = 0
+    while let entry = try iterator.next() {
+        let pair = try entry.readKeyValuePair()
+        let value = try pair.valueCursor.readUint()
+        guard value < UInt64(hashes.count), pair.keyHash == hashes[Int(value)] else {
+            throw BenchmarkFailure(description: "an entry is not one of the keys written")
+        }
+        count += 1
+        sum += value
+    }
+    let written = UInt64(hashes.count)
+    guard count == written, sum == written * (written - 1) / 2 else {
+        throw BenchmarkFailure(description: "the iteration gave \(count) entries with a sum of \(sum)")
+    }
+}
+
 /// One workload: how to write it and how to read it back.
 struct Workload {
     let name: String
@@ -107,6 +131,7 @@ struct Workload {
     let keyCount: Int
     let write: (Database, [KeyHash]) throws -> Void
     let read: (Database, [KeyHash]) throws -> Void
+    let iterate: (Database, [KeyHash]) throws -> Void
 }
 
 func mapInsert(_ size: Int, kinds: [StorageKind]) -> Workload {
@@ -120,6 +145,8 @@ func mapInsert(_ size: Int, kinds: [StorageKind]) -> Workload {
         }
     } read: { database, hashes in
         try readMap(try lastMoment(database), hashes)
+    } iterate: { database, hashes in
+        try iterateMap(try lastMoment(database), hashes)
     }
 }
 
@@ -140,6 +167,17 @@ func listAppend(_ size: Int, kinds: [StorageKind]) -> Workload {
                 throw BenchmarkFailure(description: "element \(index) does not read back")
             }
         }
+    } iterate: { database, _ in
+        let list = try ArrayList(try lastMoment(database))
+        var iterator = try list.iterator()
+        var count: UInt64 = 0
+        while let element = try iterator.next() {
+            guard try element.readUint() == count else {
+                throw BenchmarkFailure(description: "element \(count) is not in its place")
+            }
+            count += 1
+        }
+        guard count == UInt64(size) else { throw BenchmarkFailure(description: "the iteration gave \(count) elements") }
     }
 }
 
@@ -164,6 +202,8 @@ func mapTransactions(_ transactions: Int, kinds: [StorageKind]) -> Workload {
         }
     } read: { database, hashes in
         try readMap(try lastMoment(database), hashes)
+    } iterate: { database, hashes in
+        try iterateMap(try lastMoment(database), hashes)
     }
 }
 
@@ -191,6 +231,7 @@ func run(_ workload: Workload) throws {
     for kind in workload.kinds {
         var writeTimes: [Double] = []
         var readTimes: [Double] = []
+        var iterateTimes: [Double] = []
         var fileSize: UInt64 = 0
         // Every run starts from a new, empty database.
         for _ in 0..<5 {
@@ -203,9 +244,11 @@ func run(_ workload: Workload) throws {
             }
             fileSize = size
             readTimes.append(try milliseconds { try workload.read(database, hashes) })
+            iterateTimes.append(try milliseconds { try workload.iterate(database, hashes) })
         }
         report(workload, "write", kind, writeTimes, fileSize)
         report(workload, "read", kind, readTimes, fileSize)
+        report(workload, "iterate", kind, iterateTimes, fileSize)
     }
 }
 
@@ -218,12 +261,13 @@ func runRepeatedly(_ workload: Workload, _ kind: StorageKind, phase: String, sec
     let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(seconds * 1_000_000_000)
     var runs = 0
     var total = 0.0
-    if phase == "read" {
+    if phase == "read" || phase == "iterate" {
         let storage = try RunStorage(kind)
         let database = try newDatabase(storage.storage)
         try workload.write(database, hashes)
+        let run = phase == "read" ? workload.read : workload.iterate
         while DispatchTime.now().uptimeNanoseconds < deadline {
-            total += try milliseconds { try workload.read(database, hashes) }
+            total += try milliseconds { try run(database, hashes) }
             runs += 1
         }
     } else {
@@ -248,9 +292,9 @@ if arguments.first == "--repeat" {
         let seconds = Double(arguments[1]),
         let kind = StorageKind(rawValue: arguments[3]),
         let workload = workloads.first(where: { $0.name == arguments[2] && $0.kinds.contains(kind) }),
-        arguments[4] == "write" || arguments[4] == "read"
+        ["write", "read", "iterate"].contains(arguments[4])
     else {
-        throw BenchmarkFailure(description: "usage: --repeat <seconds> <workload> <kind> <write|read>")
+        throw BenchmarkFailure(description: "usage: --repeat <seconds> <workload> <kind> <write|read|iterate>")
     }
     try runRepeatedly(workload, kind, phase: arguments[4], seconds: seconds)
 } else {
