@@ -94,6 +94,11 @@ public final class MemoryStorage: WritableStorage {
     ///
     /// A write that would grow the storage beyond the limit throws
     /// ``XitDBError/maxSizeExceeded`` and changes nothing.
+    ///
+    /// Without a limit, a write far beyond the end makes the storage as large
+    /// as it takes to reach it, and the process ends if that much memory
+    /// cannot be had. Set a limit for a storage whose writes are not under
+    /// the caller's control.
     public var maxSize: UInt64? {
         buffer.maxSize
     }
