@@ -28,9 +28,13 @@ public enum FileAccess: Sendable {
 ///
 /// On Apple platforms the levels use `F_BARRIERFSYNC` and `F_FULLFSYNC`.
 /// Plain `fsync` is not a level there, because it promises neither that
-/// writes reach the disk in order nor that the drive flushes them. Where a
-/// volume does not support a call, the storage falls back to the next
-/// strongest one that it does.
+/// writes reach the disk in order nor that the drive flushes them.
+///
+/// Not every volume supports every call. Where one is not supported, the
+/// storage tries another that keeps what the level promises, and plain
+/// `fsync` only when nothing better is left. In particular the sync before
+/// the root header, which is what keeps a file openable after a power loss,
+/// falls back from a barrier to a full sync before it settles for less.
 public enum Durability: Sendable {
     /// Never sync.
     ///
@@ -239,21 +243,37 @@ public final class FileStorage: WritableStorage {
     /// - Parameter point: Which of a commit's two syncs this is.
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the sync fails.
     public func sync(_ point: SyncPoint) throws(XitDBError) {
-        var call: SyncCall
-        switch (durability, point) {
-        case (.none, _): return
-        case (.full, .afterRootHeader): call = .full
-        case (.full, .beforeRootHeader), (.ordered, _): call = .barrier
-        }
-        while true {
+        let order = Self.syncOrder(durability, point)
+        for index in order.indices {
+            guard let call = order[index] else { return }
             let error = calls.sync(descriptor.rawValue, call)
             if error == 0 { return }
             // A volume that does not offer this kind of sync gets the next
-            // strongest. Any other error is a real failure.
-            guard Platform.isUnsupported(error), let weaker = call.nextWeaker else {
+            // call in the order. Any other error is a real failure, and so
+            // is running out of calls to try.
+            let isLast = index + 1 == order.count || order[index + 1] == nil
+            if isLast || !Platform.isUnsupported(error) {
                 throw .storageFailure(errno: error)
             }
-            call = weaker
+        }
+    }
+
+    /// The sync calls to try at a sync point, in order, each one only if the
+    /// volume does not support the one before it.
+    ///
+    /// The order keeps the level's promise as far as the volume allows.
+    /// Before the root header the promise is ordering: the data must be on
+    /// the disk before the header that points at it. A full sync gives that
+    /// too, so it comes before plain `fsync`, which does not. After the root
+    /// header the `full` level promises that the commit is on stable
+    /// storage, and the `ordered` level promises nothing more than it
+    /// already has, so there a weaker call loses nothing.
+    static func syncOrder(_ durability: Durability, _ point: SyncPoint) -> InlineArray<3, SyncCall?> {
+        switch (durability, point) {
+        case (.none, _): [nil, nil, nil]
+        case (.ordered, .beforeRootHeader), (.full, .beforeRootHeader): [.barrier, .full, .plain]
+        case (.full, .afterRootHeader): [.full, .barrier, .plain]
+        case (.ordered, .afterRootHeader): [.barrier, .plain, nil]
         }
     }
 }

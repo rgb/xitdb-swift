@@ -11,8 +11,7 @@
     import Android
 #endif
 
-/// A way of asking the operating system to put a file's data on the disk,
-/// from strongest to weakest.
+/// A way of asking the operating system to put a file's data on the disk.
 enum SyncCall: Sendable, Equatable {
     /// The data reaches the disk and the drive flushes its cache. On Apple
     /// platforms, `fcntl` with `F_FULLFSYNC`.
@@ -23,17 +22,9 @@ enum SyncCall: Sendable, Equatable {
     /// `F_BARRIERFSYNC`.
     case barrier
 
-    /// `fsync`.
+    /// `fsync`, which on Apple platforms promises neither that writes reach
+    /// the disk in order nor that the drive flushes them.
     case plain
-
-    /// The call to fall back to when a volume does not support this one.
-    var nextWeaker: SyncCall? {
-        switch self {
-        case .full: .barrier
-        case .barrier: .plain
-        case .plain: nil
-        }
-    }
 }
 
 enum Platform {

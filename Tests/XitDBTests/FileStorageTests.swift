@@ -297,26 +297,60 @@ final class SyncRecorder {
         #expect(recorder.take() == [.full])
     }
 
+    /// What is tried when the volume rejects a call, for each level and sync
+    /// point. `rejected` is the set of calls the volume does not support.
     @Test(arguments: [ENOTSUP, EOPNOTSUPP, ENOTTY, EINVAL])
-    func aCallTheVolumeRejectsFallsBackToTheNextStrongest(rejection: Int32) throws {
+    func aRejectedCallFallsBackToOneThatKeepsTheLevelsPromise(rejection: Int32) throws {
         let directory = try TemporaryDirectory()
         let recorder = SyncRecorder()
-        let storage = try storage(directory, .full, recorder)
+        let full = try storage(directory, .full, recorder)
+        let ordered = try storage(directory, .ordered, recorder)
 
+        // before the root header, at both levels: barrier, then full, and
+        // plain fsync only when neither is to be had, because only the first
+        // two keep the data ahead of the header
+        for storage in [full, ordered] {
+            recorder.failures = [.barrier: rejection]
+            try storage.sync(.beforeRootHeader)
+            #expect(recorder.take() == [.barrier, .full])
+
+            recorder.failures = [.barrier: rejection, .full: rejection]
+            try storage.sync(.beforeRootHeader)
+            #expect(recorder.take() == [.barrier, .full, .plain])
+        }
+
+        // after the root header at `full`: full, then barrier, then plain
         recorder.failures = [.full: rejection]
-        try storage.sync(.afterRootHeader)
+        try full.sync(.afterRootHeader)
         #expect(recorder.take() == [.full, .barrier])
 
         recorder.failures = [.full: rejection, .barrier: rejection]
-        try storage.sync(.afterRootHeader)
+        try full.sync(.afterRootHeader)
         #expect(recorder.take() == [.full, .barrier, .plain])
-        try storage.sync(.beforeRootHeader)
-        #expect(recorder.take() == [.barrier, .plain])
 
-        // nothing left to fall back to
+        // after the root header at `ordered`: barrier, then plain. A full
+        // sync is not tried, because this level does not promise one.
+        recorder.failures = [.barrier: rejection]
+        try ordered.sync(.afterRootHeader)
+        #expect(recorder.take() == [.barrier, .plain])
+    }
+
+    @Test(arguments: [ENOTSUP, EOPNOTSUPP, ENOTTY, EINVAL])
+    func whenEveryCallIsRejectedTheLastRejectionIsReported(rejection: Int32) throws {
+        let directory = try TemporaryDirectory()
+        let recorder = SyncRecorder()
+        let full = try storage(directory, .full, recorder)
+        let ordered = try storage(directory, .ordered, recorder)
         recorder.failures = [.full: rejection, .barrier: rejection, .plain: rejection]
-        #expect(throws: XitDBError.storageFailure(errno: rejection)) { try storage.sync(.afterRootHeader) }
+
+        #expect(throws: XitDBError.storageFailure(errno: rejection)) { try full.sync(.beforeRootHeader) }
+        #expect(recorder.take() == [.barrier, .full, .plain])
+        #expect(throws: XitDBError.storageFailure(errno: rejection)) { try full.sync(.afterRootHeader) }
         #expect(recorder.take() == [.full, .barrier, .plain])
+        #expect(throws: XitDBError.storageFailure(errno: rejection)) { try ordered.sync(.beforeRootHeader) }
+        #expect(recorder.take() == [.barrier, .full, .plain])
+        #expect(throws: XitDBError.storageFailure(errno: rejection)) { try ordered.sync(.afterRootHeader) }
+        #expect(recorder.take() == [.barrier, .plain])
     }
 
     @Test func aRealFailureIsNotPaperedOverByAWeakerCall() throws {
@@ -331,6 +365,11 @@ final class SyncRecorder {
         recorder.failures = [.barrier: ENOSPC]
         #expect(throws: XitDBError.storageFailure(errno: ENOSPC)) { try storage.sync(.beforeRootHeader) }
         #expect(recorder.take() == [.barrier])
+
+        // nor when it comes from a call that was itself a fallback
+        recorder.failures = [.barrier: ENOTSUP, .full: EIO]
+        #expect(throws: XitDBError.storageFailure(errno: EIO)) { try storage.sync(.beforeRootHeader) }
+        #expect(recorder.take() == [.barrier, .full])
     }
 
     @Test func theBufferedStorageFlushesBeforeItSyncs() throws {
@@ -375,9 +414,12 @@ final class SyncRecorder {
         #expect(try directory.contents() == [1, 2, 3])
     }
 
-    @Test func weakerCallsAreOrderedFromStrongestToWeakest() {
-        #expect(SyncCall.full.nextWeaker == .barrier)
-        #expect(SyncCall.barrier.nextWeaker == .plain)
-        #expect(SyncCall.plain.nextWeaker == nil)
+    @Test func theOrderOfCallsForEachLevelAndPoint() {
+        #expect(array(FileStorage.syncOrder(.none, .beforeRootHeader)) == [nil, nil, nil])
+        #expect(array(FileStorage.syncOrder(.none, .afterRootHeader)) == [nil, nil, nil])
+        #expect(array(FileStorage.syncOrder(.ordered, .beforeRootHeader)) == [.barrier, .full, .plain])
+        #expect(array(FileStorage.syncOrder(.full, .beforeRootHeader)) == [.barrier, .full, .plain])
+        #expect(array(FileStorage.syncOrder(.full, .afterRootHeader)) == [.full, .barrier, .plain])
+        #expect(array(FileStorage.syncOrder(.ordered, .afterRootHeader)) == [.barrier, .plain, nil])
     }
 }
