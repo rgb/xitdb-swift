@@ -60,6 +60,31 @@ import Testing
         }
     }
 
+    /// Goes through an iterator, up to a limit: a damaged file can make a
+    /// finite walk very long by pointing several slots at one block.
+    private func drain<Access>(_ iterator: Cursor<Access>.Iter) throws {
+        var iterator = iterator
+        var left = 2000
+        while left > 0, let element = try iterator.next() {
+            _ = try element.slot()
+            left -= 1
+        }
+    }
+
+    /// Reads through a streaming reader in the ways a caller might.
+    private func stream(_ cursor: Cursor<ReadOnly>) throws {
+        var reader = try cursor.reader()
+        var buffer = [UInt8](repeating: 0, count: 16)
+        var span = buffer.mutableSpan
+        _ = try reader.read(into: &span)
+        reader.seek(to: 1)
+        try reader.readAll(into: &span)
+        reader.seek(to: .max - 2)
+        _ = try reader.read(into: &span)
+        reader.seek(to: 0)
+        _ = try reader.readRemaining(maxSize: 1 << 20)
+    }
+
     /// What a caller might do with a database, each step on its own so that
     /// one that fails does not hide the next: reads of every kind of value
     /// at every place the sound database has one, then writes of every kind.
@@ -97,7 +122,22 @@ import Testing
                         var span = buffer.mutableSpan
                         _ = try value.readBytesObject(into: &span)
                     }
+                    tolerating { try stream(value) }
+                    tolerating { try drain(try value.iterator()) }
+                    tolerating { try drain(try value.iterator(fromArrayListIndex: 3)) }
+                    tolerating { try drain(try ArrayList(value).iteratorFrom(-1)) }
+                    tolerating {
+                        var entries = try CountedHashMap(value).iterator()
+                        while let entry = try entries.next() {
+                            let pair = try entry.readKeyValuePair()
+                            _ = try pair.keyCursor.readBytesAlloc(maxSize: 64)
+                            _ = try pair.valueCursor.slot()
+                            _ = try pair.withHash { $0.count }
+                        }
+                    }
                 }
+                tolerating { try drain(try moment.iterator()) }
+                tolerating { _ = try HashMap(moment).getKeyValuePair(sha1("a").bytes)?.keyCursor.readUint() }
                 tolerating { _ = try moment.readPath([.hashMapGet(.key, sha1("a"))])?.readBytesAlloc(maxSize: 4) }
                 tolerating { _ = try moment.readPath([.hashMapGet(.kvPair, sha1("a"))])?.readKeyValuePair() }
                 for element in [Int64(0), 15, 16, 19, 20, -1, -21] {
@@ -314,6 +354,44 @@ import Testing
         let looped = try Database(storage: MemoryStorage(bytes: bytes), hashSize: 20)
         let loopedMoment = try #require(try looped.rootCursor().readPath([.arrayListGet(-1)]))
         #expect(throws: XitDBError.keyOffsetExceeded) { try loopedMoment.readPath([.hashMapGet(.value, sha1("a"))]) }
+        // and so does an iterator: forty levels of blocks, then the error
+        var iterator = try loopedMoment.iterator()
+        #expect(throws: XitDBError.keyOffsetExceeded) { try iterator.next() }
+        exercise(bytes)
+    }
+
+    /// An array list's blocks can only be as deep as its size needs. An
+    /// iterator that finds a block where an element should be, as a loop
+    /// puts one, stops with an error instead of going on down.
+    @Test func aListThatPointsAtItselfEndsItsIterator() throws {
+        var bytes = Self.sound
+        let database = try Database(storage: MemoryStorage(bytes: bytes), hashSize: 20)
+        let moment = try #require(try database.rootCursor().readPath([.arrayListGet(-1)]))
+        let list = try #require(try moment.readPath([.hashMapGet(.value, sha1("list"))]))
+        // twenty elements: a root block whose first two slots point at
+        // blocks of elements. The second element block now points at the
+        // root block in its third slot, where the element 18 was.
+        let header = try database.reader.arrayListHeader(at: try list.slot().value)
+        let rootBlock = Int(header.ptr)
+        let secondBlock = Int(try database.reader.slot(at: header.ptr + 9).value)
+        bytes.replaceSubrange(
+            (secondBlock + 18)..<(secondBlock + 27), with: slotBytes(Slot(value: UInt64(rootBlock), tag: .index)))
+        let looped = try Database(storage: MemoryStorage(bytes: bytes), hashSize: 20)
+        let loopedMoment = try #require(try looped.rootCursor().readPath([.arrayListGet(-1)]))
+        let loopedList = try #require(try loopedMoment.readPath([.hashMapGet(.value, sha1("list"))]))
+        var iterator = try loopedList.iterator()
+        var seen: [UInt64] = []
+        #expect(throws: XitDBError.maxShiftExceeded) {
+            while let element = try iterator.next() {
+                seen.append(try element.readUint())
+            }
+        }
+        #expect(seen == Array(0..<18))
+        var fromIndex = try loopedList.iterator(fromArrayListIndex: 17)
+        #expect(try fromIndex.next()?.readUint() == 17)
+        #expect(throws: XitDBError.maxShiftExceeded) { try fromIndex.next() }
+        // reading by index hands the slot over as it is, as Zig does
+        #expect(try loopedList.readPathSlot([.arrayListGet(18)])?.tag == .index)
         exercise(bytes)
     }
 }
