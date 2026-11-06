@@ -181,6 +181,22 @@ import Testing
         #expect(storage.memoryPosition == 16)
     }
 
+    @Test func aWriteThatBringsTheWindowToExactlyTheLimitStaysInIt() throws {
+        let first = (1...10).map { UInt8($0) }
+        try writeBytes(storage, first, at: 0)
+        // 10 + 6 = 16, the limit: still one window, nothing flushed
+        try writeBytes(storage, [21, 22, 23, 24, 25, 26], at: 10)
+        #expect(try onDisk() == [])
+        #expect(storage.memoryPosition == 0)
+        #expect(storage.memory.count == 16)
+
+        // one byte more would not fit
+        try writeBytes(storage, [31], at: 16)
+        #expect(try onDisk() == first + [21, 22, 23, 24, 25, 26])
+        #expect(storage.memoryPosition == 16)
+        #expect(storage.memory.count == 1)
+    }
+
     @Test func writingNothingDoesNothing() throws {
         try writeBytes(storage, [1, 2], at: 0)
         try writeBytes(storage, [], at: 50)

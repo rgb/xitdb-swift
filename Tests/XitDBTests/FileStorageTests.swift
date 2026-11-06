@@ -122,6 +122,27 @@ import Testing
         try storage.sync(.afterRootHeader)
     }
 
+    /// Opening for reading must not ask the system for more than reading,
+    /// or a file the user may only read could not be opened at all.
+    @Test func aFileWithoutWritePermissionOpensReadOnly() throws {
+        let directory = try TemporaryDirectory()
+        try writeBytes(try FileStorage(path: directory.path()), [1, 2, 3], at: 0)
+        try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: directory.path())
+
+        let storage = try FileStorage(path: directory.path(), access: .readOnly)
+        #expect(try readBytes(storage, at: 0, count: 10) == [1, 2, 3])
+        let buffered = try BufferedFileStorage(path: directory.path(), access: .readOnly)
+        #expect(try readBytes(buffered, at: 0, count: 10) == [1, 2, 3])
+
+        // the other ways of opening need write access, and say so
+        #expect(throws: XitDBError.storageFailure(errno: EACCES)) {
+            try FileStorage(path: directory.path(), access: .readWrite)
+        }
+        #expect(throws: XitDBError.storageFailure(errno: EACCES)) {
+            try FileStorage(path: directory.path(), access: .create)
+        }
+    }
+
     @Test func readsThatReachTheEndAreShort() throws {
         let directory = try TemporaryDirectory()
         let storage = try FileStorage(path: directory.path())
