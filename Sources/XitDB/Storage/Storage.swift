@@ -67,13 +67,14 @@ public protocol WritableStorage: ReadableStorage {
     /// written first, so that dropping them cannot fail the way writing them
     /// did.
     ///
-    /// What a `length` larger than the current one does depends on the
-    /// storage. See each storage's own documentation.
+    /// A storage cannot be made longer this way; only writing does that.
     ///
-    /// - Parameter length: The new length in bytes.
-    /// - Throws: ``XitDBError/storageFailure(errno:)`` if the storage
-    ///   underneath fails, or ``XitDBError/invalidLength`` if the storage
-    ///   cannot grow this way and `length` is larger than the current length.
+    /// - Parameter length: The new length in bytes, at most the current
+    ///   length.
+    /// - Throws: ``XitDBError/invalidLength`` if `length` is larger than the
+    ///   current length, in which case nothing is changed, or
+    ///   ``XitDBError/storageFailure(errno:)`` if the storage underneath
+    ///   fails.
     func setLength(_ length: UInt64) throws(XitDBError)
 
     /// Hands every byte the storage is still holding in memory to whatever is

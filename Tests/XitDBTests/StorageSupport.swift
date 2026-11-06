@@ -62,12 +62,17 @@ final class TemporaryDirectory {
 /// The kinds of storage, for tests that run against each.
 enum StorageKind: String, CaseIterable, CustomTestStringConvertible {
     case memory
+    case file
+    case bufferedFile
+    /// A buffered file whose window is so small that most writes restart it
+    /// or go around it.
+    case bufferedFileSmallWindow
 
     var testDescription: String { rawValue }
 }
 
-/// A storage of one kind, with a way to see the bytes that have reached the
-/// place they are kept in.
+/// A new, empty storage of one kind, with a way to see the bytes that have
+/// reached the place they are kept in.
 struct StorageUnderTest {
     let storage: any WritableStorage
     /// The bytes in memory or on disk. For a buffered file, flush first.
@@ -79,6 +84,18 @@ struct StorageUnderTest {
             let memory = MemoryStorage()
             storage = memory
             stored = { memory.bytes }
+        case .file:
+            let directory = try TemporaryDirectory()
+            storage = try FileStorage(path: directory.path(), durability: .none)
+            stored = { try directory.contents() }
+        case .bufferedFile:
+            let directory = try TemporaryDirectory()
+            storage = try BufferedFileStorage(path: directory.path(), durability: .none)
+            stored = { try directory.contents() }
+        case .bufferedFileSmallWindow:
+            let directory = try TemporaryDirectory()
+            storage = try BufferedFileStorage(path: directory.path(), durability: .none, bufferLimit: 200)
+            stored = { try directory.contents() }
         }
     }
 }

@@ -16,14 +16,20 @@ struct MemoryBuffer {
         bytes.count
     }
 
-    /// Reads the bytes that start at `offset` into `buffer`, as many as fit,
-    /// and returns how many that was. Nothing is read at or beyond the end.
-    func read(into buffer: inout MutableSpan<UInt8>, at offset: UInt64) -> Int {
+    /// Reads the bytes that start at `offset` into `buffer[range]`, as many
+    /// as fit, and returns how many that was. Nothing is read at or beyond
+    /// the end.
+    func read(into buffer: inout MutableSpan<UInt8>, range: Range<Int>, at offset: UInt64) -> Int {
         guard offset < UInt64(bytes.count) else { return 0 }
         let start = Int(offset)
-        let count = min(buffer.count, bytes.count - start)
-        buffer.copyBytes(from: bytes.span, at: start, count: count)
+        let count = min(range.count, bytes.count - start)
+        buffer.copyBytes(from: bytes.span, at: start, count: count, to: range.lowerBound)
         return count
+    }
+
+    /// Calls `body` with the buffer's bytes.
+    func withBytes<Failure: Error>(_ body: (Span<UInt8>) throws(Failure) -> Void) throws(Failure) {
+        try body(bytes.span)
     }
 
     /// Writes `source` at `offset`, growing the buffer if needed and filling
@@ -110,7 +116,7 @@ public final class MemoryStorage: WritableStorage {
     /// - Returns: The number of bytes read, which is less than `buffer.count`
     ///   only when the storage ends first.
     public func read(into buffer: inout MutableSpan<UInt8>, at offset: UInt64) throws(XitDBError) -> Int {
-        self.buffer.read(into: &buffer, at: offset)
+        self.buffer.read(into: &buffer, range: 0..<buffer.count, at: offset)
     }
 
     /// The number of bytes in the storage. This never throws.
