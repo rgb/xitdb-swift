@@ -1,0 +1,6 @@
+{ "format": "xitdb-script/1", "description": "expected failure: the database is closed", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "write", "on": "root", "data": { "uint": 1 } },
+    { "op": "close" },
+    { "op": "slot", "on": "root" }
+  ] }

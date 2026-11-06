@@ -1,0 +1,5 @@
+{ "format": "xitdb-script/1", "description": "expected failure: is a null cursor", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": 0 }], "as": "n" },
+    { "op": "count", "on": "n" }
+  ] }

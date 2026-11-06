@@ -1,0 +1,33 @@
+{
+  "format": "xitdb-script/1",
+  "description": "Closing and reopening a database between transactions. Everything committed is still there, nothing about reopening changes the file, and names don't survive a close.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f0000000000010",
+  "ops": [
+    {"op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", {"hash_map_init": {}}, {"ctx": {"as": "m", "ops": [{"op": "write_path", "on": "m", "path": [{"hash_map_get": {"value": {"sha1": "a"}}}, {"write": {"uint": 1}}]}, {"op": "write_path", "on": "m", "path": [{"hash_map_get": {"value": {"sha1": "long"}}}, {"write": {"bytes": "a value too long to fit in a slot"}}]}]}}]},
+    {"op": "read_path", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "a"}}}], "as": "c"},
+    {"op": "read_uint", "on": "c", "expect": 1},
+    {"op": "close"},
+    {"op": "reopen"},
+    {"op": "count", "on": "root", "expect": 1},
+    {"op": "read_path", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "a"}}}], "as": "c"},
+    {"op": "read_uint", "on": "c", "expect": 1},
+    {"op": "read_path_slot", "on": "root", "path": [{"array_list_get": -1}], "as": "last"},
+    {"op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", {"write": {"slot": {"var": "last"}}}, {"hash_map_init": {}}, {"hash_map_get": {"value": {"sha1": "b"}}}, {"write": {"uint": 2}}]},
+    {"op": "count", "on": "root", "expect": 2},
+    {"op": "close", "note": "twice in a row, with nothing in between"},
+    {"op": "reopen"},
+    {"op": "close"},
+    {"op": "reopen"},
+    {"op": "read_path", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "b"}}}], "as": "c"},
+    {"op": "read_uint", "on": "c", "expect": 2},
+    {"op": "read_path", "on": "root", "path": [{"array_list_get": 0}, {"hash_map_get": {"value": {"sha1": "a"}}}], "as": "c"},
+    {"op": "read_uint", "on": "c", "expect": 1},
+    {"op": "read_path_slot", "on": "root", "path": [{"array_list_get": -1}], "as": "last"},
+    {"op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", {"write": {"slot": {"var": "last"}}}, {"hash_map_init": {}}, {"hash_map_get": {"value": {"sha1": "c"}}}, {"write": {"uint": 3}}]},
+    {"op": "count", "on": "root", "expect": 3},
+    {"op": "read_path", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "c"}}}], "as": "c"},
+    {"op": "read_uint", "on": "c", "expect": 3}
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "format": "xitdb-script/1",
+  "description": "What overwriting-committed-bytes shows for array lists and hash maps, for sorted maps: a path that skips the init part changes an earlier moment.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f000000000000b",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "hash_map_init": {} }, { "ctx": { "as": "m", "ops": [
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "c" } } }, { "sorted_map_init": {} }, { "sorted_map_get": { "value": "a" } }, { "write": { "uint": 1 } }] }
+    ] } }] },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": 0 }], "as": "moment0" },
+    { "op": "read_path_slot", "on": "root", "path": [{ "array_list_get": -1 }], "as": "last" },
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "write": { "slot": { "var": "last" } } }, { "hash_map_init": {} }, { "ctx": { "as": "m", "ops": [
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "c" } } }, { "sorted_map_get": { "value": "b" } }, { "write": { "uint": 2 } }] }
+    ] } }] },
+    { "op": "read_path", "on": "moment0", "path": [{ "hash_map_get": { "value": { "sha1": "c" } } }], "as": "c" },
+    { "op": "count", "on": "c", "expect": 2 }
+  ]
+}

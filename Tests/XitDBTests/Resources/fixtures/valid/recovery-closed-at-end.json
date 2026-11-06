@@ -1,0 +1,11 @@
+{
+  "format": "xitdb-script/1",
+  "description": "A script can end with the database closed, whose last sidecar entry has no committed size.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f0000000000013",
+  "ops": [
+    {"op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", {"hash_map_init": {}}, {"ctx": {"as": "m", "ops": [{"op": "write_path", "on": "m", "path": [{"hash_map_get": {"value": {"sha1": "a"}}}, {"write": {"uint": 1}}]}, {"op": "write_path", "on": "m", "path": [{"hash_map_get": {"value": {"sha1": "long"}}}, {"write": {"bytes": "a value too long to fit in a slot"}}]}]}}]},
+    {"op": "close"}
+  ]
+}

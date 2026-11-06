@@ -1,0 +1,75 @@
+{
+  "format": "xitdb-script/1",
+  "description": "A hash map root written with run_context, single writes and a failed batch; initializing an initialized root; then a root that holds a scalar, is cleared, and becomes a map again.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f0000000000005",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }], "as": "map",
+      "note": "commits an empty map. the cursor it returns is a root cursor" },
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }],
+      "note": "the root is already a map, so this writes nothing and takes no commit ID" },
+    { "op": "write_path", "on": "root", "path": ["array_list_init"], "expect_error": "UnexpectedTag",
+      "note": "a map can't be initialized as a list. this is a transaction that gets rolled back" },
+
+    { "op": "run_context", "ctx": { "as": "c", "ops": [
+      { "op": "write_path", "on": "c", "path": [{ "hash_map_init": {} }], "as": "m" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "one" } } }, { "write": { "uint": 1 } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "two" } } }, { "write": { "bytes": "this one is too long for a slot" } }] },
+      { "op": "write_path", "on": "m", "path": [
+        { "hash_map_get": { "value": { "sha1": "inner" } } },
+        { "ctx": { "as": "inner", "ops": [
+          { "op": "write_path", "on": "inner", "path": [{ "hash_map_init": {} }], "as": "inner_map" },
+          { "op": "write_path", "on": "inner_map", "path": [{ "hash_map_get": { "value": { "sha1": "foo" } } }, { "write": { "bytes": "foo" } }] },
+          { "op": "write_path", "on": "inner_map", "path": [{ "hash_map_get": { "value": { "sha1": "list" } } }, "array_list_init"], "as": "list" },
+          { "op": "write_path", "on": "list", "path": ["array_list_append", { "write": { "uint": 1 } }] },
+          { "op": "write_path", "on": "list", "path": ["array_list_append", { "write": { "uint": 2 } }] }
+        ] } }
+      ] }
+    ] }, "note": "many writes, one transaction" },
+    { "op": "read_path", "on": "map", "path": [{ "hash_map_get": { "value": { "sha1": "one" } } }], "as": "c" },
+    { "op": "read_uint", "on": "c", "expect": 1 },
+    { "op": "read_path", "on": "map", "path": [{ "hash_map_get": { "value": { "sha1": "inner" } } }, { "hash_map_get": { "value": { "sha1": "list" } } }, { "array_list_get": -1 }], "as": "c" },
+    { "op": "read_uint", "on": "c", "expect": 2 },
+
+    { "op": "run_context", "ctx": { "as": "c", "ops": [
+      { "op": "write_path", "on": "c", "path": [{ "hash_map_init": {} }], "as": "m" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "batch" } } }, { "write": { "uint": 1 } }] },
+      { "op": "fail" }
+    ] }, "expect_error": "ScriptAbort", "note": "a failed batch leaves nothing behind" },
+    { "op": "read_path", "on": "map", "path": [{ "hash_map_get": { "value": { "sha1": "batch" } } }], "expect_null": true },
+
+    { "op": "write_path", "on": "map", "path": [{ "hash_map_get": { "value": { "sha1": "single" } } }, { "write": { "uint": 7 } }],
+      "note": "without run_context, each write is its own transaction" },
+    { "op": "write_path", "on": "map", "path": [{ "hash_map_remove": { "sha1": "one" } }] },
+    { "op": "read_path", "on": "map", "path": [{ "hash_map_get": { "value": { "sha1": "one" } } }], "expect_null": true },
+    { "op": "write_path", "on": "map", "path": [{ "hash_map_remove": { "sha1": "one" } }], "expect_error": "KeyNotFound" },
+
+    { "op": "write_path", "on": "map", "path": [{ "hash_map_get": { "value": { "sha1": "late" } } }], "as": "late",
+      "note": "commits an entry with no value. the cursor outlives the transaction, but can't write" },
+    { "op": "write", "on": "late", "data": { "uint": 1 }, "expect_error": "ExpectedTxStart" },
+
+    { "op": "write", "on": "root", "data": { "slot": null }, "note": "cleared: the root holds an explicit nothing" },
+    { "op": "slot", "on": "root", "expect": { "tag": "none", "full": true } },
+    { "op": "read_path_slot", "on": "root", "path": [], "expect_null": false },
+    { "op": "write", "on": "root", "data": { "uint": 42 }, "note": "any value can be the root" },
+    { "op": "read_uint", "on": "root", "expect": 42 },
+    { "op": "write", "on": "root", "data": { "bytes": "this is too long to fit in a slot" } },
+    { "op": "read_bytes", "on": "root", "expect": "this is too long to fit in a slot" },
+    { "op": "writer", "on": "root", "steps": [], "expect_error": "CursorNotWriteable", "note": "bytes can't be streamed into the root" },
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }], "expect_error": "UnexpectedTag" },
+    { "op": "write", "on": "root", "data": { "slot": null } },
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "foo" } } }, { "write": { "uint": 1 } }],
+      "note": "once cleared, the root can be a map again" },
+    { "op": "read_path", "on": "map", "path": [{ "hash_map_get": { "value": { "sha1": "foo" } } }], "as": "c" },
+    { "op": "read_uint", "on": "c", "expect": 1 },
+
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": { "set": true } }],
+      "note": "not the root's tag, so this is a transaction: it commits, and the map is now a set" },
+    { "op": "slot", "on": "root", "expect": { "tag": "hash_set" } },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "foo" } } }], "as": "c" },
+    { "op": "read_uint", "on": "c", "expect": 1 },
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": { "set": true } }],
+      "note": "and now it is the root's tag, so this is free" }
+  ]
+}

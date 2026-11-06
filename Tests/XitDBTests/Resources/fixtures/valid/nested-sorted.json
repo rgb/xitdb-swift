@@ -1,0 +1,25 @@
+{
+  "format": "xitdb-script/1",
+  "description": "A sorted map kept in a callback and written through, as the collection wrappers do.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f000000000000d",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [
+      "array_list_init",
+      "array_list_append",
+      { "hash_map_init": {} },
+      { "ctx": { "as": "m", "ops": [
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "sorted" } } }, { "sorted_map_init": {} }], "as": "sorted" },
+        { "op": "write_path", "on": "sorted", "path": [{ "sorted_map_get": { "value": "b" } }, { "write": { "uint": 2 } }] },
+        { "op": "write_path", "on": "sorted", "path": [{ "sorted_map_get": { "value": "a" } }, { "write": { "uint": 1 } }] },
+        { "op": "count", "on": "sorted", "expect": 2 }
+      ] } }
+    ] },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": -1 }], "as": "m_read" },
+    { "op": "read_path", "on": "m_read", "path": [{ "hash_map_get": { "value": { "sha1": "sorted" } } }, { "sorted_map_get_index": 0 }], "as": "pair" },
+    { "op": "read_key_value_pair", "on": "pair", "key_as": "k", "value_as": "v" },
+    { "op": "read_bytes", "on": "k", "expect": "a" },
+    { "op": "read_uint", "on": "v", "expect": 1 }
+  ]
+}

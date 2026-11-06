@@ -1,0 +1,6 @@
+{ "format": "xitdb-script/1", "description": "expected failure: must hold a read-write cursor", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "run_context", "ctx": { "as": "c", "ops": [
+      { "op": "read_only", "on": "c", "as": "c" }
+    ] } }
+  ] }

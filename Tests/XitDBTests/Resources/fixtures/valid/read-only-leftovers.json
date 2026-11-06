@@ -1,0 +1,26 @@
+{
+  "format": "xitdb-script/1",
+  "description": "A file opened read-only with bytes past its committed size. Reads work, and a free init can't truncate them, which it doesn't report: they stay until a read-write open and a write. This script can't run on the memory kind.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f0000000000019",
+  "ops": [
+    {"op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", {"hash_map_init": {}}, {"ctx": {"as": "m", "ops": [{"op": "write_path", "on": "m", "path": [{"hash_map_get": {"value": {"sha1": "a"}}}, {"write": {"uint": 1}}]}, {"op": "write_path", "on": "m", "path": [{"hash_map_get": {"value": {"sha1": "long"}}}, {"write": {"bytes": "a value too long to fit in a slot"}}]}]}}]},
+    {"op": "close"},
+    {"op": "raw_append", "bytes": "a crash left this"},
+    {"op": "reopen", "read_only": true},
+    {"op": "count", "on": "root", "expect": 1},
+    {"op": "read_path", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "a"}}}], "as": "c"},
+    {"op": "read_uint", "on": "c", "expect": 1},
+    {"op": "write_path", "on": "root", "path": ["array_list_init"], "note": "this truncates on a read-write file, and here silently doesn't"},
+    {"op": "count", "on": "root", "expect": 1},
+    {"op": "read_path", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "a"}}}], "as": "c"},
+    {"op": "read_uint", "on": "c", "expect": 1},
+    {"op": "close"},
+    {"op": "reopen"},
+    {"op": "write_path", "on": "root", "path": ["array_list_init"]},
+    {"op": "read_path_slot", "on": "root", "path": [{"array_list_get": -1}], "as": "last"},
+    {"op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", {"write": {"slot": {"var": "last"}}}, {"hash_map_init": {}}, {"hash_map_get": {"value": {"sha1": "b"}}}, {"write": {"uint": 2}}]},
+    {"op": "count", "on": "root", "expect": 2}
+  ]
+}

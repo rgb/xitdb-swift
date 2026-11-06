@@ -1,0 +1,5 @@
+{ "format": "xitdb-script/1", "description": "expected failure: is a read-only cursor", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "read_only", "on": "root", "as": "r" },
+    { "op": "write", "on": "r", "data": { "uint": 1 } }
+  ] }

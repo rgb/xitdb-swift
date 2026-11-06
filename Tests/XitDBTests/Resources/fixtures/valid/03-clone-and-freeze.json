@@ -1,0 +1,129 @@
+{
+  "format": "xitdb-script/1",
+  "description": "The README's 'Cloning and Undoing': cloning a list made in the same transaction aliases it unless the clone's cursor, or the database, is frozen. Cloning a list from an earlier moment never aliases. Each attempt is undone by appending an older moment.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f0000000000003",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": ["array_list_init"], "as": "history",
+      "note": "a cursor held the way the ArrayList wrapper holds it. it stays a root cursor, so every write through it is a transaction" },
+
+    { "op": "read_path_slot", "on": "history", "path": [{ "array_list_get": -1 }], "as": "last", "expect_null": true },
+    { "op": "write_path", "on": "history", "path": [
+      "array_list_append",
+      { "write": { "slot": { "var": "last" } } },
+      { "ctx": { "as": "c", "ops": [
+        { "op": "write_path", "on": "c", "path": [{ "hash_map_init": {} }], "as": "moment" },
+        { "op": "write_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "fruits" } } }, "array_list_init"], "as": "fruits" },
+        { "op": "write_path", "on": "fruits", "path": ["array_list_append", { "write": { "bytes": "apple" } }] },
+        { "op": "write_path", "on": "fruits", "path": ["array_list_append", { "write": { "bytes": "pear" } }] },
+        { "op": "write_path", "on": "fruits", "path": ["array_list_append", { "write": { "bytes": "grape" } }] }
+      ] } }
+    ] },
+
+    { "op": "read_path_slot", "on": "history", "path": [{ "array_list_get": -1 }], "as": "last" },
+    { "op": "write_path", "on": "history", "path": [
+      "array_list_append",
+      { "write": { "slot": { "var": "last" } } },
+      { "ctx": { "as": "c", "ops": [
+        { "op": "write_path", "on": "c", "path": [{ "hash_map_init": {} }], "as": "moment" },
+        { "op": "read_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "fruits" } } }], "as": "fruits_read" },
+        { "op": "slot", "on": "fruits_read", "as": "fruits_slot" },
+        { "op": "write_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "food" } } }], "as": "food_cursor" },
+        { "op": "write", "on": "food_cursor", "data": { "slot": { "var": "fruits_slot" } } },
+        { "op": "write_path", "on": "food_cursor", "path": ["array_list_init"], "as": "food" },
+        { "op": "write_path", "on": "food", "path": ["array_list_append", { "write": { "bytes": "eggs" } }] },
+        { "op": "write_path", "on": "food", "path": ["array_list_append", { "write": { "bytes": "rice" } }] },
+        { "op": "write_path", "on": "food", "path": ["array_list_append", { "write": { "bytes": "fish" } }] }
+      ] } }
+    ], "note": "cloning data from an earlier moment needs no freeze" },
+    { "op": "read_path", "on": "history", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "sha1": "food" } } }], "as": "c" },
+    { "op": "count", "on": "c", "expect": 6 },
+    { "op": "read_path", "on": "history", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "sha1": "fruits" } } }], "as": "c" },
+    { "op": "count", "on": "c", "expect": 3 },
+
+    { "op": "read_path_slot", "on": "history", "path": [{ "array_list_get": -1 }], "as": "saved",
+      "note": "the moment to go back to after each attempt below" },
+
+    { "op": "read_path_slot", "on": "history", "path": [{ "array_list_get": -1 }], "as": "last" },
+    { "op": "write_path", "on": "history", "path": [
+      "array_list_append",
+      { "write": { "slot": { "var": "last" } } },
+      { "ctx": { "as": "c", "ops": [
+        { "op": "write_path", "on": "c", "path": [{ "hash_map_init": {} }], "as": "moment" },
+        { "op": "write_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "big-cities" } } }], "as": "big_cities_cursor" },
+        { "op": "write_path", "on": "big_cities_cursor", "path": ["array_list_init"], "as": "big_cities" },
+        { "op": "write_path", "on": "big_cities", "path": ["array_list_append", { "write": { "bytes": "New York, NY" } }] },
+        { "op": "write_path", "on": "big_cities", "path": ["array_list_append", { "write": { "bytes": "Los Angeles, CA" } }] },
+        { "op": "write_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "cities" } } }], "as": "cities_cursor" },
+        { "op": "slot", "on": "big_cities", "as": "big_cities_slot" },
+        { "op": "write", "on": "cities_cursor", "data": { "slot": { "var": "big_cities_slot" } } },
+        { "op": "write_path", "on": "cities_cursor", "path": ["array_list_init"], "as": "cities" },
+        { "op": "write_path", "on": "cities", "path": ["array_list_append", { "write": { "bytes": "Charleston, SC" } }] },
+        { "op": "write_path", "on": "cities", "path": ["array_list_append", { "write": { "bytes": "Louisville, KY" } }] }
+      ] } }
+    ], "note": "without freezing: both names are one list, so big-cities gets the additions too" },
+    { "op": "read_path", "on": "history", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "sha1": "cities" } } }], "as": "c" },
+    { "op": "count", "on": "c", "expect": 4 },
+    { "op": "read_path", "on": "history", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "sha1": "big-cities" } } }], "as": "c" },
+    { "op": "count", "on": "c", "expect": 4 },
+
+    { "op": "write_path", "on": "history", "path": ["array_list_append", { "write": { "slot": { "var": "saved" } } }],
+      "note": "undo by appending the saved moment" },
+    { "op": "read_path", "on": "history", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "sha1": "cities" } } }], "as": "c", "expect_null": true },
+
+    { "op": "read_path_slot", "on": "history", "path": [{ "array_list_get": -1 }], "as": "last" },
+    { "op": "write_path", "on": "history", "path": [
+      "array_list_append",
+      { "write": { "slot": { "var": "last" } } },
+      { "ctx": { "as": "c", "ops": [
+        { "op": "write_path", "on": "c", "path": [{ "hash_map_init": {} }], "as": "moment" },
+        { "op": "write_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "big-cities" } } }], "as": "big_cities_cursor" },
+        { "op": "write_path", "on": "big_cities_cursor", "path": ["array_list_init"], "as": "big_cities" },
+        { "op": "write_path", "on": "big_cities", "path": ["array_list_append", { "write": { "bytes": "New York, NY" } }] },
+        { "op": "write_path", "on": "big_cities", "path": ["array_list_append", { "write": { "bytes": "Los Angeles, CA" } }] },
+        { "op": "write_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "cities" } } }], "as": "cities_cursor" },
+        { "op": "slot", "on": "big_cities", "as": "big_cities_slot" },
+        { "op": "write", "on": "cities_cursor", "data": { "slot": { "var": "big_cities_slot" } } },
+        { "op": "freeze", "on": "cities_cursor", "note": "the one op that differs from the attempt above" },
+        { "op": "write_path", "on": "cities_cursor", "path": ["array_list_init"], "as": "cities" },
+        { "op": "write_path", "on": "cities", "path": ["array_list_append", { "write": { "bytes": "Charleston, SC" } }] },
+        { "op": "write_path", "on": "cities", "path": ["array_list_append", { "write": { "bytes": "Louisville, KY" } }] }
+      ] } }
+    ], "note": "with a frozen cursor: the clone copies the list, so big-cities keeps its two" },
+    { "op": "read_path", "on": "history", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "sha1": "cities" } } }], "as": "c" },
+    { "op": "count", "on": "c", "expect": 4 },
+    { "op": "read_path", "on": "history", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "sha1": "big-cities" } } }], "as": "c" },
+    { "op": "count", "on": "c", "expect": 2 },
+
+    { "op": "write_path", "on": "history", "path": ["array_list_append", { "write": { "slot": { "var": "saved" } } }] },
+
+    { "op": "read_path_slot", "on": "history", "path": [{ "array_list_get": -1 }], "as": "last" },
+    { "op": "write_path", "on": "history", "path": [
+      "array_list_append",
+      { "write": { "slot": { "var": "last" } } },
+      { "ctx": { "as": "c", "ops": [
+        { "op": "write_path", "on": "c", "path": [{ "hash_map_init": {} }], "as": "moment" },
+        { "op": "write_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "big-cities" } } }], "as": "big_cities_cursor" },
+        { "op": "write_path", "on": "big_cities_cursor", "path": ["array_list_init"], "as": "big_cities" },
+        { "op": "write_path", "on": "big_cities", "path": ["array_list_append", { "write": { "bytes": "New York, NY" } }] },
+        { "op": "write_path", "on": "big_cities", "path": ["array_list_append", { "write": { "bytes": "Los Angeles, CA" } }] },
+        { "op": "slot", "on": "big_cities", "as": "big_cities_slot" },
+        { "op": "db_freeze", "note": "freezing the database has to come before the cities cursor is made" },
+        { "op": "write_path", "on": "c", "path": [{ "hash_map_init": {} }], "as": "moment",
+          "note": "the map was frozen too, so it has to be initialized again before it is changed" },
+        { "op": "write_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "cities" } } }], "as": "cities_cursor" },
+        { "op": "write", "on": "cities_cursor", "data": { "slot": { "var": "big_cities_slot" } } },
+        { "op": "write_path", "on": "cities_cursor", "path": ["array_list_init"], "as": "cities" },
+        { "op": "write_path", "on": "cities", "path": ["array_list_append", { "write": { "bytes": "Charleston, SC" } }] },
+        { "op": "write_path", "on": "cities", "path": ["array_list_append", { "write": { "bytes": "Louisville, KY" } }] }
+      ] } }
+    ], "note": "with a frozen database: the same result as the frozen cursor, in different bytes" },
+    { "op": "read_path", "on": "history", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "sha1": "cities" } } }], "as": "c" },
+    { "op": "count", "on": "c", "expect": 4 },
+    { "op": "read_path", "on": "history", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "sha1": "big-cities" } } }], "as": "c" },
+    { "op": "count", "on": "c", "expect": 2 },
+
+    { "op": "count", "on": "history", "expect": 7 }
+  ]
+}

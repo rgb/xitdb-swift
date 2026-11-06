@@ -1,0 +1,6 @@
+{ "format": "xitdb-script/1", "description": "expected failure: expected hash", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "k" } } }, { "write": { "uint": 1 } }], "as": "v" },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "kv_pair": { "sha1": "k" } } }], "as": "p" },
+    { "op": "read_key_value_pair", "on": "p", "expect_hash": { "sha1": "other" } }
+  ] }

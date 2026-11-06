@@ -1,0 +1,25 @@
+{
+  "format": "xitdb-script/1",
+  "description": "A linked array list kept in a callback and written through, as the collection wrappers do.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f000000000000c",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [
+      "array_list_init",
+      "array_list_append",
+      { "hash_map_init": {} },
+      { "ctx": { "as": "m", "ops": [
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "linked" } } }, "linked_array_list_init"], "as": "linked",
+          "note": "a collection cursor kept the same way, as the collection wrappers do" },
+        { "op": "write_path", "on": "linked", "path": ["linked_array_list_append", { "write": { "uint": 1 } }] },
+        { "op": "write_path", "on": "linked", "path": ["linked_array_list_append", { "write": { "uint": 3 } }] },
+        { "op": "write_path", "on": "linked", "path": [{ "linked_array_list_insert": 1 }, { "write": { "uint": 2 } }] },
+        { "op": "count", "on": "linked", "expect": 3 }
+      ] } }
+    ] },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": -1 }], "as": "m_read" },
+    { "op": "read_path", "on": "m_read", "path": [{ "hash_map_get": { "value": { "sha1": "linked" } } }, { "linked_array_list_get": 1 }], "as": "c" },
+    { "op": "read_uint", "on": "c", "expect": 2 }
+  ]
+}

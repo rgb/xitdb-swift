@@ -1,0 +1,16 @@
+{
+  "format": "xitdb-script/1",
+  "description": "The worked example in SCRIPT-FORMAT.md.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "0011223344556677",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [
+      "array_list_init",
+      "array_list_append",
+      { "hash_map_init": {} },
+      { "hash_map_get": { "value": { "sha1": "foo" } } },
+      { "write": { "uint": 42 } }
+    ] }
+  ]
+}

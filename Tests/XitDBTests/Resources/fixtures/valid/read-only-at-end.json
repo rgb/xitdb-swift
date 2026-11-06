@@ -1,0 +1,16 @@
+{
+  "format": "xitdb-script/1",
+  "description": "A script can end with the file open read-only, and with bytes past its committed size. This script can't run on the memory kind.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f000000000001a",
+  "ops": [
+    {"op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", {"hash_map_init": {}}, {"ctx": {"as": "m", "ops": [{"op": "write_path", "on": "m", "path": [{"hash_map_get": {"value": {"sha1": "a"}}}, {"write": {"uint": 1}}]}, {"op": "write_path", "on": "m", "path": [{"hash_map_get": {"value": {"sha1": "long"}}}, {"write": {"bytes": "a value too long to fit in a slot"}}]}]}}]},
+    {"op": "close"},
+    {"op": "raw_append", "bytes": "these stay"},
+    {"op": "reopen", "read_only": true},
+    {"op": "write_path", "on": "root", "path": ["array_list_init"]},
+    {"op": "read_path", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "a"}}}], "as": "c"},
+    {"op": "read_uint", "on": "c", "expect": 1}
+  ]
+}

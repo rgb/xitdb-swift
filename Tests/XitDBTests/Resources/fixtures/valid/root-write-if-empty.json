@@ -1,0 +1,16 @@
+{
+  "format": "xitdb-script/1",
+  "description": "write_if_empty on a root cursor: it writes if the root is empty, and a root that was cleared isn't empty. The sidecar shows which of these committed.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f00000000000ee",
+  "ops": [
+    { "op": "write_if_empty", "on": "root", "data": { "uint": 1 } },
+    { "op": "read_uint", "on": "root", "expect": 1 },
+    { "op": "write_if_empty", "on": "root", "data": { "uint": 2 } },
+    { "op": "read_uint", "on": "root", "expect": 1 },
+    { "op": "write", "on": "root", "data": { "slot": null } },
+    { "op": "write_if_empty", "on": "root", "data": { "uint": 3 } },
+    { "op": "slot", "on": "root", "expect": { "tag": "none", "full": true } }
+  ]
+}

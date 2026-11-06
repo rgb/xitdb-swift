@@ -1,0 +1,18 @@
+{
+  "format": "xitdb-script/1",
+  "description": "A hash size of 64 with raw hashes: each kv pair is 82 bytes.",
+  "hash_size": 64,
+  "hash_id": "sha5",
+  "file_id": "0000000000000040",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [
+      "array_list_init",
+      "array_list_append",
+      { "hash_map_init": {} },
+      { "hash_map_get": { "value": { "hex": "f7fbba6e0636f890e56fbbf3283e524c6fa3204ae298382d624741d0dc6638326e282c41be5e4254d8820772c5518a2c5a8c0c7f7eda19594a7eb539453e1ed7" } } },
+      { "write": { "bytes": "foo" } }
+    ] },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "hex": "f7fbba6e0636f890e56fbbf3283e524c6fa3204ae298382d624741d0dc6638326e282c41be5e4254d8820772c5518a2c5a8c0c7f7eda19594a7eb539453e1ed7" } } }], "as": "c" },
+    { "op": "read_bytes", "on": "c", "expect": "foo" }
+  ]
+}

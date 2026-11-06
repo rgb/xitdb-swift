@@ -1,0 +1,70 @@
+{
+  "format": "xitdb-script/1",
+  "description": "Nested collections built through callbacks three levels deep. One cursor is kept and written through twice, the second time from inside a nested callback. A kept cursor stops being writable when its transaction ends.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f0000000000002",
+  "ops": [
+    { "op": "read_path_slot", "on": "root", "path": [{ "array_list_get": -1 }], "as": "last", "expect_null": true },
+    { "op": "write_path", "on": "root", "path": [
+      "array_list_init",
+      "array_list_append",
+      { "write": { "slot": { "var": "last" } } },
+      { "hash_map_init": {} },
+      { "ctx": { "as": "moment", "ops": [
+        { "op": "write_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "kept" } } }], "as": "kept",
+          "note": "the slot exists and is empty; the cursor stays usable for the rest of the transaction" },
+        { "op": "slot", "on": "kept", "expect": { "tag": "none", "full": false } },
+        { "op": "write", "on": "kept", "data": { "uint": 1 } },
+        { "op": "read_uint", "on": "kept", "expect": 1 },
+
+        { "op": "write_path", "on": "moment", "path": [
+          { "hash_map_get": { "value": { "sha1": "inner" } } },
+          { "hash_map_init": { "counted": true } },
+          { "ctx": { "as": "inner", "ops": [
+            { "op": "write_path", "on": "inner", "path": [
+              { "hash_map_get": { "value": { "sha1": "list" } } },
+              "array_list_init",
+              { "ctx": { "as": "list", "ops": [
+                { "op": "write_path", "on": "list", "path": ["array_list_append", { "write": { "uint": 10 } }] },
+                { "op": "write_path", "on": "list", "path": [
+                  "array_list_append",
+                  { "hash_map_init": {} },
+                  { "ctx": { "as": "element", "ops": [
+                    { "op": "write_path", "on": "element", "path": [{ "hash_map_get": { "value": { "sha1": "deep" } } }, { "write": { "bytes": "at the bottom" } }] }
+                  ] } }
+                ] },
+                { "op": "count", "on": "list", "expect": 2 }
+              ] } }
+            ] },
+            { "op": "write", "on": "kept", "data": { "bytes": "written from a nested callback" },
+              "note": "the second write through the kept cursor, two levels away from where it was made" },
+            { "op": "count", "on": "inner", "expect": 1 }
+          ] } }
+        ] },
+
+        { "op": "read_bytes", "on": "kept", "expect": "written from a nested callback" },
+        { "op": "slot", "on": "kept", "expect": { "tag": "bytes" } }
+      ] } }
+    ], "as": "after" },
+
+    { "op": "count", "on": "root", "expect": 1 },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": -1 }], "as": "m" },
+    { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "kept" } } }], "as": "c" },
+    { "op": "read_bytes", "on": "c", "expect": "written from a nested callback" },
+    { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "inner" } } }], "as": "inner_read" },
+    { "op": "count", "on": "inner_read", "expect": 1 },
+    { "op": "read_path", "on": "inner_read", "path": [{ "hash_map_get": { "value": { "sha1": "list" } } }], "as": "list_read" },
+    { "op": "count", "on": "list_read", "expect": 2 },
+    { "op": "read_path", "on": "list_read", "path": [{ "array_list_get": 0 }], "as": "c" },
+    { "op": "read_uint", "on": "c", "expect": 10 },
+    { "op": "read_path", "on": "list_read", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "sha1": "deep" } } }], "as": "c" },
+    { "op": "read_bytes", "on": "c", "expect": "at the bottom" },
+
+    { "op": "write", "on": "kept", "data": { "uint": 3 }, "expect_error": "ExpectedTxStart",
+      "note": "its transaction is over, so a cursor below the root can only be read" },
+    { "op": "read_bytes", "on": "kept", "expect": "written from a nested callback" },
+    { "op": "write_path", "on": "after", "path": [{ "write": { "uint": 4 } }], "expect_error": "ExpectedTxStart",
+      "note": "the cursor a transaction returns isn't the root cursor, unless the path ended at the root" }
+  ]
+}

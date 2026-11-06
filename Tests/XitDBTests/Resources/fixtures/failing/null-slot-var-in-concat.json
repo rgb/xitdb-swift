@@ -1,0 +1,5 @@
+{ "format": "xitdb-script/1", "description": "expected failure: can't be null", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "read_path_slot", "on": "root", "path": [{ "array_list_get": 0 }], "as": "none_here" },
+    { "op": "write_path", "on": "root", "path": ["linked_array_list_init", { "linked_array_list_concat": { "list": { "var": "none_here" } } }] }
+  ] }

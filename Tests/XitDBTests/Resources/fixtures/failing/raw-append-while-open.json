@@ -1,0 +1,4 @@
+{ "format": "xitdb-script/1", "description": "expected failure: while the database is closed", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "raw_append", "bytes": "x" }
+  ] }

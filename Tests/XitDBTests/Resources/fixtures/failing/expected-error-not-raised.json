@@ -1,0 +1,4 @@
+{ "format": "xitdb-script/1", "description": "expected failure: but the op succeeded", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "write", "on": "root", "data": { "uint": 1 }, "expect_error": "UnexpectedTag" }
+  ] }

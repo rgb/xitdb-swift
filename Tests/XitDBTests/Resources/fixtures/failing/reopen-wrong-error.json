@@ -1,0 +1,6 @@
+{ "format": "xitdb-script/1", "description": "expected failure: expected error InvalidVersion, got InvalidDatabase", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "close" },
+    { "op": "raw_write", "offset": 0, "bytes": "z" },
+    { "op": "reopen", "expect_error": "InvalidVersion" }
+  ] }

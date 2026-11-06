@@ -1,0 +1,21 @@
+{
+  "format": "xitdb-script/1",
+  "description": "A hash size of 8, as in test.zig's 'hash map with u64 hashes'. The first two keys share all but their highest nibble, which makes the trie as deep as it can be.",
+  "hash_size": 8,
+  "hash_id": null,
+  "file_id": "0000000000000008",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }], "as": "map" },
+    { "op": "write_path", "on": "map", "path": [{ "hash_map_get": { "value": { "hex": "0000000000000000" } } }, { "write": { "uint": 0 } }] },
+    { "op": "write_path", "on": "map", "path": [{ "hash_map_get": { "value": { "hex": "1000000000000000" } } }, { "write": { "uint": 1 } }] },
+    { "op": "write_path", "on": "map", "path": [{ "hash_map_get": { "value": { "hex": "ffffffffffffffff" } } }, { "write": { "uint": 2 } }] },
+    { "op": "read_path", "on": "map", "path": [{ "hash_map_get": { "value": { "hex": "1000000000000000" } } }], "as": "c" },
+    { "op": "read_uint", "on": "c", "expect": 1 },
+    { "op": "read_path", "on": "map", "path": [{ "hash_map_get": { "kv_pair": { "hex": "1000000000000000" } } }], "as": "p" },
+    { "op": "read_key_value_pair", "on": "p", "expect_hash": { "hex": "1000000000000000" } },
+    { "op": "write_path", "on": "map", "path": [{ "hash_map_remove": { "hex": "0000000000000000" } }] },
+    { "op": "write_path", "on": "map", "path": [{ "hash_map_remove": { "hex": "1000000000000000" } }] },
+    { "op": "write_path", "on": "map", "path": [{ "hash_map_remove": { "hex": "ffffffffffffffff" } }] },
+    { "op": "read_path", "on": "map", "path": [{ "hash_map_get": { "value": { "hex": "1000000000000000" } } }], "expect_null": true }
+  ]
+}

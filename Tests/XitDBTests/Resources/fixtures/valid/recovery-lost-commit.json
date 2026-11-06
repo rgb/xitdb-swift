@@ -1,0 +1,28 @@
+{
+  "format": "xitdb-script/1",
+  "description": "A crash after a commit's bytes are written and before the root header points at them. Setting the root header back to the first commit gives exactly that file: it opens at the first commit, the rest is bytes past the committed size, and the next transaction writes over them. The second commit's ID was used, and it's gone from the file.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f0000000000014",
+  "ops": [
+    {"op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", {"hash_map_init": {}}, {"ctx": {"as": "m", "ops": [{"op": "write_path", "on": "m", "path": [{"hash_map_get": {"value": {"sha1": "a"}}}, {"write": {"uint": 1}}]}, {"op": "write_path", "on": "m", "path": [{"hash_map_get": {"value": {"sha1": "long"}}}, {"write": {"bytes": "a value too long to fit in a slot"}}]}]}}]},
+    {"op": "read_path_slot", "on": "root", "path": [{"array_list_get": -1}], "as": "last"},
+    {"op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", {"write": {"slot": {"var": "last"}}}, {"hash_map_init": {}}, {"hash_map_get": {"value": {"sha1": "b"}}}, {"write": {"uint": 2}}]},
+    {"op": "count", "on": "root", "expect": 2},
+    {"op": "read_path", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "b"}}}], "as": "c"},
+    {"op": "read_uint", "on": "c", "expect": 2},
+    {"op": "close"},
+    {"op": "raw_write", "offset": 20, "bytes": {"hex": "0200000000000000470000000000000205"}, "note": "the root header as it was after the first commit"},
+    {"op": "reopen", "note": "the committed size in the sidecar goes back, without a commit"},
+    {"op": "count", "on": "root", "expect": 1},
+    {"op": "read_path_slot", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "b"}}}], "expect_null": true},
+    {"op": "read_path", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "a"}}}], "as": "c"},
+    {"op": "read_uint", "on": "c", "expect": 1},
+    {"op": "read_path_slot", "on": "root", "path": [{"array_list_get": -1}], "as": "last"},
+    {"op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", {"write": {"slot": {"var": "last"}}}, {"hash_map_init": {}}, {"hash_map_get": {"value": {"sha1": "c"}}}, {"write": {"uint": 3}}]},
+    {"op": "count", "on": "root", "expect": 2},
+    {"op": "read_path", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "c"}}}], "as": "c"},
+    {"op": "read_uint", "on": "c", "expect": 3},
+    {"op": "read_path_slot", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "b"}}}], "expect_null": true}
+  ]
+}

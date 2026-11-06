@@ -1,0 +1,9 @@
+{
+  "format": "xitdb-sidecar/1",
+  "file_id": "0011223344556677",
+  "initial_size": 62,
+  "file_size": 438,
+  "ops": [
+    {"committed_size": 438, "commit_id": "ef6921133a4e92a8"}
+  ]
+}

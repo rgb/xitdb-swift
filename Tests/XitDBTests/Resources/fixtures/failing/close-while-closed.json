@@ -1,0 +1,5 @@
+{ "format": "xitdb-script/1", "description": "expected failure: already closed", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "close" },
+    { "op": "close" }
+  ] }

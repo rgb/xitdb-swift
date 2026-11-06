@@ -1,0 +1,5 @@
+{ "format": "xitdb-script/1", "description": "expected failure: expected slot value 2, got 1", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "write", "on": "root", "data": { "uint": 1 } },
+    { "op": "slot", "on": "root", "expect": { "value": 2 } }
+  ] }
