@@ -1,0 +1,99 @@
+{
+  "format": "xitdb-script/1",
+  "description": "Reading bytes into a buffer of a given size, and with a limit on how many can be read. A format tag doesn't count towards the size. A slot with nothing in it fits in an empty buffer, which is all that's defined here: a bigger buffer is one of the things the port corrects (tests/port-differs).",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "0011223344556677",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "hash_map_init": {} }, { "ctx": { "as": "m", "ops": [
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "long" } } }, { "write": { "bytes": "a value that won't fit in a slot" } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "short" } } }, { "write": { "bytes": "bar" } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "eight" } } }, { "write": { "bytes": "12345678" } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "empty" } } }, { "write": { "bytes": { "hex": "" } } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "zero" } } }, { "write": { "bytes": { "hex": "610062" } } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "tagged_long" } } }, { "write": { "bytes_object": { "value": "a tagged value that won't fit", "format_tag": "ab" } } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "tagged_short" } } }, { "write": { "bytes_object": { "value": "abc", "format_tag": "xy" } } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "number" } } }, { "write": { "uint": 5 } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "cleared" } } }, { "write": { "slot": null } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "nothing" } } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "map" } } }, { "hash_map_init": {} }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "written_now" } } }, { "write": { "bytes": "in this transaction, and long" } }], "as": "written_now" },
+      { "op": "read_bytes_into", "on": "written_now", "size": 29, "expect": "in this transaction, and long", "note": "a read-write cursor, before its commit" },
+      { "op": "read_bytes_into", "on": "written_now", "size": 28, "expect_error": "StreamTooLong" }
+    ] } }] },
+
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": -1 }], "as": "moment" },
+
+    { "op": "read_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "long" } } }], "as": "long" },
+    { "op": "read_bytes_into", "on": "long", "size": 32, "expect": "a value that won't fit in a slot", "expect_format_tag": null },
+    { "op": "read_bytes_into", "on": "long", "size": 33, "expect": "a value that won't fit in a slot" },
+    { "op": "read_bytes_into", "on": "long", "size": 1000, "expect": "a value that won't fit in a slot" },
+    { "op": "read_bytes_into", "on": "long", "size": 31, "expect_error": "StreamTooLong" },
+    { "op": "read_bytes_into", "on": "long", "size": 0, "expect_error": "StreamTooLong" },
+    { "op": "read_bytes", "on": "long", "max_size": 32, "expect": "a value that won't fit in a slot", "expect_format_tag": null },
+    { "op": "read_bytes", "on": "long", "max_size": 18446744073709551615, "expect": "a value that won't fit in a slot" },
+    { "op": "read_bytes", "on": "long", "max_size": 31, "expect_error": "StreamTooLong" },
+    { "op": "read_bytes", "on": "long", "max_size": 0, "expect_error": "StreamTooLong" },
+
+    { "op": "read_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "short" } } }], "as": "short" },
+    { "op": "read_bytes_into", "on": "short", "size": 3, "expect": "bar", "expect_format_tag": null },
+    { "op": "read_bytes_into", "on": "short", "size": 4, "expect": "bar" },
+    { "op": "read_bytes_into", "on": "short", "size": 2, "expect_error": "StreamTooLong" },
+    { "op": "read_bytes_into", "on": "short", "size": 0, "expect_error": "StreamTooLong" },
+    { "op": "read_bytes", "on": "short", "max_size": 3, "expect": "bar" },
+    { "op": "read_bytes", "on": "short", "max_size": 2, "expect_error": "StreamTooLong" },
+
+    { "op": "read_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "eight" } } }], "as": "eight" },
+    { "op": "slot", "on": "eight", "expect": { "tag": "short_bytes" } },
+    { "op": "read_bytes_into", "on": "eight", "size": 8, "expect": "12345678" },
+    { "op": "read_bytes_into", "on": "eight", "size": 7, "expect_error": "StreamTooLong" },
+
+    { "op": "read_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "empty" } } }], "as": "empty" },
+    { "op": "slot", "on": "empty", "expect": { "tag": "short_bytes" } },
+    { "op": "read_bytes_into", "on": "empty", "size": 0, "expect": { "hex": "" } },
+    { "op": "read_bytes_into", "on": "empty", "size": 5, "expect": { "hex": "" } },
+    { "op": "read_bytes", "on": "empty", "max_size": 0, "expect": { "hex": "" } },
+
+    { "op": "read_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "zero" } } }], "as": "zero" },
+    { "op": "slot", "on": "zero", "expect": { "tag": "bytes" }, "note": "a zero byte would look like the end of a short value" },
+    { "op": "read_bytes_into", "on": "zero", "size": 3, "expect": { "hex": "610062" } },
+    { "op": "read_bytes_into", "on": "zero", "size": 2, "expect_error": "StreamTooLong" },
+
+    { "op": "read_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "tagged_long" } } }], "as": "tagged_long" },
+    { "op": "read_bytes_into", "on": "tagged_long", "size": 29, "expect": "a tagged value that won't fit", "expect_format_tag": "ab" },
+    { "op": "read_bytes_into", "on": "tagged_long", "size": 28, "expect_error": "StreamTooLong" },
+    { "op": "read_bytes", "on": "tagged_long", "max_size": 29, "expect": "a tagged value that won't fit", "expect_format_tag": "ab" },
+    { "op": "read_bytes", "on": "tagged_long", "max_size": 28, "expect_error": "StreamTooLong" },
+
+    { "op": "read_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "tagged_short" } } }], "as": "tagged_short" },
+    { "op": "read_bytes_into", "on": "tagged_short", "size": 3, "expect": "abc", "expect_format_tag": "xy" },
+    { "op": "read_bytes_into", "on": "tagged_short", "size": 2, "expect_error": "StreamTooLong" },
+
+    { "op": "read_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "cleared" } } }], "as": "cleared" },
+    { "op": "slot", "on": "cleared", "expect": { "tag": "none", "full": true } },
+    { "op": "read_bytes_into", "on": "cleared", "size": 0, "expect": { "hex": "" }, "expect_format_tag": null },
+    { "op": "read_bytes", "on": "cleared", "expect": { "hex": "" } },
+    { "op": "read_bytes", "on": "cleared", "max_size": 0, "expect": { "hex": "" } },
+
+    { "op": "read_path", "on": "moment", "path": [{ "hash_map_get": { "kv_pair": { "sha1": "nothing" } } }], "as": "pair", "note": "a value that was never written reads as null by path, so this goes through its pair" },
+    { "op": "read_key_value_pair", "on": "pair", "value_as": "nothing" },
+    { "op": "slot", "on": "nothing", "expect": { "tag": "none", "full": false } },
+    { "op": "read_bytes_into", "on": "nothing", "size": 0, "expect": { "hex": "" } },
+    { "op": "read_bytes", "on": "nothing", "max_size": 0, "expect": { "hex": "" } },
+
+    { "op": "read_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "number" } } }], "as": "number" },
+    { "op": "read_bytes_into", "on": "number", "size": 10, "expect_error": "UnexpectedTag" },
+    { "op": "read_bytes", "on": "number", "max_size": 10, "expect_error": "UnexpectedTag" },
+    { "op": "read_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "map" } } }], "as": "map" },
+    { "op": "read_bytes_into", "on": "map", "size": 0, "expect_error": "UnexpectedTag" },
+
+    { "op": "write", "on": "root", "data": { "bytes": "bytes at the root, and long ones" } },
+    { "op": "read_bytes_into", "on": "root", "size": 32, "expect": "bytes at the root, and long ones" },
+    { "op": "read_bytes_into", "on": "root", "size": 31, "expect_error": "StreamTooLong" },
+    { "op": "read_only", "on": "root", "as": "root_read_only" },
+    { "op": "read_bytes_into", "on": "root_read_only", "size": 32, "expect": "bytes at the root, and long ones" },
+    { "op": "write", "on": "root", "data": { "bytes": "short" } },
+    { "op": "read_bytes_into", "on": "root", "size": 5, "expect": "short" },
+    { "op": "read_bytes_into", "on": "root", "size": 4, "expect_error": "StreamTooLong" }
+  ]
+}

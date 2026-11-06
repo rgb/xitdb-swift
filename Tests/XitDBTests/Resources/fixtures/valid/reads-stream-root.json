@@ -1,0 +1,30 @@
+{
+  "format": "xitdb-script/1",
+  "description": "The streaming reader on a root cursor, which reads the root again for each stream, and on a cursor pinned to a commit by a read path with no parts.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "0011223344556677",
+  "ops": [
+    { "op": "write", "on": "root", "data": { "bytes": "hi" } },
+    { "op": "slot", "on": "root", "expect": { "tag": "short_bytes" } },
+    { "op": "read_stream", "on": "root", "steps": [{ "read": 10, "expect": "hi" }, { "position": 2 }] },
+    { "op": "read_only", "on": "root", "as": "root_read_only" },
+    { "op": "read_stream", "on": "root_read_only", "steps": [{ "read": 10, "expect": "hi" }] },
+    { "op": "read_path", "on": "root", "path": [], "as": "pinned" },
+    { "op": "read_stream", "on": "pinned", "steps": [{ "read": 10, "expect": "hi" }] },
+
+    { "op": "write", "on": "root", "data": { "bytes": "yo!" } },
+    { "op": "read_stream", "on": "root", "steps": [{ "read": 10, "expect": "yo!" }] },
+    { "op": "read_stream", "on": "root_read_only", "steps": [{ "read": 10, "expect": "yo!" }], "note": "a read-only root cursor is a root cursor" },
+    { "op": "read_stream", "on": "pinned", "steps": [{ "read": 10, "expect": "hi" }], "note": "and this one is still looking at the old trailer" },
+
+    { "op": "write", "on": "root", "data": { "bytes": "a value at the root that's too long for a slot" } },
+    { "op": "read_stream", "on": "root", "steps": [{ "seek": 2 }, { "read": 5, "expect": "value" }] },
+    { "op": "read_stream", "on": "root_read_only", "buffer_size": 16, "steps": [{ "seek": 2 }, { "read": 5, "expect": "value" }] },
+    { "op": "read_path", "on": "root", "path": [], "as": "pinned_long" },
+
+    { "op": "write", "on": "root", "data": { "uint": 5 } },
+    { "op": "read_stream", "on": "root", "steps": [], "expect_error": "UnexpectedTag" },
+    { "op": "read_stream", "on": "pinned_long", "steps": [{ "read": 7, "expect": "a value" }] }
+  ]
+}

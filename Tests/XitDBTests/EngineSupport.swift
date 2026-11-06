@@ -49,6 +49,13 @@ func fixtureFile(_ relativePath: String) throws -> [UInt8] {
     return [UInt8](try Data(contentsOf: folder.appendingPathComponent(relativePath)))
 }
 
+/// The contents of a script in the copied `port-differs` folder of the
+/// conformance repository.
+func portDifferenceFile(_ name: String) throws -> [UInt8] {
+    let folder = try #require(Bundle.module.url(forResource: "port-differs", withExtension: nil))
+    return [UInt8](try Data(contentsOf: folder.appendingPathComponent(name)))
+}
+
 /// Where two files first differ, with the bytes around it, or `nil` if they
 /// are equal. For reporting a mismatch against a fixture.
 func firstDifference(_ actual: [UInt8], _ expected: [UInt8]) -> String? {

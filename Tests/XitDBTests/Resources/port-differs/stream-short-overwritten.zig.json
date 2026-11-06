@@ -1,0 +1,11 @@
+{ "format": "xitdb-script/1", "description": "Finding 9, as Zig does it: a stream of a short value takes its length from the cursor and its bytes from the file. So once the slot has been overwritten, it gives neither value: 8 bytes of \"changed\", and 2 bytes of the new uint.", "hash_size": 20, "hash_id": "sha1", "file_id": "0011223344556677",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "ctx": { "as": "m", "ops": [
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "text" } } }, { "write": { "bytes": "shortstr" } }], "as": "text" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "text" } } }, { "write": { "bytes": "changed" } }] },
+      { "op": "read_stream", "on": "text", "steps": [{ "read": 100, "expect": { "hex": "6368616e67656400" } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "number" } } }, { "write": { "bytes": "hi" } }], "as": "number" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "number" } } }, { "write": { "uint": 5 } }] },
+      { "op": "read_stream", "on": "number", "steps": [{ "read": 100, "expect": { "hex": "0000" } }] }
+    ] } }] }
+  ] }

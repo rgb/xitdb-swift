@@ -1,0 +1,5 @@
+{ "format": "xitdb-script/1", "description": "expected failure: unexpected error UnexpectedTag", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "write": { "uint": 1 } }] },
+    { "op": "iterator", "on": "root", "from_key": "a", "as": "it" }
+  ] }

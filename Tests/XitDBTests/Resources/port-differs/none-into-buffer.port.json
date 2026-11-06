@@ -1,0 +1,12 @@
+{ "format": "xitdb-script/1", "description": "Finding 8, as the port does it: a slot set to nothing, read into any buffer, is empty.", "hash_size": 20, "hash_id": "sha1", "file_id": "0011223344556677",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "ctx": { "as": "m", "ops": [
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "cleared" } } }, { "write": { "slot": null } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "nothing" } } }] }
+    ] } }] },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "cleared" } } }], "as": "cleared" },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "kv_pair": { "sha1": "nothing" } } }], "as": "pair" },
+    { "op": "read_key_value_pair", "on": "pair", "value_as": "nothing" },
+    { "op": "read_bytes_into", "on": "cleared", "size": 5, "expect": { "hex": "" } },
+    { "op": "read_bytes_into", "on": "nothing", "size": 5, "expect": { "hex": "" } }
+  ] }

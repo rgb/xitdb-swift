@@ -1,0 +1,51 @@
+{
+  "format": "xitdb-script/1",
+  "description": "The streaming reader and reading into a buffer, on the keys and values of sorted collections. A long key can be streamed however its cursor was made. A short one needs a cursor with a position, which a key cursor from a pair has, and the entry itself in a set, and streaming one without is something the port corrects (tests/port-differs).",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "0011223344556677",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "hash_map_init": {} }, { "ctx": { "as": "m", "ops": [
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "sorted" } } }, { "sorted_map_init": {} }, { "sorted_map_get": { "value": "ab" } }, { "write": { "bytes": "cd" } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "sorted" } } }, { "sorted_map_init": {} }, { "sorted_map_get": { "value": "a key that's too long for a slot" } }, { "write": { "bytes": "a value that's too long for a slot" } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "set" } } }, { "sorted_map_init": { "set": true } }, { "sorted_map_get": { "key": "xy" } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "set" } } }, { "sorted_map_init": { "set": true } }, { "sorted_map_get": { "key": "a set's key that's too long for a slot" } }] }
+    ] } }] },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": -1 }], "as": "moment" },
+    { "op": "read_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "sorted" } } }], "as": "sorted" },
+    { "op": "read_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "set" } } }], "as": "set" },
+
+    { "op": "read_path", "on": "sorted", "path": [{ "sorted_map_get": { "kv_pair": "ab" } }], "as": "pair" },
+    { "op": "read_key_value_pair", "on": "pair", "key_as": "k", "value_as": "v" },
+    { "op": "read_stream", "on": "k", "steps": [{ "read": 10, "expect": "ab" }, { "position": 2 }], "note": "a pair's key slot has a position" },
+    { "op": "read_stream", "on": "v", "steps": [{ "read": 10, "expect": "cd" }] },
+    { "op": "read_bytes_into", "on": "k", "size": 2, "expect": "ab" },
+    { "op": "read_bytes_into", "on": "k", "size": 1, "expect_error": "StreamTooLong" },
+
+    { "op": "read_path", "on": "sorted", "path": [{ "sorted_map_get": { "key": "ab" } }], "as": "k", "note": "and this cursor has none, which makes no difference to reading it into a buffer" },
+    { "op": "read_bytes_into", "on": "k", "size": 2, "expect": "ab" },
+
+    { "op": "read_path", "on": "sorted", "path": [{ "sorted_map_get": { "key": "a key that's too long for a slot" } }], "as": "k", "note": "nor to streaming a long key" },
+    { "op": "slot", "on": "k", "expect": { "tag": "bytes" } },
+    { "op": "read_stream", "on": "k", "steps": [{ "seek": 6 }, { "read": 5, "expect": "that'" }] },
+    { "op": "read_path", "on": "sorted", "path": [{ "sorted_map_get": { "value": "a key that's too long for a slot" } }], "as": "v" },
+    { "op": "read_stream", "on": "v", "steps": [{ "seek": 2 }, { "read": 5, "expect": "value" }] },
+
+    { "op": "read_path", "on": "sorted", "path": [{ "sorted_map_get_index": 1 }], "as": "pair", "note": "by index, which gives the pair" },
+    { "op": "read_key_value_pair", "on": "pair", "key_as": "k" },
+    { "op": "read_stream", "on": "k", "steps": [{ "read": 10, "expect": "ab" }] },
+
+    { "op": "iterator", "on": "set", "as": "it", "note": "an entry from an iterator on a set has a position, as it's in a node" },
+    { "op": "next", "on": "it", "as": "e", "expect_null": false },
+    { "op": "read_stream", "on": "e", "steps": [{ "read": 5, "expect": "a set" }] },
+    { "op": "read_key_value_pair", "on": "e", "key_as": "k" },
+    { "op": "read_stream", "on": "k", "steps": [{ "read": 5, "expect": "a set" }], "note": "and a long key from that entry has none, and doesn't need one" },
+    { "op": "next", "on": "it", "as": "e", "expect_null": false },
+    { "op": "slot", "on": "e", "expect": { "tag": "short_bytes" } },
+    { "op": "read_stream", "on": "e", "steps": [{ "read": 5, "expect": "xy" }] },
+    { "op": "read_bytes_into", "on": "e", "size": 2, "expect": "xy" },
+    { "op": "read_key_value_pair", "on": "e", "key_as": "k" },
+    { "op": "read_bytes_into", "on": "k", "size": 2, "expect": "xy" },
+    { "op": "read_bytes", "on": "k", "max_size": 1, "expect_error": "StreamTooLong" }
+  ]
+}

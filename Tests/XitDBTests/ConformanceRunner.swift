@@ -207,6 +207,23 @@ final class ScriptRunner {
         case readOnly(Cursor<ReadOnly>)
         case nullCursor
         case slot(Slot?)
+        case iterator(IteratorBox)
+    }
+
+    /// An iterator under a name. Unlike a cursor, an iterator is not a
+    /// value in a script: `next` moves the one iterator, however it is
+    /// reached.
+    final class IteratorBox {
+        private let advance: () throws(XitDBError) -> Cursor<ReadOnly>?
+
+        init<Access>(_ iterator: Cursor<Access>.Iter) {
+            var iterator = iterator
+            advance = { () throws(XitDBError) in try iterator.next() }
+        }
+
+        func next() throws(XitDBError) -> Cursor<ReadOnly>? {
+            try advance()
+        }
     }
 
     let storage: ScriptStorage
@@ -436,7 +453,15 @@ final class ScriptRunner {
         case .readOnly: throw ScriptFailure("'\(name)' is a read-only cursor")
         case .nullCursor: throw ScriptFailure("'\(name)' is a null cursor")
         case .slot: throw ScriptFailure("'\(name)' holds a slot, not a cursor")
+        case .iterator: throw ScriptFailure("'\(name)' holds an iterator, not a cursor")
         }
+    }
+
+    private func iterator(_ name: String) throws -> IteratorBox {
+        guard case .iterator(let box) = try bound(name) else {
+            throw ScriptFailure("'\(name)' does not hold an iterator")
+        }
+        return box
     }
 
     private func bind(_ name: String?, _ value: Value) throws {
@@ -634,6 +659,7 @@ final class ScriptRunner {
             case .readOnly(let cursor): result = try cursor.readPath(parts)
             case .nullCursor: throw ScriptFailure("a null cursor was used")
             case .slot: throw ScriptFailure("a slot was used as a cursor")
+            case .iterator: throw ScriptFailure("an iterator was used as a cursor")
             }
             try expectNull(op, isNull: result == nil)
             try bind(try op.optionalString("as"), result.map { .readOnly($0) } ?? .nullCursor)
@@ -647,6 +673,7 @@ final class ScriptRunner {
             case .readOnly(let cursor): result = try cursor.readPathSlot(parts)
             case .nullCursor: throw ScriptFailure("a null cursor was used")
             case .slot: throw ScriptFailure("a slot was used as a cursor")
+            case .iterator: throw ScriptFailure("an iterator was used as a cursor")
             }
             try expectNull(op, isNull: result == nil)
             try expectSlot(op, result)
@@ -680,6 +707,7 @@ final class ScriptRunner {
                 (pairHash, key, value) = (pair.hash, .readOnly(pair.keyCursor), .readOnly(pair.valueCursor))
             case .nullCursor: throw ScriptFailure("a null cursor was used")
             case .slot: throw ScriptFailure("a slot was used as a cursor")
+            case .iterator: throw ScriptFailure("an iterator was used as a cursor")
             }
             if op.has("expect_hash") {
                 let expected = try hash(op.fields["expect_hash"], "expect_hash")
@@ -724,21 +752,131 @@ final class ScriptRunner {
             }
 
         case "read_bytes":
-            try op.allow("op", "note", "expect_error", "on", "expect", "expect_format_tag")
+            try op.allow("op", "note", "expect_error", "on", "max_size", "expect", "expect_format_tag")
+            // A limit beyond what an Int holds is no limit a value could reach.
+            let maxSize = op.has("max_size") ? Int(clamping: try op.unsigned("max_size")) : nil
             let result = try read(try op.string("on")) {
-                try $0.readBytesObjectAlloc()
+                try $0.readBytesObjectAlloc(maxSize: maxSize)
             } readOnly: {
-                try $0.readBytesObjectAlloc()
+                try $0.readBytesObjectAlloc(maxSize: maxSize)
             }
             if op.has("expect"), try bytes(op.fields["expect"], "expect") != result.value {
                 throw ScriptFailure("read_bytes gave \(result.value)")
             }
-            if op.has("expect_format_tag") {
-                let expected: InlineArray<2, UInt8>? =
-                    op.isNull("expect_format_tag") ? nil : try formatTag(op.fields["expect_format_tag"], "a tag")
-                guard Bytes([], formatTag: expected) == Bytes([], formatTag: result.formatTag) else {
-                    throw ScriptFailure("read_bytes gave another format tag")
+            try expectFormatTag(op, result.formatTag, "read_bytes")
+
+        case "read_bytes_into":
+            try op.allow("op", "note", "expect_error", "on", "size", "expect", "expect_format_tag")
+            let size = try op.unsigned("size")
+            guard size <= 1 << 24 else { throw UnknownInScript("a size over 2^24") }
+            var buffer = [UInt8](repeating: 0xEE, count: Int(size))
+            let result: (count: Int, formatTag: InlineArray<2, UInt8>?)
+            do {
+                var span = buffer.mutableSpan
+                result = try read(try op.string("on")) {
+                    try $0.readBytesObject(into: &span)
+                } readOnly: {
+                    try $0.readBytesObject(into: &span)
                 }
+            }
+            if op.has("expect"), try bytes(op.fields["expect"], "expect") != Array(buffer[..<result.count]) {
+                throw ScriptFailure("read_bytes_into gave \(Array(buffer[..<result.count]))")
+            }
+            try expectFormatTag(op, result.formatTag, "read_bytes_into")
+
+        case "read_stream":
+            try op.allow("op", "note", "expect_error", "on", "buffer_size", "steps")
+            // A buffer size changes nothing here: the reader has no buffer.
+            if op.has("buffer_size"), try op.unsigned("buffer_size") > 1 << 24 {
+                throw UnknownInScript("a buffer_size over 2^24")
+            }
+            var reader = try read(try op.string("on")) {
+                try $0.reader()
+            } readOnly: {
+                try $0.reader()
+            }
+            for step in try op.array("steps") {
+                let step = try ScriptObject(step, "a stream step")
+                try step.allow("read", "read_all", "seek", "position", "expect")
+                if step.has("read") || step.has("read_all") {
+                    let all = step.has("read_all")
+                    let size = try step.unsigned(all ? "read_all" : "read")
+                    guard size <= 1 << 24 else { throw UnknownInScript("a read over 2^24") }
+                    var buffer = [UInt8](repeating: 0xEE, count: Int(size))
+                    let count: Int
+                    do {
+                        var span = buffer.mutableSpan
+                        if all {
+                            try reader.readAll(into: &span)
+                            count = Int(size)
+                        } else {
+                            count = try reader.read(into: &span)
+                        }
+                    }
+                    if step.has("expect"), try bytes(step.fields["expect"], "expect") != Array(buffer[..<count]) {
+                        throw ScriptFailure("the stream gave \(Array(buffer[..<count]))")
+                    }
+                } else if step.has("seek") {
+                    guard step.fields.count == 1 else { throw UnknownInScript("a seek step with other fields") }
+                    reader.seek(to: try step.unsigned("seek"))
+                } else if step.has("position") {
+                    guard step.fields.count == 1 else { throw UnknownInScript("a position step with other fields") }
+                    if try step.unsigned("position") != reader.position {
+                        throw ScriptFailure("the stream's position is \(reader.position)")
+                    }
+                } else {
+                    throw UnknownInScript("a stream step with nothing to do")
+                }
+            }
+
+        case "iterator":
+            try op.allow("op", "note", "expect_error", "on", "from_index", "from_key", "as")
+            if op.has("from_index") && op.has("from_key") {
+                throw UnknownInScript("an iterator with both from_index and from_key")
+            }
+            let box: IteratorBox
+            if op.has("from_index") {
+                let index = try op.signed("from_index")
+                box = try read(try op.string("on")) {
+                    IteratorBox(try self.iterator(of: $0, from: index))
+                } readOnly: {
+                    IteratorBox(try self.iterator(of: $0, from: index))
+                }
+            } else if op.has("from_key") {
+                let key = try bytes(op.fields["from_key"], "from_key")
+                box = try read(try op.string("on")) {
+                    IteratorBox(try self.iterator(of: $0, fromKey: key))
+                } readOnly: {
+                    IteratorBox(try self.iterator(of: $0, fromKey: key))
+                }
+            } else {
+                box = try read(try op.string("on")) {
+                    IteratorBox(try $0.iterator())
+                } readOnly: {
+                    IteratorBox(try $0.iterator())
+                }
+            }
+            try bind(try op.string("as"), .iterator(box))
+
+        case "next":
+            try op.allow("op", "note", "expect_error", "on", "as", "expect_null")
+            let result = try iterator(try op.string("on")).next()
+            try expectNull(op, isNull: result == nil)
+            try bind(try op.optionalString("as"), result.map { .readOnly($0) } ?? .nullCursor)
+
+        case "rank":
+            try op.allow("op", "note", "expect_error", "on", "key", "expect")
+            _ = try bytes(op.fields["key"], "key")
+            // The rank of a key in a sorted map or set arrives with M6. On
+            // anything else the wrappers raise UnexpectedTag.
+            let tag = try read(try op.string("on")) {
+                try $0.slot().tag
+            } readOnly: {
+                try $0.slot().tag
+            }
+            switch tag {
+            case .sortedMap, .sortedSet, .none: throw XitDBError.notImplemented
+            default: throw XitDBError.unexpectedTag
             }
 
         case "count":
@@ -788,6 +926,35 @@ final class ScriptRunner {
         }
     }
 
+    /// An iterator over an array list from an index: `ArrayList.iteratorFrom`
+    /// in Zig, or the linked array list's or the sorted map's, by the tag.
+    private func iterator<Access>(of cursor: Cursor<Access>, from index: Int64) throws -> Cursor<Access>.Iter {
+        switch try cursor.slot().tag {
+        case .none, .arrayList: return try cursor.iterator(fromArrayListIndex: index)
+        case .linkedArrayList, .sortedMap, .sortedSet: throw XitDBError.notImplemented
+        default: throw XitDBError.unexpectedTag
+        }
+    }
+
+    /// An iterator over a sorted map or set from a key, which arrives with
+    /// M6. A slot with nothing in it gives an iterator of nothing now.
+    private func iterator<Access>(of cursor: Cursor<Access>, fromKey key: [UInt8]) throws -> Cursor<Access>.Iter {
+        switch try cursor.slot().tag {
+        case .none: return try cursor.iterator()
+        case .sortedMap, .sortedSet: throw XitDBError.notImplemented
+        default: throw XitDBError.unexpectedTag
+        }
+    }
+
+    private func expectFormatTag(_ op: ScriptObject, _ tag: InlineArray<2, UInt8>?, _ what: String) throws {
+        guard op.has("expect_format_tag") else { return }
+        let expected: InlineArray<2, UInt8>? =
+            op.isNull("expect_format_tag") ? nil : try formatTag(op.fields["expect_format_tag"], "a tag")
+        guard Bytes([], formatTag: expected) == Bytes([], formatTag: tag) else {
+            throw ScriptFailure("\(what) gave another format tag")
+        }
+    }
+
     /// Calls a read on a cursor of either kind.
     private func read<Result>(
         _ name: String,
@@ -799,6 +966,7 @@ final class ScriptRunner {
         case .readOnly(let cursor): return try readOnly(cursor)
         case .nullCursor: throw ScriptFailure("'\(name)' is a null cursor")
         case .slot: throw ScriptFailure("'\(name)' holds a slot, not a cursor")
+        case .iterator: throw ScriptFailure("'\(name)' holds an iterator, not a cursor")
         }
     }
 

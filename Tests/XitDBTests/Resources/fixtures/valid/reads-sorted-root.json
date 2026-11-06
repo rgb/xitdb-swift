@@ -1,0 +1,41 @@
+{
+  "format": "xitdb-script/1",
+  "description": "Rank and iterators on a root cursor that's a sorted map, and one that's a sorted set. A root cursor reads the root again each time, so it doesn't go stale, and doesn't see a transaction in progress.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "0011223344556677",
+  "ops": [
+    { "op": "rank", "on": "root", "key": "a", "expect": 0, "note": "a root with nothing in it has no keys before this one" },
+    { "op": "write_path", "on": "root", "path": [{ "sorted_map_init": {} }, { "sorted_map_get": { "value": "b" } }, { "write": { "uint": 2 } }] },
+    { "op": "write_path", "on": "root", "path": [{ "sorted_map_init": {} }, { "sorted_map_get": { "value": "a" } }, { "write": { "uint": 1 } }] },
+    { "op": "rank", "on": "root", "key": "b", "expect": 1 },
+    { "op": "read_only", "on": "root", "as": "kept_root" },
+    { "op": "iterator", "on": "root", "from_key": "b", "as": "it" },
+    { "op": "next", "on": "it", "as": "e", "expect_null": false },
+    { "op": "read_key_value_pair", "on": "e", "value_as": "v" },
+    { "op": "read_uint", "on": "v", "expect": 2 },
+    { "op": "next", "on": "it", "expect_null": true },
+    { "op": "iterator", "on": "root", "from_index": 0, "as": "it" },
+    { "op": "next", "on": "it", "as": "e", "expect_null": false },
+    { "op": "read_key_value_pair", "on": "e", "value_as": "v" },
+    { "op": "read_uint", "on": "v", "expect": 1 },
+    { "op": "write_path", "on": "root", "path": [{ "sorted_map_init": {} }, { "ctx": { "as": "c", "ops": [
+      { "op": "write_path", "on": "c", "path": [{ "sorted_map_get": { "value": "0" } }, { "write": { "uint": 0 } }] },
+      { "op": "rank", "on": "root", "key": "b", "expect": 1, "note": "the last commit, and not this transaction" },
+      { "op": "rank", "on": "c", "key": "b", "expect": 2 }
+    ] } }] },
+    { "op": "rank", "on": "root", "key": "b", "expect": 2 },
+    { "op": "rank", "on": "kept_root", "key": "b", "expect": 2, "note": "a read-only root cursor is a root cursor, so it isn't stale" },
+
+    { "op": "write", "on": "root", "data": { "slot": null } },
+    { "op": "rank", "on": "root", "key": "a", "expect": 0 },
+    { "op": "write_path", "on": "root", "path": [{ "sorted_map_init": { "set": true } }, { "sorted_map_get": { "key": "x" } }] },
+    { "op": "write_path", "on": "root", "path": [{ "sorted_map_init": { "set": true } }, { "sorted_map_get": { "key": "y" } }] },
+    { "op": "rank", "on": "root", "key": "y", "expect": 1 },
+    { "op": "rank", "on": "kept_root", "key": "z", "expect": 2 },
+    { "op": "iterator", "on": "root", "from_key": "y", "as": "it" },
+    { "op": "next", "on": "it", "as": "e", "expect_null": false },
+    { "op": "read_bytes", "on": "e", "expect": "y" },
+    { "op": "next", "on": "it", "expect_null": true }
+  ]
+}

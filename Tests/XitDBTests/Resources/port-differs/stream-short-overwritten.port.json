@@ -1,0 +1,11 @@
+{ "format": "xitdb-script/1", "description": "Finding 9, as the port does it: a stream of a short value serves the cursor's own slot, so it gives what the cursor holds.", "hash_size": 20, "hash_id": "sha1", "file_id": "0011223344556677",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "ctx": { "as": "m", "ops": [
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "text" } } }, { "write": { "bytes": "shortstr" } }], "as": "text" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "text" } } }, { "write": { "bytes": "changed" } }] },
+      { "op": "read_stream", "on": "text", "steps": [{ "read": 100, "expect": "shortstr" }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "number" } } }, { "write": { "bytes": "hi" } }], "as": "number" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "number" } } }, { "write": { "uint": 5 } }] },
+      { "op": "read_stream", "on": "number", "steps": [{ "read": 100, "expect": "hi" }] }
+    ] } }] }
+  ] }

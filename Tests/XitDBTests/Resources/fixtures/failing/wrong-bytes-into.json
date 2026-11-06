@@ -1,0 +1,5 @@
+{ "format": "xitdb-script/1", "description": "expected failure: expected bytes", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "write", "on": "root", "data": { "bytes": "abc" } },
+    { "op": "read_bytes_into", "on": "root", "size": 3, "expect": "abd" }
+  ] }

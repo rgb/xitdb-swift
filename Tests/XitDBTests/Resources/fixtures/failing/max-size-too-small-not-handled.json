@@ -1,0 +1,5 @@
+{ "format": "xitdb-script/1", "description": "expected failure: unexpected error StreamTooLong", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "write", "on": "root", "data": { "bytes": "abc" } },
+    { "op": "read_bytes", "on": "root", "max_size": 2 }
+  ] }

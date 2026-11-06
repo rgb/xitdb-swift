@@ -1,0 +1,33 @@
+{
+  "format": "xitdb-sidecar/1",
+  "file_id": "0011223344556677",
+  "initial_size": 62,
+  "file_size": 58030,
+  "ops": [
+    {"committed_size": 62, "commit_id": null},
+    {"committed_size": 19346, "commit_id": "d6874524fd656ed1"},
+    {"committed_size": 19346, "commit_id": null},
+    {"committed_size": 33034, "commit_id": "c6aea06fc5c696d7"},
+    {"committed_size": 33034, "commit_id": null},
+    {"committed_size": 58030, "commit_id": "00e2bc34ec0dacd6"},
+    {"committed_size": 58030, "commit_id": null},
+    {"committed_size": 58030, "commit_id": null},
+    {"committed_size": 58030, "commit_id": null},
+    {"committed_size": 58030, "commit_id": null},
+    {"committed_size": 58030, "commit_id": null},
+    {"committed_size": 58030, "commit_id": null},
+    {"committed_size": 58030, "commit_id": null},
+    {"committed_size": 58030, "commit_id": null},
+    {"committed_size": 58030, "commit_id": null},
+    {"committed_size": 58030, "commit_id": null},
+    {"committed_size": 58030, "commit_id": null},
+    {"committed_size": 58030, "commit_id": null},
+    {"committed_size": 58030, "commit_id": null},
+    {"committed_size": 58030, "commit_id": null},
+    {"committed_size": 58030, "commit_id": null},
+    {"committed_size": 58030, "commit_id": null},
+    {"committed_size": 58030, "commit_id": null},
+    {"committed_size": 58030, "commit_id": null},
+    {"committed_size": 58030, "commit_id": null}
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "format": "xitdb-script/1",
+  "description": "An iterator on a sliced array list, in the cases where Zig and the port agree. A slice leaves what's past the new end in its blocks. With nothing unwritten before the end, the iterator stops at the end. The case where they don't agree is in tests/port-differs/iterator-past-slice.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "0011223344556677",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": ["array_list_init", { "ctx": { "as": "l", "ops": [
+      { "op": "write_path", "on": "l", "path": ["array_list_append", { "write": { "uint": 0 } }] },
+      { "op": "write_path", "on": "l", "path": ["array_list_append", { "write": { "uint": 1 } }] },
+      { "op": "write_path", "on": "l", "path": ["array_list_append", { "write": { "uint": 2 } }] },
+      { "op": "write_path", "on": "l", "path": ["array_list_append", { "write": { "uint": 3 } }] }
+    ] } }] },
+    { "op": "write_path", "on": "root", "path": ["array_list_init", { "array_list_slice": { "size": 2 } }] },
+    { "op": "count", "on": "root", "expect": 2 },
+    { "op": "iterator", "on": "root", "as": "it" },
+    { "op": "next", "on": "it", "as": "e", "expect_null": false },
+    { "op": "read_uint", "on": "e", "expect": 0 },
+    { "op": "next", "on": "it", "as": "e", "expect_null": false },
+    { "op": "read_uint", "on": "e", "expect": 1 },
+    { "op": "next", "on": "it", "expect_null": true },
+
+    { "op": "write", "on": "root", "data": { "slot": null } },
+    { "op": "write_path", "on": "root", "path": ["array_list_init", { "ctx": { "as": "l", "ops": [
+      { "op": "write_path", "on": "l", "path": ["array_list_append", { "write": { "uint": 0 } }] },
+      { "op": "write_path", "on": "l", "path": ["array_list_append", { "write": { "uint": 1 } }] },
+      { "op": "write_path", "on": "l", "path": ["array_list_append", { "write": { "uint": 2 } }] },
+      { "op": "write_path", "on": "l", "path": ["array_list_append"], "note": "never written, and past the slice below, so it makes no difference" }
+    ] } }] },
+    { "op": "write_path", "on": "root", "path": ["array_list_init", { "array_list_slice": { "size": 3 } }] },
+    { "op": "iterator", "on": "root", "as": "it" },
+    { "op": "next", "on": "it", "expect_null": false },
+    { "op": "next", "on": "it", "expect_null": false },
+    { "op": "next", "on": "it", "as": "e", "expect_null": false },
+    { "op": "read_uint", "on": "e", "expect": 2 },
+    { "op": "next", "on": "it", "expect_null": true },
+
+    { "op": "write", "on": "root", "data": { "slot": null } },
+    { "op": "write_path", "on": "root", "path": ["array_list_init", { "ctx": { "as": "l", "ops": [
+      { "op": "write_path", "on": "l", "path": ["array_list_append"], "note": "never written, but before where these start" },
+      { "op": "write_path", "on": "l", "path": ["array_list_append", { "write": { "uint": 1 } }] },
+      { "op": "write_path", "on": "l", "path": ["array_list_append", { "write": { "uint": 2 } }] },
+      { "op": "write_path", "on": "l", "path": ["array_list_append", { "write": { "uint": 3 } }] }
+    ] } }] },
+    { "op": "write_path", "on": "root", "path": ["array_list_init", { "array_list_slice": { "size": 2 } }] },
+    { "op": "iterator", "on": "root", "from_index": 1, "as": "it" },
+    { "op": "next", "on": "it", "as": "e", "expect_null": false },
+    { "op": "read_uint", "on": "e", "expect": 1 },
+    { "op": "next", "on": "it", "expect_null": true },
+    { "op": "iterator", "on": "root", "from_index": -1, "as": "it" },
+    { "op": "next", "on": "it", "as": "e", "expect_null": false },
+    { "op": "read_uint", "on": "e", "expect": 1 },
+    { "op": "next", "on": "it", "expect_null": true }
+  ]
+}

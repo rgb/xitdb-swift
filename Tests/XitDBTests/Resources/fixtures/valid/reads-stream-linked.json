@@ -1,0 +1,24 @@
+{
+  "format": "xitdb-script/1",
+  "description": "The streaming reader and reading into a buffer, on elements of a linked array list, whose slots are in the nodes of a tree.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "0011223344556677",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": ["linked_array_list_init", "linked_array_list_append", { "write": { "bytes": "short" } }] },
+    { "op": "write_path", "on": "root", "path": ["linked_array_list_init", "linked_array_list_append", { "write": { "bytes": "too long to go in a slot" } }] },
+    { "op": "read_path", "on": "root", "path": [{ "linked_array_list_get": 0 }], "as": "e" },
+    { "op": "read_stream", "on": "e", "steps": [{ "seek": 1 }, { "read": 10, "expect": "hort" }] },
+    { "op": "read_bytes_into", "on": "e", "size": 5, "expect": "short" },
+    { "op": "read_bytes_into", "on": "e", "size": 4, "expect_error": "StreamTooLong" },
+    { "op": "read_path", "on": "root", "path": [{ "linked_array_list_get": 1 }], "as": "e" },
+    { "op": "read_stream", "on": "e", "steps": [{ "seek": 20 }, { "read": 10, "expect": "slot" }] },
+    { "op": "read_bytes_into", "on": "e", "size": 24, "expect": "too long to go in a slot" },
+    { "op": "read_bytes_into", "on": "e", "size": 23, "expect_error": "StreamTooLong" },
+    { "op": "iterator", "on": "root", "as": "it" },
+    { "op": "next", "on": "it", "as": "e", "expect_null": false },
+    { "op": "read_stream", "on": "e", "steps": [{ "read": 10, "expect": "short" }] },
+    { "op": "next", "on": "it", "as": "e", "expect_null": false },
+    { "op": "read_stream", "on": "e", "buffer_size": 5, "steps": [{ "read": 3, "expect": "too" }, { "position": 3 }] }
+  ]
+}

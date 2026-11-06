@@ -1,0 +1,7 @@
+{ "format": "xitdb-script/1", "description": "expected failure: is not bound", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "iterator", "on": "root", "as": "it" },
+    { "op": "close" },
+    { "op": "reopen" },
+    { "op": "next", "on": "it" }
+  ] }

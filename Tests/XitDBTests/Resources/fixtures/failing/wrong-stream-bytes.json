@@ -1,0 +1,5 @@
+{ "format": "xitdb-script/1", "description": "expected failure: expected the stream to give", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "write", "on": "root", "data": { "bytes": "a value that won't fit in a slot" } },
+    { "op": "read_stream", "on": "root", "steps": [{ "read": 1, "expect": "b" }] }
+  ] }

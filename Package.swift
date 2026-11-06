@@ -50,7 +50,7 @@ let package = Package(
             exclude: ["Resources/fixtures-source.txt"],
             resources: [
                 .copy("Resources/test.db"),
-                .copy("Resources/fixtures"),
+                .copy("Resources/fixtures"), .copy("Resources/port-differs"),
             ],
             swiftSettings: languageSettings
         ),
