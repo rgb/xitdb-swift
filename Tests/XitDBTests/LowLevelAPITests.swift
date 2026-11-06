@@ -37,6 +37,11 @@ import Testing
 // - 2747-2772, "insert at end of linked_array_list many times". Linked array lists (M5).
 //
 // Everything else in lines 1313 to 2774 is ported.
+//
+// Beyond what Zig asserts, the tests check the length of the storage at the points where a run of the Zig test
+// was made to print it (a copy of test.zig with prints added, run with Zig 0.17.1 against the original lib.zig):
+// the lengths are the same on Zig's three kinds of database. They pin how much a transaction appends, which
+// the values read back do not show: an engine that copied more than Zig does would still read back right.
 
 /// Zig's "low level api" test: the path API used directly.
 @Suite struct LowLevelAPITests {
@@ -360,6 +365,7 @@ import Testing
             // verify that the db is properly truncated back to its original size after error
             let sizeAfter = try subject.storage.length()
             #expect(sizeBefore == sizeAfter)
+            #expect(sizeAfter == 1212)  // as in a run of the Zig test
 
             // appending must clear the failed moment's slot, including its stored value
             let history = try PathArrayList(database.rootCursor())
@@ -372,6 +378,8 @@ import Testing
             #expect(try history.appendCursor().slot().isEmpty)
             #expect(try history.getSlot(-1) == nil)
             try history.slice(countBefore)
+            #expect(countBefore == 3)  // as in a run of the Zig test, with the length after it
+            #expect(try subject.storage.length() == 2376)
         }
 
         // write bar -> longstring
@@ -680,6 +688,7 @@ import Testing
                     ])
                 )
                 let indexPosition = try mapCursor.slot().value
+                #expect(indexPosition == 7599)  // as in a run of the Zig test
                 #expect(try mapCursor.slot().tag == .hashMap)
 
                 let slotSize = Slot.byteCount
@@ -732,6 +741,7 @@ import Testing
                     ])
                 )
                 let indexPosition = try mapCursor.slot().value
+                #expect(indexPosition == 8551)  // as in a run of the Zig test
                 #expect(try mapCursor.slot().tag == .hashMap)
 
                 let slotSize = Slot.byteCount
@@ -774,6 +784,7 @@ import Testing
                     ])
                 )
                 let indexPosition = try mapCursor.slot().value
+                #expect(indexPosition == 9465)  // as in a run of the Zig test
                 #expect(try mapCursor.slot().tag == .hashMap)
 
                 let slotSize = Slot.byteCount
@@ -980,6 +991,9 @@ import Testing
             let grapeValue = try grapeCursor.readBytesAlloc(maxSize: maxReadBytes)
             #expect(grapeValue == utf8("grape"))
         }
+
+        // the length of the storage here in a run of the Zig test, on every kind of storage
+        #expect(try subject.storage.length() == 14396)
     }
 
     /// test.zig 2179-2283: "append to top-level array_list many times, filling up the array_list until a root
@@ -1048,6 +1062,7 @@ import Testing
             }
             // Zig: the loop's `else` branch, taken when it ends without the break, returns `error.ExpectedFail`
             try #require(failed)
+            #expect(try subject.storage.length() == 14542)  // as in a run of the Zig test
 
             // try another append to make sure we still can.
             // if truncation destroyed the index block, this would fail.
@@ -1087,6 +1102,9 @@ import Testing
                 .arrayListGet(slotCount + 1)
             ]) == nil
         )
+
+        // the length of the storage here in a run of the Zig test, on every kind of storage
+        #expect(try subject.storage.length() == 15400)
     }
 
     /// test.zig 2285-2397: "append to inner array_list many times, filling up the array_list until a root
@@ -1207,6 +1225,9 @@ import Testing
             let value = try cursor.readBytesAlloc(maxSize: maxReadBytes)
             #expect(value == utf8("hello"))
         }
+
+        // the length of the storage here in a run of the Zig test, on every kind of storage
+        #expect(try subject.storage.length() == 8294)
     }
 
     /// test.zig 2399-2473: "iterate over inner array_list", without the iterating.
@@ -1278,6 +1299,9 @@ import Testing
             ])
         )
         #expect(try listCursor.count() == 10)
+
+        // the length of the storage here in a run of the Zig test, on every kind of storage
+        #expect(try subject.storage.length() == 3956)
     }
 
     /// test.zig 2475-2574: "iterate over inner hash_map", without the iterating.
@@ -1361,6 +1385,9 @@ import Testing
             ])
             // 2563-2572 left out: iterating over the cursor and reading foo's value (M4)
         }
+
+        // the length of the storage here in a run of the Zig test, on every kind of storage
+        #expect(try subject.storage.length() == 6258)
     }
 
     // test.zig 2576-2772 is left out as a whole: every block in it is about linked array lists (M5).

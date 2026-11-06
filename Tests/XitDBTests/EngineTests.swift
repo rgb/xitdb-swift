@@ -484,3 +484,325 @@ import Testing
         #expect(try list.readPath([.arrayListGet(0)]) != nil)
     }
 }
+
+/// What is copied and what is changed in place, and what a transaction
+/// commits: the parts of the engine where a mistake leaves every value
+/// reading back right and only the file different. Each of these was a gap
+/// found by changing the engine's source and seeing no test fail.
+@Suite struct CopyOnWriteTests {
+    let storage = MemoryStorage()
+    let random = FixedRandom((1...50).map { UInt64($0) })
+
+    private func makeDatabase() throws -> Database {
+        try Database(storage: storage, hashSize: 20, hashID: nil, fileID: 4, random: random)
+    }
+
+    /// Data the transaction makes right at a cursor's freeze point is newer
+    /// than the freeze, and is changed in place.
+    @Test func dataMadeRightAtACursorsFreezePointIsNotCopied() throws {
+        let database = try makeDatabase()
+        try database.runContext { cursor in
+            var slot = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("list"))])
+            try slot.freeze()
+            let frozenAt = UInt64(storage.bytes.count)
+
+            let list = try slot.writePath([.arrayListInit])
+            #expect(try list.slot().value == frozenAt)
+            let again = try slot.writePath([.arrayListInit])
+            #expect(try again.slot().value == frozenAt)
+            #expect(UInt64(storage.bytes.count) == frozenAt + 16 + 144)
+        }
+    }
+
+    /// The same for the database's freeze: what is made right after it
+    /// belongs to the transaction.
+    @Test func dataMadeRightAfterTheDatabaseIsFrozenIsNotCopied() throws {
+        let database = try makeDatabase()
+        try database.runContext { cursor in
+            let slot = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("list"))])
+            let before = try slot.writePath([.arrayListInit])
+            try database.freeze()
+            let frozenAt = UInt64(storage.bytes.count)
+
+            // the list made before the freeze is copied now, to the freeze point
+            let copied = try slot.writePath([.arrayListInit])
+            #expect(try copied.slot().value == frozenAt)
+            #expect(try copied.slot().value != (try before.slot().value))
+            // and the copy is the transaction's own
+            let again = try slot.writePath([.arrayListInit])
+            #expect(try again.slot().value == frozenAt)
+            #expect(UInt64(storage.bytes.count) == frozenAt + 16 + 144)
+        }
+    }
+
+    /// The cursor a callback is given has the freeze point of the cursor the
+    /// path was called on: what that cursor froze is copied by writes in the
+    /// callback too.
+    @Test func aCallbacksCursorInheritsTheFreezePoint() throws {
+        let database = try makeDatabase()
+        try database.runContext { cursor in
+            var slot = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("list"))])
+            let original = try slot.writePath([.arrayListInit])
+            try slot.freeze()
+
+            _ = try slot.writePath([.ctx]) { inner in
+                let copy = try inner.writePath([.arrayListInit])
+                #expect(try copy.slot().value != (try original.slot().value))
+            }
+
+            // a cursor that did not freeze still changes the list in place
+            let unfrozen = try cursor.writePath([.hashMapGet(.value, sha1("list"))])
+            let current = try unfrozen.slot().value
+            _ = try unfrozen.writePath([.ctx]) { inner in
+                let inPlace = try inner.writePath([.arrayListInit])
+                #expect(try inPlace.slot().value == current)
+            }
+        }
+    }
+
+    /// Cutting a list down across a change of depth makes one of its lower
+    /// blocks the new root. That block may belong to an earlier moment, and
+    /// roots are written to directly, so it is copied first.
+    @Test func aSliceThatMakesTheListShallowerLeavesThePastAlone() throws {
+        let database = try makeDatabase()
+        let root = database.rootCursor()
+        _ = try root.writePath([.arrayListInit, .arrayListAppend, .arrayListInit, .ctx]) { list in
+            for index in 0..<20 {
+                _ = try list.writePath([.arrayListAppend, .write(.uint(UInt64(index)))])
+            }
+        }
+        let first = try root.readPathSlot([.arrayListGet(-1)])
+        _ = try root.writePath([.arrayListInit, .arrayListAppend, .write(.slot(first)), .arrayListInit, .ctx]) { list in
+            _ = try list.writePath([.arrayListSlice(size: 5)])
+            _ = try list.writePath([.arrayListGet(0), .write(.uint(99))])
+            _ = try list.writePath([.arrayListAppend, .write(.uint(100))])
+        }
+
+        let past = try #require(try root.readPath([.arrayListGet(0)]))
+        #expect(try past.count() == 20)
+        for index in 0..<20 {
+            #expect(try #require(try past.readPath([.arrayListGet(Int64(index))])).readUint() == UInt64(index))
+        }
+        let present = try #require(try root.readPath([.arrayListGet(1)]))
+        #expect(try present.count() == 6)
+        let values = try (0..<6).map { try #require(try present.readPath([.arrayListGet($0)])).readUint() }
+        #expect(values == [99, 1, 2, 3, 4, 100])
+    }
+
+    @Test func aSliceToTheCurrentSizeChangesNothingAndALargerOneFails() throws {
+        let database = try makeDatabase()
+        try database.runContext { cursor in
+            let list = try cursor.writePath([.arrayListInit])
+            for index in 0..<3 {
+                _ = try list.writePath([.arrayListAppend, .write(.uint(UInt64(index)))])
+            }
+            _ = try list.writePath([.arrayListSlice(size: 3)])
+            #expect(try list.count() == 3)
+            #expect(throws: XitDBError.keyNotFound) { try list.writePath([.arrayListSlice(size: 4)]) }
+            #expect(try list.count() == 3)
+            _ = try list.writePath([.arrayListSlice(size: 0)])
+            #expect(try list.count() == 0)
+            #expect(try list.readPath([.arrayListGet(0)]) == nil)
+        }
+    }
+
+    // MARK: What a transaction commits
+
+    /// A transaction that writes nothing still commits, and the root it
+    /// commits is the one it started from.
+    @Test func aTransactionThatWritesNothingKeepsTheRoot() throws {
+        let database = try makeDatabase()
+        // on an empty root
+        try database.runContext { _ in }
+        #expect(try database.rootCursor().slot().isEmpty)
+        #expect(try database.committedSize() == 62 + 9 + 25)
+
+        // on a root that is a plain value
+        var root = database.rootCursor()
+        try root.write(.uint(5))
+        let size = try database.committedSize()
+        try database.runContext { _ in }
+        #expect(try database.rootCursor().readUint() == 5)
+        #expect(try database.committedSize() == size + 9 + 25)
+    }
+
+    static let initParts: [PathPart] = [
+        .arrayListInit,
+        .hashMapInit(counted: false, set: false),
+        .hashMapInit(counted: false, set: true),
+        .hashMapInit(counted: true, set: false),
+        .hashMapInit(counted: true, set: true),
+    ]
+
+    /// For every kind of collection: initialising a root that already is
+    /// that collection commits nothing and draws no commit ID, and a
+    /// transaction on such a root leaves it the kind it was.
+    @Test(arguments: 0..<5)
+    func initialisingAnInitialisedRootIsFreeForEveryCollection(partIndex: Int) throws {
+        let part = Self.initParts[partIndex]
+        let database = try makeDatabase()
+        let created = try database.rootCursor().writePath([part])
+        let tag = try created.slot().tag
+        #expect(tag == part.initTag)
+        let size = try database.committedSize()
+        let drawn = random.remaining
+
+        let again = try database.rootCursor().writePath([part])
+        #expect(try again.slot() == (try created.slot()))
+        #expect(try database.committedSize() == size)
+        #expect(random.remaining == drawn)
+
+        // a transaction on it: the root is copied by its own init part, and
+        // stays the kind of collection it was
+        try database.runContext { cursor in
+            if tag == .arrayList {
+                _ = try cursor.writePath([.arrayListAppend, .write(.uint(1))])
+            } else {
+                _ = try cursor.writePath([.hashMapGet(.key, sha1("k")), .write(.uint(1))])
+            }
+        }
+        #expect(try database.rootCursor().slot().tag == tag)
+        #expect(random.remaining == drawn - 1)
+        if tag != .hashMap && tag != .hashSet {
+            #expect(try database.rootCursor().count() == 1)
+        }
+
+        // any other init is a transaction, and is refused or changes the root
+        let other = Self.initParts[(partIndex + 1) % 5]
+        let before = try database.committedSize()
+        _ = try? database.rootCursor().writePath([other])
+        if try database.committedSize() != before {
+            #expect(try database.rootCursor().slot().tag == other.initTag)
+        }
+    }
+
+    /// Initialising an initialised root also discards what an unfinished
+    /// transaction left after the committed size, without committing.
+    @Test func aFreeInitDiscardsLeftoverBytes() throws {
+        let database = try makeDatabase()
+        _ = try database.rootCursor().writePath([.arrayListInit, .arrayListAppend, .write(.uint(1))])
+        let committed = storage.bytes
+
+        let leftover = MemoryStorage(bytes: committed + [UInt8](repeating: 0xAB, count: 40))
+        let reopened = try Database(storage: leftover, hashSize: 20, hashID: nil, fileID: nil, random: random)
+        let drawn = random.remaining
+        #expect(leftover.bytes.count == committed.count + 40)
+
+        _ = try reopened.rootCursor().writePath([.arrayListInit])
+        #expect(leftover.bytes == committed)
+        #expect(random.remaining == drawn)
+    }
+
+    // MARK: Cursors
+
+    /// Reading from the root gives a cursor pinned to the root slot in the
+    /// trailer of the commit it was read from.
+    @Test func aCursorReadFromTheRootIsAtTheTrailersSlot() throws {
+        let database = try makeDatabase()
+        _ = try database.rootCursor().writePath([.hashMapInit(), .hashMapGet(.value, sha1("a")), .write(.uint(1))])
+        let pinned = try #require(try database.rootCursor().readPath([]))
+        let position = try #require(pinned.slotPointer.position)
+        #expect(position == (try database.committedSize()) - 25)
+        #expect(try database.reader.slot(at: position) == (try pinned.slot()))
+
+        // a later commit does not move it
+        _ = try database.rootCursor().writePath([.hashMapInit(), .hashMapGet(.value, sha1("b")), .write(.uint(2))])
+        #expect(try pinned.readPath([.hashMapGet(.value, sha1("b"))]) == nil)
+        #expect(try database.rootCursor().readPath([.hashMapGet(.value, sha1("b"))]) != nil)
+    }
+
+    /// A cursor at an entry of a map is at the slot of the map's trie that
+    /// points at the entry, in a read path and in a write path.
+    @Test func aCursorAtAnEntryIsAtTheTriesSlot() throws {
+        let database = try makeDatabase()
+        try database.runContext { cursor in
+            _ = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("a")), .write(.uint(1))])
+            let written = try cursor.writePath([.hashMapGet(.kvPair, sha1("a"))])
+            let writtenPosition = try #require(written.slotPointer.position)
+            #expect(try database.reader.slot(at: writtenPosition) == (try written.slot()))
+            #expect(try written.slot().tag == .kvPair)
+        }
+        let read = try #require(try database.rootCursor().readPath([.hashMapGet(.kvPair, sha1("a"))]))
+        let readPosition = try #require(read.slotPointer.position)
+        #expect(try database.reader.slot(at: readPosition) == (try read.slot()))
+    }
+
+    /// `writeIfEmpty` on a root cursor looks at the root as it is now, not
+    /// at what the cursor saw when it was made.
+    @Test func writeIfEmptyOnARootCursorSeesTheCurrentRoot() throws {
+        let database = try makeDatabase()
+        var kept = database.rootCursor()
+        var other = database.rootCursor()
+        try other.write(.uint(1))
+
+        try kept.writeIfEmpty(.uint(2))
+        #expect(try database.rootCursor().readUint() == 1)
+    }
+
+    @Test func aHashOfTheWrongSizeIsRefused() throws {
+        let database = try makeDatabase()
+        let short = KeyHash([1, 2, 3])
+        let long = KeyHash([UInt8](repeating: 1, count: 21))
+        _ = try database.rootCursor().writePath([.hashMapInit(counted: true)])
+        for hash in [short, long] {
+            #expect(throws: XitDBError.invalidHashSize) {
+                try database.rootCursor().readPath([.hashMapGet(.value, hash)])
+            }
+            #expect(throws: XitDBError.invalidHashSize) {
+                try database.rootCursor().writePath([.hashMapGet(.value, hash), .write(.uint(1))])
+            }
+            #expect(throws: XitDBError.invalidHashSize) { try database.rootCursor().writePath([.hashMapRemove(hash)]) }
+        }
+        #expect(try database.rootCursor().count() == 0)
+    }
+
+    // MARK: Counts that cannot be right
+
+    /// A count that would overflow or go below zero comes from a damaged
+    /// file. It is reported, and nothing is changed.
+    @Test func aCountThatCannotChangeIsReported() throws {
+        let database = try makeDatabase()
+        var mapPosition = 0
+        var listPosition = 0
+        try database.runContext { cursor in
+            let map = try cursor.writePath([
+                .hashMapInit(), .hashMapGet(.value, sha1("map")), .hashMapInit(counted: true),
+            ])
+            _ = try map.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(1))])
+            mapPosition = Int(try map.slot().value)
+            let list = try cursor.writePath([.hashMapGet(.value, sha1("list")), .arrayListInit])
+            _ = try list.writePath([.arrayListAppend, .write(.uint(1))])
+            listPosition = Int(try list.slot().value)
+        }
+
+        func damaged(at position: Int, _ value: UInt64) throws -> Database {
+            var bytes = storage.bytes
+            bytes.replaceSubrange(position..<(position + 8), with: bigEndianBytes(value))
+            return try Database(
+                storage: MemoryStorage(bytes: bytes), hashSize: 20, hashID: nil, fileID: nil, random: random)
+        }
+        let countedMap: [PathPart] = [.hashMapGet(.value, sha1("map")), .hashMapInit(counted: true)]
+
+        // a counted map that says it is full to the last number
+        let full = try damaged(at: mapPosition, .max)
+        try full.runContext { cursor in
+            #expect(throws: XitDBError.invalidDatabase) {
+                try cursor.writePath(countedMap + [.hashMapGet(.value, sha1("new")), .write(.uint(2))])
+            }
+        }
+        // and one that says it is empty, with an entry in it
+        let empty = try damaged(at: mapPosition, 0)
+        try empty.runContext { cursor in
+            #expect(throws: XitDBError.invalidDatabase) {
+                try cursor.writePath(countedMap + [.hashMapRemove(sha1("a"))])
+            }
+        }
+        // a list that says it has as many elements as there are numbers
+        let endless = try damaged(at: listPosition, .max)
+        try endless.runContext { cursor in
+            #expect(throws: XitDBError.self) {
+                try cursor.writePath([.hashMapGet(.value, sha1("list")), .arrayListInit, .arrayListAppend])
+            }
+        }
+    }
+}

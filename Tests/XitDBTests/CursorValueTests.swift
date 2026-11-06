@@ -179,6 +179,11 @@ import Testing
             var span = two.mutableSpan
             return try get(database, "short").readBytes(into: &span)
         }
+        // a short value that fills the buffer exactly
+        var three = [UInt8](repeating: 0xEE, count: 3)
+        var threeSpan = three.mutableSpan
+        #expect(try get(database, "short").readBytes(into: &threeSpan) == 3)
+        #expect(three == [1, 2, 3])
     }
 
     /// A value read into a larger buffer takes one read of the storage for
