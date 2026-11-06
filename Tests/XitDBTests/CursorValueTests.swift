@@ -228,6 +228,35 @@ import Testing
 
     // MARK: The byte writer
 
+    /// A streaming reader has a position that reads move and seeks set,
+    /// and the read of the rest has a size limit like the whole-value reads.
+    @Test func aReaderHasAPositionAndALimit() throws {
+        let database = try makeDatabase()
+        try put(database, "short", .bytes(Array("123".utf8)))
+        try put(database, "long", .bytes(Array("a value too long for a slot".utf8)))
+        for name in ["short", "long"] {
+            var reader = try get(database, name).reader()
+            let value = try get(database, name).readBytesAlloc()
+            #expect(reader.size == UInt64(value.count))
+            #expect(reader.position == 0)
+            #expect(throws: XitDBError.streamTooLong) { try reader.readRemaining(maxSize: value.count - 1) }
+            #expect(reader.position == 0, "a refused read moves nothing")
+            #expect(try reader.readRemaining(maxSize: value.count) == value)
+            #expect(reader.position == UInt64(value.count))
+            #expect(try reader.readRemaining(maxSize: 0) == [], "at the end there is nothing to refuse")
+            reader.seek(to: 1)
+            #expect(try reader.readRemaining() == Array(value[1...]))
+            reader.seek(to: .max)
+            #expect(reader.position == .max)
+            #expect(try reader.readRemaining() == [])
+            var one = [UInt8](repeating: 0xEE, count: 1)
+            var span = one.mutableSpan
+            #expect(try reader.read(into: &span) == 0)
+            #expect(throws: XitDBError.endOfStream) { try reader.readAll(into: &span) }
+            #expect(one == [0xEE])
+        }
+    }
+
     @Test func theWriterAlwaysMakesARecordAndCanSeek() throws {
         let database = try makeDatabase()
         try database.runContext { cursor in

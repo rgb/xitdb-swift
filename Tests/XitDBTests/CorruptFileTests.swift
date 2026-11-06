@@ -361,25 +361,26 @@ import Testing
     }
 
     /// An array list's blocks can only be as deep as its size needs. An
-    /// iterator that finds a block where an element should be, as a loop
-    /// puts one, stops with an error instead of going on down.
-    @Test func aListThatPointsAtItselfEndsItsIterator() throws {
+    /// iterator that finds a block where an element should be stops with an
+    /// error instead of going on down, even when that block is a sound one
+    /// elsewhere in the list.
+    @Test func aListDeeperThanItsSizeAllowsEndsItsIterator() throws {
         var bytes = Self.sound
         let database = try Database(storage: MemoryStorage(bytes: bytes), hashSize: 20)
         let moment = try #require(try database.rootCursor().readPath([.arrayListGet(-1)]))
         let list = try #require(try moment.readPath([.hashMapGet(.value, sha1("list"))]))
         // twenty elements: a root block whose first two slots point at
         // blocks of elements. The second element block now points at the
-        // root block in its third slot, where the element 18 was.
+        // first one in its third slot, where the element 18 was.
         let header = try database.reader.arrayListHeader(at: try list.slot().value)
-        let rootBlock = Int(header.ptr)
+        let firstBlock = try database.reader.slot(at: header.ptr).value
         let secondBlock = Int(try database.reader.slot(at: header.ptr + 9).value)
         bytes.replaceSubrange(
-            (secondBlock + 18)..<(secondBlock + 27), with: slotBytes(Slot(value: UInt64(rootBlock), tag: .index)))
-        let looped = try Database(storage: MemoryStorage(bytes: bytes), hashSize: 20)
-        let loopedMoment = try #require(try looped.rootCursor().readPath([.arrayListGet(-1)]))
-        let loopedList = try #require(try loopedMoment.readPath([.hashMapGet(.value, sha1("list"))]))
-        var iterator = try loopedList.iterator()
+            (secondBlock + 18)..<(secondBlock + 27), with: slotBytes(Slot(value: firstBlock, tag: .index)))
+        let damaged = try Database(storage: MemoryStorage(bytes: bytes), hashSize: 20)
+        let damagedMoment = try #require(try damaged.rootCursor().readPath([.arrayListGet(-1)]))
+        let damagedList = try #require(try damagedMoment.readPath([.hashMapGet(.value, sha1("list"))]))
+        var iterator = try damagedList.iterator()
         var seen: [UInt64] = []
         #expect(throws: XitDBError.maxShiftExceeded) {
             while let element = try iterator.next() {
@@ -387,11 +388,55 @@ import Testing
             }
         }
         #expect(seen == Array(0..<18))
-        var fromIndex = try loopedList.iterator(fromArrayListIndex: 17)
+        var fromIndex = try damagedList.iterator(fromArrayListIndex: 17)
         #expect(try fromIndex.next()?.readUint() == 17)
         #expect(throws: XitDBError.maxShiftExceeded) { try fromIndex.next() }
         // reading by index hands the slot over as it is, as Zig does
-        #expect(try loopedList.readPathSlot([.arrayListGet(18)])?.tag == .index)
+        #expect(try damagedList.readPathSlot([.arrayListGet(18)])?.tag == .index)
+        exercise(bytes)
+
+        // Starting at an index goes down through the blocks above the
+        // element. One that holds something other than a block is reported,
+        // where Zig would read a block at whatever the slot says.
+        var upper = Self.sound
+        upper.replaceSubrange(
+            Int(header.ptr + 9)..<Int(header.ptr + 18), with: slotBytes(Slot(value: 7, tag: .uint)))
+        let damagedUpper = try Database(storage: MemoryStorage(bytes: upper), hashSize: 20)
+        let upperMoment = try #require(try damagedUpper.rootCursor().readPath([.arrayListGet(-1)]))
+        let upperList = try #require(try upperMoment.readPath([.hashMapGet(.value, sha1("list"))]))
+        #expect(throws: XitDBError.unexpectedTag) { try upperList.iterator(fromArrayListIndex: 17) }
+        var fromStart = try upperList.iterator(fromArrayListIndex: 15)
+        #expect(try fromStart.next()?.readUint() == 15)
+        exercise(upper)
+    }
+
+    /// A byte value whose length reaches past the end of the file: the
+    /// stream reports the end of the database where it runs out, rather
+    /// than giving fewer bytes as if the value ended there.
+    @Test func aValueLongerThanTheFileEndsItsStream() throws {
+        var bytes = Self.sound
+        let database = try Database(storage: MemoryStorage(bytes: bytes), hashSize: 20)
+        let moment = try #require(try database.rootCursor().readPath([.arrayListGet(-1)]))
+        let long = try #require(try moment.readPath([.hashMapGet(.value, sha1("long"))]))
+        let record = Int(try long.slot().value)
+        bytes.replaceSubrange(record..<(record + 8), with: bigEndianBytes(1 << 40))
+        let damaged = try Database(storage: MemoryStorage(bytes: bytes), hashSize: 20)
+        let damagedMoment = try #require(try damaged.rootCursor().readPath([.arrayListGet(-1)]))
+        let damagedLong = try #require(try damagedMoment.readPath([.hashMapGet(.value, sha1("long"))]))
+        var reader = try damagedLong.reader()
+        #expect(reader.size == 1 << 40)
+        var buffer = [UInt8](repeating: 0, count: 16)
+        var span = buffer.mutableSpan
+        // the start of the value is there
+        #expect(try reader.read(into: &span) == 16)
+        // the end is not
+        reader.seek(to: (1 << 40) - 4)
+        #expect(throws: XitDBError.endOfStream) { try reader.read(into: &span) }
+        #expect(throws: XitDBError.endOfStream) { try reader.readAll(into: &span) }
+        reader.seek(to: 0)
+        #expect(throws: XitDBError.endOfStream) { try reader.readRemaining() }
+        // the whole-value reads say the same
+        #expect(throws: XitDBError.endOfStream) { try damagedLong.readBytesAlloc() }
         exercise(bytes)
     }
 }
