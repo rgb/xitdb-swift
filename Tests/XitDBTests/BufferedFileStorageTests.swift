@@ -346,26 +346,88 @@ import Testing
         #expect(try onDisk() == [1, 2, 3])
     }
 
-    @Test func aFlushThatFailsKeepsTheBytes() throws {
-        try writeBytes(try FileStorage(path: directory.path("ro.db")), [1, 2, 3], at: 0)
-        let readOnly = try BufferedFileStorage(path: directory.path("ro.db"), access: .readOnly, bufferLimit: 16)
+    /// A storage whose file can be made to refuse writes, as a full disk
+    /// would.
+    private func storageOverAFileThatCanFail() throws -> (FileStorage, BufferedFileStorage) {
+        let file = try FileStorage(path: directory.path("full.db"), durability: .none)
+        return (file, BufferedFileStorage(file, bufferLimit: 16))
+    }
 
-        // the write lands in the window, which is only memory
-        try writeBytes(readOnly, [9, 9], at: 3)
-        #expect(try readOnly.length() == 5)
-        #expect(try readBytes(readOnly, at: 0, count: 10) == [1, 2, 3, 9, 9])
+    private static let diskFull = XitDBError.storageFailure(errno: ENOSPC)
 
-        // writing it out is what fails, and the window is kept
-        #expect(throws: XitDBError.storageFailure(errno: EBADF)) { try readOnly.flush() }
-        #expect(throws: XitDBError.storageFailure(errno: EBADF)) { try readOnly.sync(.afterRootHeader) }
-        #expect(readOnly.memory.count == 2)
-        #expect(try directory.contents("ro.db") == [1, 2, 3])
+    private static func refuseWrites(_ file: FileStorage) {
+        file.calls.write = { (_, _, _) throws(XitDBError) in throw diskFull }
+    }
 
-        // a rollback gets rid of it, without touching the file
-        try readOnly.setLength(3)
-        #expect(readOnly.memory.count == 0)
-        try readOnly.flush()
-        #expect(try directory.contents("ro.db") == [1, 2, 3])
+    @Test func aFlushThatFailsKeepsTheBytesAndCanBeTriedAgain() throws {
+        let (file, buffered) = try storageOverAFileThatCanFail()
+        try writeBytes(buffered, [1, 2, 3], at: 0)
+        try buffered.flush()
+        try writeBytes(buffered, [4, 5], at: 3)
+
+        Self.refuseWrites(file)
+        #expect(throws: Self.diskFull) { try buffered.flush() }
+        #expect(throws: Self.diskFull) { try buffered.sync(.beforeRootHeader) }
+        #expect(buffered.memory.count == 2)
+        #expect(buffered.memoryPosition == 3)
+        #expect(try directory.contents("full.db") == [1, 2, 3])
+        // the storage still reads as if the bytes were written
+        #expect(try buffered.length() == 5)
+        #expect(try readBytes(buffered, at: 0, count: 10) == [1, 2, 3, 4, 5])
+
+        // once the file takes writes again, the same flush succeeds
+        file.calls.write = Platform.writeFile
+        try buffered.flush()
+        #expect(buffered.memory.count == 0)
+        #expect(try directory.contents("full.db") == [1, 2, 3, 4, 5])
+    }
+
+    @Test func aRollbackAfterAFailedFlushDoesNotNeedTheFile() throws {
+        let (file, buffered) = try storageOverAFileThatCanFail()
+        try writeBytes(buffered, [1, 2, 3], at: 0)
+        try buffered.flush()
+        try writeBytes(buffered, [4, 5], at: 3)
+
+        Self.refuseWrites(file)
+        #expect(throws: Self.diskFull) { try buffered.sync(.beforeRootHeader) }
+
+        // discarding what could not be written does not write anything
+        try buffered.setLength(3)
+        #expect(buffered.memory.count == 0)
+        #expect(try buffered.length() == 3)
+        try buffered.flush()
+        try buffered.sync(.afterRootHeader)
+        #expect(try directory.contents("full.db") == [1, 2, 3])
+    }
+
+    @Test func aWriteThatNeedsAFlushFirstFailsAndBuffersNothing() throws {
+        let (file, buffered) = try storageOverAFileThatCanFail()
+        try writeBytes(buffered, [1, 2, 3], at: 0)
+
+        Self.refuseWrites(file)
+        // beyond the end of the window: the window must be flushed first
+        #expect(throws: Self.diskFull) { try writeBytes(buffered, [9], at: 10) }
+        #expect(buffered.memoryPosition == 0)
+        #expect(buffered.memory.count == 3)
+        #expect(try readBytes(buffered, at: 0, count: 20) == [1, 2, 3])
+
+        // larger than the limit: it goes straight to the file, which refuses
+        let large = [UInt8](repeating: 7, count: 40)
+        #expect(throws: Self.diskFull) { try writeBytes(buffered, large, at: 3) }
+        #expect(try directory.contents("full.db") == [])
+    }
+
+    @Test func afterADirectWriteFailsTheFileLengthIsAskedForAgain() throws {
+        let (file, buffered) = try storageOverAFileThatCanFail()
+        let large = [UInt8](repeating: 7, count: 40)
+        try writeBytes(buffered, large, at: 0)
+        #expect(buffered.fileLength == 40)
+
+        // a write that fails partway may have lengthened the file
+        Self.refuseWrites(file)
+        #expect(throws: Self.diskFull) { try writeBytes(buffered, large, at: 40) }
+        #expect(buffered.fileLength == nil)
+        #expect(try buffered.length() == 40)
     }
 
     @Test func unflushedBytesAreLostWhenTheStorageGoesAway() throws {

@@ -84,17 +84,28 @@ import Testing
         #expect(try storage.length() == 0)
     }
 
-    @Test func aReadOnlyStorageRejectsWritesAndIgnoresTruncation() throws {
+    /// Both file storages reject a write to a file opened for reading only,
+    /// at once and with the same error. Zig's buffered file accepts the
+    /// write into its buffer and fails only when it flushes.
+    @Test(arguments: [false, true])
+    func aReadOnlyStorageRejectsWritesAndIgnoresTruncation(buffered: Bool) throws {
         let directory = try TemporaryDirectory()
         try writeBytes(try FileStorage(path: directory.path()), [1, 2, 3, 4], at: 0)
 
-        let storage = try FileStorage(path: directory.path(), access: .readOnly)
+        let file = try FileStorage(path: directory.path(), access: .readOnly)
+        let storage: any WritableStorage = buffered ? BufferedFileStorage(file, bufferLimit: 16) : file
         #expect(try readBytes(storage, at: 0, count: 10) == [1, 2, 3, 4])
 
-        // Zig's writer fails; here it is the error of writing to a descriptor
+        // the error is the one the system gives for a write to a descriptor
         // that is not open for writing
         #expect(throws: XitDBError.storageFailure(errno: EBADF)) { try writeBytes(storage, [9], at: 0) }
         #expect(throws: XitDBError.storageFailure(errno: EBADF)) { try writeBytes(storage, [9], at: 4) }
+        #expect(throws: XitDBError.storageFailure(errno: EBADF)) { try writeBytes(storage, [9], at: 100) }
+        // nothing was taken into a buffer
+        #expect(try storage.length() == 4)
+        #expect(try readBytes(storage, at: 0, count: 10) == [1, 2, 3, 4])
+        // writing nothing is still nothing
+        try writeBytes(storage, [], at: 0)
 
         // a request to shorten is ignored, as in Zig
         try storage.setLength(2)
@@ -231,13 +242,9 @@ final class SyncRecorder {
         _ durability: Durability,
         _ recorder: SyncRecorder
     ) throws -> FileStorage {
-        try FileStorage(
-            path: directory.path(),
-            access: .create,
-            durability: durability,
-            lock: nil,
-            syncCall: recorder.call
-        )
+        let storage = try FileStorage(path: directory.path(), durability: durability)
+        storage.calls.sync = recorder.call
+        return storage
     }
 
     @Test func noneNeverSyncs() throws {

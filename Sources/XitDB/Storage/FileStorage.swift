@@ -70,6 +70,16 @@ public enum FileLock: Sendable {
     case exclusive
 }
 
+/// The system calls a file storage makes that tests need to watch or to make
+/// fail.
+struct FileCalls {
+    /// Makes one sync call and returns zero or the error it reported.
+    var sync: (Int32, SyncCall) -> Int32 = Platform.syncFile
+
+    /// Writes all of the bytes to the file at an offset.
+    var write: (Int32, Span<UInt8>, UInt64) throws(XitDBError) -> Void = Platform.writeFile
+}
+
 /// Owns an open file descriptor and closes it when the last reference goes.
 ///
 /// The descriptor never changes and positional reads on it are safe from any
@@ -103,9 +113,10 @@ public final class FileStorage: WritableStorage {
     /// How far the storage goes to put a commit on the disk.
     public let durability: Durability
 
-    /// The call that asks the operating system to sync. Tests replace it to
-    /// see which calls a durability level makes.
-    let syncCall: (Int32, SyncCall) -> Int32
+    /// The system calls the storage makes to sync and to write. Tests replace
+    /// them to see which sync calls a durability level makes, and to make a
+    /// write fail the way a full disk would.
+    var calls = FileCalls()
 
     /// Opens a file as a storage.
     ///
@@ -120,26 +131,15 @@ public final class FileStorage: WritableStorage {
     ///     unless asked for.
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the file cannot be
     ///   opened or the lock cannot be had at once.
-    public convenience init(
+    public init(
         path: String,
         access: FileAccess = .create,
         durability: Durability = .full,
         lock: FileLock? = nil
     ) throws(XitDBError) {
-        try self.init(path: path, access: access, durability: durability, lock: lock, syncCall: Platform.syncFile)
-    }
-
-    init(
-        path: String,
-        access: FileAccess,
-        durability: Durability,
-        lock: FileLock?,
-        syncCall: @escaping (Int32, SyncCall) -> Int32
-    ) throws(XitDBError) {
         self.descriptor = try FileDescriptor(opening: path, access: access)
         self.access = access
         self.durability = durability
-        self.syncCall = syncCall
         // If either of these throws, the descriptor is closed as the storage
         // goes. The file is emptied only after the lock is held.
         if let lock {
@@ -150,7 +150,7 @@ public final class FileStorage: WritableStorage {
         }
     }
 
-    private var isReadOnly: Bool {
+    var isReadOnly: Bool {
         if case .readOnly = access { true } else { false }
     }
 
@@ -186,12 +186,23 @@ public final class FileStorage: WritableStorage {
     /// - Parameters:
     ///   - bytes: The bytes to write.
     ///   - offset: The position in the file of the first byte written.
-    /// - Throws: ``XitDBError/storageFailure(errno:)`` if writing fails,
-    ///   which it always does on a storage opened with
-    ///   ``FileAccess/readOnly``.
+    /// - Throws: ``XitDBError/storageFailure(errno:)`` if writing fails. It
+    ///   always does on a storage opened with ``FileAccess/readOnly``, and
+    ///   for bytes that would lie beyond the largest offset a file can have.
     public func write(_ bytes: Span<UInt8>, at offset: UInt64) throws(XitDBError) {
         guard bytes.count > 0 else { return }
-        try Platform.writeFile(descriptor.rawValue, bytes, at: offset)
+        try checkWritable(bytes, at: offset)
+        try calls.write(descriptor.rawValue, bytes, offset)
+    }
+
+    /// Rejects a write that can only fail, before any of it is written: one
+    /// to a file opened for reading only, or one that reaches beyond the
+    /// largest offset a file can have. Both file storages check with this,
+    /// so that they fail at the same moment with the same error.
+    func checkWritable(_ bytes: Span<UInt8>, at offset: UInt64) throws(XitDBError) {
+        if isReadOnly { throw .storageFailure(errno: Platform.notOpenForWriting) }
+        let (end, overflow) = offset.addingReportingOverflow(UInt64(bytes.count))
+        if overflow || end > Platform.maximumFileOffset { throw .storageFailure(errno: Platform.fileTooLarge) }
     }
 
     /// Cuts the file down to `length` bytes.
@@ -235,7 +246,7 @@ public final class FileStorage: WritableStorage {
         case (.full, .beforeRootHeader), (.ordered, _): call = .barrier
         }
         while true {
-            let error = syncCall(descriptor.rawValue, call)
+            let error = calls.sync(descriptor.rawValue, call)
             if error == 0 { return }
             // A volume that does not offer this kind of sync gets the next
             // strongest. Any other error is a real failure.

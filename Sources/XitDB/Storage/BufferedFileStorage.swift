@@ -91,11 +91,16 @@ public final class BufferedFileStorage: WritableStorage {
 
             if position >= memoryPosition && position < windowEnd {
                 // from the window
-                total += memory.read(
+                let read = memory.read(
                     into: &buffer,
                     range: total..<buffer.count,
                     at: position - memoryPosition
                 )
+                // The window holds at least one byte at this position, so
+                // this cannot be zero. Stopping is better than looping if it
+                // ever is.
+                if read == 0 { break }
+                total += read
                 continue
             }
 
@@ -147,12 +152,17 @@ public final class BufferedFileStorage: WritableStorage {
     ///   - bytes: The bytes to write.
     ///   - offset: The position of the first byte written.
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the buffer had to
-    ///   be flushed or the bytes written to the file, and that failed.
+    ///   be flushed or the bytes written to the file, and that failed. Also,
+    ///   at once and without buffering anything, for a storage opened with
+    ///   ``FileAccess/readOnly`` and for bytes that would lie beyond the
+    ///   largest offset a file can have: the same errors, at the same
+    ///   moment, as ``FileStorage`` gives.
     public func write(_ bytes: Span<UInt8>, at offset: UInt64) throws(XitDBError) {
         guard bytes.count > 0 else { return }
+        // Zig accepts these writes into the buffer and fails when it flushes.
+        try file.checkWritable(bytes, at: offset)
         let count = UInt64(bytes.count)
-        let (end, overflow) = offset.addingReportingOverflow(count)
-        if overflow { throw .storageFailure(errno: Platform.fileTooLarge) }
+        let end = offset + count
 
         // The buffer is one contiguous window of the file that starts at
         // `memoryPosition`. Start a new window at this write if the buffer

@@ -40,6 +40,13 @@ enum Platform {
     /// The error for an offset that the operating system cannot express.
     static let fileTooLarge: Int32 = EFBIG
 
+    /// The error the operating system gives for a write to a file that was
+    /// opened for reading only.
+    static let notOpenForWriting: Int32 = EBADF
+
+    /// The largest offset a byte of a file can end at.
+    static let maximumFileOffset = UInt64(off_t.max)
+
     /// Whether an error from a sync call means that the volume does not
     /// offer that kind of sync, as opposed to the sync having failed.
     static func isUnsupported(_ error: Int32) -> Bool {
@@ -149,7 +156,7 @@ enum Platform {
         var status = stat()
         while true {
             // Safe: `fstat` writes one `stat` structure through the pointer.
-            if unsafe fstat(descriptor, &status) == 0 { return UInt64(status.st_size) }
+            if unsafe fstat(descriptor, &status) == 0 { return UInt64(clamping: status.st_size) }
             let error = errno
             if error != EINTR { throw .storageFailure(errno: error) }
         }
