@@ -20,6 +20,8 @@ wins and the director is told.
 - A question that affects a requirement or a decision goes to the director before the work.
 - No stubs, skipped tests or weakened assertions. Say plainly what is not done or not verified.
 - Warnings are errors. The gate passes at every commit offered for review.
+- Every public symbol gets a documentation comment when it is written: what it does, what it throws and
+  when, and anything a caller could get wrong, without restating the signature (decision D14).
 - Subagents run on Opus at minimum, searches included; implementer subagents may run on Fable. Set the
   model explicitly.
 - Work on a branch named after the brief. Nothing is pushed. A branch is merged to `main` only after the
@@ -38,6 +40,8 @@ in one file only. No Foundation. Tests may import Foundation and CryptoKit.
 
     scripts/check.sh
 
-Debug and release build and tests with warnings as errors, the import check, the formatting check, and an
-iOS compile check. "Tests pass" means this script ran and passed at the reported commit. To reformat:
+Debug and release build and tests with warnings as errors, the import check, the formatting check, the
+documentation build (DocC, warnings as errors) and an iOS compile check. It needs Xcode's toolchain, which
+the workspace's `.swift-version` selects. "Tests pass" means this script ran and passed at the reported
+commit. To reformat:
 `swift format --in-place --recursive Package.swift Sources Tests`.
