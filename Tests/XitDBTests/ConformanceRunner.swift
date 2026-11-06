@@ -841,8 +841,9 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
     /// The milestone that brings what this script still needs, or `nil` if
     /// it can run now.
     var waitsFor: String? {
-        if collections.contains("linked_array_list") { return "M5" }
+        // A script that uses both waits for the later of the two.
         if collections.contains("sorted_map") { return "M6" }
+        if collections.contains("linked_array_list") { return "M5" }
         return nil
     }
 
