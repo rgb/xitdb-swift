@@ -6,7 +6,8 @@
 #   2. release build and tests
 #   3. import check for Sources/XitDB
 #   4. formatting check
-#   5. compile-only build for iOS
+#   5. documentation build
+#   6. compile-only build for iOS
 #
 # It stops at the first failure and exits non-zero.
 
@@ -75,6 +76,11 @@ echo "ok"
 step "Formatting check"
 swift format lint --strict --recursive --parallel Package.swift Sources Tests
 echo "ok"
+
+# The DocC documentation for the library, built through swift-docc-plugin. With
+# warnings as errors a link to a symbol that does not exist fails the gate.
+step "Documentation build"
+swift package generate-documentation --target XitDB --warnings-as-errors
 
 # xcodebuild always uses the compiler that ships with Xcode. The workspace selects the
 # same one for `swift`, so the whole gate runs on one compiler; its version is printed

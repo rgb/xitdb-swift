@@ -26,6 +26,12 @@ let package = Package(
     products: [
         .library(name: "XitDB", targets: ["XitDB"])
     ],
+    dependencies: [
+        // Build-time only: the command plugin that builds the documentation. No
+        // target uses it, so nothing from it is linked into the library and
+        // clients of the package do not fetch it.
+        .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.5.0")
+    ],
     targets: [
         .target(
             name: "XitDB",
