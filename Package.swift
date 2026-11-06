@@ -40,7 +40,11 @@ let package = Package(
         .testTarget(
             name: "XitDBTests",
             dependencies: ["XitDB"],
-            resources: [.copy("Resources/test.db")],
+            exclude: ["Resources/fixtures-source.txt"],
+            resources: [
+                .copy("Resources/test.db"),
+                .copy("Resources/fixtures"),
+            ],
             swiftSettings: languageSettings
         ),
     ],
