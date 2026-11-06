@@ -71,6 +71,14 @@ extension Slot {
         output.append(tag.rawValue | (full ? 0x80 : 0))
         output.appendBigEndian(value)
     }
+
+    /// Stores the slot's nine bytes at `offset`.
+    ///
+    /// - Precondition: Nine bytes lie within the span at `offset`.
+    func encode(into bytes: inout MutableSpan<UInt8>, at offset: Int) {
+        bytes[offset] = tag.rawValue | (full ? 0x80 : 0)
+        bytes.storeBigEndian(value, at: offset + 1)
+    }
 }
 
 /// A slot together with where it is stored.

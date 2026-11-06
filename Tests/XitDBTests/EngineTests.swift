@@ -484,6 +484,30 @@ import Testing
         #expect(try list.readPath([.arrayListGet(0)]) != nil)
     }
 
+    /// A pair's record has the same bytes for every hash size: the hash, the
+    /// key slot, the value slot. Up to sixty-four bytes of hash it is built
+    /// in place, beyond that in an array.
+    @Test(arguments: [1, 8, 20, 32, 63, 64, 65, 100])
+    func aPairRecordIsTheHashAndItsTwoSlots(hashSize: Int) throws {
+        let storage = MemoryStorage()
+        let database = try Database(
+            storage: storage, hashSize: UInt16(hashSize), hashID: nil, fileID: 3, random: FixedRandom([1, 2]))
+        let hashBytes = (0..<hashSize).map { UInt8(truncatingIfNeeded: 0xA0 &+ $0) }
+        let pair = KeyValuePair(
+            keySlot: Slot(value: 0x0102_0304_0506_0708, tag: .bytes, full: true),
+            valueSlot: Slot(value: .max - 1, tag: .uint)
+        )
+        let position = try storage.length()
+        try database.write(pair, hash: KeyHash(hashBytes), at: position)
+
+        let expected = encoded(capacity: hashSize + 18) { pair.encodeHashed(hash: hashBytes.span, into: &$0) }
+        #expect(Array(storage.bytes[Int(position)...]) == expected)
+        #expect(expected.count == hashSize + 18)
+        let read = try database.reader.hashedPair(at: position)
+        #expect(read.pair == pair)
+        #expect(read.hash == KeyHash(hashBytes))
+    }
+
     /// The committed size in the root header must leave room for a trailer
     /// after the two headers. A smaller one is refused even when the bytes
     /// that end there pass for a trailer.

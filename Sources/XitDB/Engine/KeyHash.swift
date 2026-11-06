@@ -46,6 +46,17 @@ package struct KeyHash: Sendable {
         return try body(overflow.span)
     }
 
+    /// Copies the hash's bytes to the start of `target`.
+    ///
+    /// - Precondition: `target` holds at least `count` bytes.
+    func copyBytes(into target: inout MutableSpan<UInt8>) {
+        if count <= Self.inlineCapacity {
+            target.copyBytes(from: inline.span, count: count)
+        } else {
+            target.copyBytes(from: overflow.span, count: count)
+        }
+    }
+
     /// The slot this hash selects at a level of a hash trie.
     ///
     /// - Throws: `keyOffsetExceeded` if the hash has no bits left for

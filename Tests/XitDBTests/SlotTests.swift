@@ -37,6 +37,42 @@ import Testing
         #expect(Slot.byteCount == 9)
     }
 
+    /// A slot stored in place has the bytes of one that is appended, at any
+    /// offset, and the bytes around it are left alone.
+    @Test func storingInPlaceGivesTheAppendedBytes() {
+        let slots = [
+            Slot(), Slot(value: 4847, tag: .arrayList), Slot(value: .max, tag: .sortedKvPair, full: true),
+            Slot(value: 0x0102_0304_0506_0708, tag: .bytes, full: true), Slot(value: 1 << 63, tag: .uint),
+        ]
+        for slot in slots {
+            for offset in [0, 1, 7, 20, 73] {
+                var bytes = [UInt8](repeating: 0xEE, count: 82)
+                var span = bytes.mutableSpan
+                slot.encode(into: &span, at: offset)
+                #expect(Array(bytes[offset..<(offset + 9)]) == slotBytes(slot))
+                #expect(bytes[..<offset].allSatisfy { $0 == 0xEE })
+                #expect(bytes[(offset + 9)...].allSatisfy { $0 == 0xEE })
+            }
+        }
+    }
+
+    /// An integer stored whole is big endian, at any offset and width.
+    @Test func integersStoredWholeAreBigEndian() {
+        for offset in [0, 1, 3, 8] {
+            var bytes = [UInt8](repeating: 0xEE, count: 16)
+            var span = bytes.mutableSpan
+            span.storeBigEndian(0x0102_0304_0506_0708 as UInt64, at: offset)
+            #expect(Array(bytes[offset..<(offset + 8)]) == [1, 2, 3, 4, 5, 6, 7, 8])
+            #expect(bytes.span.bigEndian(UInt64.self, at: offset) == 0x0102_0304_0506_0708)
+        }
+        var bytes = [UInt8](repeating: 0xEE, count: 8)
+        var span = bytes.mutableSpan
+        span.storeBigEndian(0xA1B2 as UInt16, at: 6)
+        span.storeBigEndian(0xC1C2_C3C4 as UInt32, at: 1)
+        span.storeBigEndian(0x7F as UInt8, at: 0)
+        #expect(bytes == [0x7F, 0xC1, 0xC2, 0xC3, 0xC4, 0xEE, 0xA1, 0xB2])
+    }
+
     @Test func decodesAndEncodesHandWrittenBytes() throws {
         // tag array_list (2), value 4847 = 0x12EF
         let arrayList: [UInt8] = [0x02, 0, 0, 0, 0, 0, 0, 0x12, 0xEF]

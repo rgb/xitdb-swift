@@ -264,12 +264,15 @@ public final class Database {
     func write(_ pair: KeyValuePair, hash: KeyHash, at position: UInt64) throws(XitDBError) {
         let size = hash.count + 18
         if size <= 82 {
-            let record = hash.withBytes { (hashBytes: Span<UInt8>) in
-                InlineArray<82, UInt8> { (output: inout OutputSpan<UInt8>) in
-                    pair.encodeHashed(hash: hashBytes, into: &output)
-                    output.append(repeating: 0, count: 82 - size)
-                }
-            }
+            // The record is built in the buffer it is written from, with a
+            // copy for the hash and one store for each slot's value. Filled
+            // a byte at a time and then moved, it was the slowest line of an
+            // insert.
+            var record = InlineArray<82, UInt8>(repeating: 0)
+            var bytes = record.mutableSpan
+            hash.copyBytes(into: &bytes)
+            pair.keySlot.encode(into: &bytes, at: hash.count)
+            pair.valueSlot.encode(into: &bytes, at: hash.count + 9)
             try storage.write(record.span.extracting(0..<size), at: position)
         } else {
             let record = hash.withBytes { (hashBytes: Span<UInt8>) in
