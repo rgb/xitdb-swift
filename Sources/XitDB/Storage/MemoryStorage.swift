@@ -45,6 +45,12 @@ struct MemoryBuffer {
         guard !overflow, let endIndex = Int(exactly: end) else { throw .maxSizeExceeded }
         if endIndex > oldCount {
             if let maxSize, end > maxSize { throw .maxSizeExceeded }
+            if offset == UInt64(oldCount) {
+                // The write starts at the end, as nearly every write of a
+                // transaction does: append the bytes themselves.
+                bytes.append(bytesOf: source)
+                return
+            }
             // Grows the buffer with zeros, which also fills the gap when the
             // write starts beyond the old end.
             bytes.append(contentsOf: repeatElement(0, count: endIndex - oldCount))

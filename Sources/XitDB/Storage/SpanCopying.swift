@@ -23,3 +23,15 @@ extension MutableSpan where Element == UInt8 {
         }
     }
 }
+
+extension Array where Element == UInt8 {
+    /// Appends the bytes of `source` in one copy.
+    mutating func append(bytesOf source: Span<UInt8>) {
+        // Safe: the pointer is only read from, inside the call that provides
+        // it, and the array being appended to cannot be the span's storage,
+        // because it is held exclusively here.
+        source.withUnsafeBytes { bytes in
+            unsafe append(contentsOf: bytes)
+        }
+    }
+}
