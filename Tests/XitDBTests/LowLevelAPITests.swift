@@ -1,0 +1,1367 @@
+import Testing
+
+@testable import XitDB
+
+// A port of `testLowLevelApi` from the Zig original (`src/test.zig`, lines 1313 to 2774), as far as the engine
+// goes today. Zig runs it once for each of the memory, file and buffered-file databases (test.zig 38-67), so
+// every test here takes the storage kind as its argument.
+//
+// The tests are in the order of the Zig function, one for each of its top-level blocks, and each one says which
+// lines it ports. The comments inside them are Zig's. Where Zig clears the storage and makes a database, a test
+// makes a new storage and a database in it. Zig's allocator arguments and `defer allocator.free` lines have no
+// counterpart, nor do the buffers it hands to `cursor.writer`.
+//
+// Left out, with what each part tests and the feature it waits for:
+//
+// - 1461-1496, in "read foo from ctx": reads "bar" through `cursor.reader`, into a buffer, again after seeking
+//   back, and one byte at a time, with `EndOfStream` at the end and after seeking beyond it. Streaming reads
+//   (M4).
+// - 1665-1669, in "write bar -> shortstr": reads the short byte array through `cursor.reader`. Streaming reads
+//   (M4).
+// - 1699-1703, 1731-1735 and 1763-1767, in "write bytes with a format tag": read each of the three values
+//   through `cursor.reader`. Streaming reads (M4).
+// - 2432-2442, in "iterate over inner array_list": iterates over the list and compares each of its ten
+//   elements. Iterators (M4).
+// - 2460-2465, in the same block: iterates again after the first element was set to none, and still counts
+//   ten. Iterators (M4).
+// - 2537-2553, in "iterate over inner hash_map": iterates over the map, checks the key or the value of each
+//   entry, and counts ten. Iterators (M4).
+// - 2563-2572, in the same block: iterates over the map through a writeable cursor, reads foo's value, and
+//   counts ten. Iterators (M4).
+// - 2576-2599: `testSlice`, `testConcat` and `testInsertAndRemove` (test.zig 958-1312), which slice,
+//   concatenate, insert into and remove from linked array lists. Linked array lists (M5).
+// - 2601-2688, "concat linked_array_list multiple times": concatenates a linked array list with itself sixteen
+//   times and appends to the result. Linked array lists (M5); it also iterates (M4).
+// - 2690-2718, "append items to linked_array_list without setting their value". Linked array lists (M5).
+// - 2720-2745, "insert at beginning of linked_array_list many times". Linked array lists (M5).
+// - 2747-2772, "insert at end of linked_array_list many times". Linked array lists (M5).
+//
+// Everything else in lines 1313 to 2774 is ported.
+
+/// Zig's "low level api" test: the path API used directly.
+@Suite struct LowLevelAPITests {
+    /// The storage kinds of the three databases Zig runs the test for.
+    static let storageKinds: [StorageKind] = [.memory, .file, .bufferedFile]
+
+    /// Zig's `MAX_READ_BYTES`.
+    private let maxReadBytes = 1024
+
+    /// Zig's `xitdb.SLOT_COUNT`.
+    private let slotCount = Int64(Trie.slotsPerBlock)
+
+    /// Zig's `error.CancelTransaction`.
+    private struct CancelTransaction: Error {}
+
+    /// Zig's `error.Fail`.
+    private struct Fail: Error {}
+
+    /// Zig's `error.InvalidHashAlgo`.
+    private struct InvalidHashAlgo: Error {}
+
+    /// Zig's `ArrayList(.read_write)` (lib.zig 4310-4399), which Swift does not have yet. Each method makes the
+    /// one path call that the Zig method of the same name makes.
+    private struct PathArrayList {
+        let cursor: Cursor<ReadWrite>
+
+        /// lib.zig 4314-4324.
+        init(_ cursor: Cursor<ReadWrite>) throws {
+            self.cursor = try cursor.writePath([.arrayListInit])
+        }
+
+        /// lib.zig 4334-4336.
+        func count() throws -> UInt64 {
+            try cursor.count()
+        }
+
+        /// lib.zig 4352-4356.
+        func getSlot(_ index: Int64) throws -> Slot? {
+            try cursor.readPathSlot([.arrayListGet(index)])
+        }
+
+        /// lib.zig 4371-4376.
+        func append(_ data: WriteableData) throws {
+            _ = try cursor.writePath([.arrayListAppend, .write(data)])
+        }
+
+        /// lib.zig 4378-4382.
+        func appendCursor() throws -> Cursor<ReadWrite> {
+            try cursor.writePath([.arrayListAppend])
+        }
+
+        /// lib.zig 4393-4397.
+        func slice(_ size: UInt64) throws {
+            _ = try cursor.writePath([.arrayListSlice(size: size)])
+        }
+    }
+
+    /// The UTF-8 bytes of a string.
+    private func utf8(_ text: String) -> [UInt8] {
+        Array(text.utf8)
+    }
+
+    /// Zig's `HashId.fromBytes(name)`.
+    private func hashID(_ name: String) -> HashID {
+        let bytes = utf8(name)
+        precondition(bytes.count == 4)
+        return HashID(bytes: [bytes[0], bytes[1], bytes[2], bytes[3]])
+    }
+
+    /// A format tag from its two characters, Zig's `"st".*`.
+    private func makeFormatTag(_ name: String) -> InlineArray<2, UInt8> {
+        let bytes = utf8(name)
+        precondition(bytes.count == 2)
+        return [bytes[0], bytes[1]]
+    }
+
+    /// Zig's `(hashInt(text) & ~mask) | (other & mask)`, where the hashes are `u160` and `mask` is a `u64`.
+    ///
+    /// Zig computes `~mask` in sixty-four bits and widens the result to the hash's width with zeros, so nothing
+    /// of the first twelve bytes of either hash gets through: they are zero in the result.
+    private func maskedKey(_ text: String, mask: UInt64, with other: KeyHash) -> KeyHash {
+        let hash = sha1(text).bytes
+        let otherBytes = other.bytes
+        var result = [UInt8](repeating: 0, count: 20)
+        for index in 12..<20 {
+            let maskByte = UInt8(truncatingIfNeeded: mask >> (8 * UInt64(19 - index)))
+            result[index] = (hash[index] & ~maskByte) | (otherBytes[index] & maskByte)
+        }
+        return KeyHash(result)
+    }
+
+    /// Zig's `cursor.readBytes(&buffer)` with a buffer of `bufferSize` zero bytes: the part of the buffer that
+    /// holds the value.
+    private func readBytesIntoBuffer<Access>(_ cursor: Cursor<Access>, bufferSize: Int) throws -> [UInt8] {
+        var buffer = [UInt8](repeating: 0, count: bufferSize)
+        var span = buffer.mutableSpan
+        let count = try cursor.readBytes(into: &span)
+        return Array(buffer[..<count])
+    }
+
+    /// Zig's `cursor.readBytesObject(&buffer)` with a buffer of `bufferSize` zero bytes: the part of the buffer
+    /// that holds the value, and the value's format tag.
+    private func readBytesObjectIntoBuffer<Access>(_ cursor: Cursor<Access>, bufferSize: Int) throws -> Bytes {
+        var buffer = [UInt8](repeating: 0, count: bufferSize)
+        var span = buffer.mutableSpan
+        let read = try cursor.readBytesObject(into: &span)
+        return Bytes(Array(buffer[..<read.count]), formatTag: read.formatTag)
+    }
+
+    /// Reads a slot straight from the storage, behind the engine. Zig seeks `db.core.reader()` to the position
+    /// and casts the nine bytes there, as a big-endian `u72`, to a `Slot`.
+    private func storedSlot(_ storage: any WritableStorage, at position: UInt64) throws -> Slot {
+        let bytes = try readBytes(storage, at: position, count: Int(Slot.byteCount))
+        return try Slot(decoding: bytes.span)
+    }
+
+    /// test.zig 1314-1355: "open and re-open empty database".
+    @Test(arguments: storageKinds)
+    func opensAndReopensAnEmptyDatabase(kind: StorageKind) throws {
+        // make empty database
+        let subject = try StorageUnderTest(kind)
+        _ = try Database(storage: subject.storage, hashSize: 20)
+
+        // re-open without error
+        _ = try Database(storage: subject.storage, hashSize: 20)
+
+        // modify the magic number
+        try writeBytes(subject.storage, [UInt8(ascii: "g")], at: 0)
+        try subject.storage.flush()
+
+        // re-open with error
+        #expect(throws: XitDBError.invalidDatabase) {
+            try Database(storage: subject.storage, hashSize: 20)
+        }
+
+        // modify the version
+        let version = DatabaseHeader.currentVersion + 1
+        try writeBytes(subject.storage, [UInt8(ascii: "x")], at: 0)
+        try writeBytes(subject.storage, [UInt8(version >> 8), UInt8(version & 0xFF)], at: 4)
+        try subject.storage.flush()
+
+        // re-open with error
+        #expect(throws: XitDBError.invalidVersion) {
+            try Database(storage: subject.storage, hashSize: 20)
+        }
+    }
+
+    /// test.zig 1357-1392: "save hash id in header".
+    @Test(arguments: storageKinds)
+    func savesTheHashIDInTheHeader(kind: StorageKind) throws {
+        // make empty database
+        let subject = try StorageUnderTest(kind)
+        _ = try Database(storage: subject.storage, hashSize: 20, hashID: hashID("sha1"))
+
+        // read header without initializing database
+        let stored = try subject.stored()
+        let header = try DatabaseHeader(decoding: stored.span)
+        #expect(header.hashSize == 20)
+        #expect(array(header.hashID.bytes) == utf8("sha1"))
+
+        // determine the hashing algorithm
+        enum HashAlgo {
+            case sha1
+            case sha256
+            case sha512
+        }
+        let hashAlgo: HashAlgo
+        switch header.hashID.id {
+        case hashID("sha1").id:
+            hashAlgo = .sha1
+        case hashID("sha2").id:
+            switch header.hashSize {
+            case 32: hashAlgo = .sha256
+            case 64: hashAlgo = .sha512
+            default: throw XitDBError.invalidHashSize
+            }
+        default:
+            throw InvalidHashAlgo()
+        }
+        #expect(hashAlgo == .sha1)
+    }
+
+    /// test.zig 1394-2177: "array_list of hash_maps". The block is one database from start to finish, each
+    /// part reading what the parts before it wrote, so it is one test.
+    ///
+    /// Left out: the streaming reads at 1461-1496, 1665-1669, 1699-1703, 1731-1735 and 1763-1767.
+    @Test(arguments: storageKinds)
+    func arrayListOfHashMaps(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let database = try Database(storage: subject.storage, hashSize: 20)
+        let rootCursor = database.rootCursor()
+
+        // write foo -> bar with a writer
+        let fooKey = sha1("foo")
+        _ = try rootCursor.writePath([
+            .arrayListInit,
+            .arrayListAppend,
+            .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+            .hashMapInit(),
+            .hashMapGet(.value, fooKey),
+            .ctx,
+        ]) { (cursor: inout Cursor<ReadWrite>) in
+            #expect(try cursor.slot().tag == .none)
+            try cursor.writer { writer in
+                try writer.write(utf8("bar"))
+            }
+            let root = cursor.database.rootCursor()
+            #expect(throws: XitDBError.nestedTopLevelWrite) {
+                try root.writePath([.arrayListAppend])
+            }
+            #expect(throws: XitDBError.nestedTopLevelWrite) {
+                try root.writePath([.arrayListSlice(size: 0)])
+            }
+        }
+
+        // callbacks must run inside an appended moment
+        do {
+            // the callback runs inside a transaction on the root,
+            // so the top-level write inside it is a nested one
+            #expect(throws: XitDBError.nestedTopLevelWrite) {
+                try rootCursor.writePath([.ctx]) { (cursor: inout Cursor<ReadWrite>) in
+                    _ = try cursor.database.rootCursor().writePath([.arrayListAppend])
+                }
+            }
+            #expect(try database.rootCursor().count() == 1)
+        }
+
+        // read foo
+        do {
+            let barCursor = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .hashMapGet(.value, fooKey),
+                ])
+            )
+            #expect(try barCursor.count() == 3)
+            let barValue = try barCursor.readBytesAlloc(maxSize: maxReadBytes)
+            #expect(barValue == utf8("bar"))
+        }
+
+        // read foo from ctx
+        do {
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .hashMapInit(),
+                .hashMapGet(.value, fooKey),
+                .ctx,
+            ]) { (cursor: inout Cursor<ReadWrite>) in
+                #expect(try cursor.slot().tag != .none)
+
+                let value = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+                #expect(value == utf8("bar"))
+
+                // 1461-1496 left out: the same value read through `cursor.reader` (M4)
+            }
+        }
+
+        // overwrite foo -> baz
+        do {
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .hashMapInit(),
+                .hashMapGet(.value, fooKey),
+                .ctx,
+            ]) { (cursor: inout Cursor<ReadWrite>) in
+                #expect(try cursor.slot().tag != .none)
+
+                try cursor.writer { writer in
+                    try writer.write(utf8("x"))
+                    try writer.write(utf8("x"))
+                    try writer.write(utf8("x"))
+                    writer.seek(to: 0)
+                    try writer.write(utf8("b"))
+                    writer.seek(to: 2)
+                    try writer.write(utf8("z"))
+                    writer.seek(to: 1)
+                    try writer.write(utf8("a"))
+                }
+
+                let value = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+                #expect(value == utf8("baz"))
+            }
+        }
+
+        // if error in ctx, db doesn't change
+        do {
+            let sizeBefore = try subject.storage.length()
+
+            do {
+                _ = try rootCursor.writePath([
+                    .arrayListInit,
+                    .arrayListAppend,
+                    .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                    .hashMapInit(),
+                    .hashMapGet(.value, fooKey),
+                    .ctx,
+                ]) { (cursor: inout Cursor<ReadWrite>) in
+                    try cursor.writer { writer in
+                        try writer.write(utf8("this value won't be visible"))
+                    }
+                    throw CancelTransaction()
+                }
+            } catch is CancelTransaction {
+                // Zig: `error.CancelTransaction => {}`. Any other error leaves the test.
+            }
+
+            // read foo
+            let valueCursor = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .hashMapGet(.value, fooKey),
+                ])
+            )
+            let value = try valueCursor.readBytesAlloc(maxSize: nil)  // make sure null max size works
+            #expect(value == utf8("baz"))
+
+            // verify that the db is properly truncated back to its original size after error
+            let sizeAfter = try subject.storage.length()
+            #expect(sizeBefore == sizeAfter)
+
+            // appending must clear the failed moment's slot, including its stored value
+            let history = try PathArrayList(database.rootCursor())
+            let countBefore = try history.count()
+            #expect(try history.appendCursor().slot().isEmpty)
+            #expect(try history.getSlot(-1) == nil)
+            try history.slice(countBefore)
+            try history.append(.uint(999))
+            try history.slice(countBefore)
+            #expect(try history.appendCursor().slot().isEmpty)
+            #expect(try history.getSlot(-1) == nil)
+            try history.slice(countBefore)
+        }
+
+        // write bar -> longstring
+        let barKey = sha1("bar")
+        do {
+            let barCursor = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .hashMapInit(),
+                .hashMapGet(.value, barKey),
+                .write(.bytes(utf8("longstring"))),
+            ])
+
+            // the slot tag is .bytes because the byte array is > 8 bytes long
+            #expect(try barCursor.slot().tag == .bytes)
+
+            // writing again returns the same slot
+            do {
+                var nextBarCursor = try rootCursor.writePath([
+                    .arrayListInit,
+                    .arrayListAppend,
+                    .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                    .hashMapInit(),
+                    .hashMapGet(.value, barKey),
+                ])
+                try nextBarCursor.writeIfEmpty(.bytes(utf8("longstring")))
+                #expect(barCursor.slotPointer.slot == nextBarCursor.slotPointer.slot)
+            }
+
+            // writing with write returns a new slot
+            do {
+                let nextBarCursor = try rootCursor.writePath([
+                    .arrayListInit,
+                    .arrayListAppend,
+                    .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                    .hashMapInit(),
+                    .hashMapGet(.value, barKey),
+                    .write(.bytes(utf8("longstring"))),
+                ])
+                #expect(barCursor.slotPointer.slot != nextBarCursor.slotPointer.slot)
+            }
+
+            // read bar
+            do {
+                let readBarCursor = try #require(
+                    try rootCursor.readPath([
+                        .arrayListGet(-1),
+                        .hashMapGet(.value, barKey),
+                    ])
+                )
+                let barValue = try readBarCursor.readBytesAlloc(maxSize: maxReadBytes)
+                #expect(barValue == utf8("longstring"))
+            }
+        }
+
+        // write bar -> shortstr
+        do {
+            let barCursor = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .hashMapInit(),
+                .hashMapGet(.value, barKey),
+                .write(.bytes(utf8("shortstr"))),
+            ])
+
+            // the slot tag is .short_bytes because the byte array is <= 8 bytes long
+            #expect(try barCursor.slot().tag == .shortBytes)
+            #expect(try barCursor.count() == 8)
+
+            // 1665-1669 left out: make sure .short_bytes can be read with a reader (M4)
+        }
+
+        // write bytes with a format tag
+        do {
+            // shortstr
+            do {
+                let barCursor = try rootCursor.writePath([
+                    .arrayListInit,
+                    .arrayListAppend,
+                    .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                    .hashMapInit(),
+                    .hashMapGet(.value, barKey),
+                    .write(.bytesObject(Bytes(utf8("shortstr"), formatTag: makeFormatTag("st")))),
+                ])
+
+                // the slot tag is .bytes because the byte array is > 8 bytes long including the format tag
+                #expect(try barCursor.slot().tag == .bytes)
+                #expect(try barCursor.count() == 8)
+
+                // read bar
+                let readBarCursor = try #require(
+                    try rootCursor.readPath([
+                        .arrayListGet(-1),
+                        .hashMapGet(.value, barKey),
+                    ])
+                )
+                let bytes = try readBarCursor.readBytesObjectAlloc(maxSize: maxReadBytes)
+                #expect(bytes.value == utf8("shortstr"))
+                let tag = try #require(bytes.formatTag)
+                #expect(array(tag) == utf8("st"))
+
+                // 1699-1703 left out: make sure .bytes can be read with a reader (M4)
+            }
+
+            // shorts
+            do {
+                let barCursor = try rootCursor.writePath([
+                    .arrayListInit,
+                    .arrayListAppend,
+                    .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                    .hashMapInit(),
+                    .hashMapGet(.value, barKey),
+                    .write(.bytesObject(Bytes(utf8("shorts"), formatTag: makeFormatTag("st")))),
+                ])
+
+                // the slot tag is .short_bytes because the byte array is <= 8 bytes long including the format tag
+                #expect(try barCursor.slot().tag == .shortBytes)
+                #expect(try barCursor.count() == 6)
+
+                // read bar
+                let readBarCursor = try #require(
+                    try rootCursor.readPath([
+                        .arrayListGet(-1),
+                        .hashMapGet(.value, barKey),
+                    ])
+                )
+                let bytes = try readBytesObjectIntoBuffer(readBarCursor, bufferSize: maxReadBytes)
+                #expect(bytes.value == utf8("shorts"))
+                let tag = try #require(bytes.formatTag)
+                #expect(array(tag) == utf8("st"))
+
+                // 1731-1735 left out: make sure .short_bytes can be read with a reader (M4)
+            }
+
+            // short
+            do {
+                let barCursor = try rootCursor.writePath([
+                    .arrayListInit,
+                    .arrayListAppend,
+                    .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                    .hashMapInit(),
+                    .hashMapGet(.value, barKey),
+                    .write(.bytesObject(Bytes(utf8("short"), formatTag: makeFormatTag("st")))),
+                ])
+
+                // the slot tag is .short_bytes because the byte array is <= 8 bytes long including the format tag
+                #expect(try barCursor.slot().tag == .shortBytes)
+                #expect(try barCursor.count() == 5)
+
+                // read bar
+                let readBarCursor = try #require(
+                    try rootCursor.readPath([
+                        .arrayListGet(-1),
+                        .hashMapGet(.value, barKey),
+                    ])
+                )
+                let bytes = try readBytesObjectIntoBuffer(readBarCursor, bufferSize: maxReadBytes)
+                #expect(bytes.value == utf8("short"))
+                let tag = try #require(bytes.formatTag)
+                #expect(array(tag) == utf8("st"))
+
+                // 1763-1767 left out: make sure .short_bytes can be read with a reader (M4)
+            }
+        }
+
+        // read foo into stack-allocated buffer
+        do {
+            let barCursor = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .hashMapGet(.value, fooKey),
+                ])
+            )
+            let barBufferValue = try readBytesIntoBuffer(barCursor, bufferSize: 3)
+            #expect(barBufferValue == utf8("baz"))
+        }
+
+        // write bar and get slot to it
+        let barSlot = try rootCursor.writePath([
+            .arrayListInit,
+            .arrayListAppend,
+            .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+            .hashMapInit(),
+            .hashMapGet(.value, barKey),
+            .write(.bytes(utf8("bar"))),
+        ]).slotPointer.slot
+
+        // overwrite foo -> bar using the bar slot
+        _ = try rootCursor.writePath([
+            .arrayListInit,
+            .arrayListAppend,
+            .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+            .hashMapInit(),
+            .hashMapGet(.value, fooKey),
+            .write(.slot(barSlot)),
+        ])
+        let barCursor = try #require(
+            try rootCursor.readPath([
+                .arrayListGet(-1),
+                .hashMapGet(.value, fooKey),
+            ])
+        )
+        let barValue = try barCursor.readBytesAlloc(maxSize: maxReadBytes)
+        #expect(barValue == utf8("bar"))
+
+        // can still read the old value
+        let bazCursor = try #require(
+            try rootCursor.readPath([
+                .arrayListGet(-2),
+                .hashMapGet(.value, fooKey),
+            ])
+        )
+        let bazValue = try bazCursor.readBytesAlloc(maxSize: maxReadBytes)
+        #expect(bazValue == utf8("baz"))
+
+        // key not found
+        let notFoundKey = sha1("this doesn't exist")
+        #expect(
+            try rootCursor.readPath([
+                .arrayListGet(-1),
+                .hashMapGet(.value, notFoundKey),
+            ]) == nil
+        )
+
+        // write key that conflicts with foo the first two bytes
+        let smallConflictMask: UInt64 = 0b1111_1111
+        let smallConflictKey = maskedKey("small conflict", mask: smallConflictMask, with: fooKey)
+        _ = try rootCursor.writePath([
+            .arrayListInit,
+            .arrayListAppend,
+            .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+            .hashMapInit(),
+            .hashMapGet(.value, smallConflictKey),
+            .write(.bytes(utf8("small"))),
+        ])
+
+        // write key that conflicts with foo the first four bytes
+        let conflictMask: UInt64 = 0b1111_1111_1111_1111
+        let conflictKey = maskedKey("conflict", mask: conflictMask, with: fooKey)
+        _ = try rootCursor.writePath([
+            .arrayListInit,
+            .arrayListAppend,
+            .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+            .hashMapInit(),
+            .hashMapGet(.value, conflictKey),
+            .write(.bytes(utf8("hello"))),
+        ])
+
+        // read conflicting key
+        let helloCursor = try #require(
+            try rootCursor.readPath([
+                .arrayListGet(-1),
+                .hashMapGet(.value, conflictKey),
+            ])
+        )
+        let helloValue = try helloCursor.readBytesAlloc(maxSize: maxReadBytes)
+        #expect(helloValue == utf8("hello"))
+
+        // we can still read foo
+        let barCursor2 = try #require(
+            try rootCursor.readPath([
+                .arrayListGet(-1),
+                .hashMapGet(.value, fooKey),
+            ])
+        )
+        let barValue2 = try barCursor2.readBytesAlloc(maxSize: maxReadBytes)
+        #expect(barValue2 == utf8("bar"))
+
+        // overwrite conflicting key
+        _ = try rootCursor.writePath([
+            .arrayListInit,
+            .arrayListAppend,
+            .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+            .hashMapInit(),
+            .hashMapGet(.value, conflictKey),
+            .write(.bytes(utf8("goodbye"))),
+        ])
+        let goodbyeCursor = try #require(
+            try rootCursor.readPath([
+                .arrayListGet(-1),
+                .hashMapGet(.value, conflictKey),
+            ])
+        )
+        let goodbyeValue = try goodbyeCursor.readBytesAlloc(maxSize: maxReadBytes)
+        #expect(goodbyeValue == utf8("goodbye"))
+
+        // we can still read the old conflicting key
+        let helloCursor2 = try #require(
+            try rootCursor.readPath([
+                .arrayListGet(-2),
+                .hashMapGet(.value, conflictKey),
+            ])
+        )
+        let helloValue2 = try helloCursor2.readBytesAlloc(maxSize: maxReadBytes)
+        #expect(helloValue2 == utf8("hello"))
+
+        // remove the conflicting keys
+        do {
+            // foo's slot is an .index slot due to the conflict
+            do {
+                let mapCursor = try #require(
+                    try rootCursor.readPath([
+                        .arrayListGet(-1)
+                    ])
+                )
+                let indexPosition = try mapCursor.slot().value
+                #expect(try mapCursor.slot().tag == .hashMap)
+
+                let slotSize = Slot.byteCount
+
+                let index = UInt64(fooKey.bytes[19]) & Trie.mask
+                let slotPosition = indexPosition + (slotSize * index)
+                let slot = try storedSlot(subject.storage, at: slotPosition)
+
+                #expect(slot.tag == .index)
+            }
+
+            // remove the small conflict key
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .hashMapInit(),
+                .hashMapRemove(smallConflictKey),
+            ])
+
+            // the conflict key still exists in history
+            #expect(
+                try rootCursor.readPath([
+                    .arrayListGet(-2),
+                    .hashMapGet(.value, smallConflictKey),
+                ]) != nil
+            )
+
+            // the conflict key doesn't exist in the latest moment
+            #expect(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .hashMapGet(.value, smallConflictKey),
+                ]) == nil
+            )
+
+            // the other conflict key still exists
+            #expect(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .hashMapGet(.value, conflictKey),
+                ]) != nil
+            )
+
+            // foo's slot is still an .index slot due to the other conflicting key
+            do {
+                let mapCursor = try #require(
+                    try rootCursor.readPath([
+                        .arrayListGet(-1)
+                    ])
+                )
+                let indexPosition = try mapCursor.slot().value
+                #expect(try mapCursor.slot().tag == .hashMap)
+
+                let slotSize = Slot.byteCount
+
+                let index = UInt64(fooKey.bytes[19]) & Trie.mask
+                let slotPosition = indexPosition + (slotSize * index)
+                let slot = try storedSlot(subject.storage, at: slotPosition)
+
+                #expect(slot.tag == .index)
+            }
+
+            // remove the conflict key
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .hashMapInit(),
+                .hashMapRemove(conflictKey),
+            ])
+
+            // the conflict keys don't exist in the latest moment
+            #expect(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .hashMapGet(.value, smallConflictKey),
+                ]) == nil
+            )
+            #expect(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .hashMapGet(.value, conflictKey),
+                ]) == nil
+            )
+
+            // foo's slot is now a .kv_pair slot, because the branch was shortened
+            do {
+                let mapCursor = try #require(
+                    try rootCursor.readPath([
+                        .arrayListGet(-1)
+                    ])
+                )
+                let indexPosition = try mapCursor.slot().value
+                #expect(try mapCursor.slot().tag == .hashMap)
+
+                let slotSize = Slot.byteCount
+
+                let index = UInt64(fooKey.bytes[19]) & Trie.mask
+                let slotPosition = indexPosition + (slotSize * index)
+                let slot = try storedSlot(subject.storage, at: slotPosition)
+
+                #expect(slot.tag == .kvPair)
+            }
+        }
+
+        do {
+            // overwrite foo with a uint
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .hashMapInit(),
+                .hashMapGet(.value, fooKey),
+                .write(.uint(42)),
+            ])
+
+            // read foo
+            let uintValue = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .hashMapGet(.value, fooKey),
+                ])
+            ).readUint()
+            #expect(uintValue == 42)
+        }
+
+        do {
+            // overwrite foo with an int
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .hashMapInit(),
+                .hashMapGet(.value, fooKey),
+                .write(.int(-42)),
+            ])
+
+            // read foo
+            let intValue = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .hashMapGet(.value, fooKey),
+                ])
+            ).readInt()
+            #expect(intValue == -42)
+        }
+
+        do {
+            // overwrite foo with a float
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .hashMapInit(),
+                .hashMapGet(.value, fooKey),
+                .write(.float(42.5)),
+            ])
+
+            // read foo
+            let floatValue = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .hashMapGet(.value, fooKey),
+                ])
+            ).readFloat()
+            #expect(floatValue == 42.5)
+        }
+
+        // remove foo
+        _ = try rootCursor.writePath([
+            .arrayListInit,
+            .arrayListAppend,
+            .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+            .hashMapInit(),
+            .hashMapRemove(fooKey),
+        ])
+
+        // remove key that does not exist
+        #expect(throws: XitDBError.keyNotFound) {
+            try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .hashMapInit(),
+                .hashMapRemove(sha1("doesn't exist")),
+            ])
+        }
+
+        // make sure foo doesn't exist anymore
+        #expect(
+            try rootCursor.readPath([
+                .arrayListGet(-1),
+                .hashMapGet(.value, fooKey),
+            ]) == nil
+        )
+
+        // non-top-level list
+        do {
+            // write apple
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .hashMapInit(),
+                .hashMapGet(.value, sha1("fruits")),
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.bytes(utf8("apple"))),
+            ])
+
+            // read apple
+            let appleCursor = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .hashMapGet(.value, sha1("fruits")),
+                    .arrayListGet(-1),
+                ])
+            )
+            let appleValue = try appleCursor.readBytesAlloc(maxSize: maxReadBytes)
+            #expect(appleValue == utf8("apple"))
+
+            // write banana
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .hashMapInit(),
+                .hashMapGet(.value, sha1("fruits")),
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.bytes(utf8("banana"))),
+            ])
+
+            // read banana
+            let bananaCursor = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .hashMapGet(.value, sha1("fruits")),
+                    .arrayListGet(-1),
+                ])
+            )
+            let bananaValue = try bananaCursor.readBytesAlloc(maxSize: maxReadBytes)
+            #expect(bananaValue == utf8("banana"))
+
+            // can't read banana in older array_list
+            #expect(
+                try rootCursor.readPath([
+                    .arrayListGet(-2),
+                    .hashMapGet(.value, sha1("fruits")),
+                    .arrayListGet(1),
+                ]) == nil
+            )
+
+            // write pear
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .hashMapInit(),
+                .hashMapGet(.value, sha1("fruits")),
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.bytes(utf8("pear"))),
+            ])
+
+            // write grape
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .hashMapInit(),
+                .hashMapGet(.value, sha1("fruits")),
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.bytes(utf8("grape"))),
+            ])
+
+            // read pear
+            let pearCursor = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .hashMapGet(.value, sha1("fruits")),
+                    .arrayListGet(-2),
+                ])
+            )
+            let pearValue = try pearCursor.readBytesAlloc(maxSize: maxReadBytes)
+            #expect(pearValue == utf8("pear"))
+
+            // read grape
+            let grapeCursor = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .hashMapGet(.value, sha1("fruits")),
+                    .arrayListGet(-1),
+                ])
+            )
+            let grapeValue = try grapeCursor.readBytesAlloc(maxSize: maxReadBytes)
+            #expect(grapeValue == utf8("grape"))
+        }
+    }
+
+    /// test.zig 2179-2283: "append to top-level array_list many times, filling up the array_list until a root
+    /// overflow occurs".
+    @Test(arguments: storageKinds)
+    func appendsToTheTopLevelArrayListUntilTheRootOverflows(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let database = try Database(storage: subject.storage, hashSize: 20)
+        let rootCursor = database.rootCursor()
+
+        let watKey = sha1("wat")
+        for i in 0..<(slotCount + 1) {
+            let value = "wat\(i)"
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .hashMapInit(),
+                .hashMapGet(.value, watKey),
+                .write(.bytes(utf8(value))),
+            ])
+        }
+
+        for i in 0..<(slotCount + 1) {
+            let value = "wat\(i)"
+            let cursor = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(i),
+                    .hashMapGet(.value, watKey),
+                ])
+            )
+            let value2 = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+            #expect(value2 == utf8(value))
+        }
+
+        // add more slots to cause a new index block to be created.
+        // a new index block will be created when i == 32 (the 33rd append).
+        // during that transaction, return an error so the transaction is
+        // cancelled, causing truncation to happen. this test ensures that
+        // the new index block is NOT truncated. this is prevented by updating
+        // the file size in the header immediately after making a new index block.
+        // see `readArrayListSlot` for more.
+        do {
+            var failed = false
+            for i in (slotCount + 1)..<(slotCount * 2 + 1) {
+                let value = "wat\(i)"
+
+                do {
+                    _ = try rootCursor.writePath([
+                        .arrayListInit,
+                        .arrayListAppend,
+                        .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                        .hashMapInit(),
+                        .hashMapGet(.value, watKey),
+                        .write(.bytes(utf8(value))),
+                        .ctx,
+                    ]) { (_: inout Cursor<ReadWrite>) in
+                        if i == 32 {
+                            throw Fail()
+                        }
+                    }
+                } catch is Fail {
+                    failed = true
+                    break
+                }
+            }
+            // Zig: the loop's `else` branch, taken when it ends without the break, returns `error.ExpectedFail`
+            try #require(failed)
+
+            // try another append to make sure we still can.
+            // if truncation destroyed the index block, this would fail.
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .hashMapInit(),
+                .hashMapGet(.value, watKey),
+                .write(.bytes(utf8("wat32"))),
+            ])
+        }
+
+        // slice so it contains exactly SLOT_COUNT,
+        // so we have the old root again
+        _ = try rootCursor.writePath([
+            .arrayListInit,
+            .arrayListSlice(size: UInt64(slotCount)),
+        ])
+
+        // we can iterate over the remaining slots
+        for i in 0..<slotCount {
+            let value = "wat\(i)"
+            let cursor = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(i),
+                    .hashMapGet(.value, watKey),
+                ])
+            )
+            let value2 = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+            #expect(value2 == utf8(value))
+        }
+
+        // but we can't get the value that we sliced out of the array list
+        #expect(
+            try rootCursor.readPath([
+                .arrayListGet(slotCount + 1)
+            ]) == nil
+        )
+    }
+
+    /// test.zig 2285-2397: "append to inner array_list many times, filling up the array_list until a root
+    /// overflow occurs".
+    @Test(arguments: storageKinds)
+    func appendsToAnInnerArrayListUntilTheRootOverflows(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let database = try Database(storage: subject.storage, hashSize: 20)
+        let rootCursor = database.rootCursor()
+
+        for i in 0..<(slotCount + 1) {
+            let value = "wat\(i)"
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.bytes(utf8(value))),
+            ])
+        }
+
+        for i in 0..<(slotCount + 1) {
+            let value = "wat\(i)"
+            let cursor = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .arrayListGet(i),
+                ])
+            )
+            let value2 = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+            #expect(value2 == utf8(value))
+        }
+
+        // slice inner array list so it contains exactly SLOT_COUNT,
+        // so we have the old root again
+        _ = try rootCursor.writePath([
+            .arrayListInit,
+            .arrayListAppend,
+            .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+            .arrayListInit,
+            .arrayListSlice(size: UInt64(slotCount)),
+        ])
+
+        // we can iterate over the remaining slots
+        for i in 0..<slotCount {
+            let value = "wat\(i)"
+            let cursor = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .arrayListGet(i),
+                ])
+            )
+            let value2 = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+            #expect(value2 == utf8(value))
+        }
+
+        // but we can't get the value that we sliced out of the array list
+        #expect(
+            try rootCursor.readPath([
+                .arrayListGet(-1),
+                .arrayListGet(slotCount + 1),
+            ]) == nil
+        )
+
+        // overwrite last value with hello
+        _ = try rootCursor.writePath([
+            .arrayListInit,
+            .arrayListAppend,
+            .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+            .arrayListInit,
+            .arrayListGet(-1),
+            .write(.bytes(utf8("hello"))),
+        ])
+
+        // read last value
+        do {
+            let cursor = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .arrayListGet(-1),
+                ])
+            )
+            let value = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+            #expect(value == utf8("hello"))
+        }
+
+        // overwrite last value with goodbye
+        _ = try rootCursor.writePath([
+            .arrayListInit,
+            .arrayListAppend,
+            .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+            .arrayListInit,
+            .arrayListGet(-1),
+            .write(.bytes(utf8("goodbye"))),
+        ])
+
+        // read last value
+        do {
+            let cursor = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .arrayListGet(-1),
+                ])
+            )
+            let value = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+            #expect(value == utf8("goodbye"))
+        }
+
+        // previous last value is still hello
+        do {
+            let cursor = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-2),
+                    .arrayListGet(-1),
+                ])
+            )
+            let value = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+            #expect(value == utf8("hello"))
+        }
+    }
+
+    /// test.zig 2399-2473: "iterate over inner array_list", without the iterating.
+    ///
+    /// Left out: the two iterations at 2432-2442 and 2460-2465. What is left adds ten values to an inner list
+    /// and reads each back, sets the first to none, and counts the list.
+    @Test(arguments: storageKinds)
+    func innerArrayList(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let database = try Database(storage: subject.storage, hashSize: 20)
+        let rootCursor = database.rootCursor()
+
+        // add wats
+        for i in 0..<10 {
+            let value = "wat\(i)"
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.bytes(utf8(value))),
+            ])
+
+            let cursor = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .arrayListGet(-1),
+                ])
+            )
+            let value2 = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+            #expect(value2 == utf8(value))
+        }
+
+        // iterate over array_list
+        do {
+            _ = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-1)
+                ])
+            )
+            // 2432-2442 left out: iterating over the cursor and comparing each element (M4)
+        }
+
+        // set first slot to .none and make sure iteration still works.
+        // this validates that it correctly returns .none slots if
+        // their flag is set, rather than skipping over them.
+        do {
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .arrayListInit,
+                .arrayListGet(0),
+                .write(.slot(nil)),
+            ])
+            _ = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-1)
+                ])
+            )
+            // 2460-2465 left out: iterating over the cursor still counts ten (M4)
+        }
+
+        // get list slot
+        let listCursor = try #require(
+            try rootCursor.readPath([
+                .arrayListGet(-1)
+            ])
+        )
+        #expect(try listCursor.count() == 10)
+    }
+
+    /// test.zig 2475-2574: "iterate over inner hash_map", without the iterating.
+    ///
+    /// Left out: the two iterations at 2537-2553 and 2563-2572. What is left adds ten values to an inner map
+    /// and reads each back, adds an entry with a key and a value, removes an entry, and appends one more
+    /// moment.
+    @Test(arguments: storageKinds)
+    func innerHashMap(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let database = try Database(storage: subject.storage, hashSize: 20)
+        let rootCursor = database.rootCursor()
+
+        // add wats
+        for i in 0..<10 {
+            let value = "wat\(i)"
+            let watKey = sha1(value)
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .hashMapInit(),
+                .hashMapGet(.value, watKey),
+                .write(.bytes(utf8(value))),
+            ])
+
+            let cursor = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-1),
+                    .hashMapGet(.value, watKey),
+                ])
+            )
+            let value2 = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+            #expect(value2 == utf8(value))
+        }
+
+        // add foo
+        let fooKey = sha1("foo")
+        _ = try rootCursor.writePath([
+            .arrayListInit,
+            .arrayListAppend,
+            .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+            .hashMapInit(),
+            .hashMapGet(.key, fooKey),
+            .write(.bytes(utf8("foo"))),
+        ])
+        _ = try rootCursor.writePath([
+            .arrayListInit,
+            .arrayListAppend,
+            .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+            .hashMapInit(),
+            .hashMapGet(.value, fooKey),
+            .write(.uint(42)),
+        ])
+
+        // remove a wat
+        _ = try rootCursor.writePath([
+            .arrayListInit,
+            .arrayListAppend,
+            .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+            .hashMapInit(),
+            .hashMapRemove(sha1("wat0")),
+        ])
+
+        // iterate over hash_map
+        do {
+            _ = try #require(
+                try rootCursor.readPath([
+                    .arrayListGet(-1)
+                ])
+            )
+            // 2537-2553 left out: iterating over the cursor and checking each entry (M4)
+        }
+
+        // iterate over hash_map with writeable cursor
+        do {
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+            ])
+            // 2563-2572 left out: iterating over the cursor and reading foo's value (M4)
+        }
+    }
+
+    // test.zig 2576-2772 is left out as a whole: every block in it is about linked array lists (M5).
+}
