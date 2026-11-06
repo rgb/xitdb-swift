@@ -76,9 +76,9 @@ step "Formatting check"
 swift format lint --strict --recursive --parallel Package.swift Sources Tests
 echo "ok"
 
-# This step uses the compiler that ships with Xcode, which can be a different version
-# from the `swift` on PATH used above. Selecting another toolchain with -toolchain was
-# tried and does not work: xcodebuild then fails to compile the package manifest.
+# xcodebuild always uses the compiler that ships with Xcode. The workspace selects the
+# same one for `swift`, so the whole gate runs on one compiler; its version is printed
+# here so that a mismatch with the "Toolchain" step above would show.
 step "iOS compile check"
 xcrun swiftc --version
 xcodebuild build -quiet \
