@@ -332,3 +332,155 @@ import Testing
             try #require(try root.readPath([.hashMapGet(.value, sha1("bar"))])).readBytesAlloc() == Array("bar".utf8))
     }
 }
+
+/// Edges of the engine that neither the Zig tests nor the conformance
+/// scripts reach.
+@Suite struct EngineEdgeTests {
+    private func makeDatabase(_ storage: MemoryStorage = MemoryStorage()) throws -> Database {
+        try Database(
+            storage: storage, hashSize: 20, hashID: nil, fileID: 3, random: FixedRandom((1...50).map { UInt64($0) }))
+    }
+
+    /// Any byte array can be read as a key on its own, which is what an
+    /// entry of a sorted set is: the key is the slot itself, there is no
+    /// value, no position to write through, and no hash.
+    @Test func bytesReadAsAKeyOnlyEntry() throws {
+        let database = try makeDatabase()
+        try database.runContext { cursor in
+            _ = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("short")), .write(.bytes([1, 2, 3]))])
+            _ = try cursor.writePath([
+                .hashMapGet(.value, sha1("long")), .write(.bytes([UInt8](repeating: 9, count: 30))),
+            ])
+            for key in ["short", "long"] {
+                let entry = try cursor.writePath([.hashMapGet(.value, sha1(key))])
+                let pair = try entry.readKeyValuePair()
+                #expect(pair.hash == [UInt8](repeating: 0, count: 20))
+                #expect(try pair.keyCursor.slot() == (try entry.slot()))
+                #expect(try pair.keyCursor.readBytesAlloc() == (try entry.readBytesAlloc()))
+                #expect(try pair.valueCursor.slot().isEmpty)
+                // neither can be written through
+                var key = pair.keyCursor
+                var value = pair.valueCursor
+                #expect(throws: XitDBError.cursorNotWriteable) { try key.write(.uint(1)) }
+                #expect(throws: XitDBError.cursorNotWriteable) { try value.write(.uint(1)) }
+            }
+        }
+    }
+
+    /// An entry of a sorted map points at a pair with no hash: a key slot
+    /// and a value slot. Sorted maps arrive with a later milestone, so the
+    /// record is made by hand here.
+    @Test func aSortedPairReadsWithoutAHash() throws {
+        let database = try makeDatabase()
+        try database.runContext { cursor in
+            _ = try cursor.writePath([.hashMapInit()])
+            // eighteen bytes: a key slot (short bytes "k") and a value slot (uint 7)
+            let record =
+                slotBytes(Slot(value: 0x6B00_0000_0000_0000, tag: .shortBytes)) + slotBytes(Slot(value: 7, tag: .uint))
+            var holder = try cursor.writePath([.hashMapGet(.value, sha1("record"))])
+            try holder.writer { writer in try writer.write(record) }
+            // the record's bytes start after the byte array's length
+            let pairPosition = try holder.slot().value + 8
+
+            let entry = try cursor.writePath([
+                .hashMapGet(.value, sha1("entry")), .write(.slot(Slot(value: pairPosition, tag: .sortedKvPair))),
+            ])
+            let pair = try entry.readKeyValuePair()
+            #expect(pair.hash == [UInt8](repeating: 0, count: 20))
+            #expect(try pair.keyCursor.readBytesAlloc() == Array("k".utf8))
+            #expect(try pair.valueCursor.readUint() == 7)
+
+            // the value's position is right after the key's, with no hash before them
+            var value = pair.valueCursor
+            try value.write(.uint(8))
+            #expect(try entry.readKeyValuePair().valueCursor.readUint() == 8)
+            #expect(try holder.readBytesAlloc() == Array(record[..<9]) + slotBytes(Slot(value: 8, tag: .uint)))
+        }
+    }
+
+    @Test func removingAMissingKeyLeavesACountedMapsCount() throws {
+        let database = try makeDatabase()
+        try database.runContext { cursor in
+            let map = try cursor.writePath([.hashMapInit(counted: true)])
+            _ = try map.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(1))])
+            _ = try map.writePath([.hashMapGet(.value, sha1("b")), .write(.uint(2))])
+            #expect(try map.count() == 2)
+
+            #expect(throws: XitDBError.keyNotFound) { try map.writePath([.hashMapRemove(sha1("missing"))]) }
+            #expect(try map.count() == 2)
+            // getting an entry that exists does not count it again
+            _ = try map.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(3))])
+            _ = try map.writePath([.hashMapGet(.key, sha1("a"))])
+            #expect(try map.count() == 2)
+
+            _ = try map.writePath([.hashMapRemove(sha1("a"))])
+            #expect(try map.count() == 1)
+            #expect(throws: XitDBError.keyNotFound) { try map.writePath([.hashMapRemove(sha1("a"))]) }
+            #expect(try map.count() == 1)
+        }
+        #expect(try database.rootCursor().count() == 1)
+        // an init of the other kind is refused
+        #expect(throws: XitDBError.unexpectedTag) {
+            try database.rootCursor().writePath([.hashMapInit(), .write(.uint(1))])
+        }
+        #expect(throws: XitDBError.unexpectedTag) {
+            try database.rootCursor().writePath([.arrayListInit, .arrayListAppend])
+        }
+        #expect(try database.rootCursor().count() == 1)
+    }
+
+    /// A transaction on a root that is a linked array list or a sorted map
+    /// would have to run that collection's init part first, to copy it into
+    /// the transaction. Those parts arrive with later milestones. Until
+    /// then such a transaction is refused; going on without the init part
+    /// would write into committed data.
+    @Test(arguments: [XitDB.Tag.linkedArrayList, .sortedMap, .sortedSet])
+    func aTransactionOnARootOfACollectionNotBuiltYetIsRefused(tag: XitDB.Tag) throws {
+        let storage = MemoryStorage()
+        let database = try makeDatabase(storage)
+        // a root that claims to be such a collection
+        var root = database.rootCursor()
+        try root.write(.slot(Slot(value: 37, tag: tag)))
+        let committed = storage.bytes
+        #expect(try database.rootCursor().slot().tag == tag)
+
+        #expect(throws: XitDBError.notImplemented) { try database.rootCursor().writePath([.write(.uint(1))]) }
+        #expect(throws: XitDBError.notImplemented) { try database.runContext { _ in } }
+        #expect(storage.bytes == committed)
+        // reading its count, which is in its header, works
+        _ = try database.rootCursor().count()
+    }
+
+    /// A slot's position is computed from offsets in the file. In a sound
+    /// file no slot is at the root header's position, which is how a cursor
+    /// at the root is told from any other. A file that leads a write path
+    /// there is corrupt, and the write is refused.
+    @Test func aPathThatArrivesAtTheRootHeaderIsRefused() throws {
+        let storage = MemoryStorage()
+        let database = try makeDatabase(storage)
+        var listPosition: UInt64 = 0
+        try database.runContext { cursor in
+            let list = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("list")), .arrayListInit])
+            _ = try list.writePath([.arrayListAppend, .write(.uint(1))])
+            listPosition = try list.slot().value
+        }
+
+        // the list's header now says its index block is at the root header
+        var bytes = storage.bytes
+        bytes.replaceSubrange(Int(listPosition + 8)..<Int(listPosition + 16), with: bigEndianBytes(RootHeader.position))
+        let damaged = MemoryStorage(bytes: bytes)
+        let reopened = try makeDatabase(damaged)
+
+        try reopened.runContext { cursor in
+            // without the init part, the element's slot is where the header says: at the root header
+            #expect(throws: XitDBError.invalidDatabase) {
+                try cursor.writePath([.hashMapGet(.value, sha1("list")), .arrayListGet(0), .write(.uint(9))])
+            }
+        }
+        // the root header was not written to
+        #expect(Array(damaged.bytes[20..<29]) != slotBytes(Slot(value: 9, tag: .uint)))
+        // and a read there just reads the root again
+        let list = try #require(try reopened.rootCursor().readPath([.hashMapGet(.value, sha1("list"))]))
+        #expect(try list.readPath([.arrayListGet(0)]) != nil)
+    }
+}
