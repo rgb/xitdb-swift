@@ -4,28 +4,39 @@ An immutable, append-only embedded database, compatible with the files of the or
 
 ## Overview
 
-XitDB is a Swift port of [xitdb](https://github.com/xit-vcs/xitdb). It is in development and cannot open a
-database yet. What exists so far is the format layer, which describes the values a database is made of on
-disk, and the storage layer, which is where a database's bytes are kept.
+XitDB is a Swift port of [xitdb](https://github.com/xit-vcs/xitdb). It is in development. What exists so far
+is the engine: a ``Database`` can be created and opened, and values can be written and read through a
+``Cursor``. The collection types that make a database convenient to use, such as maps and lists, are not
+there yet.
 
-Every value in a database lives behind a ``Slot``, nine bytes that hold either a small value directly or the
-offset of a larger record. A slot's ``Tag`` says which. A file starts with a ``DatabaseHeader``.
+A database keeps its bytes in a storage. ``BufferedFileStorage`` keeps them in a file and is the one to use
+for a database on disk. ``MemoryStorage`` keeps them in memory. ``FileStorage`` reads and writes a file
+without buffering.
 
-A database reads and writes its bytes through a storage. ``BufferedFileStorage`` keeps them in a file and is
-the one to use for a database on disk. ``MemoryStorage`` keeps them in memory. ``FileStorage`` reads and
-writes a file without buffering.
+Reading and writing start at ``Database/rootCursor()``. A ``Cursor`` is a position in the database: it reads
+the value there, and inside a transaction it writes one. ``Database/runContext(_:)`` runs a transaction.
+
+Every value lives behind a ``Slot``, nine bytes that hold either a small value directly or the offset of a
+larger record. A slot's ``Tag`` says which. A file starts with a ``DatabaseHeader``.
 
 ## Topics
 
-### Values on disk
+### Databases
 
-- ``Slot``
-- ``Tag``
-
-### The file header
-
+- ``Database``
 - ``DatabaseHeader``
 - ``HashID``
+
+### Reading and writing
+
+- ``Cursor``
+- ``ReadOnly``
+- ``ReadWrite``
+- ``CursorAccess``
+- ``KeyValuePairCursor``
+- ``WriteableData``
+- ``Bytes``
+- ``ByteWriter``
 
 ### Storage
 
@@ -41,6 +52,11 @@ writes a file without buffering.
 - ``FileAccess``
 - ``Durability``
 - ``FileLock``
+
+### Values on disk
+
+- ``Slot``
+- ``Tag``
 
 ### Errors
 
