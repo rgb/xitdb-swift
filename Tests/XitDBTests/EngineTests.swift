@@ -484,6 +484,81 @@ import Testing
         #expect(try list.readPath([.arrayListGet(0)]) != nil)
     }
 
+    /// A hash trie works to the full depth its hash allows: 128 levels for
+    /// a hash of sixty-four bytes. Zig counts the depth in a byte that it
+    /// multiplies by four, which overflows at level 64 (finding 7 of the
+    /// director's list of Zig behaviours to correct), so two keys that share
+    /// their low 256 bits crash it. Here they are stored, read and removed.
+    @Test(arguments: StorageKind.allCases)
+    func aTrieOfSixtyFourByteHashesGoesToItsFullDepth(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let database = try Database(
+            storage: subject.storage, hashSize: 64, hashID: nil, fileID: 3,
+            random: FixedRandom((1...9).map { UInt64($0) }))
+
+        // Every level of the trie takes four bits, from the low end of the
+        // hash. `differing(at:)` is the base hash with the four bits of one
+        // level changed, so it shares exactly that many levels with the base.
+        let base = [UInt8](repeating: 0x55, count: 64)
+        func differing(at level: Int) -> KeyHash {
+            var bytes = base
+            let index = 63 - level / 2
+            bytes[index] = level % 2 == 0 ? (bytes[index] & 0xF0) | 0x0A : (bytes[index] & 0x0F) | 0xA0
+            return KeyHash(bytes)
+        }
+        let keys: [(hash: KeyHash, value: UInt64)] = [
+            (KeyHash(base), 1), (differing(at: 0), 2), (differing(at: 63), 3), (differing(at: 64), 4),
+            (differing(at: 127), 5),
+        ]
+
+        func values(_ map: Cursor<ReadWrite>) throws -> [UInt64?] {
+            try keys.map { try map.readPath([.hashMapGet(.value, $0.hash)])?.readUint() }
+        }
+        /// How many index blocks lie between the map's root block and the
+        /// base hash's pair.
+        func depthOfBase(_ map: Cursor<ReadWrite>) throws -> Int {
+            var position = try map.slot().value
+            var depth = 0
+            while true {
+                let slot = try database.reader.slot(at: position + 9 * 5)
+                if slot.tag != .index { return depth }
+                position = slot.value
+                depth += 1
+            }
+        }
+
+        try database.runContext { cursor in
+            let map = try cursor.writePath([.hashMapInit()])
+            for key in keys {
+                _ = try map.writePath([.hashMapGet(.value, key.hash), .write(.uint(key.value))])
+            }
+            #expect(try values(map) == [1, 2, 3, 4, 5])
+            // the base hash and the one that differs in the last four bits
+            // share 127 levels, and sit side by side in the block below them
+            #expect(try depthOfBase(map) == 127)
+
+            _ = try map.writePath([.hashMapRemove(keys[4].hash)])
+            #expect(try values(map) == [1, 2, 3, 4, nil])
+            #expect(try depthOfBase(map) == 64)
+            _ = try map.writePath([.hashMapRemove(keys[3].hash)])
+            #expect(try values(map) == [1, 2, 3, nil, nil])
+            #expect(try depthOfBase(map) == 63)
+            _ = try map.writePath([.hashMapRemove(keys[2].hash)])
+            #expect(try depthOfBase(map) == 0)
+            #expect(try values(map) == [1, 2, nil, nil, nil])
+
+            // and back to the full depth, in the other order
+            _ = try map.writePath([.hashMapGet(.value, keys[4].hash), .write(.uint(50))])
+            _ = try map.writePath([.hashMapGet(.value, keys[3].hash), .write(.uint(40))])
+            #expect(try values(map) == [1, 2, nil, 40, 50])
+            #expect(try depthOfBase(map) == 127)
+        }
+        // committed, and read back through a new database on the same bytes
+        let moment = database.rootCursor()
+        #expect(try moment.readPath([.hashMapGet(.value, keys[4].hash)])?.readUint() == 50)
+        #expect(try moment.readPath([.hashMapGet(.value, keys[2].hash)]) == nil)
+    }
+
     /// A pair's record has the same bytes for every hash size: the hash, the
     /// key slot, the value slot. Up to sixty-four bytes of hash it is built
     /// in place, beyond that in an array.
