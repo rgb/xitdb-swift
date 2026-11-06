@@ -87,8 +87,11 @@ swift package generate-documentation --target XitDB --warnings-as-errors
 # here so that a mismatch with the "Toolchain" step above would show.
 step "iOS compile check"
 xcrun swiftc --version
+# The scheme is the library's. Xcode makes one scheme per product once a package has more
+# than one, and none named after the package, which is what this used before the benchmark
+# became the second product.
 xcodebuild build -quiet \
-    -scheme xitdb-swift \
+    -scheme XitDB \
     -destination 'generic/platform=iOS' \
     -derivedDataPath .build/xcodebuild \
     SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
