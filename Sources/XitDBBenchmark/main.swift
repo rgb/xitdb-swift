@@ -6,6 +6,11 @@
 //
 // With no arguments every workload runs. Each prints two lines of JSON, one
 // for its write phase and one for its read phase.
+//
+// For a profiler, one phase of one workload on one kind of storage can be
+// run over and over for a number of seconds:
+//
+//     XitDBBenchmark --repeat <seconds> <workload> <kind> <write|read>
 
 import CryptoKit
 import Foundation
@@ -204,7 +209,52 @@ func run(_ workload: Workload) throws {
     }
 }
 
-let wanted = CommandLine.arguments.dropFirst()
-for workload in workloads where wanted.isEmpty || wanted.contains(workload.name) {
-    try run(workload)
+/// Runs one phase of a workload until `seconds` have passed, and prints how
+/// often it ran and how long a run took on average. The write phase starts
+/// from a new, empty database each time, as it does when it is measured. The
+/// read phase reads one database that is written first.
+func runRepeatedly(_ workload: Workload, _ kind: StorageKind, phase: String, seconds: Double) throws {
+    let hashes = keyHashes(workload.keyCount)
+    let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(seconds * 1_000_000_000)
+    var runs = 0
+    var total = 0.0
+    if phase == "read" {
+        let storage = try RunStorage(kind)
+        let database = try newDatabase(storage.storage)
+        try workload.write(database, hashes)
+        while DispatchTime.now().uptimeNanoseconds < deadline {
+            total += try milliseconds { try workload.read(database, hashes) }
+            runs += 1
+        }
+    } else {
+        while DispatchTime.now().uptimeNanoseconds < deadline {
+            let storage = try RunStorage(kind)
+            let database = try newDatabase(storage.storage)
+            total += try milliseconds { try workload.write(database, hashes) }
+            runs += 1
+        }
+    }
+    let line = String(
+        format: #"{"workload": "%@", "phase": "%@", "kind": "%@", "n": %d, "runs": %d, "mean_ms": %.3f}"#,
+        workload.name, phase, kind.rawValue, workload.size, runs, total / Double(max(runs, 1))
+    )
+    print(line)
+}
+
+let arguments = Array(CommandLine.arguments.dropFirst())
+if arguments.first == "--repeat" {
+    guard
+        arguments.count == 5,
+        let seconds = Double(arguments[1]),
+        let kind = StorageKind(rawValue: arguments[3]),
+        let workload = workloads.first(where: { $0.name == arguments[2] && $0.kinds.contains(kind) }),
+        arguments[4] == "write" || arguments[4] == "read"
+    else {
+        throw BenchmarkFailure(description: "usage: --repeat <seconds> <workload> <kind> <write|read>")
+    }
+    try runRepeatedly(workload, kind, phase: arguments[4], seconds: seconds)
+} else {
+    for workload in workloads where arguments.isEmpty || arguments.contains(workload.name) {
+        try run(workload)
+    }
 }
