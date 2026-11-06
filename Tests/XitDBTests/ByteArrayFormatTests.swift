@@ -95,6 +95,10 @@ import Testing
         #expect(slot.full)
         #expect(ByteArrayFormat.shortByteCount(of: slot) == 6)
         #expect(formatTag(of: slot) == [0, 0])
+
+        let endsInZero = shortSlot([1, 2, 3, 4, 5, 6], formatTag: [0x62, 0])
+        #expect(ByteArrayFormat.shortByteCount(of: endsInZero) == 6)
+        #expect(formatTag(of: endsInZero) == [0x62, 0])
     }
 
     @Test func everyShortLengthRoundTrips() {

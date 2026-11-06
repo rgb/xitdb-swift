@@ -75,6 +75,24 @@ import Testing
         }
     }
 
+    /// The first byte is the flag in bit 7 and the tag in the seven bits below
+    /// it. Every one of its 256 values either decodes to that flag and tag or
+    /// is rejected because the seven bits are not a known tag.
+    @Test func everyFirstByteIsDecodedOrRejected() throws {
+        for first in UInt8.min...UInt8.max {
+            let bytes: [UInt8] = [first, 0, 0, 0, 0, 0, 0, 0, 0x2A]
+            let tagBits = first & 0x7F
+            if tagBits <= 16 {
+                let slot = try Slot(decoding: bytes.span)
+                #expect(slot.tag.rawValue == tagBits)
+                #expect(slot.full == (first >= 0x80))
+                #expect(slot.value == 42)
+            } else {
+                #expect(throws: XitDBError.invalidEnumTag) { try Slot(decoding: bytes.span) }
+            }
+        }
+    }
+
     @Test func emptyMeansNeverWritten() throws {
         #expect(Slot().isEmpty)
         #expect(slotBytes(Slot()) == zeros(9))
