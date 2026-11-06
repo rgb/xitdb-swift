@@ -34,6 +34,7 @@ let package = Package(
         .testTarget(
             name: "XitDBTests",
             dependencies: ["XitDB"],
+            resources: [.copy("Resources/test.db")],
             swiftSettings: languageSettings
         ),
     ],
