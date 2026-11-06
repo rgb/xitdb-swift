@@ -37,6 +37,13 @@ let package = Package(
             name: "XitDB",
             swiftSettings: languageSettings + [.strictMemorySafety()]
         ),
+        // The benchmark of spec/benchmarks.md. It is not a product: nothing
+        // outside this package builds it.
+        .executableTarget(
+            name: "XitDBBenchmark",
+            dependencies: ["XitDB"],
+            swiftSettings: languageSettings
+        ),
         .testTarget(
             name: "XitDBTests",
             dependencies: ["XitDB"],
