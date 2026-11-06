@@ -223,7 +223,7 @@ public struct Cursor<Access: CursorAccess> {
                 database: database,
                 frozenAt: frozenAt
             ),
-            hash: found.hash.bytes
+            keyHash: found.hash
         )
     }
 
@@ -246,10 +246,32 @@ public struct KeyValuePairCursor<Access: CursorAccess> {
     /// A cursor at the entry's key.
     public var keyCursor: Cursor<Access>
 
+    /// The hash the entry is stored under, kept in the pair itself so that
+    /// reading a pair allocates nothing.
+    package var keyHash: KeyHash
+
     /// The hash the entry is stored under, in the order its bytes are
     /// stored. All zeros for an entry of a sorted map or set, which has no
     /// hash.
-    public var hash: [UInt8]
+    ///
+    /// This makes an array each time it is read. To look at the hash without
+    /// one, use ``withHash(_:)``.
+    public var hash: [UInt8] {
+        keyHash.bytes
+    }
+
+    /// Calls `body` with the hash the entry is stored under, without
+    /// copying it.
+    ///
+    /// - Parameter body: Given the hash's bytes, in the order they are
+    ///   stored. The span must not be kept after `body` returns.
+    /// - Returns: What `body` returns.
+    /// - Throws: What `body` throws.
+    public func withHash<Result, Failure: Error>(
+        _ body: (Span<UInt8>) throws(Failure) -> Result
+    ) throws(Failure) -> Result {
+        try keyHash.withBytes(body)
+    }
 }
 
 extension Cursor where Access == ReadWrite {
@@ -303,6 +325,16 @@ extension Cursor where Access == ReadWrite {
         _ callback: (inout Cursor<ReadWrite>) throws -> Void
     ) throws -> Cursor<ReadWrite> {
         try writePath(path.span, callback)
+    }
+
+    /// Follows a path that ends in a `ctx` part, and runs there a callback
+    /// that can only fail with an error of the database, so that the call
+    /// keeps its typed error.
+    package func writePath(
+        _ path: Span<PathPart>,
+        typed callback: (inout Cursor<ReadWrite>) throws(XitDBError) -> Void
+    ) throws(XitDBError) -> Cursor<ReadWrite> {
+        try writePath(path, lift: { $0 }, callback: callback)
     }
 
     /// Zig's `Cursor.writePath`: the checks, the fresh look at the starting
