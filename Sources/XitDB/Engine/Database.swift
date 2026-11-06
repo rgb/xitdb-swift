@@ -31,6 +31,10 @@ public final class Database {
     /// copied before it is changed.
     var transactionStart: UInt64?
 
+    /// The number of commits this object has made. A write looks at it
+    /// before and after, to know whether it committed anything.
+    private(set) var commitCount: UInt64 = 0
+
     /// The source of the file ID of a new database and of every commit ID.
     private var random: any RandomNumberGenerator
 
@@ -184,6 +188,7 @@ public final class Database {
             rootHeader.encode(into: &output)
         }
         try storage.write(rootHeaderBytes.span, at: RootHeader.position)
+        commitCount &+= 1
     }
 
     /// Discards whatever lies beyond the committed size: what a transaction

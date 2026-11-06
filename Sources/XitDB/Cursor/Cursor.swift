@@ -336,6 +336,7 @@ extension Cursor where Access == ReadWrite {
 
         let database = self.database
         let frozenAt = self.frozenAt
+        let commitsBefore = database.commitCount
         let result: SlotPointer
         do throws(Failure) {
             result = try database.writeSlotPointer(path, at: start, frozenAt: frozenAt, lift: lift) {
@@ -355,7 +356,13 @@ extension Cursor where Access == ReadWrite {
             throw error
         }
 
-        if database.transactionStart == nil {
+        // The second sync of a commit, which makes the root header durable.
+        // Zig syncs here after every write that is not inside a transaction,
+        // including the ones that commit nothing: an empty path, and
+        // initialising a root that is already initialised. With full
+        // durability that would be a drive flush each time a collection is
+        // wrapped around a root cursor, for no bytes written.
+        if database.transactionStart == nil && database.commitCount != commitsBefore {
             do throws(XitDBError) {
                 try database.storage.sync(.afterRootHeader)
             } catch {
