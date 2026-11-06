@@ -83,7 +83,21 @@ struct MemoryBuffer {
 ///
 /// Flushing and syncing do nothing.
 public final class MemoryStorage: WritableStorage {
-    private var buffer: MemoryBuffer
+    // The engine calls a storage several times for every slot it follows,
+    // and the run-time exclusivity check on this property cost more than the
+    // copy it guarded: 11% of a hash map insert. The check is off for this
+    // one property, which makes every use of it `unsafe` to the compiler.
+    //
+    // Safe: what the check catches is an access to `buffer` that begins
+    // while another one, a modification, is still going on. Every access is
+    // in a method below, and lasts only while that method runs `MemoryBuffer`
+    // code, which takes no closure and calls nothing of the caller's. So no
+    // access can begin on a thread while another is in progress there. (The
+    // check says nothing about two threads; the class is not `Sendable`.)
+    // The spans a caller passes in cannot overlap the buffer's memory either:
+    // the buffer hands out no span, and the array that `bytes` returns is
+    // copied by the first write that follows it.
+    @exclusivity(unchecked) private var buffer: MemoryBuffer
 
     /// Creates a storage.
     ///
@@ -93,7 +107,7 @@ public final class MemoryStorage: WritableStorage {
     ///   - maxSize: The most bytes the storage may grow to, or `nil` for no
     ///     limit. Initial contents are not checked against it.
     public init(bytes: [UInt8] = [], maxSize: UInt64? = nil) {
-        self.buffer = MemoryBuffer(bytes: bytes, maxSize: maxSize)
+        unsafe self.buffer = MemoryBuffer(bytes: bytes, maxSize: maxSize)
     }
 
     /// The most bytes the storage may grow to, or `nil` for no limit.
@@ -106,7 +120,7 @@ public final class MemoryStorage: WritableStorage {
     /// cannot be had. Set a limit for a storage whose writes are not under
     /// the caller's control.
     public var maxSize: UInt64? {
-        buffer.maxSize
+        unsafe buffer.maxSize
     }
 
     /// The storage's current contents.
@@ -114,7 +128,7 @@ public final class MemoryStorage: WritableStorage {
     /// This is a copy as far as the caller is concerned: later writes to the
     /// storage do not change an array obtained here.
     public var bytes: [UInt8] {
-        buffer.bytes
+        unsafe buffer.bytes
     }
 
     /// Reads the bytes that start at `offset` into a part of `buffer`, as
@@ -134,12 +148,12 @@ public final class MemoryStorage: WritableStorage {
         range: Range<Int>,
         at offset: UInt64
     ) throws(XitDBError) -> Int {
-        self.buffer.read(into: &buffer, range: range, at: offset)
+        unsafe self.buffer.read(into: &buffer, range: range, at: offset)
     }
 
     /// The number of bytes in the storage. This never throws.
     public func length() throws(XitDBError) -> UInt64 {
-        UInt64(buffer.count)
+        UInt64(unsafe buffer.count)
     }
 
     /// Writes `bytes` at `offset`, growing the storage if they reach beyond
@@ -151,7 +165,7 @@ public final class MemoryStorage: WritableStorage {
     /// - Throws: ``XitDBError/maxSizeExceeded`` if the write would grow the
     ///   storage beyond ``maxSize``. Nothing is changed then.
     public func write(_ bytes: Span<UInt8>, at offset: UInt64) throws(XitDBError) {
-        try buffer.write(bytes, at: offset)
+        try unsafe buffer.write(bytes, at: offset)
     }
 
     /// Cuts the storage down to `length` bytes.
@@ -161,7 +175,7 @@ public final class MemoryStorage: WritableStorage {
     ///   current length. A memory storage does not grow this way, and nothing
     ///   is changed.
     public func setLength(_ length: UInt64) throws(XitDBError) {
-        try buffer.setLength(length)
+        try unsafe buffer.setLength(length)
     }
 
     /// Does nothing: there is nothing underneath a memory storage to flush
