@@ -77,14 +77,16 @@ public struct CountedHashMap<Access: CursorAccess> {
     /// entry for it or the entry's value was never written.
     ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
-    ///   size.
+    ///   size, in any collection of bytes: an array, a digest, a slice, a
+    ///   string's `utf8`. The `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
     ///   the slot holds something other than a hash map or set, or an error
     ///   of the storage or of a damaged file.
-    public func cursor(forHash hash: [UInt8]) throws(XitDBError) -> Cursor<ReadOnly>? {
-        let path: InlineArray<1, PathPart> = [.hashMapGet(.value, KeyHash(hash))]
-        return try cursor.readPath(path.span)
+    @inlinable
+    public func cursor(forHash hash: some Collection<UInt8>) throws(XitDBError) -> Cursor<ReadOnly>? {
+        let bytes = Array(hash)
+        return try cursor(forHash: bytes.span)
     }
 
     /// The slot of the value stored under a hash, or `nil` if the map has no
@@ -105,14 +107,16 @@ public struct CountedHashMap<Access: CursorAccess> {
     /// entry for it or the entry's value was never written.
     ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
-    ///   size.
+    ///   size, in any collection of bytes: an array, a digest, a slice, a
+    ///   string's `utf8`. The `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
     ///   the slot holds something other than a hash map or set, or an error
     ///   of the storage or of a damaged file.
-    public func slot(forHash hash: [UInt8]) throws(XitDBError) -> Slot? {
-        let path: InlineArray<1, PathPart> = [.hashMapGet(.value, KeyHash(hash))]
-        return try cursor.readPathSlot(path.span)
+    @inlinable
+    public func slot(forHash hash: some Collection<UInt8>) throws(XitDBError) -> Slot? {
+        let bytes = Array(hash)
+        return try slot(forHash: bytes.span)
     }
 
     /// A cursor at the key stored beside the value under a hash, or `nil`
@@ -133,14 +137,16 @@ public struct CountedHashMap<Access: CursorAccess> {
     /// if the map has no entry for it or no key was stored with it.
     ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
-    ///   size.
+    ///   size, in any collection of bytes: an array, a digest, a slice, a
+    ///   string's `utf8`. The `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
     ///   the slot holds something other than a hash map or set, or an error
     ///   of the storage or of a damaged file.
-    public func keyCursor(forHash hash: [UInt8]) throws(XitDBError) -> Cursor<ReadOnly>? {
-        let path: InlineArray<1, PathPart> = [.hashMapGet(.key, KeyHash(hash))]
-        return try cursor.readPath(path.span)
+    @inlinable
+    public func keyCursor(forHash hash: some Collection<UInt8>) throws(XitDBError) -> Cursor<ReadOnly>? {
+        let bytes = Array(hash)
+        return try keyCursor(forHash: bytes.span)
     }
 
     /// The slot of the key stored beside the value under a hash, or `nil`
@@ -161,14 +167,16 @@ public struct CountedHashMap<Access: CursorAccess> {
     /// if the map has no entry for it or no key was stored with it.
     ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
-    ///   size.
+    ///   size, in any collection of bytes: an array, a digest, a slice, a
+    ///   string's `utf8`. The `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
     ///   the slot holds something other than a hash map or set, or an error
     ///   of the storage or of a damaged file.
-    public func keySlot(forHash hash: [UInt8]) throws(XitDBError) -> Slot? {
-        let path: InlineArray<1, PathPart> = [.hashMapGet(.key, KeyHash(hash))]
-        return try cursor.readPathSlot(path.span)
+    @inlinable
+    public func keySlot(forHash hash: some Collection<UInt8>) throws(XitDBError) -> Slot? {
+        let bytes = Array(hash)
+        return try keySlot(forHash: bytes.span)
     }
 
     /// The entry stored under a hash, as a cursor for its key and one for
@@ -189,14 +197,16 @@ public struct CountedHashMap<Access: CursorAccess> {
     /// its value, or `nil` if the map has no entry for it.
     ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
-    ///   size.
+    ///   size, in any collection of bytes: an array, a digest, a slice, a
+    ///   string's `utf8`. The `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
     ///   the slot holds something other than a hash map or set, or an error
     ///   of the storage or of a damaged file.
-    public func entry(forHash hash: [UInt8]) throws(XitDBError) -> Entry? {
-        let path: InlineArray<1, PathPart> = [.hashMapGet(.kvPair, KeyHash(hash))]
-        return try cursor.readPath(path.span)?.readEntry()
+    @inlinable
+    public func entry(forHash hash: some Collection<UInt8>) throws(XitDBError) -> Entry? {
+        let bytes = Array(hash)
+        return try entry(forHash: bytes.span)
     }
 
 }
@@ -278,7 +288,9 @@ extension CountedHashMap where Access == ReadWrite {
     ///
     /// - Parameters:
     ///   - value: The value.
-    ///   - hash: The key's hash, as many bytes as the database's hash size.
+    ///   - hash: The key's hash, as many bytes as the database's hash size,
+    ///     in any collection of bytes: an array, a digest, a slice, a
+    ///     string's `utf8`. The `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/expectedTxStart`` if the map's cursor is not
     ///   the root cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
@@ -286,9 +298,10 @@ extension CountedHashMap where Access == ReadWrite {
     ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
     ///   the slot no longer holds a hash map or set, or an error of the
     ///   storage or of a damaged file.
-    public func put(_ value: WritableData, forHash hash: [UInt8]) throws(XitDBError) {
-        let path: InlineArray<2, PathPart> = [.hashMapGet(.value, KeyHash(hash)), .write(value)]
-        _ = try cursor.writePath(path.span)
+    @inlinable
+    public func put(_ value: WritableData, forHash hash: some Collection<UInt8>) throws(XitDBError) {
+        let bytes = Array(hash)
+        try put(value, forHash: bytes.span)
     }
 
     /// A cursor at the value stored under a hash, for writing it or for
@@ -314,7 +327,8 @@ extension CountedHashMap where Access == ReadWrite {
     /// has none.
     ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
-    ///   size.
+    ///   size, in any collection of bytes: an array, a digest, a slice, a
+    ///   string's `utf8`. The `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/expectedTxStart`` if the map's cursor is not
     ///   the root cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
@@ -322,9 +336,10 @@ extension CountedHashMap where Access == ReadWrite {
     ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
     ///   the slot no longer holds a hash map or set, or an error of the
     ///   storage or of a damaged file.
-    public func putCursor(forHash hash: [UInt8]) throws(XitDBError) -> Cursor<ReadWrite> {
-        let path: InlineArray<1, PathPart> = [.hashMapGet(.value, KeyHash(hash))]
-        return try cursor.writePath(path.span)
+    @inlinable
+    public func putCursor(forHash hash: some Collection<UInt8>) throws(XitDBError) -> Cursor<ReadWrite> {
+        let bytes = Array(hash)
+        return try putCursor(forHash: bytes.span)
     }
 
     /// Stores a key beside the value under its hash, unless a key is there
@@ -359,8 +374,11 @@ extension CountedHashMap where Access == ReadWrite {
     /// always be the same.
     ///
     /// - Parameters:
-    ///   - key: The key.
-    ///   - hash: The key's hash, as many bytes as the database's hash size.
+    ///   - key: The key, in any collection of bytes: an array, a slice, a
+    ///     string's `utf8`. The `Span` overload takes bytes already borrowed.
+    ///   - hash: The key's hash, as many bytes as the database's hash size,
+    ///     in any collection of bytes: an array, a digest, a slice, a
+    ///     string's `utf8`. The `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/expectedTxStart`` if the map's cursor is not
     ///   the root cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
@@ -368,13 +386,10 @@ extension CountedHashMap where Access == ReadWrite {
     ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
     ///   the slot no longer holds a hash map or set, or an error of the
     ///   storage or of a damaged file.
-    public func putKey(_ key: WritableData, forHash hash: [UInt8]) throws(XitDBError) {
-        let path: InlineArray<2, PathPart> = [.hashMapGet(.key, KeyHash(hash)), .ctx]
-        _ = try cursor.writePath(
-            path.span,
-            typed: { (keyCursor: inout Cursor<ReadWrite>) throws(XitDBError) in
-                try keyCursor.writeIfEmpty(key)
-            })
+    @inlinable
+    public func putKey(_ key: WritableData, forHash hash: some Collection<UInt8>) throws(XitDBError) {
+        let bytes = Array(hash)
+        try putKey(key, forHash: bytes.span)
     }
 
     /// A cursor at the key stored beside the value under a hash, for
@@ -398,7 +413,8 @@ extension CountedHashMap where Access == ReadWrite {
     /// writing it. The map gets an entry for the hash if it has none.
     ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
-    ///   size.
+    ///   size, in any collection of bytes: an array, a digest, a slice, a
+    ///   string's `utf8`. The `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/expectedTxStart`` if the map's cursor is not
     ///   the root cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
@@ -406,9 +422,10 @@ extension CountedHashMap where Access == ReadWrite {
     ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
     ///   the slot no longer holds a hash map or set, or an error of the
     ///   storage or of a damaged file.
-    public func putKeyCursor(forHash hash: [UInt8]) throws(XitDBError) -> Cursor<ReadWrite> {
-        let path: InlineArray<1, PathPart> = [.hashMapGet(.key, KeyHash(hash))]
-        return try cursor.writePath(path.span)
+    @inlinable
+    public func putKeyCursor(forHash hash: some Collection<UInt8>) throws(XitDBError) -> Cursor<ReadWrite> {
+        let bytes = Array(hash)
+        return try putKeyCursor(forHash: bytes.span)
     }
 
     /// Removes the entry stored under a hash.
@@ -448,15 +465,10 @@ extension CountedHashMap where Access == ReadWrite {
     ///   the slot no longer holds a hash map or set, or an error of the
     ///   storage or of a damaged file.
     @discardableResult
-    public func remove(forHash hash: [UInt8]) throws(XitDBError) -> Bool {
-        let path: InlineArray<1, PathPart> = [.hashMapRemove(KeyHash(hash))]
-        do throws(XitDBError) {
-            _ = try cursor.writePath(path.span)
-        } catch {
-            guard error == .keyNotFound else { throw error }
-            return false
-        }
-        return true
+    @inlinable
+    public func remove(forHash hash: some Collection<UInt8>) throws(XitDBError) -> Bool {
+        let bytes = Array(hash)
+        return try remove(forHash: bytes.span)
     }
 
 }
