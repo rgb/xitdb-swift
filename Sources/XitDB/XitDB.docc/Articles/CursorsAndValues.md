@@ -227,9 +227,10 @@ That map's count is 1, and it still has an entry for `"cleared"`, with nothing i
 how one moment starts from another without copying what it holds. An empty slot is written as one set to nothing. A
 client cannot make a slot; every slot it writes is one a database gave it, and it must have come from the same database.
 
-It should also be a value. The slot of a cursor from a map's iterator is the entry's own: writing it elsewhere today makes
-data the engine cannot read, and the next version refuses it with an error, `structuralSlot`. Read the entry, and write the
-slot of its ``Entry/value``. See <doc:DifferencesFromTheOriginal>.
+It should also be a value. The slot of a cursor from a map's iterator is the entry's own. Written elsewhere today, it can only
+be read as an entry, and reading it as bytes or as a collection throws ``XitDBError/unexpectedTag``. The next version refuses
+to write it, with an error, `structuralSlot`. Read the entry, and write the slot of its ``Entry/value``. See
+<doc:DifferencesFromTheOriginal>.
 
 ## See Also
 

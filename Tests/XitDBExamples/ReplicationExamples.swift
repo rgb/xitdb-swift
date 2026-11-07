@@ -134,6 +134,64 @@ import XitDB
         #expect(try compacted.replicationStart(for: try replica.replicaState) == 0)
     }
 
+    @Test func aFullSyncOfBytesThatAreNotADatabase() throws {
+        let (_, source, _) = try newSource()
+        let bytes = try source.readCommitted(from: 0, to: try source.committedSize)
+
+        // Too few to hold the headers, with the count right.
+        let first = try Database(creating: MemoryStorage(), hashSize: 32)
+        #expect(throws: XitDBError.endOfStream) {
+            try first.applyReplicated(at: 0, bytes: Array(bytes[..<30]))
+        }
+
+        // A later version of the format.
+        var newer = bytes
+        newer[5] = 9
+        let second = try Database(creating: MemoryStorage(), hashSize: 32)
+        #expect(throws: XitDBError.invalidVersion) {
+            try second.applyReplicated(at: 0, bytes: newer)
+        }
+
+        // No database at all.
+        let third = try Database(creating: MemoryStorage(), hashSize: 32)
+        #expect(throws: XitDBError.invalidDatabase) {
+            try third.applyReplicated(at: 0, bytes: [UInt8](repeating: 0, count: 100))
+        }
+    }
+
+    @Test func aSourceRestoredFromABackupThatHasSinceGoneOn() throws {
+        let (sourceStorage, source, history) = try newSource()
+        let backup = sourceStorage.bytes
+        try commit(2, to: history)
+
+        let replica = try Database(creating: MemoryStorage(), hashSize: 32)
+        try replica.applyReplicated(at: 0, bytes: try source.readCommitted(from: 0, to: try source.committedSize))
+
+        // The source goes back to the backup, and then commits past the replica.
+        let restored = try Database(opening: MemoryStorage(bytes: backup))
+        let restoredHistory = try ArrayList<ReadWrite>(restored.rootCursor)
+        for value: UInt64 in 3...10 {
+            try commit(value, to: restoredHistory)
+        }
+        #expect(try restored.committedSize > replica.committedSize)
+        #expect(try restored.replicationStart(for: try replica.replicaState) == 0)
+    }
+
+    @Test func aNewDatabaseGivenTheSourcesFileID() throws {
+        let storage = MemoryStorage()
+        let source = try Database(creating: storage, hashSize: 32, hashID: "sha2", fileID: 7)
+        try ArrayList<ReadWrite>(source.rootCursor).append(.uint(1))
+
+        let replica = try Database(creating: MemoryStorage(), hashSize: 32, fileID: 7)
+        let start = try source.replicationStart(for: try replica.replicaState)
+        #expect(start == 62)
+
+        try replica.applyReplicated(
+            at: start, bytes: try source.readCommitted(from: start, to: try source.committedSize))
+        #expect(try ArrayList<ReadOnly>(replica.rootCursor).count == 1)
+        #expect(replica.header.hashID != source.header.hashID)
+    }
+
     @Test func aReplicaWrittenToDirectlyIsReplaced() throws {
         let (_, source, _) = try newSource()
         let replica = try Database(creating: MemoryStorage(), hashSize: 32)

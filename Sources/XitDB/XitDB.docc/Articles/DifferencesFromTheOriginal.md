@@ -17,7 +17,7 @@ sensible result, where the original crashes, misbehaves, or depends on which kin
 | In the original | In the port |
 |---|---|
 | On macOS, a commit uses plain `fsync`, which promises neither order nor a flush. After a power loss the root header can be ahead of its data, and the file does not open. | ``Durability`` uses `F_BARRIERFSYNC` and `F_FULLFSYNC`. See <doc:Transactions>. |
-| A wild offset in a damaged file aborts the process, and several other damaged-file cases crash. | An error, always: see <doc:Errors>. |
+| An out-of-range offset aborts the process, and a tree whose header disagrees with its nodes crashes it. | An error where the code comes across it: see <doc:Errors>. |
 | Reading a slot set to nothing as bytes gives an empty value from one call, and `EndOfStream` from the other unless the buffer is empty. | No bytes, from both. |
 | Streaming a slot set to nothing gives `UnexpectedTag`. | An empty stream. |
 | Streaming a short value fails for a slot with no position, and otherwise reads from the file, so it returns other bytes after the slot is overwritten. | It reads the cursor's own slot, like every other read. |
@@ -43,18 +43,18 @@ next version does instead:
 - **Do not carry on after an error in a transaction's body.** What the failed operation had already written is committed along with
   the rest. Let the error leave the body. In the next version, a write that fails after writing something makes the transaction
   unable to commit, with an error, `poisonedTransaction`.
-- **Do not write the slot of an entry as a value.** The slot of a cursor from a map's iterator is the entry's own, and writing it
-  somewhere else makes data the engine cannot read. Read the entry, and write the slot of its ``Entry/value``. The next version
+- **Do not write the slot of an entry as a value.** The slot of a cursor from a map's iterator is the entry's own. Written
+  somewhere else, it can only be read as an entry. Read the entry, and write the slot of its ``Entry/value``. The next version
   refuses it with an error, `structuralSlot`.
 - **After a join or a freeze, run the initialiser again on the cursor you hold.**
-  ``LinkedArrayList/append(contentsOf:)-(LinkedArrayList<CursorAccess>)`` and ``Database/freeze()`` affect every collection made before
-  them, and one written through without that can lose writes. In the original this can crash; in the port it gives an error or a
+  ``LinkedArrayList/append(contentsOf:)-(LinkedArrayList<CursorAccess>)`` and ``Database/freeze()`` affect the collections made before
+  them, other than the list that joined, and one written through without that can lose writes. In the original this can crash; in the port it gives an error or a
   wrong result, and never a crash. In the next version a join leaves the list that called it ready to use, and a write through any
   other collection held across it is the stale cursor's error.
 - **``Cursor/writeIfEmpty(_:)`` goes by the cursor's snapshot.** If the slot was written through another cursor since, the value there
   is overwritten. The next version decides by the slot as it is now.
 
-A file whose last commit is damaged does not open, even though the commits before it are intact. In the next version, opening it fails
+A file whose root header or last trailer is damaged does not open, even though the commits before it are intact. In the next version, opening it fails
 with an error that names the last position that verifies, and a separate call truncates the file to it. Nothing is dropped silently.
 
 Some of those fixes change the bytes of the operations they fix. Each of those is made in a branch of the original first, so that the
@@ -70,7 +70,9 @@ The file format and the operations are the same, and the API follows Swift:
 - **A byte writer is a closure**, ``Cursor/writeBytes(formatTag:_:)``. There is no `finish` to forget.
 - **The path API is not public.** Only the collections and cursors are, so the original's hazards that need a raw path cannot be reached.
 - **``Entry`` is read-only**, so a sorted map's key cannot be overwritten through one, and a client cannot make a ``Slot``.
-- **Nothing is `Sendable`** but the value types. A ``Database`` belongs to one thread or task at a time, and the compiler enforces it.
+- **Nothing that reads or writes a database is `Sendable`**: ``Database``, ``Cursor``, the collections, the storages, ``ByteReader`` and
+  ``ByteWriter``. A database belongs to one thread or task at a time, and in Swift 6 mode the compiler enforces it. Plain values such as
+  ``Slot``, ``Bytes`` and ``XitDBError`` are `Sendable`.
 
 Every operation of the original is here. Planned beyond it, and not here yet: read snapshots that can be shared between threads and
 tasks, a target with ready-made hashes, and a layer with string keys and typed values.

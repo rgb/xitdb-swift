@@ -4,8 +4,9 @@ Keeping a copy of a database up to date by sending it the bytes it lacks.
 
 ## Overview
 
-Once a transaction has committed, its bytes never change, except for a small header that points at the latest commit. So a
-replica that has a prefix of a database's file needs only what follows it. There is no log to ship, no protocol to speak and
+Once a transaction has committed, its bytes do not change, except for a small header that points at the latest commit. So a
+replica that has a prefix of a database's file needs only what follows it. (Today a cursor kept from an earlier transaction can
+break this; the next version refuses it: see <doc:DifferencesFromTheOriginal>.) There is no log to ship, no protocol to speak and
 no server: a sync is copying bytes.
 
 ![A source and its replica, side by side. The replica holds the same bytes as the start of the source, and the bytes it lacks are copied across.](replica.svg)
@@ -95,14 +96,19 @@ returns zero only when they have run out. An error thrown by a sink or a source 
 and 0 if not. The checksum in a ``ReplicaState`` covers the file's ID and the random ID of the commit, so it identifies both the
 file and the history that led there. A state never causes an error; one that does not match anything gives 0.
 
-At 0 the replica is replaced by a full copy, and it takes the source's file ID and hash ID. That happens when:
+At 0 the replica is replaced by a full copy, and it takes the source's file ID and hash ID. That happens whenever the replica's
+bytes are not a prefix of the source's. For example:
 
-- the replica is a new database, so a replica can start as any empty database with the source's hash size;
+- the replica is a new database, so a replica can start as any empty database with the source's hash size, or it is a replica of
+  another database;
 - the source has been replaced by a compacted copy, which is a new file;
-- the source was restored from an older backup, so the replica is ahead of it;
+- the source was restored from an older backup, whether the replica is now ahead of it or it has since committed past the replica;
 - the replica has commits of its own.
 
-That last one is why you should only change a replica with ``Database/applyReplicated(at:from:count:)``. Written to directly, it
+The comparison goes by the checksum of the replica's last commit. A new database given the source's file ID has the same first
+commit as the source, so it is given 62 and not 0, and it keeps its own header. Leave the file ID to be chosen.
+
+That last case is why you should only change a replica with ``Database/applyReplicated(at:from:count:)``. Written to directly, it
 no longer matches the source, and the next sync replaces it.
 
 ### When a sync fails
@@ -142,9 +148,12 @@ A failed ``Database/applyReplicated(at:from:count:)`` can also mean the bytes we
 
 - ``XitDBError/invalidRange``: a start that is neither 0 nor the replica's committed size. Nothing has changed.
 - ``XitDBError/endOfStream``: the source ran out before the count, or claimed to have given more than its buffer holds.
-- ``XitDBError/invalidDatabase``: the bytes do not end with a trailer that checks, or at 0 do not hold a database.
-- ``XitDBError/truncatedDatabase``: at 0, the bytes stop short of the committed size they record.
-- ``XitDBError/invalidHashSize``: at 0, a database with another hash size.
+- ``XitDBError/invalidDatabase``: the bytes do not end with a trailer that checks.
+
+At 0 the bytes are a database to open, so what opening one throws comes from here too: ``XitDBError/invalidDatabase`` for bytes that
+are not one, ``XitDBError/invalidVersion`` for another version of the format, ``XitDBError/invalidHashSize`` for another hash size,
+``XitDBError/truncatedDatabase`` for bytes that stop short of the committed size they record, and ``XitDBError/endOfStream`` for too
+few to hold the headers.
 
 ### An earlier commit
 

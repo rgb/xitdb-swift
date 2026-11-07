@@ -107,6 +107,28 @@ import XitDB
         #expect(try compactedEmpty.rootCursor.slot.isEmpty)
     }
 
+    @Test func aLastElementNeverWrittenLosesTheHistory() throws {
+        let database = try newHistory(moments: 3)
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
+        _ = try history.appendCursor()
+
+        var offsets = MemoryOffsetMap()
+        let compacted = try database.compact(into: MemoryStorage(), offsetMap: &offsets)
+        #expect(try compacted.rootCursor.slot.isEmpty)
+        #expect(try compacted.committedSize == 62)
+    }
+
+    @Test func onlyAnArrayListAtTheRootIsAHistory() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let list = try LinkedArrayList<ReadWrite>(database.rootCursor)
+        try list.append(.uint(1))
+        try list.append(.uint(2))
+
+        var offsets = MemoryOffsetMap()
+        let compacted = try database.compact(into: MemoryStorage(), offsetMap: &offsets)
+        #expect(try LinkedArrayList<ReadOnly>(compacted.rootCursor).count == 2)
+    }
+
     @Test func aRootThatIsNotAListIsCopiedWhole() throws {
         let source = try Database(creating: MemoryStorage(), hashSize: 32)
         let map = try HashMap<ReadWrite>(source.rootCursor)

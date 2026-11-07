@@ -140,6 +140,46 @@ import XitDB
         }
     }
 
+    @Test func aFormatTagAfterAnotherWrite() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        try database.withTransaction { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            var value = try moment.putCursor(forHash: sha256("value"))
+            #expect(throws: XitDBError.unexpectedWriterPosition) {
+                try value.writeBytes { writer in
+                    try writer.write(Array("first".utf8))
+                    try moment.put(.bytes(Array("something else".utf8)), forHash: sha256("other"))
+                    writer.formatTag = "xx"
+                }
+            }
+        }
+    }
+
+    @Test func anotherWriteThatTheArrayDoesNotOutgrow() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        try database.withTransaction { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            var value = try moment.putCursor(forHash: sha256("value"))
+            try value.writeBytes { writer in
+                try writer.write(Array("first".utf8))
+                try moment.put(.bytes(Array("something else".utf8)), forHash: sha256("other"))
+                writer.seek(to: 0)
+                try writer.write(Array("FI".utf8))
+            }
+            #expect(try value.readBytes() == Array("FIrst".utf8))
+        }
+    }
+
+    @Test func aTransactionsBodyCanWriteBytesAtTheRoot() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        try database.withTransaction { cursor in
+            try cursor.writeBytes { writer in
+                try writer.write(Array("at the root".utf8))
+            }
+        }
+        #expect(try database.rootCursor.readBytes() == Array("at the root".utf8))
+    }
+
     private struct NoMoreBytes: Error {}
 
     @Test func aBodyThatThrowsLeavesTheSlot() throws {

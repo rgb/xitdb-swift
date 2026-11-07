@@ -25,6 +25,10 @@ import XitDB
         #expect(throws: XitDBError.truncatedDatabase) {
             try Database(opening: MemoryStorage(bytes: Array(good[..<(good.count - 1)])))
         }
+        // Long enough for a header and too short for the root header after it.
+        #expect(throws: XitDBError.endOfStream) {
+            try Database(opening: MemoryStorage(bytes: Array(good[..<30])))
+        }
         // A later version of the format.
         var newer = good
         newer[5] = 9
@@ -54,6 +58,34 @@ import XitDB
         #expect(opened < good.count)
     }
 
+    @Test func aChangedByteInAValueIsNotNoticed() throws {
+        let storage = MemoryStorage()
+        let database = try Database(creating: storage, hashSize: 32)
+        let value = Array("a value long enough for a record".utf8)
+        try HashMap<ReadWrite>(database.rootCursor).put(.bytes(value), forHash: sha256("value"))
+
+        // Only the trailer that ends a commit is checksummed, so damage to the data
+        // opens without complaint and reads back wrong.
+        var bytes = storage.bytes
+        let place = try #require(bytes.indices.first { bytes[$0...].starts(with: value) })
+        bytes[place] ^= 0x01
+        let damaged = try Database(opening: MemoryStorage(bytes: bytes))
+        let read = try HashMap<ReadOnly>(damaged.rootCursor).cursor(forHash: sha256("value"))!.readBytes()
+        #expect(read != value)
+        #expect(read.count == value.count)
+    }
+
+    @Test func aFreezeOutsideATransaction() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        #expect(throws: XitDBError.expectedTxStart) {
+            try database.freeze()
+        }
+        var root = database.rootCursor
+        #expect(throws: XitDBError.expectedTxStart) {
+            try root.freeze()
+        }
+    }
+
     @Test func aBadCursorInAProgram() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         let map = try HashMap<ReadWrite>(database.rootCursor)
@@ -68,11 +100,12 @@ import XitDB
         func open(_ storage: any WritableStorage) throws -> Database? {
             do {
                 return try Database(opening: storage)
-            } catch XitDBError.invalidDatabase, XitDBError.truncatedDatabase {
+            } catch XitDBError.invalidDatabase, XitDBError.truncatedDatabase, XitDBError.endOfStream {
                 return nil
             }
         }
         #expect(try open(MemoryStorage()) == nil)
+        #expect(try open(MemoryStorage(bytes: [1, 2, 3])) == nil)
         #expect(try open(MemoryStorage(bytes: try newDatabaseBytes())) != nil)
     }
 
@@ -100,6 +133,13 @@ import XitDB
             try slot.write(.slot(nil))
             #expect(throws: XitDBError.keyNotFound) {
                 try list.put(.uint(1), at: 0)
+            }
+
+            var other = try moment.putCursor(forHash: sha256("map"))
+            let map = try HashMap<ReadWrite>(other)
+            try other.write(.slot(nil))
+            #expect(throws: XitDBError.keyNotFound) {
+                try map.put(.uint(1), forHash: sha256("a"))
             }
         }
     }

@@ -38,14 +38,17 @@ you give one, so it is a new file as far as replicas are concerned: see <doc:Rep
 
 What happens depends on the root:
 
-- **A root that is a list** is taken to be a history. Only its last moment survives, as the one element of a new list. The
-  earlier moments are what compaction is there to discard.
-- **A root that is anything else** is copied whole, one set to nothing included.
-- **An empty root**, or a history whose list has no last moment or one that was never written, commits nothing, and you get
-  an empty database. In the second case the empty list is lost too.
+- **A root that is an ``ArrayList``** is taken to be a history. Only its last moment survives, as the one element of a new
+  list. The earlier moments are what compaction is there to discard.
+- **A root that is anything else** is copied whole, a ``LinkedArrayList`` or a root set to nothing included.
+- **An empty root** commits nothing, and you get an empty database.
+- **A history with no last moment commits nothing either**, and that includes a last element that was appended and never
+  written, however many moments come before it. You get an empty database, with neither the list nor those moments in it. So
+  check the last element before you compact, if your code can leave one unwritten.
 
-Everything is copied once, however many slots point at it. Two keys that shared a value before share it afterwards, and a
-cycle ends.
+A value or a collection is copied once, however many slots point at it, so two keys that shared a value before share it
+afterwards, and a cycle ends. The exception is the partly filled blocks at the end of an array list, which are copied for each
+list that has them.
 
 Only the top-level list is treated as a history. A list inside a moment is data, and it is copied whole with all its
 elements, which you can use: see "Forgetting one thing" below.

@@ -88,7 +88,7 @@
             @Step {
                 See what it cost. However large the moment you went back to, the transaction appended 194 bytes: a copy of
                 the root slot, a copy of the list's header and first block, and the trailer that ends a transaction. Every
-                transaction pays at least that, and a little more as the history grows, so the file only grows.
+                moment costs at least that, and more as the history grows, 338 bytes past 16 moments, so the file only grows.
                 <doc:MomentsAndHistory> has the numbers, and compacting is how to get the space back.
 
                 @Code(name: "main.swift", file: "keeping-history-10.swift")

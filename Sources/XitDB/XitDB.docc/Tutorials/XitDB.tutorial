@@ -1,8 +1,8 @@
 @Tutorials(name: "XitDB") {
     @Intro(title: "Learning XitDB") {
         Work through a database from its first commit: keep its history, build an index that it does not give you, and
-        keep a copy of it up to date. Each tutorial is one program that grows step by step, and the code at every step
-        is compiled and run with the package's tests.
+        keep a copy of it up to date. Each tutorial is one program that grows step by step. The package's tests compile and
+        run the finished program, which holds the code of every step.
     }
 
     @Chapter(name: "A database and its history") {

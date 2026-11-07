@@ -10,7 +10,7 @@
     @Section(title: "A first sync") {
         @ContentAndMedia {
             A sync has four steps, and they go back and forth. Over a network, the two databases are on different machines,
-            and what goes between them is two integers one way and some bytes the other.
+            and what goes between them is two integers one way, and the start, the count and the bytes the other.
         }
 
         @Steps {
@@ -34,8 +34,8 @@
             }
 
             @Step {
-                On the source: decide where to start. Every database has a random file ID, which is part of each checksum, so
-                the source can see that this replica is not a copy of it. The answer is 0, the whole file.
+                On the source: decide where to start. Every database has a file ID of its own, random unless you give one, which is
+                part of each checksum, so the source can see that this replica is not a copy of it. The answer is 0, the whole file.
 
                 @Code(name: "main.swift", file: "replica-04.swift")
             }

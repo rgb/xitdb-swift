@@ -28,19 +28,19 @@ try cursor.writeBytes { writer in
 }
 ```
 
-This happens inside a transaction, like any write below the root. The root itself takes
-``XitDBError/cursorNotWritable``, since a value at the root is written with ``Cursor/write(_:)``.
+This happens inside a transaction, like any write below the root. On the ``Database/rootCursor`` itself it throws
+``XitDBError/cursorNotWritable``; the cursor in a transaction's body can write a byte array at the root.
 
 Three things to know:
 
-- **Nothing else can be written meanwhile.** The array can only grow while it is the last thing in the storage, so a
-  write to anything else in the body, followed by more bytes for the array, throws
-  ``XitDBError/unexpectedWriterPosition``.
+- **Write nothing else meanwhile.** The array can only grow while it is the last thing in the storage, so after a write to
+  anything else in the body, more bytes for the array, or a format tag, throw ``XitDBError/unexpectedWriterPosition``.
 - **If the body throws, the slot is left as it was.** The bytes already written stay in the storage, unused. If the error
   leaves the transaction, they go with it. If you catch it and the transaction commits, they are committed too, and only
   compacting removes them.
 - **A value written this way always has a record of its own**, however short it is: eight bytes of length, the bytes, and
-  two more for a format tag if it has one. The same bytes written with ``WritableData/bytes(_:formatTag:)`` would go in the slot if they fit.
+  two more for a format tag if it has one. The same bytes written with ``WritableData/bytes(_:formatTag:)`` go in the slot if they are short enough:
+  see <doc:CursorsAndValues>.
 
 ### A format tag
 
@@ -79,8 +79,8 @@ try cursor.writeBytes { writer in
 }
 ```
 
-Seeking beyond what has been written leaves zeros in between. The next write grows the array, and the storage with it, to
-where the position reaches, and the array stays that long. A position beyond any a storage can have throws
+After a seek beyond what has been written, the next write leaves zeros in between. It grows the array, and the storage with it,
+to where the position reaches, and the array stays that long. A position beyond any a storage can have throws
 ``XitDBError/unexpectedWriterPosition`` from that write.
 
 ### Reading a part at a time
@@ -117,7 +117,8 @@ var reader = try map.cursor(forHash: sha256("value"))!.reader()
 try map.put(.bytes(Array("the second value".utf8)), forHash: sha256("value"))
 ```
 
-A slot set to nothing reads as no bytes, and a slot holding anything else than bytes throws ``XitDBError/unexpectedTag``.
+The exception is a reader made in a transaction that failed, whose bytes are gone, like a cursor's: see <doc:DifferencesFromTheOriginal>. A slot set to
+nothing reads as no bytes, and a slot holding anything else than bytes throws ``XitDBError/unexpectedTag``.
 
 ### Reading one part
 

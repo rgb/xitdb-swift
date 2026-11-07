@@ -27,12 +27,14 @@ The bytes are the same in all three, and a database moves between them without a
 ### Which to use
 
 Use ``BufferedFileStorage`` for a database in a file. Writes collect in a window of memory and reach the file together, when it
-fills up or a commit syncs, up to ``BufferedFileStorage/bufferLimit`` at a time, 2 MiB by default.
+fills up or a commit syncs. The window holds up to ``BufferedFileStorage/bufferLimit``, 2 MiB by default, and a write larger than
+that goes straight to the file.
 
 ``FileStorage`` makes a system call for every read and write. That makes writing slower: 100,000 puts in one transaction took
-1.98 seconds against the buffered storage's 1.16. Reading came out the same, at about 1.6 seconds for 100,000 lookups, because
+0.64 seconds against the buffered storage's 0.21. Reading came out the same, at about 0.26 seconds for 100,000 lookups, because
 the buffer only holds writes, so a storage that is only read has nothing to gain from it. These times are indicative: measured
-on 2026-11-07 on one machine, an Apple M4 with its internal SSD on APFS, with syncing off.
+on 2026-11-07 on one machine, an Apple M4 with its internal SSD on APFS, in a release build with syncing off and the hashes
+computed beforehand.
 
 ``MemoryStorage`` keeps the bytes in memory. Syncing does nothing, so a commit costs only what it writes. The bytes are a complete
 database, so one can be a value to send. There is no decoding step on the other side:
@@ -102,8 +104,8 @@ while a writer commits. A read through the root looks at the file each time, so 
 reached from one root comes from one commit, and is not affected by what is committed afterwards.
 
 ``Database/rootCursor`` is a ``Cursor`` of ``ReadWrite`` access on every storage, including a read-only one. Pass it straight to a read-only
-collection, as above, or take ``Cursor/readOnly`` first. A write through it on a read-only storage fails with the error the
-system gives, and it truncates nothing.
+collection, as above, or take ``Cursor/readOnly`` first. A write through it on a read-only storage fails at once with
+``XitDBError/storageFailure(errno:)`` carrying `EBADF`, and it truncates nothing.
 
 The read-only access mode is the protection. A reader that opened the file read-write is a second writer, and making a read-write
 collection on its root cursor discards whatever the real writer's transaction has written so far.
@@ -179,8 +181,8 @@ The engine relies on these points:
 - **A write past the end fills the gap with zeros.** A write of no bytes does nothing, whatever the offset.
 - **``WritableStorage/truncate(to:)`` only shortens.** A length larger than the current one throws ``XitDBError/invalidLength``.
 - **``ReadableStorage/length`` counts what has been written**, including anything not yet flushed.
-- **``WritableStorage/sync(_:)`` comes twice in every commit**, and ``SyncPoint`` says which. The data has to reach the disk before
-  the header does. A failure of either reaches the caller of the transaction.
+- **``WritableStorage/sync(_:)`` comes twice in every commit**, and once in a replica's sync from 0. ``SyncPoint`` says which it is.
+  The data has to reach the disk before the header does. A failure of either reaches the caller of the transaction.
 
 Report a failure with ``XitDBError/storageFailure(errno:)``. A storage is used from one thread at a time, and it should be a class,
 which the protocol requires, since a database and its cursors share the one instance.

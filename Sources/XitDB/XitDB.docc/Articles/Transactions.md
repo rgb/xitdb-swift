@@ -137,7 +137,8 @@ There is no journal and no write-ahead log. A transaction goes like this:
 4. It syncs the storage.
 5. It rewrites the root header, 17 bytes at offset 20, with the new root and the new committed size. This is the
    moment the transaction takes effect.
-6. It syncs the storage again. If this one fails, the call throws, but the commit stands.
+6. It syncs the storage again. If this one fails, the call throws, and the commit stands, but it may not survive a crash
+   or a power loss.
 
 So a transaction that writes nothing costs 34 bytes with an empty root, 50 with a linked array list or a sorted collection
 at the root, 178 with a hash map or set, 186 with a counted one, and 194 with an array list.

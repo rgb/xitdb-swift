@@ -50,8 +50,8 @@
 
             @Step {
                 Write a function that gives one page of an index. ``SortedMap/iterator(fromIndex:)`` starts at a position, and you stop
-                when the page is full. The value of each entry is the book's ID. The titles come back in order: Dracula,
-                Emma, Middlemarch, Moby-Dick.
+                when the page is full. The value of each entry is the book's ID, so the IDs come back in the order of the
+                titles: Dracula, Emma, Middlemarch, Moby-Dick.
 
                 @Code(name: "main.swift", file: "own-index-05.swift")
             }
