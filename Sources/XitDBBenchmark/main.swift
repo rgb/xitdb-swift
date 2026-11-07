@@ -57,11 +57,33 @@ final class RunStorage {
     }
 }
 
-/// The SHA-1 of `key-<i>` for each `i` below `count`. Computed before any
-/// clock starts, so that hashing is not part of what is measured.
-func keyHashes(_ count: Int) -> [KeyHash] {
-    (0..<count).map { index in
-        KeyHash(Array(Insecure.SHA1.hash(data: Data("key-\(index)".utf8))))
+/// The keys of a workload, computed before any clock starts, so that
+/// hashing and formatting are not part of what is measured: the SHA-1 of
+/// `key-<i>` for the hash map workloads, the text `key-<i>` itself for the
+/// sorted map, for each `i` below the workload's key count.
+struct Keys {
+    var hashes: [KeyHash] = []
+    var texts: [[UInt8]] = []
+    var sortedKeys: [SortedKey] = []
+
+    enum Kind {
+        case none
+        case hashes
+        case texts
+    }
+
+    init(_ kind: Kind, count: Int) {
+        switch kind {
+        case .none:
+            break
+        case .hashes:
+            hashes = (0..<count).map { index in
+                KeyHash(Array(Insecure.SHA1.hash(data: Data("key-\(index)".utf8))))
+            }
+        case .texts:
+            texts = (0..<count).map { index in Array("key-\(index)".utf8) }
+            sortedKeys = texts.map { SortedKey($0) }
+        }
     }
 }
 
@@ -90,7 +112,8 @@ func lastMoment(_ database: Database) throws -> Cursor<ReadOnly> {
 }
 
 /// Reads every key from a map and checks that its value is its index.
-func readMap(_ moment: Cursor<ReadOnly>, _ hashes: [KeyHash]) throws {
+func readMap(_ moment: Cursor<ReadOnly>, _ keys: Keys) throws {
+    let hashes = keys.hashes
     for index in hashes.indices {
         let path: InlineArray<1, PathPart> = [.hashMapGet(.value, hashes[index])]
         guard let cursor = try moment.readPath(path.span), try cursor.readUint() == UInt64(index) else {
@@ -102,7 +125,8 @@ func readMap(_ moment: Cursor<ReadOnly>, _ hashes: [KeyHash]) throws {
 /// Goes through every entry of a map and checks that it is one of the keys
 /// written, that its value is that key's index, and that nothing is missing
 /// or given twice.
-func iterateMap(_ moment: Cursor<ReadOnly>, _ hashes: [KeyHash]) throws {
+func iterateMap(_ moment: Cursor<ReadOnly>, _ keys: Keys) throws {
+    let hashes = keys.hashes
     let map = try HashMap(moment)
     var iterator = try map.iterator()
     var count: UInt64 = 0
@@ -127,15 +151,17 @@ struct Workload {
     let name: String
     let size: Int
     let kinds: [StorageKind]
-    /// The number of keys to hash before the clock starts.
+    /// The keys to compute before the clock starts, and how many.
+    let keyKind: Keys.Kind
     let keyCount: Int
-    let write: (Database, [KeyHash]) throws -> Void
-    let read: (Database, [KeyHash]) throws -> Void
-    let iterate: (Database, [KeyHash]) throws -> Void
+    let write: (Database, Keys) throws -> Void
+    let read: (Database, Keys) throws -> Void
+    let iterate: (Database, Keys) throws -> Void
 }
 
 func mapInsert(_ size: Int, kinds: [StorageKind]) -> Workload {
-    Workload(name: "map_insert", size: size, kinds: kinds, keyCount: size) { database, hashes in
+    Workload(name: "map_insert", size: size, kinds: kinds, keyKind: .hashes, keyCount: size) { database, keys in
+        let hashes = keys.hashes
         let path: InlineArray<4, PathPart> = [.arrayListInit, .arrayListAppend, .hashMapInit(), .ctx]
         _ = try database.rootCursor().writePath(path.span) { cursor in
             for index in hashes.indices {
@@ -151,7 +177,7 @@ func mapInsert(_ size: Int, kinds: [StorageKind]) -> Workload {
 }
 
 func listAppend(_ size: Int, kinds: [StorageKind]) -> Workload {
-    Workload(name: "list_append", size: size, kinds: kinds, keyCount: 0) { database, _ in
+    Workload(name: "list_append", size: size, kinds: kinds, keyKind: .none, keyCount: 0) { database, _ in
         let path: InlineArray<4, PathPart> = [.arrayListInit, .arrayListAppend, .arrayListInit, .ctx]
         _ = try database.rootCursor().writePath(path.span) { cursor in
             for index in 0..<size {
@@ -182,9 +208,11 @@ func listAppend(_ size: Int, kinds: [StorageKind]) -> Workload {
 }
 
 func mapTransactions(_ transactions: Int, kinds: [StorageKind]) -> Workload {
-    Workload(name: "map_transactions", size: transactions, kinds: kinds, keyCount: transactions * 10) {
+    Workload(name: "map_transactions", size: transactions, kinds: kinds, keyKind: .hashes, keyCount: transactions * 10)
+    {
         database,
-        hashes in
+        keys in
+        let hashes = keys.hashes
         for transaction in 0..<transactions {
             let lastPath: InlineArray<1, PathPart> = [.arrayListGet(-1)]
             let last = try database.rootCursor().readPathSlot(lastPath.span)
@@ -207,11 +235,101 @@ func mapTransactions(_ transactions: Int, kinds: [StorageKind]) -> Workload {
     }
 }
 
+/// Appends `size` integers to a linked array list in one transaction, reads
+/// each back by index, and walks the list.
+func linkedAppend(_ size: Int, kinds: [StorageKind]) -> Workload {
+    Workload(name: "linked_append", size: size, kinds: kinds, keyKind: .none, keyCount: 0) { database, _ in
+        let path: InlineArray<4, PathPart> = [.arrayListInit, .arrayListAppend, .linkedArrayListInit, .ctx]
+        _ = try database.rootCursor().writePath(path.span) { cursor in
+            for index in 0..<size {
+                let append: InlineArray<2, PathPart> = [.linkedArrayListAppend, .write(.uint(UInt64(index)))]
+                _ = try cursor.writePath(append.span)
+            }
+        }
+    } read: { database, _ in
+        let moment = try lastMoment(database)
+        for index in 0..<size {
+            let path: InlineArray<1, PathPart> = [.linkedArrayListGet(Int64(index))]
+            guard let cursor = try moment.readPath(path.span), try cursor.readUint() == UInt64(index) else {
+                throw BenchmarkFailure(description: "element \(index) does not read back")
+            }
+        }
+    } iterate: { database, _ in
+        let list = try LinkedArrayList(try lastMoment(database))
+        var iterator = try list.iterator()
+        var count: UInt64 = 0
+        while let element = try iterator.next() {
+            guard try element.readUint() == count else {
+                throw BenchmarkFailure(description: "element \(count) is not in its place")
+            }
+            count += 1
+        }
+        guard count == UInt64(size) else { throw BenchmarkFailure(description: "the iteration gave \(count) elements") }
+    }
+}
+
+/// Puts `size` keys `key-<i>` into a sorted map in one transaction, reads
+/// each back by key, and walks the map checking the order of the keys.
+func sortedInsert(_ size: Int, kinds: [StorageKind]) -> Workload {
+    Workload(name: "sorted_insert", size: size, kinds: kinds, keyKind: .texts, keyCount: size) { database, keys in
+        let sortedKeys = keys.sortedKeys
+        let path: InlineArray<4, PathPart> = [.arrayListInit, .arrayListAppend, .sortedMapInit(), .ctx]
+        _ = try database.rootCursor().writePath(path.span) { cursor in
+            for index in sortedKeys.indices {
+                let put: InlineArray<2, PathPart> = [
+                    .sortedMapGet(.value, sortedKeys[index]), .write(.uint(UInt64(index))),
+                ]
+                _ = try cursor.writePath(put.span)
+            }
+        }
+    } read: { database, keys in
+        let moment = try lastMoment(database)
+        let sortedKeys = keys.sortedKeys
+        for index in sortedKeys.indices {
+            let path: InlineArray<1, PathPart> = [.sortedMapGet(.value, sortedKeys[index])]
+            guard let cursor = try moment.readPath(path.span), try cursor.readUint() == UInt64(index) else {
+                throw BenchmarkFailure(description: "key-\(index) does not read back")
+            }
+        }
+    } iterate: { database, keys in
+        let texts = keys.texts
+        let map = try SortedMap(try lastMoment(database))
+        var iterator = try map.iterator()
+        var count = 0
+        var previous: [UInt8] = []
+        var buffer = [UInt8](repeating: 0, count: 16)
+        while let entry = try iterator.next() {
+            let pair = try entry.readKeyValuePair()
+            let value = try pair.valueCursor.readUint()
+            guard value < UInt64(texts.count) else {
+                throw BenchmarkFailure(description: "an entry is not one of the keys written")
+            }
+            var span = buffer.mutableSpan
+            let read = try pair.keyCursor.readBytes(into: &span)
+            guard buffer[0..<read].elementsEqual(texts[Int(value)]) else {
+                throw BenchmarkFailure(description: "the key of key-\(value) does not read back")
+            }
+            // strictly greater than the key before it: the first key is
+            // greater than nothing
+            guard count == 0 || previous.lexicographicallyPrecedes(buffer[0..<read]) else {
+                throw BenchmarkFailure(description: "key-\(value) is out of order")
+            }
+            previous = Array(buffer[0..<read])
+            count += 1
+        }
+        guard count == size else { throw BenchmarkFailure(description: "the iteration gave \(count) entries") }
+    }
+}
+
 let workloads: [Workload] = [
     mapInsert(100_000, kinds: [.memory, .bufferedFile]),
     mapInsert(10_000, kinds: [.file]),
     listAppend(1_000_000, kinds: [.memory, .bufferedFile]),
     mapTransactions(2_000, kinds: [.memory, .bufferedFile]),
+    linkedAppend(100_000, kinds: [.memory, .bufferedFile]),
+    linkedAppend(10_000, kinds: [.file]),
+    sortedInsert(100_000, kinds: [.memory, .bufferedFile]),
+    sortedInsert(10_000, kinds: [.file]),
 ]
 
 func median(_ values: [Double]) -> Double {
@@ -227,7 +345,7 @@ func report(_ workload: Workload, _ phase: String, _ kind: StorageKind, _ times:
 }
 
 func run(_ workload: Workload) throws {
-    let hashes = keyHashes(workload.keyCount)
+    let keys = Keys(workload.keyKind, count: workload.keyCount)
     for kind in workload.kinds {
         var writeTimes: [Double] = []
         var readTimes: [Double] = []
@@ -237,14 +355,14 @@ func run(_ workload: Workload) throws {
         for _ in 0..<5 {
             let storage = try RunStorage(kind)
             let database = try newDatabase(storage.storage)
-            writeTimes.append(try milliseconds { try workload.write(database, hashes) })
+            writeTimes.append(try milliseconds { try workload.write(database, keys) })
             let size = try storage.storage.length()
             if fileSize != 0 && size != fileSize {
                 throw BenchmarkFailure(description: "\(workload.name) left files of different sizes")
             }
             fileSize = size
-            readTimes.append(try milliseconds { try workload.read(database, hashes) })
-            iterateTimes.append(try milliseconds { try workload.iterate(database, hashes) })
+            readTimes.append(try milliseconds { try workload.read(database, keys) })
+            iterateTimes.append(try milliseconds { try workload.iterate(database, keys) })
         }
         report(workload, "write", kind, writeTimes, fileSize)
         report(workload, "read", kind, readTimes, fileSize)
@@ -257,24 +375,24 @@ func run(_ workload: Workload) throws {
 /// from a new, empty database each time, as it does when it is measured. The
 /// read phase reads one database that is written first.
 func runRepeatedly(_ workload: Workload, _ kind: StorageKind, phase: String, seconds: Double) throws {
-    let hashes = keyHashes(workload.keyCount)
+    let keys = Keys(workload.keyKind, count: workload.keyCount)
     let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(seconds * 1_000_000_000)
     var runs = 0
     var total = 0.0
     if phase == "read" || phase == "iterate" {
         let storage = try RunStorage(kind)
         let database = try newDatabase(storage.storage)
-        try workload.write(database, hashes)
+        try workload.write(database, keys)
         let run = phase == "read" ? workload.read : workload.iterate
         while DispatchTime.now().uptimeNanoseconds < deadline {
-            total += try milliseconds { try run(database, hashes) }
+            total += try milliseconds { try run(database, keys) }
             runs += 1
         }
     } else {
         while DispatchTime.now().uptimeNanoseconds < deadline {
             let storage = try RunStorage(kind)
             let database = try newDatabase(storage.storage)
-            total += try milliseconds { try workload.write(database, hashes) }
+            total += try milliseconds { try workload.write(database, keys) }
             runs += 1
         }
     }
