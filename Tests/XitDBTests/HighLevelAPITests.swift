@@ -13,15 +13,9 @@ import Testing
 // allocator arguments and `defer allocator.free` lines have no counterpart, nor do the buffers it hands to
 // `cursor.reader` and `cursor.writer`.
 //
-// Leaving a part out changes the file the test writes, so nothing here compares bytes or lengths with a run of
-// the Zig test; what remains is every assertion Zig makes on what is kept.
-//
-// Left out, with what it tests and the feature it waits for:
-//
-// - 853-955: the secondary index, a `SortedMap` from username to user ID paged through with
-//   `iteratorFromIndex` and searched by prefix with `iteratorFrom`. Sorted maps (M6).
-//
-// Everything else in those lines is ported.
+// Everything in those lines is ported. Nothing here compares bytes or lengths with a run of the Zig test, since
+// the `random-number` bytes below are not Zig's, so the file differs from the first transaction on; what is here
+// is every assertion Zig makes.
 //
 // Zig fills `random-number` with thirty-two bytes from its default PRNG seeded with 12345 (line 295) and never
 // asserts on them, only on the format tag. Here they come from the SplitMix64 generator of the test support,
@@ -98,6 +92,7 @@ import Testing
         try clones(database)
         try mutatesAccidentallyWhenCloningInsideATransaction(database)
         try preventsAccidentalMutationWithFreezing(database)
+        try buildsASecondaryIndexWithASortedMap(database)
     }
 
     /// test.zig 221-449: the first transaction, and reading the moment it makes.
@@ -739,8 +734,112 @@ import Testing
                 }
             }
         }
+    }
 
-        // 853-955 left out: the secondary index with a sorted map (M6)
+    /// Zig's `User` (test.zig 859).
+    private struct User {
+        let id: String
+        let username: String
+        let name: String
+    }
+
+    /// test.zig 853-955: the secondary index, the "Sorting and Paginating" example of the readme. Zig's
+    /// `hashInt(&user_id)` hashes the sixteen bytes read from the index's value; here they are decoded as the
+    /// string they are, which hashes the same.
+    private func buildsASecondaryIndexWithASortedMap(_ database: Database) throws {
+        // build a secondary index with a SortedMap to sort and paginate,
+        // like the "Sorting and Paginating" section of the readme
+        let history = try ArrayList<ReadWrite>(database.rootCursor())
+
+        let userIDSize = 16
+
+        // inserted in arbitrary order; the index sorts them alphabetically
+        let newUsers = [
+            User(id: "user000000000001", username: "dave", name: "Dave Smith"),
+            User(id: "user000000000002", username: "alice", name: "Alice Jones"),
+            User(id: "user000000000003", username: "carol", name: "Carol White"),
+            User(id: "user000000000004", username: "dan", name: "Dan Brown"),
+            User(id: "user000000000005", username: "bob", name: "Bob Lee"),
+            User(id: "user000000000006", username: "eve", name: "Eve Adams"),
+        ]
+
+        try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+
+            // the primary store: a HashMap from user id to the user's fields
+            let idToUserCursor = try moment.putCursor(hashInt("id->user"))
+            let idToUser = try HashMap<ReadWrite>(idToUserCursor)
+
+            // the secondary index: a SortedMap ordered alphabetically by username
+            let usernameToIDCursor = try moment.putCursor(hashInt("username->id"))
+            let usernameToID = try SortedMap<ReadWrite>(usernameToIDCursor)
+
+            for user in newUsers {
+                let userCursor = try idToUser.putCursor(hashInt(user.id))
+                let userMap = try HashMap<ReadWrite>(userCursor)
+                try userMap.put(hashInt("username"), .bytes(utf8(user.username)))
+                try userMap.put(hashInt("name"), .bytes(utf8(user.name)))
+
+                // the key is the username (the sort key); the value is the id
+                try usernameToID.put(utf8(user.username), .bytes(utf8(user.id)))
+            }
+        }
+
+        let momentCursor = try #require(try history.getCursor(-1))
+        let moment = try HashMap<ReadOnly>(momentCursor)
+
+        let idToUserCursor = try #require(try moment.getCursor(hashInt("id->user")))
+        let idToUser = try HashMap<ReadOnly>(idToUserCursor)
+
+        let usernameToIDCursor = try #require(try moment.getCursor(hashInt("username->id")))
+        let usernameToID = try SortedMap<ReadOnly>(usernameToIDCursor)
+
+        #expect(try usernameToID.count() == UInt64(newUsers.count))
+
+        // page through the index two at a time and check we get every user back
+        // in alphabetical order by username (not the order they were inserted)
+        let pageSize: UInt64 = 2
+        let expectedNames = ["Alice Jones", "Bob Lee", "Carol White", "Dan Brown", "Dave Smith", "Eve Adams"]
+
+        let count = try usernameToID.count()
+        var seen = 0
+        var after: UInt64 = 0
+        while after < count {
+            let end = min(after + pageSize, count)
+            var iter = try usernameToID.iteratorFromIndex(Int64(after))
+            var i = after
+            while i < end {
+                let idCursor = try #require(try iter.next())
+                let idKV = try idCursor.readKeyValuePair()
+                let userID = try readBytes(idKV.valueCursor, bufferSize: userIDSize)
+
+                let userCursor = try #require(try idToUser.getCursor(hashInt(String(decoding: userID, as: UTF8.self))))
+                let userMap = try HashMap<ReadOnly>(userCursor)
+                let nameCursor = try #require(try userMap.getCursor(hashInt("name")))
+                let name = try readBytes(nameCursor, bufferSize: 64)
+                #expect(name == utf8(expectedNames[seen]))
+                seen += 1
+                i += 1
+            }
+            after += pageSize
+        }
+        #expect(seen == newUsers.count)
+
+        // autocomplete: seek straight to the first username >= "da", then walk
+        // forward only while the prefix matches. this lower-bound seek by key is
+        // the thing an ArrayList can't do.
+        let prefix = "da"
+        let expectedMatches = ["dan", "dave"]
+        var matches = 0
+        var acIter = try usernameToID.iteratorFrom(utf8(prefix))
+        while let nextCursor = try acIter.next() {
+            let idKV = try nextCursor.readKeyValuePair()
+            let username = try readBytes(idKV.keyCursor, bufferSize: 64)
+            if !username.starts(with: utf8(prefix)) { break }
+            #expect(username == utf8(expectedMatches[matches]))
+            matches += 1
+        }
+        #expect(matches == expectedMatches.count)
     }
 
     /// test.zig 2936-2954: "hash map with u64 hashes". Zig's `Database(.memory, u64)` is a database with a hash
