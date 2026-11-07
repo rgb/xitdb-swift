@@ -280,17 +280,19 @@ extension Database {
 
     /// Appends a pair record of `tag` for `pair` and returns the slot that
     /// points at it: Zig's `writeKvPair`. A sorted pair has no hash; a
-    /// hashed one written here gets a hash of zeros, as in Zig.
-    func writeSortedPairRecord(_ tag: Tag, _ pair: KeyValuePair) throws(XitDBError) -> Slot {
+    /// hashed one, which only a crafted file puts in a sorted leaf, keeps
+    /// the hash it was read with, as Zig's `decodeKvPair` and
+    /// `encodeKvPair` keep it.
+    func writeSortedPairRecord(_ tag: Tag, _ pair: HashedPair) throws(XitDBError) -> Slot {
         let position = try storage.length()
         switch tag {
         case .sortedKvPair:
             let bytes = InlineArray<18, UInt8> { (output: inout OutputSpan<UInt8>) in
-                pair.encodeSorted(into: &output)
+                pair.pair.encodeSorted(into: &output)
             }
             try storage.write(bytes.span, at: position)
         case .kvPair:
-            try write(pair, hash: KeyHash([UInt8](repeating: 0, count: Int(header.hashSize))), at: position)
+            try write(pair.pair, hash: pair.hash, at: position)
         default:
             throw .unexpectedTag
         }
@@ -300,7 +302,8 @@ extension Database {
     /// Wraps a key slot in a new pair with an empty value, for the caller to
     /// fill in: Zig's `writeSortedPair`.
     func writeSortedPair(keySlot: Slot) throws(XitDBError) -> Slot {
-        try writeSortedPairRecord(.sortedKvPair, KeyValuePair(keySlot: keySlot, valueSlot: Slot()))
+        try writeSortedPairRecord(
+            .sortedKvPair, HashedPair(hash: KeyHash(zeros: 0), pair: KeyValuePair(keySlot: keySlot, valueSlot: Slot())))
     }
 
     // MARK: Put
@@ -366,7 +369,7 @@ extension Database {
                 if KeyValuePair.isKeyOnlyEntry(entry) {
                     entry = try writeSortedPair(keySlot: entry)
                 } else if !bTreeReusable(entry.value, frozenAt: frozenAt) {
-                    entry = try writeSortedPairRecord(entry.tag, try reader.sortedEntryPair(entry))
+                    entry = try writeSortedPairRecord(entry.tag, try reader.keyValuePair(entry))
                 }
                 var written = leaf
                 written.setEntry(entry, at: search.index)

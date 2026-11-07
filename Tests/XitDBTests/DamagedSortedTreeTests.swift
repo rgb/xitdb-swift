@@ -421,6 +421,56 @@ import Testing
         #expect(throws: XitDBError.endOfStream) { try unreadMap.rank([0x60]) }
     }
 
+    /// A crafted file where a sorted leaf's entry is a hashed pair, the
+    /// kind a hash map holds: a put of its key in a later transaction copies
+    /// the pair, as it does any pair from a past moment, and the copy keeps
+    /// the pair's hash, as Zig's does.
+    @Test(arguments: StorageKind.allCases)
+    func aHashedPairInASortedLeafKeepsItsHash(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let database = try Database(
+            storage: subject.storage, hashSize: 20, hashID: nil, fileID: 6,
+            random: FixedRandom((1...50).map { UInt64($0) }))
+        let key = Array("k".utf8)
+        try database.runContext { cursor in
+            let root = try HashMap(cursor)
+            // a hash map's pair whose key slot holds the key's bytes
+            let map = try HashMap(try root.putCursor(sha1("map").bytes))
+            try map.put(sha1("k").bytes, .uint(1))
+            try map.putKey(sha1("k").bytes, .bytes(key))
+            let sorted = try SortedMap(try root.putCursor(sha1("sorted").bytes))
+            try sorted.put(key, .uint(2))
+        }
+        let pair = try #require(
+            try database.rootCursor().readPathSlot([.hashMapGet(.value, sha1("map")), .hashMapGet(.kvPair, sha1("k"))]))
+        #expect(pair.tag == .kvPair)
+        let header = try database.reader.bTreeHeader(
+            at: try #require(try database.rootCursor().readPathSlot([.hashMapGet(.value, sha1("sorted"))])).value)
+        // the sorted leaf's one entry becomes that pair
+        try writeBytes(subject.storage, slotBytes(pair), at: header.rootPtr + 2)
+
+        let crafted = try Database(
+            storage: subject.storage, hashSize: 20, hashID: nil, fileID: nil, random: FixedRandom([9]))
+        try crafted.runContext { cursor in
+            let sorted = try SortedMap(try HashMap(cursor).putCursor(sha1("sorted").bytes))
+            try sorted.put(key, .uint(3))
+        }
+        let copied = try #require(
+            try crafted.rootCursor().readPathSlot([
+                .hashMapGet(.value, sha1("sorted")), .sortedMapGet(.kvPair, SortedKey(key)),
+            ]))
+        #expect(copied.tag == .kvPair)
+        #expect(copied.value != pair.value)
+        let hashed = try crafted.reader.hashedPair(at: copied.value)
+        #expect(hashed.hash == sha1("k"))
+        #expect(
+            try #require(
+                try crafted.rootCursor().readPath([
+                    .hashMapGet(.value, sha1("sorted")), .sortedMapGet(.value, SortedKey(key)),
+                ])
+            ).readUint() == 3)
+    }
+
     /// A key record whose length fits the file but reaches past its end by
     /// one byte, through the chunked comparison of a long key.
     @Test(arguments: StorageKind.allCases)
