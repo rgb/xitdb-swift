@@ -100,6 +100,12 @@ enum Platform {
             }
             if result > 0 {
                 total += result
+                // A regular file gives fewer bytes than asked only at its
+                // end, so a short read is the end: asking again would cost
+                // a call that returns nothing. A read that reaches the end
+                // is common: the trailer that ends the file, a leaf asked
+                // for with a branch's worth.
+                if result < wanted { break }
             } else if result == 0 {
                 break
             } else {
