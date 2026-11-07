@@ -6,8 +6,8 @@ An immutable, append-only embedded database, compatible with the files of the or
 
 XitDB is a Swift port of [xitdb](https://github.com/xit-vcs/xitdb). It is in development. What exists so far:
 a ``Database`` can be created and opened; every collection of the original can be built in it, read, written
-and iterated over; and values can be read and written through a ``Cursor``, including byte arrays read and
-written a part at a time. Compacting a database and replicating one are not there yet.
+and iterated over; values can be read and written through a ``Cursor``, including byte arrays read and
+written a part at a time; and a database can be compacted. Replicating one is not there yet.
 
 A database keeps its bytes in a storage. ``BufferedFileStorage`` keeps them in a file and is the one to use
 for a database on disk. ``MemoryStorage`` keeps them in memory. ``FileStorage`` reads and writes a file
@@ -28,6 +28,10 @@ a ``HashMap`` of that moment's state, so that every earlier moment stays readabl
 
 Every value lives behind a ``Slot``, nine bytes that hold either a small value directly or the offset of a
 larger record. A slot's ``Tag`` says which. A file starts with a ``DatabaseHeader``.
+
+A database only grows, since every transaction appends. ``Database/compact(into:offsetMap:)`` writes a new
+one that holds what the latest moment reaches and nothing else, every object once however many slots point
+at it. The copy remembers where things went in an ``OffsetMap``; ``MemoryOffsetMap`` keeps that in memory.
 
 ## Topics
 
@@ -59,6 +63,11 @@ larger record. A slot's ``Tag`` says which. A file starts with a ``DatabaseHeade
 - ``Bytes``
 - ``ByteReader``
 - ``ByteWriter``
+
+### Compaction
+
+- ``OffsetMap``
+- ``MemoryOffsetMap``
 
 ### Storage
 
