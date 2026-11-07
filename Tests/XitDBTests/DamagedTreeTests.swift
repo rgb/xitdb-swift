@@ -87,6 +87,7 @@ import Testing
         attempt("remove 50") { list, _ in try list.remove(50) }
         attempt("slice 0 5") { list, _ in try list.slice(offset: 0, size: 5) }
         attempt("slice 45 2") { list, _ in try list.slice(offset: 45, size: 2) }
+        attempt("slice 20 5") { list, _ in try list.slice(offset: 20, size: 5) }
         attempt("concat onto") { list, short in try short.concat(try list.slot()) }
         attempt("concat") { list, short in try list.concat(try short.slot()) }
         attempt("iterate") { list, _ in
@@ -134,8 +135,8 @@ import Testing
         // Zig's does; the four leaves are still there.
         #expect(
             failed == [
-                "get 0", "get -1", "put 0", "insert 0", "append", "remove 0", "slice 0 5", "concat onto", "concat",
-                "iterate from 0",
+                "get 0", "get -1", "put 0", "insert 0", "append", "remove 0", "slice 0 5", "slice 20 5", "concat onto",
+                "concat", "iterate from 0",
             ])
     }
 
@@ -153,6 +154,23 @@ import Testing
             ])
     }
 
+    /// The root's first and last children are not nodes but numbers.
+    @Test(arguments: StorageKind.allCases)
+    func aChildThatIsNotANode(kind: StorageKind) throws {
+        let subject = try Subject(kind)
+        _ = try subject.damaged(slotBytes(Slot(value: 7, tag: .uint)), at: subject.rootPtr + 2)
+        let database = try subject.damaged(slotBytes(Slot(value: 7, tag: .uint)), at: subject.rootPtr + 2 + 3 * 9)
+        let failed = try failing(database)
+        // The walk of the iterator gives the two numbers as elements, as
+        // Zig's does; the other two leaves are still there. A slice that
+        // keeps the last leaf on its own goes through the damaged slot.
+        #expect(
+            failed == [
+                "get 0", "get -1", "put 0", "insert 0", "append", "remove 0", "slice 0 5", "slice 20 5",
+                "concat onto", "concat", "iterate from 0",
+            ])
+    }
+
     /// The root's first child points back at the root.
     @Test(arguments: StorageKind.allCases)
     func aBranchPointingAtItsAncestor(kind: StorageKind) throws {
@@ -164,8 +182,92 @@ import Testing
         // height a tree can have is passed. The other children are fine.
         #expect(
             failed == [
-                "get 0", "put 0", "insert 0", "remove 0", "slice 0 5", "concat onto", "concat", "iterate",
+                "get 0", "put 0", "insert 0", "remove 0", "slice 0 5", "slice 20 5", "concat onto", "concat", "iterate",
                 "iterate from 0",
             ])
+    }
+
+    /// Fifteen hundred elements: a tree three branches high, so that a join
+    /// descends a spine of the taller tree through a branch it reads on the
+    /// way. A spine node that says it has no children, or whose child is
+    /// not a node, is reported where the join meets it. The tree's height is
+    /// found by following first children, so damage on the left spine stops
+    /// a join from either side.
+    @Test(arguments: StorageKind.allCases)
+    func aDamagedSpineEndsAJoin(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let database = try Database(
+            storage: subject.storage, hashSize: 20, hashID: nil, fileID: 6,
+            random: FixedRandom((1...50).map { UInt64($0) }))
+        try database.runContext { cursor in
+            let map = try HashMap(cursor)
+            let list = try LinkedArrayList(try map.putCursor(sha1("list").bytes))
+            for index in 0..<1500 {
+                try list.append(.uint(UInt64(index)))
+            }
+            let short = try LinkedArrayList(try map.putCursor(sha1("short").bytes))
+            try short.append(.uint(100))
+        }
+        let slot = try #require(try database.rootCursor().readPathSlot([.hashMapGet(.value, sha1("list"))]))
+        let rootPtr = try database.reader.bTreeHeader(at: slot.value).rootPtr
+        #expect(try database.reader.bTreeHeight(rootPtr: rootPtr) == 3)
+        let root = try database.reader.bTreeNode(at: rootPtr)
+        let firstChild = root.children[0].value
+        let lastChild = root.children[Int(root.num) - 1].value
+        let lastBranch = try database.reader.bTreeNode(at: lastChild)
+        let sound = try readBytes(subject.storage, at: 0, count: Int(try subject.storage.length()))
+
+        /// Whether a concat in one direction, on the file damaged by
+        /// `damage`, is reported as `invalidBTreeNode`.
+        func concat(listOnto: Bool, _ damage: () throws -> Void) throws -> Bool {
+            try writeBytes(subject.storage, sound, at: 0)
+            try damage()
+            let damaged = try Database(
+                storage: subject.storage, hashSize: 20, hashID: nil, fileID: nil, random: FixedRandom([9]))
+            var reported = false
+            try damaged.runContext { cursor in
+                let map = try HashMap(cursor)
+                let list = try LinkedArrayList(try map.putCursor(sha1("list").bytes))
+                let short = try LinkedArrayList(try map.putCursor(sha1("short").bytes))
+                do {
+                    if listOnto {
+                        try short.concat(try list.slot())
+                    } else {
+                        try list.concat(try short.slot())
+                    }
+                } catch XitDBError.invalidBTreeNode {
+                    reported = true
+                }
+            }
+            return reported
+        }
+
+        // the root's last branch says it has no children: a join on the
+        // right spine reads it on the way down; the left spine is fine
+        let lastBranchEmpty = { try writeBytes(subject.storage, [0], at: lastChild + 1) }
+        #expect(try concat(listOnto: false, lastBranchEmpty))
+        #expect(try !concat(listOnto: true, lastBranchEmpty))
+        // the last branch's last child is not a node
+        let lastChildNotANode = {
+            try writeBytes(
+                subject.storage, slotBytes(Slot(value: 7, tag: .uint)),
+                at: lastChild + 2 + 9 * UInt64(lastBranch.num - 1))
+        }
+        #expect(try concat(listOnto: false, lastChildNotANode))
+        #expect(try !concat(listOnto: true, lastChildNotANode))
+        // the root's first branch says it has no children: the height of the
+        // tree cannot be found, so neither join starts
+        let firstBranchEmpty = { try writeBytes(subject.storage, [0], at: firstChild + 1) }
+        #expect(try concat(listOnto: false, firstBranchEmpty))
+        #expect(try concat(listOnto: true, firstBranchEmpty))
+        // the first branch's first child is not a node: the same
+        let firstChildNotANode = {
+            try writeBytes(subject.storage, slotBytes(Slot(value: 7, tag: .uint)), at: firstChild + 2)
+        }
+        #expect(try concat(listOnto: false, firstChildNotANode))
+        #expect(try concat(listOnto: true, firstChildNotANode))
+        // and with the file as it was, both joins work
+        #expect(try !concat(listOnto: false) {})
+        #expect(try !concat(listOnto: true) {})
     }
 }

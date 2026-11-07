@@ -29,8 +29,9 @@ import Testing
 //   `LinkedArrayListParts.swift`). With the original's concat, a list initialized again after `list.concat`
 //   shares the joined nodes with the kept list and changes them in place: in the first block the clone reads
 //   [2, 3, 4] where Zig expects [1, 2, 4] (3977), and in the second `list.append(.{ .uint = 3 })` fails with
-//   `invalidBTreeNode` where Zig expects it to succeed (4001). The other two `Freeze` values of those blocks,
-//   and all three of the blocks after them, agree with Zig and are ported.
+//   `invalidBTreeNode` where Zig expects it to succeed (4001). What the port does in those two moments is
+//   pinned by two tests of its own, below the ports of the blocks. The other two `Freeze` values of those
+//   blocks, and all three of the blocks after them, agree with Zig and are ported.
 // - 4082-4121, in "collections kept across a freeze": "a sorted map has a header over a tree too", a kept
 //   `SortedMap` whose header counts keys its tree does not have. Sorted maps (M6).
 // - 4200, 4204, 4218-4219, 4227-4228, 4236 and 4242, in "invalid b-tree nodes": the sorted map `map`, filled
@@ -146,6 +147,38 @@ import Testing
         }
     }
 
+    /// The `.concat` moment of the test above, as the port does it with the original's concat, which freezes
+    /// before its join: the joined nodes are not frozen, so the list initialized again after the concat shares
+    /// them with the kept list, and the clone, whose header the concat updated in place, sees the kept list's
+    /// changes. Pinned so that decision D18, which moves the freeze, shows up here when it is made.
+    @Test(arguments: storageKinds)
+    func aListInitializedAgainAfterTheOriginalsConcatSharesTheJoinedNodes(kind: StorageKind) throws {
+        let history = try makeHistory(kind).history
+
+        try history.appendContext(.slot(nil)) { cursor in
+            var moment = try HashMap<ReadWrite>(cursor)
+            var list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            try list.append(.uint(1))
+            try list.append(.uint(2))
+            let slotBefore = try list.slot()
+
+            try Freeze.concat.run(cursor, moment, list)
+            moment = try HashMap<ReadWrite>(cursor)
+            list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            try list.append(.uint(3))
+            try list.remove(0)
+            try expectUints(list, [2, 3])
+
+            var cloneCursor = try moment.putCursor(hashInt("clone"))
+            try cloneCursor.write(.slot(slotBefore))
+            let clone = try LinkedArrayList<ReadWrite>(cloneCursor)
+            try clone.append(.uint(4))
+            // Zig's fix branch, whose concat freezes after the join, gives [1, 2, 4] here
+            try expectUints(clone, [2, 3, 4])
+            try expectUints(list, [2, 3])
+        }
+    }
+
     /// test.zig 3986-4009: a kept list writes through the entry it was made with. once the map has a new entry
     /// for the list, it doesn't see what the kept list writes.
     ///
@@ -165,6 +198,28 @@ import Testing
             try listAgain.remove(0)
             try list.append(.uint(3))
             try expectUints(list, [1, 2, 3])
+            try expectUints(listAgain, [2])
+        }
+    }
+
+    /// The `.concat` moment of the test above, as the port does it with the original's concat: the list
+    /// initialized again after the concat shares the joined nodes with the kept list, so its removal leaves the
+    /// kept list's header counting an element its tree no longer has, which the kept list's next write reports.
+    /// This is the shortest form of finding 22; Zig's fix branch gives [1, 2, 3] and [2] here.
+    @Test(arguments: storageKinds)
+    func aKeptListAfterTheOriginalsConcatDisagreesWithItsTree(kind: StorageKind) throws {
+        let history = try makeHistory(kind).history
+
+        try history.appendContext(.slot(nil)) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            try list.append(.uint(1))
+            try list.append(.uint(2))
+
+            try Freeze.concat.run(cursor, moment, list)
+            let listAgain = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            try listAgain.remove(0)
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.append(.uint(3)) }
             try expectUints(listAgain, [2])
         }
     }
