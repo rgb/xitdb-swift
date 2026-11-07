@@ -439,6 +439,11 @@ extension Database {
 
         for frame in branches.reversed() {
             // Nothing below changed: this branch, and all above it, stay.
+            // Zig gives the subtree's count in this result; here it is zero,
+            // which is harmless today: a result's count is read only by the
+            // branch above, which this skips, and by sortedGrowRoot for a
+            // split, which this has none of. A caller that starts to read
+            // it must compute it, as Zig does.
             if !result.added, result.nodePtr == frame.node.child(frame.index).value {
                 return SortedInsertResult(nodePtr: rootPtr, count: 0, entry: result.entry, added: false, split: nil)
             }

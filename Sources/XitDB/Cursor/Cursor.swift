@@ -310,7 +310,8 @@ extension Cursor where Access == ReadWrite {
     ///
     /// On a root cursor this is a transaction: it commits when the path has
     /// finished, and everything it wrote is discarded if an error leaves
-    /// it.
+    /// it before the commit. An error from the storage's sync after the
+    /// commit is thrown too, but the commit stands, as in Zig.
     ///
     /// The cursor itself is not changed. The result is a new cursor at the
     /// slot the path arrived at.
@@ -589,7 +590,9 @@ extension Database {
     /// through, and gives what it returns.
     ///
     /// The transaction commits when `body` returns. If `body` throws,
-    /// everything it wrote is discarded and the database is as it was.
+    /// everything it wrote is discarded and the database is as it was. One
+    /// error is not a rollback: if the storage fails in the sync after the
+    /// commit, the error is thrown, but the commit stands, as in Zig.
     ///
     /// Use this to group writes to a root that is not an array list, such as
     /// a hash map: without it, each write through a root cursor is a
