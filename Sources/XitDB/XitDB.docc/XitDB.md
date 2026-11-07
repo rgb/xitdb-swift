@@ -27,7 +27,7 @@ cursor. A database's history is usually an ``ArrayList`` at the root with one el
 a ``HashMap`` of that moment's state, so that every earlier moment stays readable.
 
 Every value lives behind a ``Slot``, nine bytes that hold either a small value directly or the offset of a
-larger record. A slot's ``Tag`` says which. A file starts with a ``DatabaseHeader``.
+larger record. A slot's ``Slot/Tag`` says which. A file starts with a ``DatabaseHeader``.
 
 A database only grows, since every transaction appends. ``Database/compact(into:offsetMap:)`` writes a new
 one that holds what the latest moment reaches and nothing else, every object once however many slots point
@@ -64,7 +64,7 @@ and the replica takes the bytes with ``Database/applyReplicated(at:from:count:)`
 - ``ReadWrite``
 - ``CursorAccess``
 - ``KeyValuePairCursor``
-- ``WriteableData``
+- ``WritableData``
 - ``Bytes``
 - ``ByteReader``
 - ``ByteWriter``
@@ -79,6 +79,7 @@ and the replica takes the bytes with ``Database/applyReplicated(at:from:count:)`
 - ``ReplicaState``
 - ``ByteSink``
 - ``ByteSource``
+- ``ArrayByteSink``
 - ``ArrayByteSource``
 
 ### Storage
@@ -99,7 +100,7 @@ and the replica takes the bytes with ``Database/applyReplicated(at:from:count:)`
 ### Values on disk
 
 - ``Slot``
-- ``Tag``
+- ``Slot/Tag``
 
 ### Errors
 

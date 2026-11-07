@@ -39,14 +39,15 @@ enum ByteArrayFormat {
     /// bytes when there is one.
     ///
     /// - Precondition: `isShort(value, hasFormatTag: formatTag != nil)`.
-    static func shortSlot(_ value: Span<UInt8>, formatTag: InlineArray<2, UInt8>?) -> Slot {
+    static func shortSlot(_ value: Span<UInt8>, formatTag: FormatTag?) -> Slot {
         precondition(isShort(value, hasFormatTag: formatTag != nil), "the value does not fit a shortBytes slot")
         var packed: UInt64 = 0
         for index in value.indices {
             packed |= UInt64(value[index]) << (56 - 8 * index)
         }
         if let formatTag {
-            packed |= UInt64(formatTag[0]) << 8 | UInt64(formatTag[1])
+            let tagBytes = formatTag.bytes
+            packed |= UInt64(tagBytes[0]) << 8 | UInt64(tagBytes[1])
         }
         return Slot(value: packed, tag: .shortBytes, full: formatTag != nil)
     }
@@ -72,9 +73,9 @@ enum ByteArrayFormat {
     }
 
     /// The format tag in a `shortBytes` slot, or `nil` if it has none.
-    static func shortFormatTag(of slot: Slot) -> InlineArray<2, UInt8>? {
+    static func shortFormatTag(of slot: Slot) -> FormatTag? {
         guard slot.full else { return nil }
         let bytes = valueBytes(of: slot)
-        return [bytes[6], bytes[7]]
+        return FormatTag(bytes[6], bytes[7])
     }
 }

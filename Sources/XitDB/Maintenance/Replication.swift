@@ -26,37 +26,49 @@ public struct ReplicaState: Sendable, Equatable {
 /// reads, a chunk at a time: a growing buffer, a file, a socket. Zig takes
 /// a `std.Io.Writer`.
 ///
-/// The requirement throws ``XitDBError`` so that the call keeps its typed
-/// error; a sink whose own operation fails reports that as
-/// ``XitDBError/storageFailure(errno:)``, with the system's error number
-/// where it has one. An array of bytes is a sink that appends.
+/// A sink may throw any error; the call that was writing to it carries the
+/// error as ``XitDBError/callerError(_:)``. ``ArrayByteSink`` collects the
+/// bytes in memory.
 public protocol ByteSink {
     /// Takes the next bytes.
-    mutating func write(_ bytes: Span<UInt8>) throws(XitDBError)
+    mutating func write(_ bytes: Span<UInt8>) throws
 }
 
 /// Where ``Database/applyReplicated(at:from:count:)`` reads the bytes it
 /// writes, a chunk at a time. Zig takes a `std.Io.Reader`.
 ///
-/// The requirement throws ``XitDBError``, as ``ByteSink``'s does;
-/// ``ArrayByteSource`` reads from bytes in memory.
+/// A source may throw any error; the call that was reading from it carries
+/// the error as ``XitDBError/callerError(_:)``. ``ArrayByteSource`` reads
+/// from bytes in memory.
 public protocol ByteSource {
     /// Fills as much of `buffer` as it can with the next bytes, and returns
     /// how many: fewer than the buffer holds only when the bytes are about
     /// to run out, and zero when they have.
-    mutating func read(into buffer: inout MutableSpan<UInt8>) throws(XitDBError) -> Int
+    mutating func read(into buffer: inout MutableSpan<UInt8>) throws -> Int
 }
 
-extension Array: ByteSink where Element == UInt8 {
+/// A sink that collects the bytes in memory, in order: what a source sends
+/// when the bytes are to be kept whole. For bytes read straight into an
+/// array in one copy, ``Database/readCommitted(from:to:into:)-(_,_,[UInt8])``
+/// takes the array itself.
+public struct ArrayByteSink: ByteSink, Sendable {
+    /// The bytes taken so far.
+    public var bytes: [UInt8]
+
+    /// A sink that appends to `bytes`.
+    public init(_ bytes: [UInt8] = []) {
+        self.bytes = bytes
+    }
+
     /// Appends the bytes.
     public mutating func write(_ bytes: Span<UInt8>) {
-        append(bytesOf: bytes)
+        self.bytes.append(bytesOf: bytes)
     }
 }
 
 /// A source over bytes in memory, read from the start: what a replica
 /// applies when the bytes arrived whole.
-public struct ArrayByteSource: ByteSource {
+public struct ArrayByteSource: ByteSource, Sendable {
     private let bytes: [UInt8]
     private var position = 0
 
@@ -123,7 +135,8 @@ extension Database {
     ///   past the committed size, or `start` inside the root header;
     ///   ``XitDBError/invalidDatabase`` if no trailer ends at `end`, which
     ///   is only checked from 0; ``XitDBError/endOfStream`` if the storage
-    ///   ends before `end`; the storage's errors and the sink's.
+    ///   ends before `end`; the storage's errors; and the sink's, carried as
+    ///   ``XitDBError/callerError(_:)``.
     public func readCommitted<Sink: ByteSink>(from start: UInt64, to end: UInt64, into sink: inout Sink)
         throws(XitDBError)
     {
@@ -135,7 +148,7 @@ extension Database {
             try stream(from: 0, to: RootHeader.position, into: &sink)
             let rootHeader = RootHeader(root: trailer.root, fileSize: end)
             let bytes = InlineArray<17, UInt8> { (output: inout OutputSpan<UInt8>) in rootHeader.encode(into: &output) }
-            try sink.write(bytes.span)
+            try XitDBError.carrying { try sink.write(bytes.span) }
             try stream(from: RootHeader.endPosition, to: end, into: &sink)
         } else {
             try stream(from: start, to: end, into: &sink)
@@ -205,7 +218,8 @@ extension Database {
     ///   bytes; ``XitDBError/invalidDatabase`` if the bytes do not end with
     ///   a trailer that checks, or, at 0, do not hold a database;
     ///   ``XitDBError/invalidHashSize`` at 0 for a database of another
-    ///   hash size; the storage's errors and the source's.
+    ///   hash size; the storage's errors; and the source's, carried as
+    ///   ``XitDBError/callerError(_:)``.
     public func applyReplicated<Source: ByteSource>(at start: UInt64, from source: inout Source, count: UInt64)
         throws(XitDBError)
     {
@@ -221,7 +235,7 @@ extension Database {
                 buffer = [UInt8](repeating: 0, count: Int(remaining))
             }
             var span = buffer.mutableSpan
-            let read = try source.read(into: &span)
+            let read = try XitDBError.carrying { try source.read(into: &span) }
             guard read > 0, read <= buffer.count else { throw .endOfStream }
             try storage.write(buffer.span.extracting(0..<read), at: position)
             position = try position.offset(by: UInt64(read))
@@ -300,7 +314,7 @@ extension Database {
             let chunk = Int(min(end - position, UInt64(Self.streamChunk)))
             let read = try storage.read(into: &span, range: 0..<chunk, at: position)
             guard read == chunk else { throw .endOfStream }
-            try sink.write(buffer.span.extracting(0..<chunk))
+            try XitDBError.carrying { try sink.write(buffer.span.extracting(0..<chunk)) }
             position += UInt64(chunk)
         }
     }

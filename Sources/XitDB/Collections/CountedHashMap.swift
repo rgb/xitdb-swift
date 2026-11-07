@@ -252,7 +252,7 @@ extension CountedHashMap where Access == ReadWrite {
     ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
     ///   the slot no longer holds a hash map or set, or an error of the
     ///   storage or of a damaged file.
-    public func put(_ hash: Span<UInt8>, _ data: WriteableData) throws(XitDBError) {
+    public func put(_ hash: Span<UInt8>, _ data: WritableData) throws(XitDBError) {
         let path: InlineArray<2, PathPart> = [.hashMapGet(.value, KeyHash(hash)), .write(data)]
         _ = try cursor.writePath(path.span)
     }
@@ -269,7 +269,7 @@ extension CountedHashMap where Access == ReadWrite {
     ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
     ///   the slot no longer holds a hash map or set, or an error of the
     ///   storage or of a damaged file.
-    public func put(_ hash: [UInt8], _ data: WriteableData) throws(XitDBError) {
+    public func put(_ hash: [UInt8], _ data: WritableData) throws(XitDBError) {
         let path: InlineArray<2, PathPart> = [.hashMapGet(.value, KeyHash(hash)), .write(data)]
         _ = try cursor.writePath(path.span)
     }
@@ -326,7 +326,7 @@ extension CountedHashMap where Access == ReadWrite {
     ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
     ///   the slot no longer holds a hash map or set, or an error of the
     ///   storage or of a damaged file.
-    public func putKey(_ hash: Span<UInt8>, _ data: WriteableData) throws(XitDBError) {
+    public func putKey(_ hash: Span<UInt8>, _ data: WritableData) throws(XitDBError) {
         let path: InlineArray<2, PathPart> = [.hashMapGet(.key, KeyHash(hash)), .ctx]
         _ = try cursor.writePath(
             path.span,
@@ -351,7 +351,7 @@ extension CountedHashMap where Access == ReadWrite {
     ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
     ///   the slot no longer holds a hash map or set, or an error of the
     ///   storage or of a damaged file.
-    public func putKey(_ hash: [UInt8], _ data: WriteableData) throws(XitDBError) {
+    public func putKey(_ hash: [UInt8], _ data: WritableData) throws(XitDBError) {
         let path: InlineArray<2, PathPart> = [.hashMapGet(.key, KeyHash(hash)), .ctx]
         _ = try cursor.writePath(
             path.span,

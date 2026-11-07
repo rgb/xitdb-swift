@@ -32,7 +32,7 @@ import Testing
             _ = try cursor.writePath([.hashMapGet(.key, sha1("a")), .write(.bytes(Array("a".utf8)))])
             _ = try cursor.writePath([
                 .hashMapGet(.value, sha1("long")),
-                .write(.bytesObject(Bytes(Array("a value too long to fit in a slot".utf8), formatTag: [0x74, 0x67]))),
+                .write(.bytes(Array("a value too long to fit in a slot".utf8), formatTag: FormatTag(0x74, 0x67))),
             ])
             let list = try cursor.writePath([.hashMapGet(.value, sha1("list")), .arrayListInit])
             for index in 0..<20 {
@@ -40,7 +40,7 @@ import Testing
             }
             let counted = try cursor.writePath([.hashMapGet(.value, sha1("counted")), .hashMapInit(counted: true)])
             _ = try counted.writePath([.hashMapGet(.value, sha1("x")), .write(.int(-1))])
-            _ = try counted.writePath([.hashMapGet(.value, sha1("y")), .write(.float(1.5))])
+            _ = try counted.writePath([.hashMapGet(.value, sha1("y")), .write(.double(1.5))])
             let linked = try LinkedArrayList(try cursor.writePath([.hashMapGet(.value, sha1("linked"))]))
             for index in 0..<20 {
                 try linked.append(.uint(UInt64(index)))

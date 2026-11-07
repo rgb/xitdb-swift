@@ -7,12 +7,12 @@ import Testing
         ByteArrayFormat.isShort(value.span, hasFormatTag: hasFormatTag)
     }
 
-    private func shortSlot(_ value: [UInt8], formatTag: InlineArray<2, UInt8>? = nil) -> Slot {
+    private func shortSlot(_ value: [UInt8], formatTag: FormatTag? = nil) -> Slot {
         ByteArrayFormat.shortSlot(value.span, formatTag: formatTag)
     }
 
     private func formatTag(of slot: Slot) -> [UInt8]? {
-        ByteArrayFormat.shortFormatTag(of: slot).map { array($0) }
+        ByteArrayFormat.shortFormatTag(of: slot).map { array($0.bytes) }
     }
 
     @Test func recordSizes() {
@@ -57,7 +57,7 @@ import Testing
 
     @Test func theFormatTagTakesTheLastTwoBytes() {
         // "abc" with the format tag "bi"
-        let slot = shortSlot([0x61, 0x62, 0x63], formatTag: [0x62, 0x69])
+        let slot = shortSlot([0x61, 0x62, 0x63], formatTag: "bi")
         #expect(slot == Slot(value: 0x6162_6300_0000_6269, tag: .shortBytes, full: true))
         #expect(slotBytes(slot) == [0x87, 0x61, 0x62, 0x63, 0, 0, 0, 0x62, 0x69])
         #expect(ByteArrayFormat.shortByteCount(of: slot) == 3)
@@ -70,7 +70,7 @@ import Testing
         #expect(ByteArrayFormat.shortByteCount(of: eight) == 8)
         #expect(formatTag(of: eight) == nil)
 
-        let six = shortSlot([1, 2, 3, 4, 5, 6], formatTag: [0xAA, 0xBB])
+        let six = shortSlot([1, 2, 3, 4, 5, 6], formatTag: FormatTag(0xAA, 0xBB))
         #expect(six.value == 0x0102_0304_0506_AABB)
         #expect(ByteArrayFormat.shortByteCount(of: six) == 6)
         #expect(formatTag(of: six) == [0xAA, 0xBB])
@@ -82,7 +82,7 @@ import Testing
         #expect(ByteArrayFormat.shortByteCount(of: plain) == 0)
         #expect(formatTag(of: plain) == nil)
 
-        let tagged = shortSlot([], formatTag: [0x62, 0x69])
+        let tagged = shortSlot([], formatTag: "bi")
         #expect(tagged == Slot(value: 0x6269, tag: .shortBytes, full: true))
         #expect(ByteArrayFormat.shortByteCount(of: tagged) == 0)
         #expect(formatTag(of: tagged) == [0x62, 0x69])
@@ -91,12 +91,12 @@ import Testing
     @Test func aFormatTagMayContainZeroBytes() {
         // the length is found in the first six bytes only, so a zero in the
         // tag does not shorten a six-byte value
-        let slot = shortSlot([1, 2, 3, 4, 5, 6], formatTag: [0, 0])
+        let slot = shortSlot([1, 2, 3, 4, 5, 6], formatTag: FormatTag(0, 0))
         #expect(slot.full)
         #expect(ByteArrayFormat.shortByteCount(of: slot) == 6)
         #expect(formatTag(of: slot) == [0, 0])
 
-        let endsInZero = shortSlot([1, 2, 3, 4, 5, 6], formatTag: [0x62, 0])
+        let endsInZero = shortSlot([1, 2, 3, 4, 5, 6], formatTag: FormatTag(0x62, 0))
         #expect(ByteArrayFormat.shortByteCount(of: endsInZero) == 6)
         #expect(formatTag(of: endsInZero) == [0x62, 0])
     }
@@ -105,7 +105,7 @@ import Testing
         for hasFormatTag in [false, true] {
             for length in 0...ByteArrayFormat.shortCapacity(hasFormatTag: hasFormatTag) {
                 let value = (0..<length).map { UInt8($0 + 1) }
-                let slot = shortSlot(value, formatTag: hasFormatTag ? [0x74, 0x67] : nil)
+                let slot = shortSlot(value, formatTag: hasFormatTag ? FormatTag(0x74, 0x67) : nil)
                 #expect(slot.tag == .shortBytes)
                 #expect(slot.full == hasFormatTag)
                 #expect(ByteArrayFormat.shortByteCount(of: slot) == length)

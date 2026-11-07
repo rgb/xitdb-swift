@@ -8,19 +8,35 @@
 /// database is too large for its offsets to fit in memory; then an
 /// implementation can keep them anywhere, in another database for example.
 ///
-/// The requirements throw ``XitDBError`` so that ``Database/compact(into:offsetMap:)``
-/// keeps its typed error. An implementation whose own storage fails
-/// reports that as ``XitDBError/storageFailure(errno:)``.
+/// An implementation may throw any error; the compaction carries it as
+/// ``XitDBError/callerError(_:)``.
 public protocol OffsetMap {
     /// Forgets every mapping.
-    mutating func reset() throws(XitDBError)
+    mutating func reset() throws
 
     /// The target offset recorded for a source offset, or `nil` if none was.
-    mutating func get(_ sourceOffset: UInt64) throws(XitDBError) -> UInt64?
+    mutating func get(_ sourceOffset: UInt64) throws -> UInt64?
 
     /// Records that the object at a source offset was copied to a target
     /// offset.
-    mutating func put(_ sourceOffset: UInt64, _ targetOffset: UInt64) throws(XitDBError)
+    mutating func put(_ sourceOffset: UInt64, _ targetOffset: UInt64) throws
+}
+
+extension OffsetMap {
+    /// `reset`, with the map's own error carried as `callerError`.
+    mutating func clear() throws(XitDBError) {
+        try XitDBError.carrying { try reset() }
+    }
+
+    /// `get`, with the map's own error carried as `callerError`.
+    mutating func lookup(_ sourceOffset: UInt64) throws(XitDBError) -> UInt64? {
+        try XitDBError.carrying { try get(sourceOffset) }
+    }
+
+    /// `put`, with the map's own error carried as `callerError`.
+    mutating func record(_ sourceOffset: UInt64, _ targetOffset: UInt64) throws(XitDBError) {
+        try XitDBError.carrying { try put(sourceOffset, targetOffset) }
+    }
 }
 
 /// An offset map kept in memory: Zig's `std.AutoHashMap(u64, u64)`. Its
@@ -32,7 +48,7 @@ public protocol OffsetMap {
 /// compaction in memory. The keys are offsets in a file, which a
 /// multiplicative hash spreads well enough; the table doubles at half
 /// full.
-public struct MemoryOffsetMap: OffsetMap {
+public struct MemoryOffsetMap: OffsetMap, Sendable {
     /// The source offsets, and the target offsets beside them; a target
     /// offset of all ones marks an empty place, since no file is that
     /// large.

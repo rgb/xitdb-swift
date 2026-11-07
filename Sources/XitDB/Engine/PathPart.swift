@@ -101,7 +101,7 @@ package enum PathPart: Sendable {
     case sortedMapRemove(SortedKey)
 
     /// Writes a value to the slot.
-    case write(WriteableData)
+    case write(WritableData)
 
     /// Runs the path's callback with a cursor at the slot. Zig's `ctx`.
     ///
@@ -111,7 +111,7 @@ package enum PathPart: Sendable {
 
     /// The collection tag that this part gives a slot, if it is an init
     /// part.
-    var initTag: Tag? {
+    var initTag: Slot.Tag? {
         switch self {
         case .arrayListInit:
             .arrayList
@@ -132,7 +132,7 @@ package enum PathPart: Sendable {
 
     /// The init part for a collection tag, or `nil` for a tag that is not a
     /// collection's.
-    static func initPart(for tag: Tag) -> PathPart? {
+    static func initPart(for tag: Slot.Tag) -> PathPart? {
         switch tag {
         case .arrayList: .arrayListInit
         case .linkedArrayList: .linkedArrayListInit

@@ -83,8 +83,8 @@ extension Database {
 
     // MARK: Values
 
-    func writeData(_ pointer: SlotPointer, _ data: WriteableData) throws(XitDBError) -> SlotPointer {
-        guard let position = pointer.position else { throw .cursorNotWriteable }
+    func writeData(_ pointer: SlotPointer, _ data: WritableData) throws(XitDBError) -> SlotPointer {
+        guard let position = pointer.position else { throw .cursorNotWritable }
 
         var slot: Slot
         switch data {
@@ -94,12 +94,10 @@ extension Database {
             slot = Slot(value: value, tag: .uint)
         case .int(let value):
             slot = Slot(value: UInt64(bitPattern: value), tag: .int)
-        case .float(let value):
+        case .double(let value):
             slot = Slot(value: value.bitPattern, tag: .float)
-        case .bytes(let value):
-            slot = try writeBytes(value.span, formatTag: nil, at: pointer)
-        case .bytesObject(let bytes):
-            slot = try writeBytes(bytes.value.span, formatTag: bytes.formatTag, at: pointer)
+        case .bytes(let value, let formatTag):
+            slot = try writeBytes(value.span, formatTag: formatTag, at: pointer)
         }
 
         // The flag tells a slot explicitly set to nothing from one that has
@@ -116,7 +114,7 @@ extension Database {
     /// if they are short enough, or a pointer to a new record.
     private func writeBytes(
         _ value: Span<UInt8>,
-        formatTag: InlineArray<2, UInt8>?,
+        formatTag: FormatTag?,
         at pointer: SlotPointer
     ) throws(XitDBError) -> Slot {
         if ByteArrayFormat.isShort(value, hasFormatTag: formatTag != nil) {
@@ -131,7 +129,7 @@ extension Database {
     // MARK: Array list
 
     private func arrayListInit(_ pointer: SlotPointer, frozenAt: UInt64) throws(XitDBError) -> SlotPointer {
-        guard let position = pointer.position else { throw .cursorNotWriteable }
+        guard let position = pointer.position else { throw .cursorNotWritable }
 
         var listStart: UInt64
         switch pointer.slot.tag {
@@ -311,14 +309,14 @@ extension Database {
         set: Bool,
         frozenAt: UInt64
     ) throws(XitDBError) -> SlotPointer {
-        let tag: Tag =
+        let tag: Slot.Tag =
             if counted {
                 set ? .countedHashSet : .countedHashMap
             } else {
                 set ? .hashSet : .hashMap
             }
 
-        guard let position = pointer.position else { throw .cursorNotWriteable }
+        guard let position = pointer.position else { throw .cursorNotWritable }
 
         var mapStart: UInt64
         switch pointer.slot.tag {

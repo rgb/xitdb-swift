@@ -41,13 +41,6 @@ import Testing
         sha1(text).bytes
     }
 
-    /// A format tag from its two characters, Zig's `"bi".*`.
-    private func makeFormatTag(_ name: String) -> InlineArray<2, UInt8> {
-        let bytes = utf8(name)
-        precondition(bytes.count == 2)
-        return [bytes[0], bytes[1]]
-    }
-
     /// test.zig 2775-2865: "compaction", with the offsets map in memory.
     @Test(arguments: StorageKind.allCases, StorageKind.allCases)
     func compaction(source: StorageKind, target: StorageKind) throws {
@@ -134,13 +127,13 @@ import Testing
                 try moment.put(hashInt("key1"), .bytes(utf8("updated_value1")))
                 try moment.put(hashInt("key2"), .uint(200))
                 try moment.put(hashInt("key3"), .int(-42))
-                try moment.put(hashInt("key4"), .float(3.14))
+                try moment.put(hashInt("key4"), .double(3.14))
                 try moment.put(hashInt("short"), .bytes(utf8("hi")))
 
                 // long bytes with format_tag
                 try moment.put(
                     hashInt("tagged"),
-                    .bytesObject(Bytes(utf8("this is a long tagged string!!"), formatTag: makeFormatTag("bi")))
+                    .bytes(utf8("this is a long tagged string!!"), formatTag: "bi")
                 )
 
                 // ArrayList
@@ -273,7 +266,7 @@ import Testing
         let taggedObject = try taggedCursor.readBytesObjectAlloc(maxSize: 1024)
         #expect(taggedObject.value == utf8("this is a long tagged string!!"))
         let taggedFormatTag = try #require(taggedObject.formatTag)
-        #expect(array(taggedFormatTag) == utf8("bi"))
+        #expect(taggedFormatTag == "bi")
 
         // ArrayList
         let fruitsCursor = try #require(try moment.getCursor(hashInt("fruits")))

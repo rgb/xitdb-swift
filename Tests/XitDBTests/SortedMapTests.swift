@@ -322,7 +322,7 @@ import Testing
                 .sortedMapGetIndex(0)
             ])
         }
-        #expect(throws: XitDBError.cursorNotWriteable) {
+        #expect(throws: XitDBError.cursorNotWritable) {
             try map.cursor.writePath([
                 .sortedMapGet(.key, SortedKey(utf8("k0001"))),
                 .write(.bytes(utf8("x"))),
@@ -336,7 +336,7 @@ import Testing
         // through the non-writeable key slot) must still leave the count
         // consistent with the tree, not inserted-but-uncounted
         let countBeforeFailedWrite = try map.count()
-        #expect(throws: XitDBError.cursorNotWriteable) {
+        #expect(throws: XitDBError.cursorNotWritable) {
             try map.cursor.writePath([
                 .sortedMapGet(.key, SortedKey(utf8("missing-key"))),
                 .write(.bytes(utf8("x"))),

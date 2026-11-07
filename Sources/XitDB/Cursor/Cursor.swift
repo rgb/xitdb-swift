@@ -191,7 +191,7 @@ public struct Cursor<Access: CursorAccess> {
     ///   the value does.
     public func readBytesObject(
         into buffer: inout MutableSpan<UInt8>
-    ) throws(XitDBError) -> (count: Int, formatTag: InlineArray<2, UInt8>?) {
+    ) throws(XitDBError) -> (count: Int, formatTag: FormatTag?) {
         try database.reader.bytesObject(try resolved().slot, into: &buffer)
     }
 
@@ -416,10 +416,10 @@ extension Cursor where Access == ReadWrite {
     /// - Throws: ``XitDBError/expectedTxStart`` if the cursor is not a root
     ///   cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is a root cursor and one
-    ///   is, ``XitDBError/cursorNotWriteable`` if the slot has no position
+    ///   is, ``XitDBError/cursorNotWritable`` if the slot has no position
     ///   to write to, or ``XitDBError/storageFailure(errno:)`` if the
     ///   storage fails.
-    public mutating func write(_ data: WriteableData) throws(XitDBError) {
+    public mutating func write(_ data: WritableData) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.write(data)]
         self = try writePath(path.span)
     }
@@ -432,7 +432,7 @@ extension Cursor where Access == ReadWrite {
     /// overwritten.
     ///
     /// - Throws: As ``write(_:)``.
-    public mutating func writeIfEmpty(_ data: WriteableData) throws(XitDBError) {
+    public mutating func writeIfEmpty(_ data: WritableData) throws(XitDBError) {
         if try resolved().slot.isEmpty {
             try write(data)
         }
@@ -456,13 +456,13 @@ extension Cursor where Access == ReadWrite {
     ///   - formatTag: A format tag to store with the bytes, or `nil` for
     ///     none. `body` can also set it, through the writer.
     ///   - body: Writes the bytes.
-    /// - Throws: ``XitDBError/cursorNotWriteable`` on a root cursor, to
+    /// - Throws: ``XitDBError/cursorNotWritable`` on a root cursor, to
     ///   which bytes are written with ``write(_:)``, or if the slot has no
     ///   position; ``XitDBError/expectedTxStart`` outside a transaction;
     ///   ``XitDBError/unexpectedWriterPosition`` if something else was
     ///   written while `body` ran; and whatever `body` throws.
     public mutating func writer(
-        formatTag: InlineArray<2, UInt8>? = nil,
+        formatTag: FormatTag? = nil,
         _ body: (inout ByteWriter) throws -> Void
     ) throws {
         var writer = ByteWriter(record: try ByteRecordWriter(database: database, at: slotPointer))
@@ -491,7 +491,7 @@ public struct ByteWriter: ~Copyable {
     var record: ByteRecordWriter
 
     /// A format tag to store with the bytes, or `nil` for none.
-    public var formatTag: InlineArray<2, UInt8>? {
+    public var formatTag: FormatTag? {
         get { record.formatTag }
         set { record.formatTag = newValue }
     }

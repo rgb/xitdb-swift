@@ -281,7 +281,7 @@ extension SortedMap where Access == ReadWrite {
     ///   sorted map or set, ``XitDBError/invalidBTreeNode`` if the tree does
     ///   not hold what its header or its branches say, or an error of the
     ///   storage or of a damaged file.
-    public func put(_ key: Span<UInt8>, _ data: WriteableData) throws(XitDBError) {
+    public func put(_ key: Span<UInt8>, _ data: WritableData) throws(XitDBError) {
         let path: InlineArray<2, PathPart> = [.sortedMapGet(.value, SortedKey(key)), .write(data)]
         _ = try cursor.writePath(path.span)
     }
@@ -298,7 +298,7 @@ extension SortedMap where Access == ReadWrite {
     ///   sorted map or set, ``XitDBError/invalidBTreeNode`` if the tree does
     ///   not hold what its header or its branches say, or an error of the
     ///   storage or of a damaged file.
-    public func put(_ key: [UInt8], _ data: WriteableData) throws(XitDBError) {
+    public func put(_ key: [UInt8], _ data: WritableData) throws(XitDBError) {
         let path: InlineArray<2, PathPart> = [.sortedMapGet(.value, SortedKey(key)), .write(data)]
         _ = try cursor.writePath(path.span)
     }

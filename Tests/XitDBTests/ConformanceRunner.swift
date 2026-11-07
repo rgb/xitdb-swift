@@ -359,10 +359,10 @@ final class ScriptRunner {
         return try hexBytes(try object.string("hex"), what)
     }
 
-    private func formatTag(_ value: Any?, _ what: String) throws -> InlineArray<2, UInt8> {
+    private func formatTag(_ value: Any?, _ what: String) throws -> FormatTag {
         let tag = try bytes(value, what)
         guard tag.count == 2 else { throw UnknownInScript("\(what) is not two bytes") }
-        return [tag[0], tag[1]]
+        return FormatTag(tag[0], tag[1])
     }
 
     private func hash(_ value: Any?, _ what: String) throws -> KeyHash {
@@ -375,7 +375,7 @@ final class ScriptRunner {
         return KeyHash(Array(Insecure.SHA1.hash(data: Data(input))))
     }
 
-    private static let tagNames: [String: XitDB.Tag] = [
+    private static let tagNames: [String: Slot.Tag] = [
         "none": .none, "index": .index, "array_list": .arrayList, "linked_array_list": .linkedArrayList,
         "hash_map": .hashMap, "kv_pair": .kvPair, "bytes": .bytes, "short_bytes": .shortBytes, "uint": .uint,
         "int": .int, "float": .float, "hash_set": .hashSet, "counted_hash_map": .countedHashMap,
@@ -383,7 +383,7 @@ final class ScriptRunner {
         "sorted_kv_pair": .sortedKvPair,
     ]
 
-    private func tag(_ name: String) throws -> XitDB.Tag {
+    private func tag(_ name: String) throws -> Slot.Tag {
         guard let tag = Self.tagNames[name] else { throw UnknownInScript("unknown tag '\(name)'") }
         return tag
     }
@@ -428,23 +428,21 @@ final class ScriptRunner {
         return Double(bitPattern: bits.reduce(UInt64(0)) { $0 << 8 | UInt64($1) })
     }
 
-    private func writeData(_ value: Any?) throws -> WriteableData {
+    private func writeData(_ value: Any?) throws -> WritableData {
         let object = try ScriptObject(value, "write data")
         try object.allow("slot", "uint", "int", "float", "bytes", "bytes_object")
         guard object.fields.count == 1 else { throw UnknownInScript("write data needs exactly one field") }
         if object.has("slot") { return .slot(try slot(object.fields["slot"], "a slot")) }
         if object.has("uint") { return .uint(try object.unsigned("uint")) }
         if object.has("int") { return .int(try object.signed("int")) }
-        if object.has("float") { return .float(try float(object.fields["float"], "a float")) }
+        if object.has("float") { return .double(try float(object.fields["float"], "a float")) }
         if object.has("bytes") { return .bytes(try bytes(object.fields["bytes"], "bytes")) }
         let bytesObject = try ScriptObject(object.fields["bytes_object"], "bytes_object")
         try bytesObject.allow("value", "format_tag")
-        return .bytesObject(
-            Bytes(
-                try bytes(bytesObject.fields["value"], "bytes"),
-                formatTag: bytesObject.has("format_tag")
-                    ? try formatTag(bytesObject.fields["format_tag"], "format_tag") : nil
-            )
+        return .bytes(
+            try bytes(bytesObject.fields["value"], "bytes"),
+            formatTag: bytesObject.has("format_tag")
+                ? try formatTag(bytesObject.fields["format_tag"], "format_tag") : nil
         )
     }
 
@@ -608,7 +606,7 @@ final class ScriptRunner {
         case .unexpectedTag: "UnexpectedTag"
         case .keyNotFound: "KeyNotFound"
         case .writeNotAllowed: "WriteNotAllowed"
-        case .cursorNotWriteable: "CursorNotWriteable"
+        case .cursorNotWritable: "CursorNotWriteable"
         case .expectedTxStart: "ExpectedTxStart"
         case .nestedTopLevelWrite: "NestedTopLevelWrite"
         case .invalidDatabase: "InvalidDatabase"
@@ -633,6 +631,9 @@ final class ScriptRunner {
         // A failed write to the storage is what Zig's writer interface
         // reports as WriteFailed.
         case .storageFailure: "WriteFailed"
+        // Nothing a script runs gives the database a type of the script's
+        // own; the runner's offset maps and sinks never throw.
+        case .callerError: "CallerError"
         }
     }
 
@@ -982,7 +983,7 @@ final class ScriptRunner {
             let size = try op.unsigned("size")
             guard size <= 1 << 24 else { throw UnknownInScript("a size over 2^24") }
             var buffer = [UInt8](repeating: 0xEE, count: Int(size))
-            let result: (count: Int, formatTag: InlineArray<2, UInt8>?)
+            let result: (count: Int, formatTag: FormatTag?)
             do {
                 var span = buffer.mutableSpan
                 result = try read(try op.string("on")) {
@@ -1211,9 +1212,9 @@ final class ScriptRunner {
         }
     }
 
-    private func expectFormatTag(_ op: ScriptObject, _ tag: InlineArray<2, UInt8>?, _ what: String) throws {
+    private func expectFormatTag(_ op: ScriptObject, _ tag: FormatTag?, _ what: String) throws {
         guard op.has("expect_format_tag") else { return }
-        let expected: InlineArray<2, UInt8>? =
+        let expected: FormatTag? =
             op.isNull("expect_format_tag") ? nil : try formatTag(op.fields["expect_format_tag"], "a tag")
         guard Bytes([], formatTag: expected) == Bytes([], formatTag: tag) else {
             throw ScriptFailure("\(what) gave another format tag")

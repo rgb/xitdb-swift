@@ -61,7 +61,7 @@ enum SlotGroup {
         if offset >= 0 && bytes.count - offset >= 144 {
             // all sixteen are there: one check of the bounds, then the tag
             // bytes, which a descent does at every node
-            for index in 0..<Int(Trie.slotsPerBlock) where bytes[offset + index * 9] & 0x7F > Tag.largestRawValue {
+            for index in 0..<Int(Trie.slotsPerBlock) where bytes[offset + index * 9] & 0x7F > Slot.Tag.largestRawValue {
                 throw .invalidEnumTag
             }
             return
@@ -71,7 +71,7 @@ enum SlotGroup {
         for index in 0..<Int(Trie.slotsPerBlock) {
             let start = offset + index * 9
             try bytes.requireBytes(9, at: start)
-            _ = try Tag(validating: bytes[start] & 0x7F)
+            _ = try Slot.Tag(validating: bytes[start] & 0x7F)
         }
     }
 

@@ -21,7 +21,7 @@ extension Database {
     }
 
     func linkedArrayListInit(_ pointer: SlotPointer, frozenAt: UInt64) throws(XitDBError) -> SlotPointer {
-        guard let position = pointer.position else { throw .cursorNotWriteable }
+        guard let position = pointer.position else { throw .cursorNotWritable }
 
         var headerPtr: UInt64
         switch pointer.slot.tag {

@@ -20,15 +20,15 @@ struct ByteRecordWriter: ~Copyable {
     private var position: UInt64 = 0
 
     /// A format tag to store after the bytes, or `nil` for none.
-    var formatTag: InlineArray<2, UInt8>?
+    var formatTag: FormatTag?
 
     /// Starts a byte array for the slot at `pointer`.
     ///
-    /// - Throws: `cursorNotWriteable` for the root slot, which bytes are
+    /// - Throws: `cursorNotWritable` for the root slot, which bytes are
     ///   written to with a `write` inside a transaction, or
     ///   `expectedTxStart` outside a transaction.
     init(database: Database, at pointer: SlotPointer) throws(XitDBError) {
-        if pointer.position == RootHeader.position { throw .cursorNotWriteable }
+        if pointer.position == RootHeader.position { throw .cursorNotWritable }
         guard database.transactionStart != nil else { throw .expectedTxStart }
         let recordPosition = try database.storage.length
         try database.write(0 as UInt64, at: recordPosition)
@@ -77,7 +77,7 @@ struct ByteRecordWriter: ~Copyable {
     /// - Throws: `expectedTxStart` outside a transaction,
     ///   `unexpectedWriterPosition` if a format tag is to be written and the
     ///   array is no longer the last thing in the storage, or
-    ///   `cursorNotWriteable` if the slot has no position.
+    ///   `cursorNotWritable` if the slot has no position.
     mutating func finish(slotPosition: UInt64?) throws(XitDBError) -> Slot {
         guard database.transactionStart != nil else { throw .expectedTxStart }
 
@@ -86,12 +86,12 @@ struct ByteRecordWriter: ~Copyable {
             slot.full = true
             let tagPosition = try database.storage.length
             if (try startPosition.offset(by: size)) != tagPosition { throw .unexpectedWriterPosition }
-            try database.storage.write(formatTag.span, at: tagPosition)
+            try database.storage.write(formatTag.bytes.span, at: tagPosition)
         }
 
         try database.write(size, at: slot.value)
 
-        guard let slotPosition else { throw .cursorNotWriteable }
+        guard let slotPosition else { throw .cursorNotWritable }
         try database.write(slot, at: slotPosition)
         return slot
     }

@@ -2,7 +2,7 @@
 
 /// Swift Testing has a `Tag` type of its own, so a test file that imports both
 /// modules cannot say `Tag` unqualified. Within the tests it means ours.
-typealias Tag = XitDB.Tag
+typealias Tag = Slot.Tag
 
 /// Runs an encoder and returns the bytes it appended.
 ///

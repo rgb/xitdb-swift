@@ -154,7 +154,7 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   list, ``XitDBError/invalidBTreeNode`` if the list's tree does not
     ///   hold what its header says, or an error of the storage or of a
     ///   damaged file.
-    public func put(_ index: Int64, _ data: WriteableData) throws(XitDBError) {
+    public func put(_ index: Int64, _ data: WritableData) throws(XitDBError) {
         let path: InlineArray<2, PathPart> = [.linkedArrayListGet(index), .write(data)]
         _ = try cursor.writePath(path.span)
     }
@@ -187,7 +187,7 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   list, ``XitDBError/invalidBTreeNode`` if the list's tree does not
     ///   hold what its header says, or an error of the storage or of a
     ///   damaged file.
-    public func append(_ data: WriteableData) throws(XitDBError) {
+    public func append(_ data: WritableData) throws(XitDBError) {
         let path: InlineArray<2, PathPart> = [.linkedArrayListAppend, .write(data)]
         _ = try cursor.writePath(path.span)
     }
@@ -223,7 +223,7 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   longer holds a list, ``XitDBError/invalidBTreeNode`` if the list's
     ///   tree does not hold what its header says, or an error of the
     ///   storage or of a damaged file.
-    public func appendContext(_ data: WriteableData, _ body: (inout Cursor<ReadWrite>) throws -> Void) throws {
+    public func appendContext(_ data: WritableData, _ body: (inout Cursor<ReadWrite>) throws -> Void) throws {
         let path: InlineArray<3, PathPart> = [.linkedArrayListAppend, .write(data), .ctx]
         _ = try cursor.writePath(path.span, body)
     }
@@ -285,7 +285,7 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   list, ``XitDBError/invalidBTreeNode`` if the list's tree does not
     ///   hold what its header says, or an error of the storage or of a
     ///   damaged file.
-    public func insert(_ index: Int64, _ data: WriteableData) throws(XitDBError) {
+    public func insert(_ index: Int64, _ data: WritableData) throws(XitDBError) {
         let path: InlineArray<2, PathPart> = [.linkedArrayListInsert(index), .write(data)]
         _ = try cursor.writePath(path.span)
     }

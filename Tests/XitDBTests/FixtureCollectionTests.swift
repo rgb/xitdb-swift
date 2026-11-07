@@ -251,7 +251,7 @@ import Testing
         let numberCursor = try value(moment, "random-number")
         let number = try numberCursor.readBytesObjectAlloc()
         #expect(number.value.count == 32)
-        #expect(number.formatTag.map { array($0) } == Array("bi".utf8))
+        #expect(number.formatTag == "bi")
         #expect(try numberCursor.slot().tag == .bytes)
         // the reader gives the same bytes, without the tag
         var numberReader = try numberCursor.reader()

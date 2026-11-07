@@ -516,7 +516,7 @@ import Testing
         #expect(try db.rootCursor().readBytesAlloc(maxSize: 64) == utf8("this is too long to fit in a slot"))
 
         // bytes can't be streamed into the root
-        #expect(throws: XitDBError.cursorNotWriteable) { try root.writer { _ in } }
+        #expect(throws: XitDBError.cursorNotWritable) { try root.writer { _ in } }
 
         // a scalar root can't be initialized as a collection
         #expect(throws: XitDBError.unexpectedTag) { _ = try HashMap<ReadWrite>(db.rootCursor()) }

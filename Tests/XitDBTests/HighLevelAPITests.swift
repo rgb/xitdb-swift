@@ -42,13 +42,6 @@ import Testing
         sha1(text).bytes
     }
 
-    /// A format tag from its two characters, Zig's `"bi".*`.
-    private func makeFormatTag(_ name: String) -> InlineArray<2, UInt8> {
-        let bytes = utf8(name)
-        precondition(bytes.count == 2)
-        return [bytes[0], bytes[1]]
-    }
-
     /// Zig's `cursor.readBytes(&buffer)` with a buffer of `bufferSize` zero bytes: the part of the buffer that
     /// holds the value.
     private func readBytes<Access>(_ cursor: Cursor<Access>, bufferSize: Int) throws -> [UInt8] {
@@ -175,7 +168,7 @@ import Testing
             }
             try moment.put(
                 hashInt("random-number"),
-                .bytesObject(Bytes(randomNumberBuffer, formatTag: makeFormatTag("bi")))
+                .bytes(randomNumberBuffer, formatTag: "bi")
             )
 
             var longTextCursor = try moment.putCursor(hashInt("long-text"))
@@ -302,7 +295,7 @@ import Testing
             let randomNumberCursor = try #require(try moment.getCursor(hashInt("random-number")))
             let randomNumber = try readBytesObject(randomNumberCursor, bufferSize: 32)
             let formatTag = try #require(randomNumber.formatTag)
-            #expect(array(formatTag) == utf8("bi"))
+            #expect(formatTag == "bi")
         }
 
         do {
@@ -658,7 +651,7 @@ import Testing
             }
         }
 
-        func append(_ data: WriteableData) throws {
+        func append(_ data: WritableData) throws {
             switch self {
             case .array(let list): try list.append(data)
             case .linked(let list): try list.append(data)

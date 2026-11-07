@@ -293,7 +293,7 @@ extension Database {
     /// hashed one, which only a crafted file puts in a sorted leaf, keeps
     /// the hash it was read with, as Zig's `decodeKvPair` and
     /// `encodeKvPair` keep it.
-    func writeSortedPairRecord(_ tag: Tag, _ pair: HashedPair) throws(XitDBError) -> Slot {
+    func writeSortedPairRecord(_ tag: Slot.Tag, _ pair: HashedPair) throws(XitDBError) -> Slot {
         let position = try storage.length
         switch tag {
         case .sortedKvPair:

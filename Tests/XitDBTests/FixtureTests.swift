@@ -20,7 +20,7 @@ import Testing
         let header = try DatabaseHeader(decoding: file.span)
         #expect(header.version == 1)
         #expect(header.hashSize == 20)
-        #expect(header.hashID == HashID(id: 0))
+        #expect(header.hashID == HashID(rawValue: 0))
         #expect(header.fileID == 0x172A_756F_2208_A5EC)
 
         // the header encodes back to the bytes it was decoded from

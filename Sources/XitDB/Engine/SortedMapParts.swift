@@ -3,8 +3,8 @@
 
 extension Database {
     func sortedMapInit(_ pointer: SlotPointer, set: Bool, frozenAt: UInt64) throws(XitDBError) -> SlotPointer {
-        guard let position = pointer.position else { throw .cursorNotWriteable }
-        let tag: Tag = set ? .sortedSet : .sortedMap
+        guard let position = pointer.position else { throw .cursorNotWritable }
+        let tag: Slot.Tag = set ? .sortedSet : .sortedMap
 
         var headerPtr: UInt64
         switch pointer.slot.tag {

@@ -93,7 +93,7 @@ func newDatabase(_ storage: any WritableStorage) throws -> Database {
     try Database(
         storage: storage,
         hashSize: 20,
-        hashID: HashID(bytes: [0x73, 0x68, 0x61, 0x31]),
+        hashID: "sha1" as HashID,
         fileID: 0x0011_2233_4455_6677
     )
 }

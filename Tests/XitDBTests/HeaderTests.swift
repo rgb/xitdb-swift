@@ -22,14 +22,14 @@ import Testing
         let header = try DatabaseHeader(decoding: Self.sha1Header.span)
         #expect(header.version == 1)
         #expect(header.hashSize == 20)
-        #expect(header.hashID == HashID(id: 0x7368_6131))
+        #expect(header.hashID == HashID(rawValue: 0x7368_6131))
         #expect(header.fileID == 0x0102_0304_0506_0708)
     }
 
     @Test func encodesHandWrittenBytes() {
         let header = DatabaseHeader(
             fileID: 0x0102_0304_0506_0708,
-            hashID: HashID(bytes: [0x73, 0x68, 0x61, 0x31]),
+            hashID: "sha1",
             hashSize: 20
         )
         #expect(header.version == DatabaseHeader.currentVersion)
@@ -37,7 +37,7 @@ import Testing
     }
 
     @Test func roundTrips() throws {
-        let header = DatabaseHeader(fileID: .max, hashID: HashID(id: 0), hashSize: 8)
+        let header = DatabaseHeader(fileID: .max, hashID: HashID(rawValue: 0), hashSize: 8)
         let bytes = encoded(capacity: 20) { header.encode(into: &$0) }
         #expect(bytes.count == 20)
         #expect(try DatabaseHeader(decoding: bytes.span) == header)
@@ -86,12 +86,47 @@ import Testing
 
 @Suite struct HashIDTests {
     @Test func bytesAreTheBigEndianFormOfTheNumber() {
-        let sha1 = HashID(bytes: [0x73, 0x68, 0x61, 0x31])
-        #expect(sha1.id == 0x7368_6131)
+        let sha1: HashID = "sha1"
+        #expect(sha1.rawValue == 0x7368_6131)
         #expect(array(sha1.bytes) == [0x73, 0x68, 0x61, 0x31])
-        #expect(array(HashID(id: 0x0102_0304).bytes) == [1, 2, 3, 4])
-        #expect(array(HashID(id: 0).bytes) == [0, 0, 0, 0])
-        #expect(HashID(bytes: [0xFF, 0xFF, 0xFF, 0xFF]).id == .max)
+        #expect(array(HashID(rawValue: 0x0102_0304).bytes) == [1, 2, 3, 4])
+        #expect(array(HashID(rawValue: 0).bytes) == [0, 0, 0, 0])
+        #expect(HashID(bytes: [0xFF, 0xFF, 0xFF, 0xFF]).rawValue == .max)
+    }
+
+    /// A string init takes exactly four bytes of UTF-8; the description
+    /// gives them back when they are printable, and the number otherwise.
+    @Test func aStringIsFourBytes() {
+        #expect(HashID("sha1") == HashID(rawValue: 0x7368_6131))
+        #expect(HashID(string: "sha1") == HashID(rawValue: 0x7368_6131))
+        #expect(HashID(string: "sha") == nil)
+        #expect(HashID(string: "sha256") == nil)
+        #expect(HashID(string: "ab\u{E9}") == HashID(rawValue: 0x6162_C3A9))
+        #expect(HashID("sha1").description == "sha1")
+        #expect(HashID(rawValue: 0).description == "0")
+        #expect(HashID(rawValue: 0x0102_0304).description == "16909060")
+    }
+}
+
+@Suite struct FormatTagTests {
+    /// A tag is its two bytes: from a string of two bytes, a literal, or
+    /// the bytes themselves; a string of any other length is nil.
+    @Test func aTagIsTwoBytes() {
+        let bi: FormatTag = "bi"
+        #expect(bi == FormatTag(0x62, 0x69))
+        #expect(array(bi.bytes) == [0x62, 0x69])
+        #expect(FormatTag("bi") == bi)
+        #expect(FormatTag(string: "bi") == bi)
+        #expect(FormatTag(string: "b") == nil)
+        #expect(FormatTag(string: "big") == nil)
+        #expect(FormatTag(string: "") == nil)
+        #expect(FormatTag(string: "\u{E9}") == FormatTag(0xC3, 0xA9))
+        #expect(bi.description == "bi")
+        #expect(FormatTag(0, 0x69).description == "0x0069")
+        #expect(FormatTag(0x62, 0x7F).description == "0x627F")
+        var seen: Set<FormatTag> = [bi]
+        seen.insert(FormatTag(0x62, 0x69))
+        #expect(seen.count == 1)
     }
 }
 

@@ -103,7 +103,7 @@ public final class Database {
             guard let hashSize else { throw .invalidHashSize }
             header = DatabaseHeader(
                 fileID: fileID ?? random.next(),
-                hashID: hashID ?? HashID(id: 0),
+                hashID: hashID ?? HashID(rawValue: 0),
                 hashSize: hashSize
             )
         } else {

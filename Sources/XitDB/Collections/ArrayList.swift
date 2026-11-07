@@ -139,7 +139,7 @@ extension ArrayList where Access == ReadWrite {
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
     ///   is, ``XitDBError/unexpectedTag`` if the slot no longer holds a
     ///   list, or an error of the storage or of a damaged file.
-    public func put(_ index: Int64, _ data: WriteableData) throws(XitDBError) {
+    public func put(_ index: Int64, _ data: WritableData) throws(XitDBError) {
         let path: InlineArray<2, PathPart> = [.arrayListGet(index), .write(data)]
         _ = try cursor.writePath(path.span)
     }
@@ -169,7 +169,7 @@ extension ArrayList where Access == ReadWrite {
     ///   is, ``XitDBError/unexpectedTag`` if the slot no longer holds a
     ///   list, ``XitDBError/invalidDatabase`` if the list is as long as a
     ///   list can be, or an error of the storage or of a damaged file.
-    public func append(_ data: WriteableData) throws(XitDBError) {
+    public func append(_ data: WritableData) throws(XitDBError) {
         let path: InlineArray<2, PathPart> = [.arrayListAppend, .write(data)]
         _ = try cursor.writePath(path.span)
     }
@@ -206,7 +206,7 @@ extension ArrayList where Access == ReadWrite {
     ///   longer holds a list, ``XitDBError/invalidDatabase`` if the list is
     ///   as long as a list can be, or an error of the storage or of a
     ///   damaged file.
-    public func appendContext(_ data: WriteableData, _ body: (inout Cursor<ReadWrite>) throws -> Void) throws {
+    public func appendContext(_ data: WritableData, _ body: (inout Cursor<ReadWrite>) throws -> Void) throws {
         let path: InlineArray<3, PathPart> = [.arrayListAppend, .write(data), .ctx]
         _ = try cursor.writePath(path.span, body)
     }

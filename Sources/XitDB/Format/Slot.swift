@@ -3,17 +3,21 @@
 /// A slot holds either a small value directly or the offset of a larger
 /// record elsewhere in the file. ``tag`` says which, and how to read
 /// ``value``.
-public struct Slot: Sendable, Equatable {
+///
+/// A client reads slots and writes them back, through ``WritableData/slot(_:)``,
+/// to share what a slot points at; it does not make them, so that a slot
+/// written is always one the same database gave.
+public struct Slot: Hashable, Sendable {
     /// The value itself, or the file offset of the record that holds it,
     /// depending on ``tag``.
     ///
     /// For ``Tag/int`` and ``Tag/float`` this is the bit pattern of the
     /// number. For ``Tag/shortBytes`` the bytes are stored from the most
     /// significant byte down and padded with zeros.
-    public var value: UInt64
+    public internal(set) var value: UInt64
 
     /// The kind of value this slot holds.
-    public var tag: Tag
+    public internal(set) var tag: Tag
 
     /// A flag whose meaning depends on ``tag``.
     ///
@@ -24,7 +28,7 @@ public struct Slot: Sendable, Equatable {
     ///   format tag is stored with the bytes.
     ///
     /// It has no meaning with any other tag.
-    public var full: Bool
+    public internal(set) var full: Bool
 
     /// Creates a slot.
     ///
@@ -35,7 +39,7 @@ public struct Slot: Sendable, Equatable {
     ///   - value: The value, or the offset of the record that holds it.
     ///   - tag: The kind of value.
     ///   - full: The flag described at ``full``.
-    public init(value: UInt64 = 0, tag: Tag = .none, full: Bool = false) {
+    init(value: UInt64 = 0, tag: Tag = .none, full: Bool = false) {
         self.value = value
         self.tag = tag
         self.full = full

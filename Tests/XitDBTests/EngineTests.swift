@@ -37,7 +37,7 @@ import Testing
 
         #expect(database.header.version == 1)
         #expect(database.header.hashSize == 20)
-        #expect(database.header.hashID == HashID(id: 0))
+        #expect(database.header.hashID == HashID(rawValue: 0))
         #expect(database.header.fileID == 0x0102_0304_0506_0708)
         #expect(try database.committedSize() == 62)
         #expect(try database.rootCursor().slot().isEmpty)
@@ -69,14 +69,14 @@ import Testing
         #expect(throws: XitDBError.invalidHashSize) { try Database(storage: MemoryStorage()) }
 
         let storage = MemoryStorage()
-        _ = try Database(storage: storage, hashSize: 32, hashID: HashID(bytes: [0x73, 0x68, 0x61, 0x32]))
+        _ = try Database(storage: storage, hashSize: 32, hashID: "sha2")
         let reopened = try Database(storage: storage)
         #expect(reopened.header.hashSize == 32)
-        #expect(reopened.header.hashID == HashID(bytes: [0x73, 0x68, 0x61, 0x32]))
+        #expect(reopened.header.hashID == "sha2")
         #expect(try Database(storage: storage, hashSize: 32).header.hashSize == 32)
         #expect(throws: XitDBError.invalidHashSize) { try Database(storage: storage, hashSize: 20) }
         // a hash ID or file ID given when opening is not written anywhere
-        let ignored = try Database(storage: storage, hashSize: nil, hashID: HashID(id: 1), fileID: 2)
+        let ignored = try Database(storage: storage, hashSize: nil, hashID: HashID(rawValue: 1), fileID: 2)
         #expect(ignored.header.hashID == reopened.header.hashID)
         #expect(ignored.header.fileID == reopened.header.fileID)
         #expect(storage.bytes.count == 62)
@@ -215,7 +215,7 @@ import Testing
 
         let number = try value(moment, "random-number").readBytesObjectAlloc()
         #expect(number.value.count == 32)
-        #expect(number.formatTag.map { array($0) } == Array("bi".utf8))
+        #expect(number.formatTag == "bi")
         #expect(try value(moment, "random-number").slot().tag == .bytes)
 
         let longText = try value(moment, "long-text")
@@ -389,8 +389,8 @@ import Testing
                 // neither can be written through
                 var key = pair.keyCursor
                 var value = pair.valueCursor
-                #expect(throws: XitDBError.cursorNotWriteable) { try key.write(.uint(1)) }
-                #expect(throws: XitDBError.cursorNotWriteable) { try value.write(.uint(1)) }
+                #expect(throws: XitDBError.cursorNotWritable) { try key.write(.uint(1)) }
+                #expect(throws: XitDBError.cursorNotWritable) { try value.write(.uint(1)) }
             }
         }
     }
@@ -461,8 +461,8 @@ import Testing
     /// collection's init part first, which copies its header into the
     /// transaction, so that earlier moments keep their tree. The root is
     /// then the same kind it was, whichever of the two it is.
-    @Test(arguments: [XitDB.Tag.sortedMap, .sortedSet])
-    func aTransactionOnARootThatIsASortedMapCopiesItsHeader(tag: XitDB.Tag) throws {
+    @Test(arguments: [Slot.Tag.sortedMap, .sortedSet])
+    func aTransactionOnARootThatIsASortedMapCopiesItsHeader(tag: Slot.Tag) throws {
         let storage = MemoryStorage()
         let database = try makeDatabase(storage)
         _ = try database.rootCursor().writePath([

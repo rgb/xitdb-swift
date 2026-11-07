@@ -82,7 +82,7 @@ import Testing
         }
 
         /// lib.zig 4371-4376.
-        func append(_ data: WriteableData) throws {
+        func append(_ data: WritableData) throws {
             _ = try cursor.writePath([.arrayListAppend, .write(data)])
         }
 
@@ -104,16 +104,7 @@ import Testing
 
     /// Zig's `HashId.fromBytes(name)`.
     private func hashID(_ name: String) -> HashID {
-        let bytes = utf8(name)
-        precondition(bytes.count == 4)
-        return HashID(bytes: [bytes[0], bytes[1], bytes[2], bytes[3]])
-    }
-
-    /// A format tag from its two characters, Zig's `"st".*`.
-    private func makeFormatTag(_ name: String) -> InlineArray<2, UInt8> {
-        let bytes = utf8(name)
-        precondition(bytes.count == 2)
-        return [bytes[0], bytes[1]]
+        HashID(string: name)!
     }
 
     /// Zig's `(hashInt(text) & ~mask) | (other & mask)`, where the hashes are `u160` and `mask` is a `u64`.
@@ -224,10 +215,10 @@ import Testing
             case sha512
         }
         let hashAlgo: HashAlgo
-        switch header.hashID.id {
-        case hashID("sha1").id:
+        switch header.hashID {
+        case hashID("sha1"):
             hashAlgo = .sha1
-        case hashID("sha2").id:
+        case hashID("sha2"):
             switch header.hashSize {
             case 32: hashAlgo = .sha256
             case 64: hashAlgo = .sha512
@@ -533,7 +524,7 @@ import Testing
                     .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
                     .hashMapInit(),
                     .hashMapGet(.value, barKey),
-                    .write(.bytesObject(Bytes(utf8("shortstr"), formatTag: makeFormatTag("st")))),
+                    .write(.bytes(utf8("shortstr"), formatTag: "st")),
                 ])
 
                 // the slot tag is .bytes because the byte array is > 8 bytes long including the format tag
@@ -550,7 +541,7 @@ import Testing
                 let bytes = try readBarCursor.readBytesObjectAlloc(maxSize: maxReadBytes)
                 #expect(bytes.value == utf8("shortstr"))
                 let tag = try #require(bytes.formatTag)
-                #expect(array(tag) == utf8("st"))
+                #expect(tag == "st")
 
                 // make sure .bytes can be read with a reader
                 var barReader = try barCursor.reader()
@@ -566,7 +557,7 @@ import Testing
                     .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
                     .hashMapInit(),
                     .hashMapGet(.value, barKey),
-                    .write(.bytesObject(Bytes(utf8("shorts"), formatTag: makeFormatTag("st")))),
+                    .write(.bytes(utf8("shorts"), formatTag: "st")),
                 ])
 
                 // the slot tag is .short_bytes because the byte array is <= 8 bytes long including the format tag
@@ -583,7 +574,7 @@ import Testing
                 let bytes = try readBytesObjectIntoBuffer(readBarCursor, bufferSize: maxReadBytes)
                 #expect(bytes.value == utf8("shorts"))
                 let tag = try #require(bytes.formatTag)
-                #expect(array(tag) == utf8("st"))
+                #expect(tag == "st")
 
                 // make sure .short_bytes can be read with a reader
                 var barReader = try barCursor.reader()
@@ -614,7 +605,7 @@ import Testing
                     .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
                     .hashMapInit(),
                     .hashMapGet(.value, barKey),
-                    .write(.bytesObject(Bytes(utf8("short"), formatTag: makeFormatTag("st")))),
+                    .write(.bytes(utf8("short"), formatTag: "st")),
                 ])
 
                 // the slot tag is .short_bytes because the byte array is <= 8 bytes long including the format tag
@@ -631,7 +622,7 @@ import Testing
                 let bytes = try readBytesObjectIntoBuffer(readBarCursor, bufferSize: maxReadBytes)
                 #expect(bytes.value == utf8("short"))
                 let tag = try #require(bytes.formatTag)
-                #expect(array(tag) == utf8("st"))
+                #expect(tag == "st")
 
                 // make sure .short_bytes can be read with a reader
                 var barReader = try barCursor.reader()
@@ -940,7 +931,7 @@ import Testing
                 .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
                 .hashMapInit(),
                 .hashMapGet(.value, fooKey),
-                .write(.float(42.5)),
+                .write(.double(42.5)),
             ])
 
             // read foo

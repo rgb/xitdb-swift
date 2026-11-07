@@ -55,7 +55,7 @@ extension Slot {
     /// node was decoded or written by this engine, so that its tag is one.
     static func inNode(_ bytes: Span<UInt8>, at offset: Int) -> Slot {
         let first = bytes[offset]
-        guard let tag = Tag(rawValue: first & 0x7F) else {
+        guard let tag = Slot.Tag(rawValue: first & 0x7F) else {
             preconditionFailure("a node's bytes were not validated")
         }
         return Slot(value: bytes.bigEndian(UInt64.self, at: offset + 1), tag: tag, full: first & 0x80 != 0)

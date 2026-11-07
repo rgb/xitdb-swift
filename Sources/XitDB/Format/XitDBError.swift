@@ -1,8 +1,10 @@
 /// An error thrown by XitDB.
 ///
 /// The cases mirror the error names of the original Zig implementation, so a
-/// failure means the same thing in both.
-public enum XitDBError: Error, Sendable, Equatable {
+/// failure means the same thing in both. Two are comparable only loosely:
+/// ``callerError(_:)`` carries an error of the caller's own, and two of
+/// them are equal when their descriptions are.
+public enum XitDBError: Error, Sendable {
     /// A slot holds a kind of value that the operation cannot work with.
     ///
     /// For example, a hash map operation was applied to a slot that holds an
@@ -13,11 +15,13 @@ public enum XitDBError: Error, Sendable, Equatable {
     case keyNotFound
 
     /// A step that writes was used while reading.
+    ///
+    /// Only the package-level path API raises it; nothing public does.
     case writeNotAllowed
 
     /// The cursor has no position in the file, so nothing can be written
     /// through it.
-    case cursorNotWriteable
+    case cursorNotWritable
 
     /// A write below the root was attempted outside a transaction.
     case expectedTxStart
@@ -43,7 +47,7 @@ public enum XitDBError: Error, Sendable, Equatable {
     /// The file is shorter than the committed size it records.
     case truncatedDatabase
 
-    /// A slot's tag byte is not one of the values in ``Tag``.
+    /// A slot's tag byte is not one of the values in ``Slot/Tag``.
     case invalidEnumTag
 
     /// A tree node records more entries than a node can hold, or a position
@@ -87,13 +91,53 @@ public enum XitDBError: Error, Sendable, Equatable {
     case expectedSlotPosition
 
     /// A step that must be the last one in a path is followed by another.
+    ///
+    /// Only the package-level path API raises it; nothing public does.
     case pathPartMustBeAtEnd
 
     /// The operation is not implemented.
+    ///
+    /// Only the package-level path API raises it; nothing public does.
     case notImplemented
 
     /// The storage underneath the database reported a failure.
     ///
     /// - Parameter errno: The error number reported by the operating system.
     case storageFailure(errno: Int32)
+
+    /// A type of the caller's threw: a ``ByteSink``, a ``ByteSource`` or an
+    /// ``OffsetMap`` that XitDB was calling. The error is carried as it was
+    /// thrown.
+    case callerError(any Error)
+}
+
+extension XitDBError: Equatable {
+    /// Whether two errors are the same case with the same values. Two
+    /// ``callerError(_:)`` are equal when the errors they carry have the
+    /// same description.
+    public static func == (left: XitDBError, right: XitDBError) -> Bool {
+        switch (left, right) {
+        case (.callerError(let leftError), .callerError(let rightError)):
+            String(describing: leftError) == String(describing: rightError)
+        case (.storageFailure(let leftErrno), .storageFailure(let rightErrno)):
+            leftErrno == rightErrno
+        case (.callerError, _), (_, .callerError), (.storageFailure, _), (_, .storageFailure):
+            false
+        default:
+            // The cases without values: the same case is the same error.
+            String(describing: left) == String(describing: right)
+        }
+    }
+}
+
+extension XitDBError {
+    /// Runs `body`, which calls a type of the caller's, and carries whatever
+    /// it throws as ``callerError(_:)``.
+    static func carrying<Result>(_ body: () throws -> Result) throws(XitDBError) -> Result {
+        do {
+            return try body()
+        } catch {
+            throw .callerError(error)
+        }
+    }
 }

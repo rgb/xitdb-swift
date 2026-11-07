@@ -59,7 +59,7 @@ extension DatabaseReader {
     func bytesObject(
         _ slot: Slot,
         into buffer: inout MutableSpan<UInt8>
-    ) throws(XitDBError) -> (count: Int, formatTag: InlineArray<2, UInt8>?) {
+    ) throws(XitDBError) -> (count: Int, formatTag: FormatTag?) {
         switch slot.tag {
         case .none:
             return (0, nil)
@@ -92,9 +92,10 @@ extension DatabaseReader {
         of slot: Slot,
         valueStart: UInt64,
         size: UInt64
-    ) throws(XitDBError) -> InlineArray<2, UInt8>? {
+    ) throws(XitDBError) -> FormatTag? {
         guard slot.full else { return nil }
-        return try bytes(at: try valueStart.offset(by: size))
+        let tagBytes: InlineArray<2, UInt8> = try bytes(at: try valueStart.offset(by: size))
+        return FormatTag(bytes: tagBytes)
     }
 
     /// Reads the key-value pair that an entry slot stands for.

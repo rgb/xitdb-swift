@@ -48,7 +48,7 @@ extension Database {
     ///   two storages and of the offset map are passed on.
     public func compact<Map: OffsetMap>(into target: Database, offsetMap: inout Map) throws(XitDBError) {
         // cached offsets only apply to this compaction's target
-        try offsetMap.reset()
+        try offsetMap.clear()
         guard target.header.hashSize == header.hashSize else { throw .invalidHashSize }
 
         // the target must be a new or empty database, because compaction
@@ -314,7 +314,7 @@ struct Compactor {
 
     /// Whether a slot's copy is the slot itself or a byte record copied at
     /// once, with no block to visit.
-    private static func isImmediate(_ tag: Tag) -> Bool {
+    private static func isImmediate(_ tag: Slot.Tag) -> Bool {
         switch tag {
         case .none, .uint, .int, .float, .shortBytes, .bytes: true
         default: false
@@ -400,21 +400,21 @@ struct Compactor {
             case .bytes:
                 return try remapBytes(slot, offsetMap: &offsetMap)
             case .index, .hashMap, .hashSet:
-                if let offset = try offsetMap.get(slot.value) { return offset }
+                if let offset = try offsetMap.lookup(slot.value) { return offset }
                 let offset = try reserve(144)
-                try offsetMap.put(slot.value, offset)
+                try offsetMap.record(slot.value, offset)
                 let frame = try readFrame(.slots(prefix: 0), at: slot.value, targetOffset: offset, count: 16)
                 return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             case .countedHashMap, .countedHashSet:
-                if let offset = try offsetMap.get(slot.value) { return offset }
+                if let offset = try offsetMap.lookup(slot.value) { return offset }
                 let offset = try reserve(152)
-                try offsetMap.put(slot.value, offset)
+                try offsetMap.record(slot.value, offset)
                 let frame = try readFrame(.slots(prefix: 8), at: slot.value, targetOffset: offset, count: 16)
                 return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             case .arrayList:
-                if let offset = try offsetMap.get(slot.value) { return offset }
+                if let offset = try offsetMap.lookup(slot.value) { return offset }
                 let offset = try reserve(16)
-                try offsetMap.put(slot.value, offset)
+                try offsetMap.record(slot.value, offset)
                 let header = try source.arrayListHeader(at: slot.value)
                 let shift = header.size <= Trie.slotsPerBlock ? 0 : Trie.arrayListShift(lastIndex: header.size - 1)
                 let frame = try readFrame(
@@ -423,65 +423,65 @@ struct Compactor {
                 stack.append(frame)
                 return nil
             case .linkedArrayList:
-                if let offset = try offsetMap.get(slot.value) { return offset }
+                if let offset = try offsetMap.lookup(slot.value) { return offset }
                 let offset = try reserve(16)
-                try offsetMap.put(slot.value, offset)
+                try offsetMap.record(slot.value, offset)
                 let header = try source.bTreeHeader(at: slot.value)
                 let frame = try readFrame(
                     .treeHeader, at: slot.value, targetOffset: offset, count: 0, task: .bTreeNode(header.rootPtr))
                 stack.append(frame)
                 return nil
             case .sortedMap, .sortedSet:
-                if let offset = try offsetMap.get(slot.value) { return offset }
+                if let offset = try offsetMap.lookup(slot.value) { return offset }
                 let offset = try reserve(16)
-                try offsetMap.put(slot.value, offset)
+                try offsetMap.record(slot.value, offset)
                 let header = try source.bTreeHeader(at: slot.value)
                 let frame = try readFrame(
                     .treeHeader, at: slot.value, targetOffset: offset, count: 0, task: .sortedNode(header.rootPtr))
                 stack.append(frame)
                 return nil
             case .kvPair:
-                if let offset = try offsetMap.get(slot.value) { return offset }
+                if let offset = try offsetMap.lookup(slot.value) { return offset }
                 let hashSize = Int(source.hashSize)
                 let offset = try reserve(hashSize + 18)
-                try offsetMap.put(slot.value, offset)
+                try offsetMap.record(slot.value, offset)
                 let frame = try readFrame(.kvPair(hashSize: hashSize), at: slot.value, targetOffset: offset, count: 2)
                 return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             case .sortedKvPair:
-                if let offset = try offsetMap.get(slot.value) { return offset }
+                if let offset = try offsetMap.lookup(slot.value) { return offset }
                 let offset = try reserve(18)
-                try offsetMap.put(slot.value, offset)
+                try offsetMap.record(slot.value, offset)
                 let frame = try readFrame(.kvPair(hashSize: 0), at: slot.value, targetOffset: offset, count: 2)
                 return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             }
 
         case .bTreeNode(let nodePtr):
-            if let offset = try offsetMap.get(nodePtr) { return offset }
+            if let offset = try offsetMap.lookup(nodePtr) { return offset }
             // read the header first because the node kind determines its size
             switch try nodeKind(at: nodePtr) {
             case .leaf:
                 let offset = try reserve(146)
-                try offsetMap.put(nodePtr, offset)
+                try offsetMap.record(nodePtr, offset)
                 let frame = try readFrame(.slots(prefix: 2), at: nodePtr, targetOffset: offset, count: 16)
                 return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             case .branch:
                 let offset = try reserve(274)
-                try offsetMap.put(nodePtr, offset)
+                try offsetMap.record(nodePtr, offset)
                 let frame = try readFrame(.bTreeBranch, at: nodePtr, targetOffset: offset, count: 16)
                 return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             }
 
         case .sortedNode(let nodePtr):
-            if let offset = try offsetMap.get(nodePtr) { return offset }
+            if let offset = try offsetMap.lookup(nodePtr) { return offset }
             switch try nodeKind(at: nodePtr) {
             case .leaf:
                 let offset = try reserve(146)
-                try offsetMap.put(nodePtr, offset)
+                try offsetMap.record(nodePtr, offset)
                 let frame = try readFrame(.slots(prefix: 2), at: nodePtr, targetOffset: offset, count: 16)
                 return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             case .branch:
                 let offset = try reserve(418)
-                try offsetMap.put(nodePtr, offset)
+                try offsetMap.record(nodePtr, offset)
                 let frame = try readFrame(.sortedBranch, at: nodePtr, targetOffset: offset, count: 32)
                 return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             }
@@ -522,7 +522,7 @@ struct Compactor {
     /// - Throws: `endOfStream` if the record reaches past the end of the
     ///   source, before any of it is copied.
     private func remapBytes<Map: OffsetMap>(_ slot: Slot, offsetMap: inout Map) throws(XitDBError) -> UInt64 {
-        if let offset = try offsetMap.get(slot.value) { return offset }
+        if let offset = try offsetMap.lookup(slot.value) { return offset }
         let length = try source.uint64(at: slot.value)
         // total size: u64 length + bytes + optional 2-byte format_tag
         let payload = try length.offset(by: slot.full ? ByteArrayFormat.formatTagByteCount : 0)
@@ -543,7 +543,7 @@ struct Compactor {
             targetPosition += UInt64(chunk)
             remaining -= UInt64(chunk)
         }
-        try offsetMap.put(slot.value, newOffset)
+        try offsetMap.record(slot.value, newOffset)
         return newOffset
     }
 }

@@ -45,7 +45,7 @@ import Testing
                 .hashMapGet(.value, sha1("list")), .arrayListInit, .arrayListAppend, .write(.uint(11)),
             ])
             var text = try cursor.writePath([.hashMapGet(.value, sha1("text"))])
-            try text.writer(formatTag: [0x74, 0x78]) { writer in
+            try text.writer(formatTag: "tx") { writer in
                 try writer.write(Array("written in ".utf8))
                 try writer.write(Array("pieces".utf8))
             }
@@ -71,7 +71,7 @@ import Testing
         #expect(try moment.readPath([.hashMapGet(.value, sha1("b"))]) == nil)
         #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("list"))])).count() == 2)
         let text = try #require(try moment.readPath([.hashMapGet(.value, sha1("text"))])).readBytesObjectAlloc()
-        #expect(text == Bytes(Array("written in pieces".utf8), formatTag: [0x74, 0x78]))
+        #expect(text == Bytes(Array("written in pieces".utf8), formatTag: "tx"))
     }
 
     static func open(_ storage: any WritableStorage, _ random: FixedRandom) throws -> Database {

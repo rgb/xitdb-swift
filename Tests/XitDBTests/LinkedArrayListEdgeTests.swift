@@ -24,7 +24,7 @@ import Testing
         let database = try Database(
             storage: subject.storage,
             hashSize: 20,
-            hashID: HashID(bytes: [0x73, 0x68, 0x61, 0x31]),
+            hashID: "sha1",
             fileID: 0x0011_2233_4455_6677,
             random: FixedRandom([1, 2, 3])
         )
