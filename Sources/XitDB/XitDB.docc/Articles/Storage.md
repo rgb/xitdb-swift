@@ -30,9 +30,9 @@ Use ``BufferedFileStorage`` for a database in a file. Writes collect in a window
 fills up or a commit syncs, up to ``BufferedFileStorage/bufferLimit`` at a time, 2 MiB by default.
 
 ``FileStorage`` makes a system call for every read and write. That makes writing slower: 100,000 puts in one transaction took
-1.98 seconds against the buffered storage's 1.16, on an Apple M4 with its internal SSD and syncing off. Reading came out the
-same, at about 1.6 seconds for 100,000 lookups, because the buffer only holds writes, so a storage that is only read has
-nothing to gain from it.
+1.98 seconds against the buffered storage's 1.16. Reading came out the same, at about 1.6 seconds for 100,000 lookups, because
+the buffer only holds writes, so a storage that is only read has nothing to gain from it. These times are indicative: measured
+on 2026-11-07 on one machine, an Apple M4 with its internal SSD on APFS, with syncing off.
 
 ``MemoryStorage`` keeps the bytes in memory. Syncing does nothing, and writing is as fast as it gets. The bytes are a complete
 database, so one can be a value to send. There is no decoding step on the other side:

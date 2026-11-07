@@ -3,20 +3,20 @@
 A Swift port of [xitdb](https://github.com/xit-vcs/xitdb), an immutable database, written in Zig, that runs
 inside your program and keeps its data in one file or in memory.
 
-- Each transaction efficiently makes a new "copy" of the database. Past copies stay readable, and can be
-  returned to.
+- Each transaction makes a new "copy" of the database, by copying what it changes and sharing the rest. Past
+  copies stay readable, and can be returned to.
 - There is no query language and no schema. You write data structures, lists and maps and sets, nested as
   deeply as you need, and a database reads and writes them a part at a time, so it can be larger than memory.
 - There is no write-ahead log. A transaction appends to the file and then rewrites one small header, so a
-  transaction that fails leaves the file as it was.
+  transaction that fails leaves the database as it was.
 - Replicating a database is copying the bytes the other side lacks. Reclaiming space is compacting it into a
   new file.
 - The port reads and writes the same files as the original, byte for byte. Given the same operations and the
   same IDs, the two produce identical files.
 - It is pure Swift with no run-time dependencies, down to the system's file calls.
 
-It costs what immutability costs: the file only grows until you compact it, you hash your own keys, and you
-keep your own indexes. If you want queries or a schema, use SQLite.
+Immutability has a cost: the file only grows until you compact it. The design leaves two jobs to you as well: you
+hash your own keys, and you keep your own indexes. If you want queries or a schema, use SQLite.
 
 ## Status
 
@@ -70,7 +70,7 @@ let database =
 let history = try ArrayList<ReadWrite>(database.rootCursor)
 
 // A transaction. The new element starts as the last one, and the body
-// changes it. If the body throws, the file is as it was.
+// changes it. If the body throws, the database is as it was.
 try history.append(.slot(try history.slot(at: -1))) { cursor in
     let moment = try HashMap<ReadWrite>(cursor)
 
@@ -126,8 +126,9 @@ Every block of code that uses the library, in this README and in the documentati
 
 The full documentation is a DocC catalogue in
 [`Sources/XitDB/XitDB.docc`](Sources/XitDB/XitDB.docc): a reference curated by task, articles for the
-concepts, and step-by-step tutorials. The articles are Markdown and can be read as they are; start with
-[Moments and history](Sources/XitDB/XitDB.docc/Articles/MomentsAndHistory.md).
+concepts, and step-by-step tutorials. It is best read through DocC: the articles are Markdown files, but as raw text
+their links show their overloads, links between articles do not resolve, and the diagrams do not appear. Start with
+the article "Moments and history".
 
 To read it in a browser:
 

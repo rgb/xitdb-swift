@@ -11,6 +11,8 @@ knows how many bytes a hash has. It keeps the number in its header, and every ha
 The examples in this documentation use a helper of three lines:
 
 ```swift
+import CryptoKit
+
 func sha256(_ key: String) -> [UInt8] {
     Array(SHA256.hash(data: Array(key.utf8)))
 }
@@ -24,6 +26,9 @@ exists yet.
 A hash goes in wherever a map asks for one, and it has to have the database's size:
 
 ```swift
+let database = try Database(creating: MemoryStorage(), hashSize: 32)
+let map = try HashMap<ReadWrite>(database.rootCursor)
+
 // The hash is the caller's. It only has to have the right size.
 try map.put(.uint(1), forHash: Array(SHA256.hash(data: Array("alice".utf8))))
 ```
@@ -31,20 +36,20 @@ try map.put(.uint(1), forHash: Array(SHA256.hash(data: Array("alice".utf8))))
 A hash of any other size throws ``XitDBError/invalidHashSize`` as soon as there is a map to look in. That includes a
 SHA-1 hash in a database of SHA-256 hashes.
 
-A CryptoKit digest has to go in as an array, as above. It is a `Sequence` of bytes and not a `Collection`, which is
-what the map asks for:
+Today a CryptoKit digest has to go in as an array, as above. It is a `Sequence` of bytes and not a `Collection`, which is
+what the map asks for. The next version takes a sequence, and a digest goes in as it is:
 
 ```swift
-// `SHA256Digest` is a sequence of bytes, not a collection, so it goes
-// in as an array. A helper keeps that out of every call.
+// A digest goes in as an array, for now: see the article.
 let digest = SHA256.hash(data: Array("alice".utf8))
 try map.put(.uint(1), forHash: Array(digest))
 ```
 
 ### Which size to pick
 
-The size is fixed when the database is created, by ``Database/init(creating:hashSize:hashID:fileID:)``. An entry of a
-map stores its hash, so each entry takes that many bytes and eighteen more.
+The size is fixed when the database is created, by ``Database/init(creating:hashSize:hashID:fileID:)``, and can be from
+1 to 65,535 bytes. A replica has to have the size of its source. An entry of a map stores its hash, so each entry takes that
+many bytes and eighteen more.
 
 | Bytes | Hash | When |
 |---|---|---|
@@ -56,9 +61,12 @@ map stores its hash, so each entry takes that many bytes and eighteen more.
 ### Two keys, one hash
 
 If two keys have the same hash, they are the same key. The database compares hashes and nothing else, so the second
-``HashMap/put(_:forHash:)-(_,Collection<UInt8>)`` replaces the first without an error. To show it, here is a hash of one byte that collides easily:
+``HashMap/put(_:forHash:)-(_,Collection<UInt8>)`` replaces the first without an error. To show it, here is a database with a hash size of 1, and a hash that collides easily:
 
 ```swift
+let database = try Database(creating: MemoryStorage(), hashSize: 1)
+let map = try HashMap<ReadWrite>(database.rootCursor)
+
 // A hash of one byte, the sum of the key's: "ab" and "ba" collide.
 func weakHash(_ key: String) -> [UInt8] {
     [key.utf8.reduce(0, &+)]
@@ -105,10 +113,12 @@ try users.put(.bytes(Array("Bob".utf8)), forHash: hash(2))
 ```
 
 The order matters because the map's trie takes four bits per level, starting from the low bits of the *last* byte of
-the hash. A cryptographic hash is uniform everywhere, so it makes no difference there. With 1,000 sequential IDs in
-big-endian, changing one value in a later transaction appended 492 bytes. In little-endian, whose last bytes are all
-zero, the trie is a long chain down to where the IDs start to differ, and the same change appended 2,364, because a
-change copies every block on the way down. A lookup reads all of them too.
+the hash. A cryptographic hash is uniform everywhere, so it makes no difference there. With 1,000 sequential IDs in a map at
+the root of a database with these 8-byte hashes, changing one value appended 492 bytes in big-endian: three blocks of 144 on
+the way down, the 26-byte entry, and the 34 that any transaction costs. In little-endian, whose last bytes are all zero, the
+trie is a long chain down to where the IDs start to differ, and the same change appended 2,364: sixteen blocks. A lookup reads
+all of them too. (<doc:MomentsAndHistory> quotes 676 bytes for a similar change. That is also three blocks, with hashes of
+32 bytes and in a history, which also copies its list.)
 
 A key of exactly the right size can be passed as it is, including a string's `utf8`:
 
@@ -126,10 +136,12 @@ bytes themselves and no hash: see <doc:SortingAndPaginating>.
 ### Recording the algorithm
 
 The size alone does not say which function made the hashes, and every reader of the file has to use the same one. A
-database's header has four bytes for that, a ``HashID``, which XitDB records and never looks at. It is written once,
-when the database is created:
+database's header has four bytes for that, a ``HashID``, which XitDB records and never looks at. It is written when the
+database is created, and only a sync from 0, which replaces the whole header with its source's, changes it:
 
 ```swift
+let storage = MemoryStorage()
+
 let created = try Database(creating: storage, hashSize: 32, hashID: "sha2")
 ```
 
@@ -164,6 +176,9 @@ a string computed at run time, ``HashID/init(string:)`` gives `nil` instead.
 
 ## See Also
 
+- <doc:TheCollections>
+- <doc:SortingAndPaginating>
+- <doc:Replication>
 - ``HashMap``
 - ``HashSet``
 - ``HashID``

@@ -99,8 +99,8 @@
             }
 
             @Step {
-                Now throw from a transaction's body. The error comes out of the call as you threw it, and the file is
-                back to what it was: the count has not changed, and the age of 99 is not in any moment.
+                Now throw from a transaction's body. The error comes out of the call as you threw it, and the database is
+                as it was: the count has not changed, and the age of 99 is not in any moment.
 
                 @Code(name: "main.swift", file: "first-database-09.swift")
             }

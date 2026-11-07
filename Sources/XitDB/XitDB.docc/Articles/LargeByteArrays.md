@@ -9,7 +9,9 @@ A byte array is a value like any other. ``WritableData/bytes(_:formatTag:)`` wri
 write and read it in parts.
 
 The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYourOwnHashes>. They force-unwrap a lookup
-where the value was just written; real code handles the `nil` that means it is not there.
+where the value was just written; real code handles the `nil` that means it is not there. Where they use `moment`, it is a
+``HashMap`` that is one moment of a history, as in <doc:MomentsAndHistory>: a read-only one to read through, and to write
+through a read-write one in a transaction's body.
 
 ### Writing a part at a time
 
@@ -67,6 +69,7 @@ Reading it back with ``Cursor/readBytesWithFormatTag(maxCount:)`` gives a ``Byte
 in something you did not know when you started:
 
 ```swift
+var cursor = try moment.putCursor(forHash: sha256("record"))
 try cursor.writeBytes { writer in
     // Room for a length, written once it is known.
     try writer.write([0, 0])
@@ -107,6 +110,9 @@ A reader reads the value its cursor held when the reader was made. If the slot i
 reading the old value, which is still there:
 
 ```swift
+let map = try HashMap<ReadWrite>(database.rootCursor)
+try map.put(.bytes(Array("the first value".utf8)), forHash: sha256("value"))
+
 var reader = try map.cursor(forHash: sha256("value"))!.reader()
 try map.put(.bytes(Array("the second value".utf8)), forHash: sha256("value"))
 ```

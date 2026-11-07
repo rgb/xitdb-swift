@@ -24,7 +24,7 @@ import XitDB
         let history = try ArrayList<ReadWrite>(database.rootCursor)
 
         // A transaction. The new element starts as the last one, and the body
-        // changes it. If the body throws, the file is as it was.
+        // changes it. If the body throws, the database is as it was.
         try history.append(.slot(try history.slot(at: -1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
 
@@ -89,5 +89,11 @@ import XitDB
             }
             #expect(try history.count == run)
         }
+
+        // And the first run's moment is still there after the second.
+        let database = try Database(opening: BufferedFileStorage(path: path, access: .readOnly))
+        let history = try ArrayList<ReadOnly>(database.rootCursor)
+        let first = try HashMap<ReadOnly>(history.cursor(at: 0)!)
+        #expect(try first.cursor(forHash: sha256("run"))!.readUInt64() == 1)
     }
 }

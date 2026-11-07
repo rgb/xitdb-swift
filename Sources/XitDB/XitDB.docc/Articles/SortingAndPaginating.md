@@ -9,9 +9,9 @@ nothing to anyone reading a screen. A program that shows a list of users alphabe
 something that keeps an order.
 
 A relational database gives you that with `CREATE INDEX` and `ORDER BY`, and a query planner maintains the index. XitDB
-has no planner and no built-in indexes. An index is just another data structure: a ``SortedMap`` whose keys sort the way
-you want, written in the same transaction as the data it indexes. It takes more code. In exchange the indexes are all
-visible in your code, and a query cannot quietly become slow because it stopped using one.
+has no planner and no built-in indexes. An index is a data structure you write yourself: a ``SortedMap`` whose keys sort the
+way you want, written in the same transaction as the data it indexes. That takes more code, on every write that changes a
+key. Every query is a walk you write, so what it costs is what that code does.
 
 An ``ArrayList`` is no use for this. It keeps things in the order they were written, and the moment you want any other
 order you need a structure that stays sorted by a key.
@@ -21,8 +21,18 @@ the value was just written; real code handles the `nil` that means it is not the
 
 ### A primary store and an index
 
-Take a directory of users that are looked up by ID and listed by username. The primary store is a ``HashMap`` from the ID
-to the user's fields, like a row keyed by its primary key. The index is a ``SortedMap`` from the username to the ID:
+Take a directory of users that are looked up by ID and listed by username:
+
+```swift
+struct User {
+    let id: String
+    let username: String
+    let name: String
+}
+```
+
+The primary store is a ``HashMap`` from the ID to the user's fields, like a row keyed by its primary key. The index is a
+``SortedMap`` from the username to the ID. The moment goes in a `history` like the one in <doc:MomentsAndHistory>:
 
 ```swift
 // Inserted in no particular order; the index puts them in order.
@@ -139,6 +149,8 @@ Keys compare as unsigned bytes from the first, and a key that is a prefix of ano
 what the collection knows about order, and it has consequences:
 
 ```swift
+let words = try SortedSet<ReadWrite>(database.rootCursor)
+
 for word in ["apple", "Zebra", "app", "éclair", "10", "9"] {
     try words.insert(word.utf8)
 }
@@ -202,6 +214,8 @@ written in the same transactions. An index that holds no value is a ``SortedSet`
 ranks, and ``SortedSet/contains(_:)-(Collection<UInt8>)``:
 
 ```swift
+let usernames = try SortedSet<ReadWrite>(database.rootCursor)
+
 try usernames.insert("alice".utf8)
 try usernames.insert("bob".utf8)
 try usernames.insert("alice".utf8)
@@ -211,6 +225,7 @@ That set has two keys. Inserting a key that is there already changes nothing.
 
 ## See Also
 
+- <doc:/tutorials/XitDB/AnIndexOfYourOwn>
 - ``SortedMap``
 - ``SortedSet``
 - <doc:TheCollections>

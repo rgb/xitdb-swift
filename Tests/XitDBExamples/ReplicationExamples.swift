@@ -257,16 +257,13 @@ import XitDB
 
         let (_, source, _) = try newSource()
         var sink = FailingSink()
+        var connectionLost = false
         do {
             try source.readCommitted(from: 0, to: try source.committedSize, into: &sink)
-            Issue.record("the read should have failed")
-        } catch {
-            guard case .callerError(let carried) = error else {
-                Issue.record("expected callerError, got \(error)")
-                return
-            }
-            #expect(carried is ConnectionLost)
+        } catch .callerError(let carried) where carried is ConnectionLost {
+            connectionLost = true
         }
+        #expect(connectionLost)
     }
 
     @Test func theHashSizeHasToMatch() throws {

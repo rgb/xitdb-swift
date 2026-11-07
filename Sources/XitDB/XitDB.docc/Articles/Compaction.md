@@ -11,7 +11,8 @@ Compaction writes a new database holding what the latest moment reaches, and not
 one test, a history of 1,000 small moments took 1,025,632 bytes, and its compacted copy 10,634.
 
 The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYourOwnHashes>. They force-unwrap a lookup
-where the value was just written; real code handles the `nil` that means it is not there.
+where the value was just written; real code handles the `nil` that means it is not there. Where they use `database`, it is a
+database with a history, as in <doc:MomentsAndHistory>.
 
 ### Compacting
 

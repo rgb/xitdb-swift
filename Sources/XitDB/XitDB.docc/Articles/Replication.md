@@ -12,9 +12,13 @@ no server: a sync is copying bytes.
 
 ### A sync
 
-A sync has four steps, two on each side:
+A sync has four steps, two on each side. `source` is a database with something in it, and `replica` a new one with the same
+hash size:
 
 ```swift
+let replicaStorage = MemoryStorage()
+let replica = try Database(creating: replicaStorage, hashSize: 32)
+
 // On the replica: describe what it already has.
 let state = try replica.replicaState
 
@@ -41,6 +45,9 @@ For bytes held in memory, ``Database/readCommitted(from:to:)`` and ``Database/ap
 the source, and go in one copy:
 
 ```swift
+let nextState = try replica.replicaState
+let nextStart = try source.replicationStart(for: nextState)
+let nextEnd = try source.committedSize
 let newBytes = try source.readCommitted(from: nextStart, to: nextEnd)
 try replica.applyReplicated(at: nextStart, bytes: newBytes)
 ```
@@ -104,6 +111,10 @@ If a sync at the replica's committed size is interrupted, the replica stays at i
 ignored, and the next sync or transaction discards it, so you just sync again:
 
 ```swift
+let start = try source.replicationStart(for: try replica.replicaState)
+let end = try source.committedSize
+let bytes = try source.readCommitted(from: start, to: end)
+
 // A connection that drops halfway.
 var half = ArrayByteSource(Array(bytes[..<(bytes.count / 2)]))
 ```
@@ -115,6 +126,9 @@ without asking.
 If that matters, check for it, and write the copy to a new file, which takes the place of the old one only when it is complete:
 
 ```swift
+let start = try source.replicationStart(for: try replica.replicaState)
+let end = try source.committedSize
+
 if start == 0 {
     // The whole file is coming. It goes to a new file, which takes the
     // old one's place only once it is complete.
@@ -135,9 +149,13 @@ A failed ``Database/applyReplicated(at:from:count:)`` can also mean the bytes we
 ### An earlier commit
 
 ``Database/readCommitted(from:to:into:)-(_,_,Sink)`` from 0 to the committed size of any earlier commit gives a complete database as
-of that commit, with a root header to match. Keep the committed size at the moment you want, and you can have the file as it was:
+of that commit, with a root header to match. Keep the committed size at the moment you want, and you can have the file as it was.
+Here `commit(_:to:)` is a helper that adds a moment:
 
 ```swift
+let asOfFirstCommit = try source.committedSize
+try commit(2, to: history)
+
 let bytes = try source.readCommitted(from: 0, to: asOfFirstCommit)
 let copy = try Database(opening: MemoryStorage(bytes: bytes))
 ```
@@ -147,6 +165,7 @@ An end where no commit ends throws ``XitDBError/invalidDatabase``, and one past 
 
 ## See Also
 
+- <doc:/tutorials/XitDB/KeepingAReplicaInStep>
 - ``ReplicaState``
 - ``ByteSink``
 - ``ByteSource``

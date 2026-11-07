@@ -70,17 +70,22 @@ root header has been rewritten. If that one fails, the call throws, and the comm
 ### Your own types
 
 ``XitDBError/callerError(_:)`` carries an error thrown by a ``ByteSink``, a ``ByteSource`` or an ``OffsetMap`` of yours, as it was
-thrown:
+thrown. Here is a sink whose connection drops, used with `source`, a database with something in it:
 
 ```swift
+struct ConnectionLost: Error {}
+struct FailingSink: ByteSink {
+    mutating func write(_ bytes: Span<UInt8>) throws { throw ConnectionLost() }
+}
+```
+
+```swift
+var sink = FailingSink()
+var connectionLost = false
 do {
     try source.readCommitted(from: 0, to: try source.committedSize, into: &sink)
-    Issue.record("the read should have failed")
-} catch {
-    guard case .callerError(let carried) = error else {
-        Issue.record("expected callerError, got \(error)")
-        return
-    }
+} catch .callerError(let carried) where carried is ConnectionLost {
+    connectionLost = true
 }
 ```
 

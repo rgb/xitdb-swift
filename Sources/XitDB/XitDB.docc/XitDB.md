@@ -31,18 +31,20 @@ Three things in that code are not what you might assume. You hash your own keys,
 in a read-only and a read-write form: see <doc:TheCollections>. And the file only grows until you compact it:
 see <doc:MomentsAndHistory> for what that costs.
 
-To start, read <doc:MomentsAndHistory>, then <doc:Transactions>. After that, each article stands on its own.
+To start, take the tutorials, or read the four articles under Essentials in order. After those, each article stands
+on its own.
 
 ## Topics
 
 ### Essentials
 
-Start with the tutorials, or read how a database works, in this order.
+How a database works, in the order to read it.
 
 - <doc:/tutorials/XitDB>
 - <doc:MomentsAndHistory>
 - <doc:Transactions>
 - <doc:CursorsAndValues>
+- <doc:TheCollections>
 
 ### Opening a database
 
@@ -55,10 +57,19 @@ A database keeps its bytes in a storage. ``BufferedFileStorage`` is the one to u
 - ``MemoryStorage``
 - ``FileStorage``
 - ``FileAccess``
-- ``Durability``
 - ``FileLock``
 - ``DatabaseHeader``
 - ``HashID``
+
+### Running transactions
+
+Every write happens in a transaction, which commits whole or not at all, and a commit goes as far towards the disk as its
+durability says.
+
+- ``Database/withTransaction(_:)``
+- ``Database/rootCursor``
+- ``Database/committedSize``
+- ``Durability``
 
 ### Reading and writing values
 
@@ -74,12 +85,6 @@ A cursor is a position in the database: it reads the value there, and inside a t
 - ``Entry``
 - ``CollectionIterator``
 
-### Choosing a collection
-
-Eight collections, nested as you like. <doc:TheCollections> says when to use which.
-
-- <doc:TheCollections>
-
 ### Lists
 
 Elements addressed by position. A list is how a database usually keeps its history.
@@ -89,7 +94,7 @@ Elements addressed by position. A list is how a database usually keeps its histo
 
 ### Maps and sets by hash
 
-Values and keys found by a hash that you compute. The fastest lookups, in no useful order.
+Values and keys found by a hash that you compute, in no useful order.
 
 - <doc:BringYourOwnHashes>
 - ``HashMap``

@@ -16,6 +16,8 @@ The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYour
 returns, and gives back what the body returned:
 
 ```swift
+let database = try Database(creating: MemoryStorage(), hashSize: 32)
+
 let total = try database.withTransaction { cursor in
     let map = try HashMap<ReadWrite>(cursor)
     try map.put(.uint(3), forHash: sha256("apples"))
@@ -27,6 +29,8 @@ let total = try database.withTransaction { cursor in
 If the body throws, nothing it wrote stays, and the error comes out of the call as it was thrown:
 
 ```swift
+struct OutOfStock: Error {}
+
 try database.withTransaction { cursor in
     let map = try HashMap<ReadWrite>(cursor)
     try map.put(.uint(0), forHash: sha256("stock"))
@@ -34,14 +38,19 @@ try database.withTransaction { cursor in
 }
 ```
 
-The transaction is the only unit of rollback. If an operation inside the body throws, let the error leave the
-body. A body that catches it and carries on commits whatever the failed operation had already written.
+The transaction is the only unit of rollback, so if an operation inside the body throws, let the error leave the
+body. Today, a body that catches it and carries on commits whatever the failed operation had already written. In the
+next version such a transaction cannot commit: every later write in it, and the commit, throw an error, and it rolls
+back. See <doc:DifferencesFromTheOriginal>.
 
 ### A write through the root is a transaction
 
 A collection made from ``Database/rootCursor`` writes through the root, and each such write commits:
 
 ```swift
+let separately = try Database(creating: MemoryStorage(), hashSize: 32)
+let grouped = try Database(creating: MemoryStorage(), hashSize: 32)
+
 // Three commits: making the map is one, and each write is another.
 let map = try HashMap<ReadWrite>(separately.rootCursor)
 try map.put(.uint(3), forHash: sha256("apples"))
@@ -83,6 +92,9 @@ written. The body's cursor itself is a snapshot like any other, so once a collec
 through the collection:
 
 ```swift
+let database = try Database(creating: MemoryStorage(), hashSize: 32)
+let history = try ArrayList<ReadWrite>(database.rootCursor)
+
 try history.append(.slot(try history.slot(at: -1))) { cursor in
     // The list at the root has no new element yet: the root is read
     // from the last commit until this one is made.
@@ -106,18 +118,18 @@ progress, because it would commit before the transaction ended. Both are errors:
   while one is running.
 
 A cursor belongs to the transaction that made it. Do not keep one for the next transaction; make a new one from
-the root. With no transaction running it throws ``XitDBError/expectedTxStart``, but during a later transaction it
-writes into committed bytes, without an error: see <doc:DifferencesFromTheOriginal>. A collection at the root is the
-exception, because it reads the root again each time.
+the root. With no transaction running it throws ``XitDBError/expectedTxStart``. During a later transaction it writes
+into committed bytes today, without an error, and the next version refuses it: see <doc:DifferencesFromTheOriginal>. A collection at the
+root is the exception, because it reads the root again each time.
 
 ### What a commit does to the file
 
 There is no journal and no write-ahead log. A transaction goes like this:
 
 1. It discards any bytes past the committed size, which only an earlier failure can have left there, and appends
-   a 9-byte copy of the root slot to work on. If the root is a collection, it also copies that collection's header or
-   first block, so a transaction on a map at the root costs at least 178 bytes, with the trailer, even if it writes
-   nothing.
+   a 9-byte copy of the root slot to work on. If the root is a collection, it also readies it as its initialiser does:
+   an array list copies its header and first block, 160 bytes; a hash map or set its first block, 144, or 152 if it
+   keeps a count; a linked array list or a sorted collection its header, 16.
 2. The body's writes append to the end of the storage. What the transaction made itself is changed in place;
    anything older is copied first.
 3. To commit, it appends a 25-byte trailer: the new root slot, a random commit ID, and a checksum over those, the
@@ -127,12 +139,15 @@ There is no journal and no write-ahead log. A transaction goes like this:
    moment the transaction takes effect.
 6. It syncs the storage again. If this one fails, the call throws, but the commit stands.
 
+So a transaction that writes nothing costs 34 bytes with an empty root, 50 with a linked array list or a sorted collection
+at the root, 178 with a hash map or set, 186 with a counted one, and 194 with an array list.
+
 A reader looks only at the root header. It reads the committed size there and takes the root from the trailer
 that ends at that size, whose checksum it checks. So a transaction's bytes are invisible until step 5, and a
 crash before that leaves bytes that nothing refers to.
 
-Rolling back is cutting those bytes off. When a body throws, the storage goes back to its committed size at once.
-If the process died instead, they stay until the next write discards them: a transaction, a replica's sync, or a
+Rolling back is cutting those bytes off. When a body throws, the storage goes back to its committed size at once, or, if
+the storage refuses to be cut, when the next write gets there. If the process died instead, they stay until the next write discards them: a transaction, a replica's sync, or a
 read-write collection made on the root cursor.
 
 ### Durability
@@ -149,14 +164,15 @@ let storage = try BufferedFileStorage(path: "cache.db", access: .create, durabil
 | ``Durability/ordered`` | A barrier, twice | The file opens; the latest commits may be missing | 0.3 to 1 ms |
 | ``Durability/none`` | Nothing | The file may not open at all | about 0.008 ms |
 
-The times are from one machine, an Apple M4 with its internal SSD on APFS, committing one value. Yours will
-differ, by a lot on another kind of disk. What to take from them is the ratios: a full flush is expensive, and
-it is paid per commit, not per byte.
+The times are indicative: measured on 2026-11-07 on one machine, an Apple M4 with its internal SSD on APFS, committing one
+value through a ``BufferedFileStorage``. Yours will differ, by a lot on another kind of disk. What to take from them is
+the ratios: a full flush is expensive, and it is paid per commit, not per byte.
 
 On Apple platforms a barrier is `F_BARRIERFSYNC` and a full flush is `F_FULLFSYNC`. Plain `fsync` is not a level,
 because it promises neither that writes reach the disk in order nor that the drive flushes them. A volume that
-does not support a call gets the strongest one it does, which can be less than the level promises, and plain
-`fsync` only when nothing better is left.
+does not support a call gets the next one, which keeps the level's promise as far as the volume allows. Before the root
+header the order is barrier, full flush, plain `fsync`. After it, at ``Durability/full`` it is full flush, barrier, plain
+`fsync`, and at ``Durability/ordered`` it is barrier, plain `fsync`.
 
 The table has one hole for now, at every level. A power loss in the middle of rewriting the root header can leave its
 size unreadable, and such a file does not open, although all its commits are intact behind it. Explicit recovery is
@@ -171,10 +187,13 @@ How to choose:
 - Use ``Durability/ordered`` where losing the last few transactions is acceptable and a damaged file is not.
 - Use ``Durability/none`` for a file you would delete after a crash anyway, such as a scratch database or a cache.
 
-A ``MemoryStorage`` has nothing to sync, and its commits cost only what they write.
+A ``MemoryStorage`` has nothing to sync, and its commits cost only what they write. <doc:Storage> says how a level is
+given, along with the rest of how to open a file.
 
 ## See Also
 
+- <doc:/tutorials/XitDB/YourFirstDatabase>
 - <doc:MomentsAndHistory>
 - <doc:CursorsAndValues>
+- <doc:Storage>
 - ``Database``

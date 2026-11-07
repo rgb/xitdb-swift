@@ -10,7 +10,9 @@ the database, at one slot. Everything is read and written through a cursor, and 
 one.
 
 The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYourOwnHashes>. They force-unwrap a
-lookup where the value was just written; real code handles the `nil` that means it is not there.
+lookup where the value was just written; real code handles the `nil` that means it is not there. Where they use `moment`,
+it is a ``HashMap`` that is one moment of a history, as in <doc:MomentsAndHistory>: a read-only one to read through, and
+to write through a read-write one in a transaction's body.
 
 ### The values
 
@@ -33,7 +35,7 @@ let long = try moment.cursor(forHash: sha256("long"))!.readBytes()
 
 There is no string type in a database, and no conversion: a string is its bytes, `.bytes(Array("hello".utf8))`,
 read back with `String(decoding:as:)`. A read of the wrong kind throws ``XitDBError/unexpectedTag``, and that
-includes reading an `int` as a `uint`.
+includes reading a ``Slot/Tag/int`` as a ``Slot/Tag/uint``.
 
 Numbers and short byte arrays cost nothing beyond their slot. A byte array of at most eight bytes with no zero
 byte in it, or six with a format tag, is stored in the slot; ``Bytes/isShort`` says whether one would be. A longer
@@ -93,8 +95,11 @@ committed by the time they return: the entry is there without a value, and with 
 through the cursor throws ``XitDBError/expectedTxStart``. Do not keep such a cursor for a later transaction, as
 <doc:Transactions> explains.
 
-``Cursor/writeIfEmpty(_:)`` writes only if the cursor's snapshot of the slot is empty, for a value that should be set
-once:
+``Cursor/writeIfEmpty(_:)`` writes only if the slot is empty, for a value that should be set once. Today it decides by
+the cursor's snapshot of the slot, so a value written through another cursor since is overwritten. The next version
+decides by the slot as it is now: see <doc:DifferencesFromTheOriginal>.
+
+<!-- Pinned by `writeIfEmptyGoesByTheSnapshot` in XitDBExamples: the sentence and the test change together. -->
 
 ```swift
 var maybe = try moment.putCursor(forHash: sha256("once"))
@@ -110,6 +115,10 @@ A cursor remembers what its slot held when it was made, and reads go by that. A 
 not show:
 
 ```swift
+let database = try Database(creating: MemoryStorage(), hashSize: 32)
+let list = try ArrayList<ReadWrite>(database.rootCursor)
+try list.append(.uint(1))
+
 // A cursor below the root keeps what it saw.
 let element = try list.cursor(at: 0)!
 try list.put(.uint(2), at: 0)
@@ -137,6 +146,10 @@ Every collection has an iterator, such as ``ArrayList/iterator()``. It gives a `
 a read-only cursor, or `nil` at the end. It is not a Swift `Sequence`, because reading the next element can fail:
 
 ```swift
+try list.append(.uint(1))
+try list.append(.uint(2))
+try list.append(.uint(3))
+
 var values: [UInt64] = []
 var iterator = try list.iterator()
 while let element = try iterator.next() {
@@ -169,8 +182,8 @@ collection was, since a key is what the collection is ordered or indexed by. ``E
 as a new array, and ``Entry/withHash(_:)`` lets you look at it without one.
 
 Iterate over a collection that is not being changed. An iterator goes through the collection as it was when the
-iterator was made, unless the collection is changed in place during the same transaction, in which case what it
-gives is not defined.
+iterator was made, unless the collection is changed in place during the same transaction. Then it can give a mix of old
+and new elements, or throw an error; it does not stop the program.
 
 ### Nothing, and never written
 
@@ -183,6 +196,7 @@ A slot **set to nothing** with `.slot(nil)` has the tag ``Slot/Tag/none`` and is
 which reads as no bytes, and an iterator gives it:
 
 ```swift
+let list = try ArrayList<ReadWrite>(database.rootCursor)
 try list.append(.uint(1))
 try list.append(.slot(nil))
 _ = try list.appendCursor()
@@ -197,17 +211,25 @@ it appends and nobody writes is set to nothing, so a lookup and its iterator bot
 Setting a map's value to nothing is not removing the entry. The entry stays, and a counted map goes on counting it:
 
 ```swift
+let map = try CountedHashMap<ReadWrite>(database.rootCursor)
+try map.put(.uint(1), forHash: sha256("cleared"))
+try map.put(.uint(2), forHash: sha256("removed"))
+
 try map.put(.slot(nil), forHash: sha256("cleared"))
 try map.remove(forHash: sha256("removed"))
 ```
+
+That map's count is 1, and it still has an entry for `"cleared"`, with nothing in it.
 
 ### Copying a slot
 
 ``WritableData/slot(_:)`` writes a slot as it is, without copying what it points at. Both slots then share it, which is
 what makes cloning cheap and how one moment starts from another. An empty slot is written as one set to nothing. A
 client cannot make a slot; every slot it writes is one a database gave it, and it must have come from the same database.
-It should also be a value: the slot of a cursor from a map's iterator is the entry's own, and is not one to write
-(<doc:DifferencesFromTheOriginal>).
+
+It should also be a value. The slot of a cursor from a map's iterator is the entry's own: writing it elsewhere today makes
+data the engine cannot read, and the next version refuses it with an error, `structuralSlot`. Read the entry, and write the
+slot of its ``Entry/value``. See <doc:DifferencesFromTheOriginal>.
 
 ## See Also
 

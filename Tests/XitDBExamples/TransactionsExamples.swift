@@ -2,8 +2,6 @@ import Testing
 import XitDB
 
 @Suite("Transactions") struct TransactionsExamples {
-    private struct OutOfStock: Error {}
-
     @Test func aTransactionGroupsWrites() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
 
@@ -45,6 +43,8 @@ import XitDB
         let database = try Database(creating: storage, hashSize: 32)
         try HashMap<ReadWrite>(database.rootCursor).put(.uint(10), forHash: sha256("stock"))
         let before = try database.committedSize
+
+        struct OutOfStock: Error {}
 
         #expect(throws: OutOfStock.self) {
             try database.withTransaction { cursor in
@@ -97,14 +97,24 @@ import XitDB
     }
 
     /// The numbers the article's list of what a transaction appends rests on:
-    /// a collection at the root is readied before the body runs.
+    /// a collection at the root is readied before the body runs, each kind as
+    /// its init does. All with the 34 bytes of the root slot and the trailer.
     @Test func aTransactionReadiesARootCollection() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
-        _ = try HashMap<ReadWrite>(database.rootCursor)
+        func costOfAnEmptyTransaction(makeRoot: (Database) throws -> Void) throws -> UInt64 {
+            let database = try Database(creating: MemoryStorage(), hashSize: 32)
+            try makeRoot(database)
+            let before = try database.committedSize
+            try database.withTransaction { _ in }
+            return try database.committedSize - before
+        }
 
-        let before = try database.committedSize
-        try database.withTransaction { _ in }
-        #expect(try database.committedSize - before == 178)  // 9 + 144 + 25
+        #expect(try costOfAnEmptyTransaction { _ = try ArrayList<ReadWrite>($0.rootCursor) } == 194)
+        #expect(try costOfAnEmptyTransaction { _ = try HashMap<ReadWrite>($0.rootCursor) } == 178)
+        #expect(try costOfAnEmptyTransaction { _ = try HashSet<ReadWrite>($0.rootCursor) } == 178)
+        #expect(try costOfAnEmptyTransaction { _ = try CountedHashMap<ReadWrite>($0.rootCursor) } == 186)
+        #expect(try costOfAnEmptyTransaction { _ = try LinkedArrayList<ReadWrite>($0.rootCursor) } == 50)
+        #expect(try costOfAnEmptyTransaction { _ = try SortedMap<ReadWrite>($0.rootCursor) } == 50)
+        #expect(try costOfAnEmptyTransaction { _ in } == 34)
     }
 
     @Test func readsThroughTheRootSeeTheLastCommit() throws {

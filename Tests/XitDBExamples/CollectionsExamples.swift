@@ -138,15 +138,23 @@ import XitDB
             }
         }
 
-        var reads = storage.reads
+        // What a transaction costs that only reaches the list.
         var size = try database.committedSize
+        try database.withTransaction { cursor in
+            let map = try HashMap<ReadWrite>(cursor)
+            _ = try LinkedArrayList<ReadWrite>(map.putCursor(forHash: first))
+        }
+        #expect(try database.committedSize - size == 220)
+
+        var reads = storage.reads
+        size = try database.committedSize
         try database.withTransaction { cursor in
             let map = try HashMap<ReadWrite>(cursor)
             var a = try LinkedArrayList<ReadWrite>(map.putCursor(forHash: first))
             try a.append(contentsOf: try LinkedArrayList<ReadOnly>(map.cursor(forHash: second)!))
         }
         #expect(storage.reads - reads == 31)
-        #expect(try database.committedSize - size == 494)
+        #expect(try database.committedSize - size == 494)  // 220, and one branch of 274
 
         reads = storage.reads
         size = try database.committedSize

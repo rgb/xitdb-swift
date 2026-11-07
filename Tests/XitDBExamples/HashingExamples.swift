@@ -104,8 +104,7 @@ import XitDB
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         let map = try HashMap<ReadWrite>(database.rootCursor)
 
-        // `SHA256Digest` is a sequence of bytes, not a collection, so it goes
-        // in as an array. A helper keeps that out of every call.
+        // A digest goes in as an array, for now: see the article.
         let digest = SHA256.hash(data: Array("alice".utf8))
         try map.put(.uint(1), forHash: Array(digest))
 

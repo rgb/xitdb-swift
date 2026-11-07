@@ -2,7 +2,7 @@ import Testing
 import XitDB
 
 @Suite("Sorting and paginating") struct SortingAndPaginatingExamples {
-    private struct User {
+    struct User {
         let id: String
         let username: String
         let name: String

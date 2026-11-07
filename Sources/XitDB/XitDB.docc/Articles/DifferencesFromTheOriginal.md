@@ -31,21 +31,31 @@ sensible result, where the original crashes, misbehaves, or depends on which kin
 ### What it does the same, for now
 
 The port matches the original on these, so that its conformance scripts prove the same bytes, and they are worth knowing because
-each is a hazard. The next version of the package refuses or fixes each of them. Until then, these are the things not to do:
+each is a hazard. The next version of the package changes each of them. Until then, these are the things not to do, and what the
+next version does instead:
 
 - **Do not keep a cursor for a later transaction.** Used during a later one, it writes into committed bytes in place, which changes
-  earlier moments and which a rollback does not undo. Make a new one from the root.
+  earlier moments and which a rollback does not undo. Make a new one from the root. The next version refuses the write with an
+  error, `staleCursor`.
+- **Do not read through a cursor from a transaction that failed.** Its bytes were cut off, and the next transaction reuses their
+  offsets, so it reads whatever that wrote. The next version refuses the read with the same error. A cursor from a transaction
+  that committed stays readable.
 - **Do not carry on after an error in a transaction's body.** What the failed operation had already written is committed along with
-  the rest. Let the error leave the body.
+  the rest. Let the error leave the body. In the next version, a write that fails after writing something makes the transaction
+  unable to commit, with an error, `poisonedTransaction`.
 - **Do not write the slot of an entry as a value.** The slot of a cursor from a map's iterator is the entry's own, and writing it
-  somewhere else makes data the engine cannot read. Read the entry, and write the slot of its ``Entry/value``.
-- **Make collections again after a join.** ``LinkedArrayList/append(contentsOf:)-(LinkedArrayList<CursorAccess>)`` and
-  ``Database/freeze()`` affect every collection made before them, and a collection kept across one can lose writes. In the original this
-  can crash; in the port it gives an error or a wrong result, and never a crash.
-- **``Cursor/writeIfEmpty(_:)`` goes by the cursor's snapshot.** If the slot was written through another cursor since, the value there is
-  overwritten.
+  somewhere else makes data the engine cannot read. Read the entry, and write the slot of its ``Entry/value``. The next version
+  refuses it with an error, `structuralSlot`.
+- **After a join or a freeze, run the initialiser again on the cursor you hold.**
+  ``LinkedArrayList/append(contentsOf:)-(LinkedArrayList<CursorAccess>)`` and ``Database/freeze()`` affect every collection made before
+  them, and one written through without that can lose writes. In the original this can crash; in the port it gives an error or a
+  wrong result, and never a crash. In the next version a join leaves the list that called it ready to use, and a write through any
+  other collection held across it is the stale cursor's error.
+- **``Cursor/writeIfEmpty(_:)`` goes by the cursor's snapshot.** If the slot was written through another cursor since, the value there
+  is overwritten. The next version decides by the slot as it is now.
 
-A file whose last commit is damaged does not open, even though the commits before it are intact. Explicit recovery is coming.
+A file whose last commit is damaged does not open, even though the commits before it are intact. In the next version, opening it fails
+with an error that names the last position that verifies, and a separate call truncates the file to it. Nothing is dropped silently.
 
 Some of those fixes change the bytes of the operations they fix. Each of those is made in a branch of the original first, so that the
 port still has something to compare with.
