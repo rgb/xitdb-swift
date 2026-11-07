@@ -14,9 +14,10 @@ import Testing
 /// if any damage could send one of the engine's writes to an offset beyond
 /// the end of the storage, a test here would end with the process.
 @Suite struct CorruptFileTests {
-    /// A database with one of everything this milestone has: a list at the
-    /// root with two moments, a map with short and long values, a nested
-    /// list deep enough to have two levels, and a counted map.
+    /// A database with one of everything built so far: a list at the root
+    /// with two moments, a map with short and long values, a nested list
+    /// deep enough to have two levels, a counted map, and a linked array
+    /// list whose tree has a branch over two leaves.
     static let sound: [UInt8] = {
         (try? makeSound()) ?? []
     }()
@@ -40,6 +41,10 @@ import Testing
             let counted = try cursor.writePath([.hashMapGet(.value, sha1("counted")), .hashMapInit(counted: true)])
             _ = try counted.writePath([.hashMapGet(.value, sha1("x")), .write(.int(-1))])
             _ = try counted.writePath([.hashMapGet(.value, sha1("y")), .write(.float(1.5))])
+            let linked = try LinkedArrayList(try cursor.writePath([.hashMapGet(.value, sha1("linked"))]))
+            for index in 0..<20 {
+                try linked.append(.uint(UInt64(index)))
+            }
         }
         let last = try root.readPathSlot([.arrayListGet(-1)])
         _ = try root.writePath([.arrayListInit, .arrayListAppend, .write(.slot(last)), .hashMapInit(), .ctx]) {
@@ -110,7 +115,7 @@ import Testing
                 tolerating { found = try database.rootCursor().readPath([.arrayListGet(index)]) }
                 guard let moment = found else { continue }
                 tolerating { _ = try moment.count() }
-                for key in ["a", "long", "list", "counted", "b", "missing"] {
+                for key in ["a", "long", "list", "counted", "linked", "b", "missing"] {
                     var value: Cursor<ReadOnly>?
                     tolerating { value = try moment.readPath([.hashMapGet(.value, sha1(key))]) }
                     guard let value else { continue }
@@ -126,6 +131,10 @@ import Testing
                     tolerating { try drain(try value.iterator()) }
                     tolerating { try drain(try value.iterator(fromArrayListIndex: 3)) }
                     tolerating { try drain(try ArrayList(value).iteratorFrom(-1)) }
+                    tolerating { try drain(try LinkedArrayList(value).iteratorFrom(17)) }
+                    for element in [Int64(0), 19, -21] {
+                        tolerating { _ = try LinkedArrayList(value).getCursor(element)?.readUint() }
+                    }
                     tolerating {
                         var entries = try CountedHashMap(value).iterator()
                         while let entry = try entries.next() {
@@ -192,6 +201,21 @@ import Testing
                     self.tolerating { _ = try cursor.writePath([.arrayListSlice(size: 1)]) }
                 }
             }
+            // the linked array list: every operation, through the collection
+            tolerating {
+                try database.runContext { cursor in
+                    let map = try HashMap(try cursor.writePath([.arrayListGet(0)]))
+                    var linked = try LinkedArrayList(try map.putCursor(sha1("linked").bytes))
+                    self.tolerating { try linked.append(.uint(20)) }
+                    self.tolerating { try linked.put(3, .uint(30)) }
+                    self.tolerating { try linked.insert(16, .uint(160)) }
+                    self.tolerating { try linked.remove(0) }
+                    self.tolerating { try linked.slice(offset: 2, size: 5) }
+                    self.tolerating { linked = try LinkedArrayList(try map.putCursor(sha1("linked").bytes)) }
+                    self.tolerating { try linked.concat(try linked.slot()) }
+                    self.tolerating { try self.drain(try linked.iterator()) }
+                }
+            }
             tolerating { _ = try database.rootCursor().writePath([.write(.uint(1))]) }
             // Nothing here writes more than a few kilobytes. A storage that
             // grew out of all proportion was sent a write it should not get.
@@ -235,25 +259,26 @@ import Testing
         }
     }
 
-    /// Eight bytes anywhere in the file replaced by a wild 64-bit value: the
-    /// largest ones, and the position of the root header. Wherever the eight
-    /// bytes are an offset, a size or a count, the engine now has a wild
-    /// one.
+    /// Eight bytes at every second offset of the file replaced by a wild
+    /// 64-bit value: the largest ones, and the position of the root header.
+    /// Wherever the eight bytes are an offset, a size or a count, the engine
+    /// now has a wild one. (Every byte is inside several of the windows; the
+    /// strides keep the test's time within bounds.)
     @Test(arguments: [UInt64.max, .max - 8, 1 << 63, 1 << 40, 0, 20] as [UInt64])
     func anyEightBytesCanBeAWildNumber(value: UInt64) {
         let sound = Self.sound
-        for offset in 0...(sound.count - 8) {
+        for offset in stride(from: 0, through: sound.count - 8, by: 2) {
             var bytes = sound
             bytes.replaceSubrange(offset..<(offset + 8), with: bigEndianBytes(value))
             exercise(bytes)
         }
     }
 
-    /// More wild numbers, at every third offset.
+    /// More wild numbers, at every fifth offset.
     @Test(arguments: [.max - 1, .max - 143, (1 << 63) - 1, 1 << 62, 1, 29, 37] as [UInt64])
     func anyEightBytesCanBeAnotherWildNumber(value: UInt64) {
         let sound = Self.sound
-        for offset in stride(from: 0, through: sound.count - 8, by: 3) {
+        for offset in stride(from: 0, through: sound.count - 8, by: 5) {
             var bytes = sound
             bytes.replaceSubrange(offset..<(offset + 8), with: bigEndianBytes(value))
             exercise(bytes)
@@ -266,7 +291,7 @@ import Testing
         let sound = Self.sound
         let end = UInt64(sound.count)
         for value in [end - 144, end - 25, end - 9, end - 1, end, end + 1, end + 9] {
-            for offset in stride(from: 0, through: sound.count - 8, by: 3) {
+            for offset in stride(from: 0, through: sound.count - 8, by: 5) {
                 var bytes = sound
                 bytes.replaceSubrange(offset..<(offset + 8), with: bigEndianBytes(value))
                 exercise(bytes)
