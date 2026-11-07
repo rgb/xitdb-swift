@@ -22,7 +22,7 @@ public struct ReplicaState: Sendable, Equatable {
     }
 }
 
-/// Where ``Database/readCommitted(from:to:into:)`` writes the bytes it
+/// Where ``Database/readCommitted(from:to:into:)-(_,_,Sink)`` writes the bytes it
 /// reads, a chunk at a time: a growing buffer, a file, a socket. Zig takes
 /// a `std.Io.Writer`.
 ///
@@ -143,11 +143,11 @@ extension Database {
     }
 
     /// Appends the committed bytes from `start` up to `end` to `bytes`:
-    /// ``readCommitted(from:to:into:)`` for an array, which knows how many
+    /// ``readCommitted(from:to:into:)-(_,_,Sink)`` for an array, which knows how many
     /// bytes are coming, makes room for them once, and has them read
     /// straight into it, in one copy.
     ///
-    /// - Throws: What ``readCommitted(from:to:into:)`` throws.
+    /// - Throws: What ``readCommitted(from:to:into:)-(_,_,Sink)`` throws.
     public func readCommitted(from start: UInt64, to end: UInt64, into bytes: inout [UInt8]) throws(XitDBError) {
         let committedSize = try reader.committedSize()
         if start > end || end > committedSize { throw .invalidRange }
@@ -170,7 +170,7 @@ extension Database {
 
     /// The committed bytes from `start` up to `end`, in memory.
     ///
-    /// - Throws: What ``readCommitted(from:to:into:)`` throws.
+    /// - Throws: What ``readCommitted(from:to:into:)-(_,_,Sink)`` throws.
     public func readCommitted(from start: UInt64, to end: UInt64) throws(XitDBError) -> [UInt8] {
         var bytes: [UInt8] = []
         try readCommitted(from: start, to: end, into: &bytes)
@@ -180,7 +180,7 @@ extension Database {
     /// Writes `count` bytes from `source` at `start` and commits them: Zig's
     /// `applyReplicated`.
     ///
-    /// The bytes must be what ``readCommitted(from:to:into:)`` gave, so
+    /// The bytes must be what ``readCommitted(from:to:into:)-(_,_,Sink)`` gave, so
     /// they end with a trailer. At 0 this database is replaced by them: the
     /// file is emptied first, and the bytes are a different database, whose
     /// header is read afterwards and becomes this one's. Otherwise `start`

@@ -35,7 +35,7 @@ at it. The copy remembers where things went in an ``OffsetMap``; ``MemoryOffsetM
 
 Committed bytes never change except for the root header, so a replica is brought up to date by copying the
 bytes it does not have. A replica describes itself with a ``ReplicaState``; the source answers with
-``Database/replicationStart(_:)``, sends with ``Database/readCommitted(from:to:into:)`` into a ``ByteSink``,
+``Database/replicationStart(_:)``, sends with ``Database/readCommitted(from:to:into:)-(_,_,Sink)`` into a ``ByteSink``,
 and the replica takes the bytes with ``Database/applyReplicated(at:from:count:)`` from a ``ByteSource``.
 
 ## Topics
