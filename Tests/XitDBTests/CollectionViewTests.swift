@@ -355,6 +355,48 @@ import Testing
 
     /// The list's own edges: a missing index, slicing, and iterating from
     /// an index that names nothing.
+    /// An index is any integer type: the format's signed 64-bit index, a
+    /// count's unsigned one, `Int`, a small one; negative counts from the
+    /// end; one past what the format's index holds names no element, so a
+    /// getter gives nil and a writer indexOutOfRange, as for any index past
+    /// the end.
+    @Test func anIndexIsAnyIntegerType() throws {
+        let database = try makeDatabase()
+        try database.withTransaction { cursor in
+            let list = try ArrayList(try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("a"))]))
+            for value in 10...14 { try list.append(.uint(UInt64(value))) }
+            #expect(try list.cursor(at: 1)?.readUInt64() == 11)
+            #expect(try list.cursor(at: Int8(2))?.readUInt64() == 12)
+            #expect(try list.cursor(at: UInt64(3))?.readUInt64() == 13)
+            #expect(try list.cursor(at: Int64(-1))?.readUInt64() == 14)
+            #expect(try list.cursor(at: try list.count - 1)?.readUInt64() == 14)
+            #expect(try list.cursor(at: UInt64(Int64.max) + 1) == nil)
+            #expect(try list.slot(at: UInt64.max) == nil)
+            #expect(throws: XitDBError.indexOutOfRange) { try list.put(.uint(0), at: UInt64(Int64.max) + 1) }
+            #expect(throws: XitDBError.indexOutOfRange) { try list.putCursor(at: UInt64.max) }
+            #expect(throws: XitDBError.indexOutOfRange) { try list.iterator(fromIndex: UInt64.max) }
+            try list.put(.uint(99), at: UInt8(4))
+            #expect(try list.cursor(at: -1)?.readUInt64() == 99)
+
+            let linked = try LinkedArrayList(try cursor.writePath([.hashMapGet(.value, sha1("l"))]))
+            for value in 20...22 { try linked.append(.uint(UInt64(value))) }
+            #expect(try linked.cursor(at: UInt16(1))?.readUInt64() == 21)
+            #expect(try linked.cursor(at: UInt64.max) == nil)
+            #expect(throws: XitDBError.indexOutOfRange) { try linked.insert(.uint(0), at: UInt64.max) }
+            #expect(throws: XitDBError.indexOutOfRange) { try linked.remove(at: UInt64(Int64.max) + 1) }
+            try linked.remove(at: UInt(0))
+            #expect(try linked.cursor(at: 0)?.readUInt64() == 21)
+
+            let sorted = try SortedMap(try cursor.writePath([.hashMapGet(.value, sha1("s"))]))
+            try sorted.put(.uint(1), forKey: Array("a".utf8))
+            try sorted.put(.uint(2), forKey: Array("b".utf8))
+            #expect(try sorted.entry(at: UInt8(1))?.value.readUInt64() == 2)
+            #expect(try sorted.entry(at: -2)?.value.readUInt64() == 1)
+            #expect(try sorted.entry(at: UInt64.max) == nil)
+            #expect(throws: XitDBError.indexOutOfRange) { try sorted.iterator(fromIndex: UInt64.max) }
+        }
+    }
+
     @Test func aListsEdges() throws {
         let database = try makeDatabase()
         try database.withTransaction { cursor in

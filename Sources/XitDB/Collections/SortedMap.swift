@@ -68,8 +68,9 @@ public struct SortedMap<Access: CursorAccess> {
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
-    public func iterator(fromIndex index: Int64) throws(XitDBError) -> CollectionIterator {
-        try cursor.iterator(fromSortedMapIndex: index)
+    public func iterator(fromIndex index: some BinaryInteger) throws(XitDBError) -> CollectionIterator {
+        let index = try listIndex(index)
+        return try cursor.iterator(fromSortedMapIndex: index)
     }
 
     /// An iterator over the map's entries in key order, from the first
@@ -143,7 +144,8 @@ public struct SortedMap<Access: CursorAccess> {
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
-    public func entry(at index: Int64) throws(XitDBError) -> Entry? {
+    public func entry(at index: some BinaryInteger) throws(XitDBError) -> Entry? {
+        guard let index = Int64(exactly: index) else { return nil }
         let path: InlineArray<1, PathPart> = [.sortedMapGetIndex(index)]
         return try cursor.readPath(path.span)?.readEntry()
     }

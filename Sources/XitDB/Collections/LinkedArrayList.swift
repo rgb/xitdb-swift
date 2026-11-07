@@ -71,8 +71,9 @@ public struct LinkedArrayList<Access: CursorAccess> {
     ///   names no element gives an iterator of nothing.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a list, or an error of the storage or of a damaged file.
-    public func iterator(fromIndex index: Int64) throws(XitDBError) -> CollectionIterator {
-        try cursor.iterator(fromLinkedArrayListIndex: index)
+    public func iterator(fromIndex index: some BinaryInteger) throws(XitDBError) -> CollectionIterator {
+        let index = try listIndex(index)
+        return try cursor.iterator(fromLinkedArrayListIndex: index)
     }
 
     /// A cursor at an element, or `nil` if there is no element at `index`
@@ -84,7 +85,8 @@ public struct LinkedArrayList<Access: CursorAccess> {
     ///   other than a list, ``XitDBError/invalidBTreeNode`` if the list's
     ///   tree does not hold what its header says, or an error of the
     ///   storage or of a damaged file.
-    public func cursor(at index: Int64) throws(XitDBError) -> Cursor<ReadOnly>? {
+    public func cursor(at index: some BinaryInteger) throws(XitDBError) -> Cursor<ReadOnly>? {
+        guard let index = Int64(exactly: index) else { return nil }
         let path: InlineArray<1, PathPart> = [.linkedArrayListGet(index)]
         return try cursor.readPath(path.span)
     }
@@ -98,7 +100,8 @@ public struct LinkedArrayList<Access: CursorAccess> {
     ///   other than a list, ``XitDBError/invalidBTreeNode`` if the list's
     ///   tree does not hold what its header says, or an error of the
     ///   storage or of a damaged file.
-    public func slot(at index: Int64) throws(XitDBError) -> Slot? {
+    public func slot(at index: some BinaryInteger) throws(XitDBError) -> Slot? {
+        guard let index = Int64(exactly: index) else { return nil }
         let path: InlineArray<1, PathPart> = [.linkedArrayListGet(index)]
         return try cursor.readPathSlot(path.span)
     }
@@ -175,7 +178,8 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   list, ``XitDBError/invalidBTreeNode`` if the list's tree does not
     ///   hold what its header says, or an error of the storage or of a
     ///   damaged file.
-    public func put(_ value: WritableData, at index: Int64) throws(XitDBError) {
+    public func put(_ value: WritableData, at index: some BinaryInteger) throws(XitDBError) {
+        let index = try listIndex(index)
         let path: InlineArray<2, PathPart> = [.linkedArrayListGet(index), .write(value)]
         _ = try cursor.writePath(path.span)
     }
@@ -193,7 +197,8 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   list, ``XitDBError/invalidBTreeNode`` if the list's tree does not
     ///   hold what its header says, or an error of the storage or of a
     ///   damaged file.
-    public func putCursor(at index: Int64) throws(XitDBError) -> Cursor<ReadWrite> {
+    public func putCursor(at index: some BinaryInteger) throws(XitDBError) -> Cursor<ReadWrite> {
+        let index = try listIndex(index)
         let path: InlineArray<1, PathPart> = [.linkedArrayListGet(index)]
         return try cursor.writePath(path.span)
     }
@@ -341,7 +346,8 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   list, ``XitDBError/invalidBTreeNode`` if the list's tree does not
     ///   hold what its header says, or an error of the storage or of a
     ///   damaged file.
-    public func insert(_ value: WritableData, at index: Int64) throws(XitDBError) {
+    public func insert(_ value: WritableData, at index: some BinaryInteger) throws(XitDBError) {
+        let index = try listIndex(index)
         let path: InlineArray<2, PathPart> = [.linkedArrayListInsert(index), .write(value)]
         _ = try cursor.writePath(path.span)
     }
@@ -361,7 +367,8 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   list, ``XitDBError/invalidBTreeNode`` if the list's tree does not
     ///   hold what its header says, or an error of the storage or of a
     ///   damaged file.
-    public func insertCursor(at index: Int64) throws(XitDBError) -> Cursor<ReadWrite> {
+    public func insertCursor(at index: some BinaryInteger) throws(XitDBError) -> Cursor<ReadWrite> {
+        let index = try listIndex(index)
         let path: InlineArray<1, PathPart> = [.linkedArrayListInsert(index)]
         return try cursor.writePath(path.span)
     }
@@ -378,7 +385,8 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   list, ``XitDBError/invalidBTreeNode`` if the list's tree does not
     ///   hold what its header says, or an error of the storage or of a
     ///   damaged file.
-    public func remove(at index: Int64) throws(XitDBError) {
+    public func remove(at index: some BinaryInteger) throws(XitDBError) {
+        let index = try listIndex(index)
         let path: InlineArray<1, PathPart> = [.linkedArrayListRemove(index)]
         _ = try cursor.writePath(path.span)
     }

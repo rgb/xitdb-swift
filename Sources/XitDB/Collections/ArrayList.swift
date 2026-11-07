@@ -57,8 +57,9 @@ public struct ArrayList<Access: CursorAccess> {
     ///   names no element gives an iterator of nothing.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a list, or an error of the storage or of a damaged file.
-    public func iterator(fromIndex index: Int64) throws(XitDBError) -> CollectionIterator {
-        try cursor.iterator(fromArrayListIndex: index)
+    public func iterator(fromIndex index: some BinaryInteger) throws(XitDBError) -> CollectionIterator {
+        let index = try listIndex(index)
+        return try cursor.iterator(fromArrayListIndex: index)
     }
 
     /// A cursor at an element, or `nil` if there is no element at `index`
@@ -69,7 +70,8 @@ public struct ArrayList<Access: CursorAccess> {
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a list, or an error of the storage or of a damaged
     ///   file.
-    public func cursor(at index: Int64) throws(XitDBError) -> Cursor<ReadOnly>? {
+    public func cursor(at index: some BinaryInteger) throws(XitDBError) -> Cursor<ReadOnly>? {
+        guard let index = Int64(exactly: index) else { return nil }
         let path: InlineArray<1, PathPart> = [.arrayListGet(index)]
         return try cursor.readPath(path.span)
     }
@@ -82,7 +84,8 @@ public struct ArrayList<Access: CursorAccess> {
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a list, or an error of the storage or of a damaged
     ///   file.
-    public func slot(at index: Int64) throws(XitDBError) -> Slot? {
+    public func slot(at index: some BinaryInteger) throws(XitDBError) -> Slot? {
+        guard let index = Int64(exactly: index) else { return nil }
         let path: InlineArray<1, PathPart> = [.arrayListGet(index)]
         return try cursor.readPathSlot(path.span)
     }
@@ -157,7 +160,8 @@ extension ArrayList where Access == ReadWrite {
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
     ///   is, ``XitDBError/unexpectedTag`` if the slot no longer holds a
     ///   list, or an error of the storage or of a damaged file.
-    public func put(_ value: WritableData, at index: Int64) throws(XitDBError) {
+    public func put(_ value: WritableData, at index: some BinaryInteger) throws(XitDBError) {
+        let index = try listIndex(index)
         let path: InlineArray<2, PathPart> = [.arrayListGet(index), .write(value)]
         _ = try cursor.writePath(path.span)
     }
@@ -173,7 +177,8 @@ extension ArrayList where Access == ReadWrite {
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
     ///   is, ``XitDBError/unexpectedTag`` if the slot no longer holds a
     ///   list, or an error of the storage or of a damaged file.
-    public func putCursor(at index: Int64) throws(XitDBError) -> Cursor<ReadWrite> {
+    public func putCursor(at index: some BinaryInteger) throws(XitDBError) -> Cursor<ReadWrite> {
+        let index = try listIndex(index)
         let path: InlineArray<1, PathPart> = [.arrayListGet(index)]
         return try cursor.writePath(path.span)
     }
@@ -262,4 +267,13 @@ extension ArrayList {
     init(unchecked cursor: Cursor<Access>) {
         self.cursor = cursor
     }
+}
+
+/// An index of any integer type as the format's 64-bit signed index.
+///
+/// - Throws: ``XitDBError/indexOutOfRange`` if the index does not fit, since
+///   no list has an element there.
+func listIndex(_ index: some BinaryInteger) throws(XitDBError) -> Int64 {
+    guard let index = Int64(exactly: index) else { throw .indexOutOfRange }
+    return index
 }
