@@ -45,6 +45,20 @@ extension Database {
                 // A remove ends the path, whatever follows it.
                 try hashMapRemove(pointer, hash: hash, frozenAt: frozenAt)
                 return (pointer, false)
+            case .linkedArrayListInit:
+                pointer = try linkedArrayListInit(pointer, frozenAt: frozenAt)
+            case .linkedArrayListGet(let listIndex):
+                pointer = try linkedArrayListGet(pointer, index: listIndex, frozenAt: frozenAt)
+            case .linkedArrayListAppend:
+                pointer = try linkedArrayListAppend(pointer, frozenAt: frozenAt)
+            case .linkedArrayListSlice(let offset, let size):
+                try linkedArrayListSlice(pointer, offset: offset, size: size)
+            case .linkedArrayListConcat(let other):
+                try linkedArrayListConcat(pointer, other: other)
+            case .linkedArrayListInsert(let listIndex):
+                pointer = try linkedArrayListInsert(pointer, index: listIndex, frozenAt: frozenAt)
+            case .linkedArrayListRemove(let listIndex):
+                try linkedArrayListRemove(pointer, index: listIndex, frozenAt: frozenAt)
             case .write(let data):
                 pointer = try writeData(pointer, data)
             case .ctx:

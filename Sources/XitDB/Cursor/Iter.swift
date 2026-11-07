@@ -1,6 +1,7 @@
 extension Cursor {
-    /// Goes through the elements of an array list, or the entries of a hash
-    /// map or set, in the order they are stored: Zig's `Cursor.Iter`.
+    /// Goes through the elements of an array list or a linked array list,
+    /// or the entries of a hash map or set, in the order they are stored:
+    /// Zig's `Cursor.Iter`.
     ///
     /// Call ``next()`` until it returns `nil`. The type is not a `Sequence`,
     /// because reading the next element can fail.
@@ -31,11 +32,14 @@ extension Cursor {
         /// through them would change other moments of the database.
         ///
         /// An element of an array list that was appended and never written
-        /// is passed over. One that was set to nothing is given.
+        /// is passed over. One that was set to nothing is given, and so is
+        /// an element of a linked array list that was never written, as a
+        /// cursor at a slot set to nothing.
         ///
-        /// - Throws: ``XitDBError/keyOffsetExceeded`` or
-        ///   ``XitDBError/maxShiftExceeded`` if the collection is deeper
-        ///   than a hash map or an array list of its size can be, and
+        /// - Throws: ``XitDBError/keyOffsetExceeded``,
+        ///   ``XitDBError/maxShiftExceeded`` or ``XitDBError/invalidBTreeNode``
+        ///   if the collection is deeper than a hash map, an array list of
+        ///   its size or a linked array list can be, and
         ///   ``XitDBError/invalidEnumTag`` or ``XitDBError/endOfStream`` if
         ///   part of it cannot be read. Only a damaged file causes these.
         public mutating func next() throws(XitDBError) -> Cursor<ReadOnly>? {
@@ -64,6 +68,17 @@ extension Cursor {
         let slot = try resolved().slot
         return Iter(
             slots: try SlotIterator(reader: database.reader, arrayList: slot, from: index),
+            database: database,
+            frozenAt: frozenAt
+        )
+    }
+
+    /// An iterator over the linked array list the slot holds, starting at
+    /// one of its elements.
+    func iterator(fromLinkedArrayListIndex index: Int64) throws(XitDBError) -> Iter {
+        let slot = try resolved().slot
+        return Iter(
+            slots: try SlotIterator(reader: database.reader, linkedArrayList: slot, from: index),
             database: database,
             frozenAt: frozenAt
         )

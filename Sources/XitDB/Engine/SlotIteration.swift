@@ -1,8 +1,8 @@
 // Going through the slots of a collection in order: the core of Zig's
 // `Cursor.Iter`, on the read side of the engine.
 
-/// Walks the elements of an array list, or the entries of a hash map or set,
-/// one slot at a time.
+/// Walks the elements of an array list or a linked array list, or the
+/// entries of a hash map or set, one slot at a time.
 ///
 /// It keeps the index blocks on the way from the collection's root to where
 /// it stands, as Zig's iterator does, so that going on to the next slot
@@ -15,9 +15,12 @@
 /// error instead of growing without end. (Zig's iterator has a stack of a
 /// fixed size and fails when it is full.)
 ///
-/// The walks of linked array lists and sorted maps arrive with those
-/// collections: they add a way to start, and a node header to skip when
-/// entering a block.
+/// A linked array list's blocks are tree nodes, which start with two bytes
+/// of kind and count that the walk skips. Its walk ends after giving out as
+/// many elements as the list has: every element is a slot that holds
+/// something, since one that was never written is a placeholder set to
+/// nothing and marked full. The walk of a sorted map arrives with that
+/// collection.
 struct SlotIterator {
     /// One block on the way down, and the slot in it that the walk is at.
     struct Level {
@@ -29,17 +32,31 @@ struct SlotIterator {
     private let reader: DatabaseReader
     private var stack: [Level] = []
 
-    /// For an array list, the number of positions still to visit, which is
-    /// what stops the walk at the list's size: the blocks may go on beyond
-    /// it, with elements of a longer list that was cut down. `nil` for a
-    /// hash map or set, whose walk ends when its blocks do.
-    ///
-    /// Zig counts the elements it gives out instead, so after passing over
-    /// an element that was never written it gives out one past the end of
-    /// a cut-down list (finding 26). Here the walk visits the positions from
-    /// its start to the list's size and no further, as reading by index
-    /// does.
-    private var remaining: UInt64?
+    /// What stops the walk at the collection's size.
+    enum Counting {
+        /// A hash map or set: the walk ends when its blocks do.
+        case none
+        /// An array list: the number of positions still to visit, which is
+        /// what stops the walk at the list's size: the blocks may go on
+        /// beyond it, with elements of a longer list that was cut down.
+        ///
+        /// Zig counts the elements it gives out instead, so after passing
+        /// over an element that was never written it gives out one past the
+        /// end of a cut-down list (finding 26). Here the walk visits the
+        /// positions from its start to the list's size and no further, as
+        /// reading by index does.
+        case positions(UInt64)
+        /// A linked array list: the number of elements still to give out,
+        /// as Zig counts. The slots of a node beyond its count are empty
+        /// and passed over without counting.
+        case elements(UInt64)
+    }
+
+    private var remaining: Counting
+
+    /// The bytes to skip at the start of a block the walk enters: a tree
+    /// node's kind and count, or nothing for an index block.
+    private let nodeOffset: UInt64
 
     /// The most blocks that can lie on the way from the root to a slot.
     private let maxDepth: Int
@@ -47,16 +64,23 @@ struct SlotIterator {
     /// What going deeper than `maxDepth` is reported as.
     private let depthError: XitDBError
 
-    private init(reader: DatabaseReader, remaining: UInt64?, maxDepth: Int, depthError: XitDBError) {
+    private init(
+        reader: DatabaseReader,
+        remaining: Counting,
+        maxDepth: Int,
+        depthError: XitDBError,
+        nodeOffset: UInt64 = 0
+    ) {
         self.reader = reader
         self.remaining = remaining
         self.maxDepth = maxDepth
         self.depthError = depthError
+        self.nodeOffset = nodeOffset
     }
 
     /// A walk that gives out nothing.
     private init(reader: DatabaseReader) {
-        self.init(reader: reader, remaining: 0, maxDepth: 0, depthError: .invalidDatabase)
+        self.init(reader: reader, remaining: .positions(0), maxDepth: 0, depthError: .invalidDatabase)
     }
 
     /// Starts a walk at the first slot of the collection that `slot` holds.
@@ -75,20 +99,30 @@ struct SlotIterator {
             let header = try reader.arrayListHeader(at: slot.value)
             self.init(
                 reader: reader,
-                remaining: header.size,
+                remaining: .positions(header.size),
                 maxDepth: Self.arrayListDepth(size: header.size),
                 depthError: .maxShiftExceeded
             )
             rootPosition = header.ptr
+        case .linkedArrayList:
+            let header = try reader.bTreeHeader(at: slot.value)
+            self.init(
+                reader: reader,
+                remaining: .elements(header.size),
+                maxDepth: BTree.maxHeight + 1,
+                depthError: .invalidBTreeNode,
+                nodeOffset: BTree.nodeHeaderByteCount
+            )
+            rootPosition = try header.rootPtr.offset(by: BTree.nodeHeaderByteCount)
         case .hashMap, .hashSet:
             self.init(
-                reader: reader, remaining: nil, maxDepth: Int(reader.hashSize) * 2, depthError: .keyOffsetExceeded)
+                reader: reader, remaining: .none, maxDepth: Int(reader.hashSize) * 2, depthError: .keyOffsetExceeded)
             rootPosition = slot.value
         case .countedHashMap, .countedHashSet:
             self.init(
-                reader: reader, remaining: nil, maxDepth: Int(reader.hashSize) * 2, depthError: .keyOffsetExceeded)
+                reader: reader, remaining: .none, maxDepth: Int(reader.hashSize) * 2, depthError: .keyOffsetExceeded)
             rootPosition = try slot.value.offset(by: IndexBlock.countByteCount)
-        case .linkedArrayList, .sortedMap, .sortedSet:
+        case .sortedMap, .sortedSet:
             throw .notImplemented
         default:
             throw .unexpectedTag
@@ -120,7 +154,7 @@ struct SlotIterator {
         }
         self.init(
             reader: reader,
-            remaining: header.size - key,
+            remaining: .positions(header.size - key),
             maxDepth: Self.arrayListDepth(size: header.size),
             depthError: .maxShiftExceeded
         )
@@ -142,6 +176,60 @@ struct SlotIterator {
             position = child.value
             shift -= 1
         }
+    }
+
+    /// Starts a walk of a linked array list at one of its elements, by
+    /// descending the tree by rank: Zig's `btreeStackFromIndex`. A negative
+    /// index counts from the end. An index that names no element gives a
+    /// walk of nothing, and so does an empty slot.
+    ///
+    /// - Throws: `unexpectedTag` if the slot holds something other than a
+    ///   linked array list; `invalidBTreeNode` if the rank is beyond the
+    ///   leaf it leads to, a branch has no children or a child is not a
+    ///   node, or the tree is deeper than a tree can be.
+    init(reader: DatabaseReader, linkedArrayList slot: Slot, from startIndex: Int64) throws(XitDBError) {
+        switch slot.tag {
+        case .none:
+            self.init(reader: reader)
+            return
+        case .linkedArrayList:
+            break
+        default:
+            throw .unexpectedTag
+        }
+        let header = try reader.bTreeHeader(at: slot.value)
+        guard let rank = DatabaseReader.linkedArrayListRank(index: startIndex, size: header.size) else {
+            self.init(reader: reader)
+            return
+        }
+        self.init(
+            reader: reader,
+            remaining: .elements(header.size - rank),
+            maxDepth: BTree.maxHeight + 1,
+            depthError: .invalidBTreeNode,
+            nodeOffset: BTree.nodeHeaderByteCount
+        )
+
+        var nodePtr = header.rootPtr
+        var rem = rank
+        while stack.count <= BTree.maxHeight {
+            let node = try reader.bTreeNode(at: nodePtr)
+            let position = try nodePtr.offset(by: BTree.nodeHeaderByteCount)
+            switch node.kind {
+            case .leaf:
+                guard rem < UInt64(node.num) else { throw .invalidBTreeNode }
+                stack.append(Level(position: position, block: IndexBlock(slots: node.values), index: UInt8(rem)))
+                return
+            case .branch:
+                guard node.num > 0 else { throw .invalidBTreeNode }
+                let (index, next) = BTree.child(of: node, rank: rem, inclusive: false)
+                guard node.children[index].tag == .index else { throw .invalidBTreeNode }
+                stack.append(Level(position: position, block: IndexBlock(slots: node.children), index: UInt8(index)))
+                nodePtr = node.children[index].value
+                rem = next
+            }
+        }
+        throw .invalidBTreeNode
     }
 
     /// The number of blocks from the root of an array list of `size`
@@ -175,13 +263,20 @@ struct SlotIterator {
             let slot = stack[top].block.slots[index]
             if slot.tag == .index {
                 if stack.count >= maxDepth { throw depthError }
-                stack.append(Level(position: slot.value, block: try reader.indexBlock(at: slot.value), index: 0))
+                let position = try slot.value.offset(by: nodeOffset)
+                stack.append(Level(position: position, block: try reader.indexBlock(at: position), index: 0))
                 continue
             }
             // A slot that is not a block is an element, or an entry.
-            if let left = remaining {
+            switch remaining {
+            case .none:
+                break
+            case .positions(let left):
                 if left == 0 { return nil }
-                remaining = left - 1
+                remaining = .positions(left - 1)
+            case .elements(let left):
+                if left == 0 { return nil }
+                if !slot.isEmpty { remaining = .elements(left - 1) }
             }
             stack[top].index += 1
             if !slot.isEmpty {

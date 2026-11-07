@@ -429,12 +429,12 @@ import Testing
         #expect(try database.rootCursor().count() == 1)
     }
 
-    /// A transaction on a root that is a linked array list or a sorted map
-    /// would have to run that collection's init part first, to copy it into
-    /// the transaction. Those parts arrive with later milestones. Until
-    /// then such a transaction is refused; going on without the init part
-    /// would write into committed data.
-    @Test(arguments: [XitDB.Tag.linkedArrayList, .sortedMap, .sortedSet])
+    /// A transaction on a root that is a sorted map or set would have to
+    /// run that collection's init part first, to copy it into the
+    /// transaction. That part arrives with milestone M6. Until then such a
+    /// transaction is refused; going on without the init part would write
+    /// into committed data.
+    @Test(arguments: [XitDB.Tag.sortedMap, .sortedSet])
     func aTransactionOnARootOfACollectionNotBuiltYetIsRefused(tag: XitDB.Tag) throws {
         let storage = MemoryStorage()
         let database = try makeDatabase(storage)

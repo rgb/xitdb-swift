@@ -14,6 +14,11 @@ struct IndexBlock: Sendable {
         self.slots = InlineArray(repeating: Slot())
     }
 
+    /// Creates a block of the given slots.
+    init(slots: InlineArray<16, Slot>) {
+        self.slots = slots
+    }
+
     /// Decodes the block that starts at `offset`.
     ///
     /// - Throws: `endOfStream` if fewer than 144 bytes are available, or

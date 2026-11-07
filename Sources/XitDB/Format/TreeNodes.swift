@@ -116,6 +116,29 @@ struct BTreeNode: Sendable {
             SlotGroup.encodeCounts(counts, into: &output)
         }
     }
+
+    /// Stores the node at the start of `bytes`, in place: 146 bytes for a
+    /// leaf, 274 for a branch.
+    ///
+    /// - Precondition: `bytes` holds at least as many bytes as the node
+    ///   takes.
+    func encode(into bytes: inout MutableSpan<UInt8>) {
+        bytes[0] = kind.rawValue
+        bytes[1] = num
+        switch kind {
+        case .leaf:
+            for index in 0..<16 {
+                values[index].encode(into: &bytes, at: 2 + 9 * index)
+            }
+        case .branch:
+            for index in 0..<16 {
+                children[index].encode(into: &bytes, at: 2 + 9 * index)
+            }
+            for index in 0..<16 {
+                bytes.storeBigEndian(counts[index], at: 146 + 8 * index)
+            }
+        }
+    }
 }
 
 /// A node of a sorted map's or sorted set's tree.

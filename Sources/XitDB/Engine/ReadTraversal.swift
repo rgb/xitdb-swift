@@ -21,7 +21,11 @@ extension DatabaseReader {
                 pointer = try arrayListGet(pointer.slot, index: listIndex)
             case .hashMapGet(let kind, let hash):
                 pointer = try hashMapGet(pointer.slot, kind: kind, hash: hash)
-            case .arrayListInit, .arrayListAppend, .arrayListSlice, .hashMapInit, .hashMapRemove, .write, .ctx:
+            case .linkedArrayListGet(let listIndex):
+                pointer = try linkedArrayListGet(pointer.slot, index: listIndex)
+            case .arrayListInit, .arrayListAppend, .arrayListSlice, .hashMapInit, .hashMapRemove, .write, .ctx,
+                .linkedArrayListInit, .linkedArrayListAppend, .linkedArrayListSlice, .linkedArrayListConcat,
+                .linkedArrayListInsert, .linkedArrayListRemove:
                 throw .writeNotAllowed
             }
             index += 1
@@ -82,6 +86,25 @@ extension DatabaseReader {
             default: throw .unexpectedTag
             }
         }
+    }
+
+    // MARK: Linked array list
+
+    /// The rank an index names in a list of `size` elements, or `nil` if it
+    /// names none. A negative index counts from the end.
+    static func linkedArrayListRank(index: Int64, size: UInt64) -> UInt64? {
+        arrayListKey(index: index, size: size)
+    }
+
+    func linkedArrayListGet(_ slot: Slot, index: Int64) throws(XitDBError) -> SlotPointer {
+        switch slot.tag {
+        case .none: throw .keyNotFound
+        case .linkedArrayList: break
+        default: throw .unexpectedTag
+        }
+        let header = try bTreeHeader(at: slot.value)
+        guard let rank = Self.linkedArrayListRank(index: index, size: header.size) else { throw .keyNotFound }
+        return try linkedArrayListSlot(rootPtr: header.rootPtr, rank: rank)
     }
 
     // MARK: Hash map

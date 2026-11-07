@@ -243,16 +243,27 @@ import Testing
         }
     }
 
-    /// Iterating over a linked array list or a sorted map is not there yet,
-    /// and says so rather than reading their blocks as something else. The
-    /// array list's start at an index is the array list's alone.
+    /// Iterating over a sorted map is not there yet, and says so rather
+    /// than reading its blocks as something else. Each list's start at an
+    /// index is that list's alone.
     @Test func iteratingTheLaterCollectionsIsNotImplemented() throws {
         let database = try Database(storage: MemoryStorage(bytes: try FixtureTests.load()), hashSize: 20)
         let moment = try #require(try database.rootCursor().readPath([.arrayListGet(-1)]))
         let todos = try #require(try moment.readPath([.hashMapGet(.value, sha1("todos"))]))
         #expect(try todos.slot().tag == .linkedArrayList)
-        #expect(throws: XitDBError.notImplemented) { try todos.iterator() }
         #expect(throws: XitDBError.unexpectedTag) { try todos.iterator(fromArrayListIndex: 0) }
         #expect(throws: XitDBError.unexpectedTag) { try ArrayList(todos) }
+        let fruits = try #require(try moment.readPath([.hashMapGet(.value, sha1("fruits"))]))
+        #expect(try fruits.slot().tag == .arrayList)
+        #expect(throws: XitDBError.unexpectedTag) { try fruits.iterator(fromLinkedArrayListIndex: 0) }
+        #expect(throws: XitDBError.unexpectedTag) { try LinkedArrayList(fruits) }
+
+        for tag in [XitDB.Tag.sortedMap, .sortedSet] {
+            let sorted = Cursor<ReadOnly>(
+                slotPointer: SlotPointer(position: nil, slot: Slot(value: 0, tag: tag)), database: database)
+            #expect(throws: XitDBError.notImplemented) { try sorted.iterator() }
+            #expect(throws: XitDBError.unexpectedTag) { try sorted.iterator(fromArrayListIndex: 0) }
+            #expect(throws: XitDBError.unexpectedTag) { try sorted.iterator(fromLinkedArrayListIndex: 0) }
+        }
     }
 }

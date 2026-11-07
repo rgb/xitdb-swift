@@ -19,8 +19,7 @@ package enum HashMapSlotKind: Sendable {
 /// collection's init part changes the collection in place, in every moment
 /// that shares it. The collection types built on top always run it.
 ///
-/// The parts for linked array lists and sorted maps arrive with those
-/// collections.
+/// The parts for sorted maps arrive with that collection.
 package enum PathPart: Sendable {
     /// Makes the slot an array list, or copies the list's header and root
     /// block into the transaction if it is one already.
@@ -48,6 +47,38 @@ package enum PathPart: Sendable {
     /// are ignored, as they are in Zig.
     case hashMapRemove(KeyHash)
 
+    /// Makes the slot a linked array list, or copies the list's header into
+    /// the transaction if it is one already.
+    case linkedArrayListInit
+
+    /// Moves to an element of a linked array list. A negative index counts
+    /// from the end.
+    case linkedArrayListGet(Int64)
+
+    /// Appends an element to a linked array list and moves to it.
+    case linkedArrayListAppend
+
+    /// Keeps `size` elements of a linked array list from `offset` on. The
+    /// path stays at the list.
+    case linkedArrayListSlice(offset: UInt64, size: UInt64)
+
+    /// Appends every element of another linked array list, given by its
+    /// slot, to this one. The path stays at the list.
+    ///
+    /// The result shares its nodes with both lists, so the transaction's
+    /// start is moved to the end of the storage first, as Zig does: later
+    /// writes copy what was written before, instead of changing it in place.
+    case linkedArrayListConcat(Slot)
+
+    /// Inserts an element before the one at an index and moves to it. A
+    /// negative index counts from the end. The index must name an element:
+    /// to add at the end, append.
+    case linkedArrayListInsert(Int64)
+
+    /// Removes the element at an index. A negative index counts from the
+    /// end. The path stays at the list.
+    case linkedArrayListRemove(Int64)
+
     /// Writes a value to the slot.
     case write(WriteableData)
 
@@ -63,6 +94,8 @@ package enum PathPart: Sendable {
         switch self {
         case .arrayListInit:
             .arrayList
+        case .linkedArrayListInit:
+            .linkedArrayList
         case .hashMapInit(let counted, let set):
             if counted {
                 set ? .countedHashSet : .countedHashMap
@@ -83,11 +116,12 @@ package enum PathPart: Sendable {
     static func initPart(for tag: Tag) throws(XitDBError) -> PathPart? {
         switch tag {
         case .arrayList: .arrayListInit
+        case .linkedArrayList: .linkedArrayListInit
         case .hashMap: .hashMapInit(counted: false, set: false)
         case .hashSet: .hashMapInit(counted: false, set: true)
         case .countedHashMap: .hashMapInit(counted: true, set: false)
         case .countedHashSet: .hashMapInit(counted: true, set: true)
-        case .linkedArrayList, .sortedMap, .sortedSet: throw .notImplemented
+        case .sortedMap, .sortedSet: throw .notImplemented
         case .none, .index, .kvPair, .bytes, .shortBytes, .uint, .int, .float, .sortedKvPair: nil
         }
     }
