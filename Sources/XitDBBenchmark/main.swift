@@ -31,10 +31,12 @@ enum StorageKind: String {
 /// afterwards. Syncing is off, so that the engine is measured and not the
 /// disk.
 final class RunStorage {
+    let kind: StorageKind
     let storage: any WritableStorage
     private let path: String?
 
     init(_ kind: StorageKind) throws {
+        self.kind = kind
         switch kind {
         case .memory:
             path = nil
@@ -147,6 +149,13 @@ func iterateMap(_ moment: Cursor<ReadOnly>, _ keys: Keys) throws {
 }
 
 /// One workload: how to write it and how to read it back.
+///
+/// A run gets a new, empty storage. `prepare` makes what the write phase
+/// needs before the clock starts: for most workloads the database over
+/// that storage; for a compaction, the source and the offset map. `write`
+/// is the clocked phase, and returns the database the read and iterate
+/// phases then use: the one prepared, or the compaction's target, which
+/// is created inside the clocked call.
 struct Workload {
     let name: String
     let size: Int
@@ -154,9 +163,51 @@ struct Workload {
     /// The keys to compute before the clock starts, and how many.
     let keyKind: Keys.Kind
     let keyCount: Int
-    let write: (Database, Keys) throws -> Void
+    let prepare: (RunStorage, Keys) throws -> Any
+    let write: (RunStorage, Keys, Any) throws -> Database
     let read: (Database, Keys) throws -> Void
     let iterate: (Database, Keys) throws -> Void
+
+    /// A workload whose write phase fills the prepared database.
+    init(
+        name: String, size: Int, kinds: [StorageKind], keyKind: Keys.Kind, keyCount: Int,
+        write: @escaping (Database, Keys) throws -> Void,
+        read: @escaping (Database, Keys) throws -> Void,
+        iterate: @escaping (Database, Keys) throws -> Void
+    ) {
+        self.name = name
+        self.size = size
+        self.kinds = kinds
+        self.keyKind = keyKind
+        self.keyCount = keyCount
+        prepare = { storage, _ in try newDatabase(storage.storage) }
+        self.write = { _, keys, prepared in
+            let database = prepared as! Database
+            try write(database, keys)
+            return database
+        }
+        self.read = read
+        self.iterate = iterate
+    }
+
+    /// A workload whose write phase makes the database it measures.
+    init(
+        name: String, size: Int, kinds: [StorageKind], keyKind: Keys.Kind, keyCount: Int,
+        prepare: @escaping (RunStorage, Keys) throws -> Any,
+        write: @escaping (RunStorage, Keys, Any) throws -> Database,
+        read: @escaping (Database, Keys) throws -> Void,
+        iterate: @escaping (Database, Keys) throws -> Void
+    ) {
+        self.name = name
+        self.size = size
+        self.kinds = kinds
+        self.keyKind = keyKind
+        self.keyCount = keyCount
+        self.prepare = prepare
+        self.write = write
+        self.read = read
+        self.iterate = iterate
+    }
 }
 
 func mapInsert(_ size: Int, kinds: [StorageKind]) -> Workload {
@@ -207,31 +258,71 @@ func listAppend(_ size: Int, kinds: [StorageKind]) -> Workload {
     }
 }
 
+/// Writes `transactions` transactions of ten keys each, every one a new
+/// moment of the history: `map_transactions`' write phase.
+func writeTransactions(_ transactions: Int, into database: Database, _ keys: Keys) throws {
+    let hashes = keys.hashes
+    for transaction in 0..<transactions {
+        let lastPath: InlineArray<1, PathPart> = [.arrayListGet(-1)]
+        let last = try database.rootCursor().readPathSlot(lastPath.span)
+        let path: InlineArray<5, PathPart> = [
+            .arrayListInit, .arrayListAppend, .write(.slot(last)), .hashMapInit(), .ctx,
+        ]
+        _ = try database.rootCursor().writePath(path.span) { cursor in
+            for index in (transaction * 10)..<(transaction * 10 + 10) {
+                let put: InlineArray<2, PathPart> = [
+                    .hashMapGet(.value, hashes[index]), .write(.uint(UInt64(index))),
+                ]
+                _ = try cursor.writePath(put.span)
+            }
+        }
+    }
+}
+
 func mapTransactions(_ transactions: Int, kinds: [StorageKind]) -> Workload {
     Workload(name: "map_transactions", size: transactions, kinds: kinds, keyKind: .hashes, keyCount: transactions * 10)
     {
         database,
         keys in
-        let hashes = keys.hashes
-        for transaction in 0..<transactions {
-            let lastPath: InlineArray<1, PathPart> = [.arrayListGet(-1)]
-            let last = try database.rootCursor().readPathSlot(lastPath.span)
-            let path: InlineArray<5, PathPart> = [
-                .arrayListInit, .arrayListAppend, .write(.slot(last)), .hashMapInit(), .ctx,
-            ]
-            _ = try database.rootCursor().writePath(path.span) { cursor in
-                for index in (transaction * 10)..<(transaction * 10 + 10) {
-                    let put: InlineArray<2, PathPart> = [
-                        .hashMapGet(.value, hashes[index]), .write(.uint(UInt64(index))),
-                    ]
-                    _ = try cursor.writePath(put.span)
-                }
-            }
-        }
+        try writeTransactions(transactions, into: database, keys)
     } read: { database, hashes in
         try readMap(try lastMoment(database), hashes)
     } iterate: { database, hashes in
         try iterateMap(try lastMoment(database), hashes)
+    }
+}
+
+/// What a compaction run has before the clock starts: the source, the
+/// `map_transactions` database after its write phase, on a storage of its
+/// own, and a new offset map.
+final class CompactionRun {
+    let sourceStorage: RunStorage
+    let source: Database
+    var offsetMap = MemoryOffsetMap()
+
+    init(_ kind: StorageKind, transactions: Int, _ keys: Keys) throws {
+        sourceStorage = try RunStorage(kind)
+        source = try newDatabase(sourceStorage.storage)
+        try writeTransactions(transactions, into: source, keys)
+    }
+}
+
+/// Compacts the `map_transactions` database into a new one of the same
+/// kind, then reads every key from the target and walks it.
+func mapCompact(_ transactions: Int, kinds: [StorageKind]) -> Workload {
+    Workload(
+        name: "map_compact", size: transactions, kinds: kinds, keyKind: .hashes, keyCount: transactions * 10
+    ) { storage, keys in
+        try CompactionRun(storage.kind, transactions: transactions, keys)
+    } write: { storage, _, prepared in
+        let run = prepared as! CompactionRun
+        // the target's header and everything after it are written here
+        return try run.source.compact(
+            into: storage.storage, fileID: 0x0011_2233_4455_6677, offsetMap: &run.offsetMap)
+    } read: { database, keys in
+        try readMap(try lastMoment(database), keys)
+    } iterate: { database, keys in
+        try iterateMap(try lastMoment(database), keys)
     }
 }
 
@@ -355,6 +446,8 @@ let workloads: [Workload] = [
     linkedAppend(10_000, kinds: [.file]),
     sortedInsert(100_000, kinds: [.memory, .bufferedFile]),
     sortedInsert(10_000, kinds: [.file]),
+    mapCompact(2_000, kinds: [.memory, .bufferedFile]),
+    mapCompact(200, kinds: [.file]),
 ]
 
 func median(_ values: [Double]) -> Double {
@@ -376,11 +469,13 @@ func run(_ workload: Workload) throws {
         var readTimes: [Double] = []
         var iterateTimes: [Double] = []
         var fileSize: UInt64 = 0
-        // Every run starts from a new, empty database.
+        // Every run starts from a new, empty storage.
         for _ in 0..<5 {
             let storage = try RunStorage(kind)
-            let database = try newDatabase(storage.storage)
-            writeTimes.append(try milliseconds { try workload.write(database, keys) })
+            let prepared = try workload.prepare(storage, keys)
+            var database: Database? = nil
+            writeTimes.append(try milliseconds { database = try workload.write(storage, keys, prepared) })
+            guard let database else { throw BenchmarkFailure(description: "the write phase gave no database") }
             let size = try storage.storage.length()
             if fileSize != 0 && size != fileSize {
                 throw BenchmarkFailure(description: "\(workload.name) left files of different sizes")
@@ -406,8 +501,7 @@ func runRepeatedly(_ workload: Workload, _ kind: StorageKind, phase: String, sec
     var total = 0.0
     if phase == "read" || phase == "iterate" {
         let storage = try RunStorage(kind)
-        let database = try newDatabase(storage.storage)
-        try workload.write(database, keys)
+        let database = try workload.write(storage, keys, try workload.prepare(storage, keys))
         let run = phase == "read" ? workload.read : workload.iterate
         while DispatchTime.now().uptimeNanoseconds < deadline {
             total += try milliseconds { try run(database, keys) }
@@ -416,8 +510,8 @@ func runRepeatedly(_ workload: Workload, _ kind: StorageKind, phase: String, sec
     } else {
         while DispatchTime.now().uptimeNanoseconds < deadline {
             let storage = try RunStorage(kind)
-            let database = try newDatabase(storage.storage)
-            total += try milliseconds { try workload.write(database, keys) }
+            let prepared = try workload.prepare(storage, keys)
+            total += try milliseconds { _ = try workload.write(storage, keys, prepared) }
             runs += 1
         }
     }
