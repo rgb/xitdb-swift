@@ -209,15 +209,29 @@ import Testing
     func aHeaderAtTheLargestSize(kind: StorageKind) throws {
         let subject = try Subject(kind)
         let database = try subject.damaged(bigEndianBytes(UInt64.max), at: subject.headerPtr)
-        // A new entry cannot be counted; a rank from the end is beyond the
-        // tree. Everything else works, removes counting down included.
+        // A size that cannot grow is damage whatever the key: every put is
+        // reported, before the tree is written to (C4). A rank from the end
+        // is beyond the tree. Everything else works, removes counting down
+        // included.
         let failed = try failing(database)
         #expect(
             failed
                 == invalid([
-                    "put new first", "put new last", "get index -1", "get index 50", "iterate from index -1",
-                    "iterate from index 50",
+                    "put first", "put last", "put new first", "put new last", "get index -1", "get index 50",
+                    "iterate from index -1", "iterate from index 50",
                 ]))
+        // nothing is written by a put that is reported
+        do {
+            try database.withTransaction { cursor in
+                let map = try SortedMap(try HashMap(cursor).putCursor(forHash: sha1("map").bytes))
+                let length = try subject.subject.storage.length
+                #expect(throws: XitDBError.invalidBTreeNode) { try map.put(.uint(1), forKey: Subject.key(5)) }
+                #expect(throws: XitDBError.invalidBTreeNode) { try map.put(.uint(1), forKey: Array("k99".utf8)) }
+                #expect(throws: XitDBError.invalidBTreeNode) { try map.putCursor(forKey: Subject.key(5)) }
+                #expect(try subject.subject.storage.length == length)
+                throw Rollback()
+            }
+        } catch is Rollback {}
     }
 
     /// The root's counts add up past what a number holds: its first is the
