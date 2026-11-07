@@ -151,12 +151,16 @@ public final class MemoryStorage: WritableStorage {
     ///   - offset: The position of the first byte to read.
     /// - Returns: The number of bytes read, which is less than `range.count`
     ///   only when the storage ends first.
+    /// - Precondition: `range` lies within `buffer`, as the file storages
+    ///   require too; a range that does not is a programming error, whatever
+    ///   the offset.
     public func read(
         into buffer: inout MutableSpan<UInt8>,
         range: Range<Int>,
         at offset: UInt64
     ) throws(XitDBError) -> Int {
-        unsafe self.buffer.read(into: &buffer, range: range, at: offset)
+        precondition(range.lowerBound >= 0 && range.upperBound <= buffer.count, "the range is out of bounds")
+        return unsafe self.buffer.read(into: &buffer, range: range, at: offset)
     }
 
     /// The number of bytes in the storage. This never throws.

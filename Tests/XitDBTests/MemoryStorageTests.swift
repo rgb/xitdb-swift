@@ -126,6 +126,29 @@ import Testing
         #expect(buffer == [2, 7, 7, 7])
     }
 
+    /// The range must lie within the buffer, as the file storages require;
+    /// one that does not is a precondition failure, whatever the offset,
+    /// which no test can show without a crash. At the buffer's bounds, the
+    /// ranges that lie within it behave, including the empty ones and the
+    /// reads at or past the storage's end that fill nothing.
+    @Test func aRangeAtTheBuffersBoundsIsWithinIt() throws {
+        let storage = MemoryStorage(bytes: [1, 2, 3, 4, 5])
+        func read(range: Range<Int>, at offset: UInt64) throws -> (count: Int, buffer: [UInt8]) {
+            var buffer: [UInt8] = [7, 7, 7, 7]
+            var span = buffer.mutableSpan
+            let count = try storage.read(into: &span, range: range, at: offset)
+            return (count, buffer)
+        }
+        #expect(try read(range: 0..<4, at: 0) == (4, [1, 2, 3, 4]))
+        #expect(try read(range: 0..<4, at: 2) == (3, [3, 4, 5, 7]))
+        #expect(try read(range: 3..<4, at: 4) == (1, [7, 7, 7, 5]))
+        #expect(try read(range: 0..<0, at: 0) == (0, [7, 7, 7, 7]))
+        #expect(try read(range: 4..<4, at: 0) == (0, [7, 7, 7, 7]))
+        #expect(try read(range: 3..<4, at: 5) == (0, [7, 7, 7, 7]))
+        #expect(try read(range: 0..<4, at: 100) == (0, [7, 7, 7, 7]))
+        #expect(try read(range: 4..<4, at: .max) == (0, [7, 7, 7, 7]))
+    }
+
     @Test func flushAndSyncDoNothing() throws {
         let storage = MemoryStorage(bytes: [1])
         try storage.flush()
