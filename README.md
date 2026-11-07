@@ -1,9 +1,148 @@
 # xitdb-swift
 
-A Swift port of [xitdb](https://github.com/xit-vcs/xitdb), an immutable, append-only embedded database
-written in Zig. The goal is a pure-Swift implementation that reads and writes the same files as the original.
+A Swift port of [xitdb](https://github.com/xit-vcs/xitdb), an immutable database, written in Zig, that runs
+inside your program and keeps its data in one file or in memory.
 
-**Status: in development and not yet usable.** There is no database code in this package yet.
+- Each transaction efficiently makes a new "copy" of the database. Past copies stay readable, and can be
+  returned to.
+- There is no query language and no schema. You write data structures, lists and maps and sets, nested as
+  deeply as you need, and a database reads and writes them a part at a time, so it can be larger than memory.
+- There is no write-ahead log. A transaction appends to the file and then rewrites one small header, so a
+  transaction that fails leaves the file as it was.
+- Replicating a database is copying the bytes the other side lacks. Reclaiming space is compacting it into a
+  new file.
+- The port reads and writes the same files as the original, byte for byte. Given the same operations and the
+  same IDs, the two produce identical files.
+- It is pure Swift with no run-time dependencies, down to the system's file calls.
+
+It costs what immutability costs: the file only grows until you compact it, you hash your own keys, and you
+keep your own indexes. If you want queries or a schema, use SQLite.
+
+## Status
+
+The port reached parity with the original on 2026-11-07: every operation of the original, checked by 209
+conformance scripts that compare whole files. It has not been released yet.
+
+Not there yet, and being worked on in this order:
+
+- the write-side checks that turn misuse the original allows (a cursor kept across a transaction, for example)
+  into a clear error, and explicit recovery of a file whose last commit is damaged;
+- read snapshots that can be shared between threads and tasks;
+- a hashing target and a more Swift-flavoured layer over the API shown here (string keys, typed values);
+- iOS testing on a simulator, and Linux. It builds for macOS 26 and iOS 26 and is tested on macOS.
+
+## Adding the dependency
+
+The package needs Swift 6.4 and macOS 26 or iOS 26. It has not been published, so for now it is added by path:
+
+```swift manifest
+dependencies: [
+    .package(path: "../xitdb-swift")
+],
+targets: [
+    .target(name: "MyTarget", dependencies: [.product(name: "XitDB", package: "xitdb-swift")])
+]
+```
+
+## A first look
+
+History as a list of moments, a map in each, a value written and read back:
+
+```swift
+import CryptoKit
+import XitDB
+
+// XitDB never hashes anything itself: the caller hashes each key.
+func sha256(_ key: String) -> [UInt8] {
+    Array(SHA256.hash(data: Array(key.utf8)))
+}
+
+// Open the file, and create the database in it if it is new.
+let storage = try BufferedFileStorage(path: "main.db", access: .create)
+let database =
+    try storage.length == 0
+    ? Database(creating: storage, hashSize: 32, hashID: "sha2")
+    : Database(opening: storage, hashSize: 32)
+
+// The root is a list with one element for each transaction, so that
+// every earlier state of the database stays readable: the history.
+let history = try ArrayList<ReadWrite>(database.rootCursor)
+
+// A transaction. The new element starts as the last one, and the body
+// changes it. If the body throws, the file is as it was.
+try history.append(.slot(try history.slot(at: -1))) { cursor in
+    let moment = try HashMap<ReadWrite>(cursor)
+
+    try moment.put(.bytes(Array("foo".utf8)), forHash: sha256("foo"))
+    try moment.put(.bytes(Array("bar".utf8)), forHash: sha256("bar"))
+
+    let fruits = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("fruits")))
+    try fruits.append(.bytes(Array("apple".utf8)))
+    try fruits.append(.bytes(Array("pear".utf8)))
+    try fruits.append(.bytes(Array("grape".utf8)))
+
+    let people = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("people")))
+
+    let alice = try HashMap<ReadWrite>(people.appendCursor())
+    try alice.put(.bytes(Array("Alice".utf8)), forHash: sha256("name"))
+    try alice.put(.uint(25), forHash: sha256("age"))
+
+    let bob = try HashMap<ReadWrite>(people.appendCursor())
+    try bob.put(.bytes(Array("Bob".utf8)), forHash: sha256("name"))
+    try bob.put(.uint(42), forHash: sha256("age"))
+}
+
+// The latest moment: -1 is the last element of a list.
+let moment = try HashMap<ReadOnly>(history.cursor(at: -1)!)
+
+let foo = try moment.cursor(forHash: sha256("foo"))!.readBytes()
+print(String(decoding: foo, as: UTF8.self))  // foo
+
+let fruits = try ArrayList<ReadOnly>(moment.cursor(forHash: sha256("fruits"))!)
+let apple = try fruits.cursor(at: 0)!.readBytes()
+print(String(decoding: apple, as: UTF8.self))  // apple
+```
+
+After this transaction the moment holds, if it were written as JSON:
+
+```json
+{"foo": "foo",
+ "bar": "bar",
+ "fruits": ["apple", "pear", "grape"],
+ "people": [
+   {"name": "Alice", "age": 25},
+   {"name": "Bob", "age": 42}
+ ]}
+```
+
+Run it twice and the second run opens the file, adds a second moment, and the first stays readable with
+`history.cursor(at: 0)`.
+
+Every block of code that uses the library, in this README and in the documentation, is compiled and run by the
+`XitDBExamples` test target, which imports the library as you would. A test there fails if the two ever differ.
+
+## Documentation
+
+The full documentation is a DocC catalogue in
+[`Sources/XitDB/XitDB.docc`](Sources/XitDB/XitDB.docc): a reference curated by task, articles for the
+concepts, and step-by-step tutorials. The articles are Markdown and can be read as they are; start with
+[Moments and history](Sources/XitDB/XitDB.docc/Articles/MomentsAndHistory.md).
+
+To read it in a browser:
+
+```sh
+swift package --disable-sandbox preview-documentation --target XitDB
+```
+
+To build it as a static site, for hosting at a path of your choice, and to look at the result:
+
+```sh
+scripts/docs-site.sh xitdb-swift      # for hosting at /xitdb-swift
+scripts/docs-site.sh                  # for hosting at the root, to preview:
+python3 -m http.server --directory .build/docs-site
+```
+
+The preview is then at <http://localhost:8000/documentation/xitdb/>.
 
 ## Credit
 

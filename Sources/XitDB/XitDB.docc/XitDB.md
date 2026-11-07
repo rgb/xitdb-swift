@@ -1,81 +1,127 @@
 # ``XitDB``
 
-An immutable, append-only embedded database, compatible with the files of the original xitdb.
+An immutable database that runs inside your program, in one file or in memory, and reads and writes the same
+files as the original xitdb.
 
 ## Overview
 
-XitDB is a Swift port of [xitdb](https://github.com/xit-vcs/xitdb), complete to the surface of the original:
-a ``Database`` can be created and opened; every collection of the original can be built in it, read, written
-and iterated over; values can be read and written through a ``Cursor``, including byte arrays read and
-written a part at a time; a database can be compacted, and replicated by copying the bytes a replica lacks.
+XitDB is a Swift port of [xitdb](https://github.com/xit-vcs/xitdb). A database has no schema and no query
+language. It is a tree of lists, maps and sets that you nest as you need, read and written a part at a time,
+so it can be larger than memory.
 
-A database keeps its bytes in a storage. ``BufferedFileStorage`` keeps them in a file and is the one to use
-for a database on disk. ``MemoryStorage`` keeps them in memory. ``FileStorage`` reads and writes a file
-without buffering.
+A transaction appends what it changes to the end of the file and then rewrites one small header to point at
+it. Nothing committed changes, so every earlier state of the database stays readable. It is usual to keep them
+in a list at the root, one element per transaction:
 
-Reading and writing start at ``Database/rootCursor``. A ``Cursor`` is a position in the database: it reads
-the value there, and inside a transaction it writes one. ``Database/withTransaction(_:)`` runs a transaction.
+```swift
+let database = try Database(creating: MemoryStorage(), hashSize: 32)
 
-The collections are views of a cursor's slot. ``ArrayList`` is a list indexed by position.
-``LinkedArrayList`` is a list that can also be changed anywhere: elements inserted and removed at any
-position, and lists joined and cut in logarithmic time. ``HashMap`` and ``HashSet`` hold values and keys
-under hashes that the caller computes; ``CountedHashMap`` and ``CountedHashSet`` also keep the number of
-their entries. ``SortedMap`` and ``SortedSet`` hold values and keys under byte strings in their own order,
-and give them in that order from the start, from a key or from a position, and the position of any key:
-what an index that sorts and paginates needs. Each comes in a read-only and a read-write form, like a
-cursor. A database's history is usually an ``ArrayList`` at the root with one element per transaction, each
-a ``HashMap`` of that moment's state, so that every earlier moment stays readable.
+let history = try ArrayList<ReadWrite>(database.rootCursor)
 
-Every value lives behind a ``Slot``, nine bytes that hold either a small value directly or the offset of a
-larger record. A slot's ``Slot/Tag`` says which. A file starts with a ``DatabaseHeader``.
+for price: UInt64 in [10, 12, 15] {
+    try history.append(.slot(try history.slot(at: -1))) { cursor in
+        let moment = try HashMap<ReadWrite>(cursor)
+        try moment.put(.uint(price), forHash: sha256("price"))
+    }
+}
+```
 
-A database only grows, since every transaction appends. ``Database/compact(into:offsetMap:)`` writes a new
-one that holds what the latest moment reaches and nothing else, every object once however many slots point
-at it. The copy remembers where things went in an ``OffsetMap``; ``MemoryOffsetMap`` keeps that in memory.
+Three things in that code are not what you might assume. You hash your own keys, here with a helper
+`sha256(_:)`: see <doc:BringYourOwnHashes>. A collection is a view of a slot, made from a cursor, and it comes
+in a read-only and a read-write form: see <doc:TheCollections>. And the file only grows until you compact it:
+see <doc:MomentsAndHistory> for what that costs.
 
-Committed bytes never change except for the root header, so a replica is brought up to date by copying the
-bytes it does not have. A replica describes itself with a ``ReplicaState``; the source answers with
-``Database/replicationStart(for:)``, sends with ``Database/readCommitted(from:to:into:)-(_,_,Sink)`` into a ``ByteSink``,
-and the replica takes the bytes with ``Database/applyReplicated(at:from:count:)`` from a ``ByteSource``.
+To start, read <doc:MomentsAndHistory>, then <doc:Transactions>. After that, each article stands on its own.
 
 ## Topics
 
-### Databases
+### Essentials
+
+How a database works, in the order to read it.
+
+- <doc:MomentsAndHistory>
+- <doc:Transactions>
+- <doc:CursorsAndValues>
+
+### Opening a database
+
+A database keeps its bytes in a storage. ``BufferedFileStorage`` is the one to use for a file, and
+``MemoryStorage`` for a database that needs none.
 
 - ``Database``
+- ``BufferedFileStorage``
+- ``MemoryStorage``
+- ``FileStorage``
+- ``FileAccess``
+- ``Durability``
+- ``FileLock``
 - ``DatabaseHeader``
 - ``HashID``
 
-### Collections
+### Reading and writing values
 
-- ``ArrayList``
-- ``LinkedArrayList``
-- ``HashMap``
-- ``HashSet``
-- ``CountedHashMap``
-- ``CountedHashSet``
-- ``SortedMap``
-- ``SortedSet``
-
-### Reading and writing
+A cursor is a position in the database: it reads the value there, and inside a transaction it writes one.
 
 - ``Cursor``
 - ``ReadOnly``
 - ``ReadWrite``
 - ``CursorAccess``
+- ``WritableData``
+- ``Slot``
+- ``Slot/Tag``
 - ``Entry``
 - ``CollectionIterator``
-- ``WritableData``
-- ``Bytes``
-- ``ByteReader``
-- ``ByteWriter``
 
-### Compaction
+### Choosing a collection
+
+Eight collections, nested as you like. <doc:TheCollections> says when to use which.
+
+- <doc:TheCollections>
+
+### Lists
+
+Elements addressed by position. A list is how a database usually keeps its history.
+
+- ``ArrayList``
+- ``LinkedArrayList``
+
+### Maps and sets by hash
+
+Values and keys found by a hash that you compute. The fastest lookups, in no useful order.
+
+- <doc:BringYourOwnHashes>
+- ``HashMap``
+- ``HashSet``
+- ``CountedHashMap``
+- ``CountedHashSet``
+
+### Sorted maps and sets
+
+Values and keys held in the order of their bytes, for what has to be sorted or paged through.
+
+- <doc:SortingAndPaginating>
+- ``SortedMap``
+- ``SortedSet``
+
+### Byte arrays
+
+A byte array is a value like any other, and can be written and read a part at a time.
+
+- ``Bytes``
+- ``FormatTag``
+- ``ByteWriter``
+- ``ByteReader``
+
+### Compacting a database
+
+A new database holding only what the latest moment reaches, which is the way to get space back.
 
 - ``OffsetMap``
 - ``MemoryOffsetMap``
 
-### Replication
+### Replicating a database
+
+Bringing a copy up to date by sending it the bytes it lacks.
 
 - ``ReplicaState``
 - ``ByteSink``
@@ -83,26 +129,16 @@ and the replica takes the bytes with ``Database/applyReplicated(at:from:count:)`
 - ``ArrayByteSink``
 - ``ArrayByteSource``
 
-### Storage
+### Errors
 
-- ``BufferedFileStorage``
-- ``FileStorage``
-- ``MemoryStorage``
+Everything the package throws, grouped by what caused it.
+
+- ``XitDBError``
+
+### Writing a storage
+
+The protocols a storage of your own conforms to.
+
 - ``WritableStorage``
 - ``ReadableStorage``
 - ``SyncPoint``
-
-### Opening a file
-
-- ``FileAccess``
-- ``Durability``
-- ``FileLock``
-
-### Values on disk
-
-- ``Slot``
-- ``Slot/Tag``
-
-### Errors
-
-- ``XitDBError``
