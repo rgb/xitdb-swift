@@ -125,10 +125,20 @@ extension DatabaseReader {
             guard read >= Int(ByteArrayFormat.lengthByteCount) else { throw .endOfStream }
             var remaining: UInt64 = chunk.span.bigEndian(at: 0)
             // A length that reaches past the file is a damaged record: it
-            // is reported before any of it is compared.
+            // is reported before any of it is compared. For a key that fits
+            // the first chunk, the chunk itself says whether the bytes are
+            // there; asking the storage for its length, which is a system
+            // call on a file, is kept for the longer keys.
             var position = try keySlot.value.offset(by: ByteArrayFormat.lengthByteCount)
-            let length = try storage.length()
-            guard position <= length, remaining <= length - position else { throw .endOfStream }
+            let firstChunk = UInt64(read - Int(ByteArrayFormat.lengthByteCount))
+            if remaining > firstChunk {
+                if remaining <= UInt64(chunk.count - Int(ByteArrayFormat.lengthByteCount)) {
+                    // the whole key would have fitted: the file ended inside it
+                    throw .endOfStream
+                }
+                let length = try storage.length()
+                guard position <= length, remaining <= length - position else { throw .endOfStream }
+            }
 
             var storedStart = Int(ByteArrayFormat.lengthByteCount)
             var targetStart = 0
