@@ -1040,14 +1040,14 @@ import Testing
         // a counted map that says it is full to the last number
         let full = try damaged(at: mapPosition, .max)
         try full.withTransaction { cursor in
-            #expect(throws: XitDBError.invalidDatabase) {
+            #expect(throws: XitDBError.invalidCount) {
                 try cursor.writePath(countedMap + [.hashMapGet(.value, sha1("new")), .write(.uint(2))])
             }
         }
         // and one that says it is empty, with an entry in it
         let empty = try damaged(at: mapPosition, 0)
         try empty.withTransaction { cursor in
-            #expect(throws: XitDBError.invalidDatabase) {
+            #expect(throws: XitDBError.invalidCount) {
                 try cursor.writePath(countedMap + [.hashMapRemove(sha1("a"))])
             }
         }

@@ -119,6 +119,11 @@ public enum XitDBError: Error, Sendable {
     /// ``OffsetMap`` that XitDB was calling. The error is carried as it was
     /// thrown.
     case callerError(any Error)
+
+    /// A count recorded in the file disagrees with its tree: a counted hash
+    /// map or set whose count says it is empty holds the key being removed,
+    /// or whose count cannot grow is being added to.
+    case invalidCount
 }
 
 extension XitDBError: Equatable {

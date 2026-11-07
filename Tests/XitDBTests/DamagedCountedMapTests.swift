@@ -102,10 +102,10 @@ import Testing
             // A count that cannot grow is damage whatever the key: a put is
             // reported before the trie is written to, for a new key and for
             // one that is there (C4).
-            #expect(throws: XitDBError.invalidDatabase) { try map.put(.uint(9), forHash: Subject.hash(9)) }
-            #expect(throws: XitDBError.invalidDatabase) { try map.put(.uint(9), forHash: Subject.hash(0)) }
-            #expect(throws: XitDBError.invalidDatabase) { try map.putCursor(forHash: Subject.hash(0)) }
-            #expect(throws: XitDBError.invalidDatabase) { try map.putKey(.bytes([1]), forHash: Subject.hash(9)) }
+            #expect(throws: XitDBError.invalidCount) { try map.put(.uint(9), forHash: Subject.hash(9)) }
+            #expect(throws: XitDBError.invalidCount) { try map.put(.uint(9), forHash: Subject.hash(0)) }
+            #expect(throws: XitDBError.invalidCount) { try map.putCursor(forHash: Subject.hash(0)) }
+            #expect(throws: XitDBError.invalidCount) { try map.putKey(.bytes([1]), forHash: Subject.hash(9)) }
             #expect(try subject.subject.storage.length == length)
             // the entries are still read, and a remove counts down from the
             // number
@@ -128,7 +128,7 @@ import Testing
             // A count of nothing is right for an empty map, so only finding
             // the key proves it wrong: a remove of a key that is there is
             // reported, one of a key that is not is not damage.
-            #expect(throws: XitDBError.invalidDatabase) { try map.remove(forHash: Subject.hash(0)) }
+            #expect(throws: XitDBError.invalidCount) { try map.remove(forHash: Subject.hash(0)) }
             #expect(try !map.remove(forHash: Subject.hash(9)))
             // a put counts up from the number it finds
             try map.put(.uint(9), forHash: Subject.hash(9))

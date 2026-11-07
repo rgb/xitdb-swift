@@ -621,6 +621,7 @@ final class ScriptRunner {
         case .invalidEnumTag: "InvalidEnumTag"
         case .invalidBTreeNode: "InvalidBTreeNode"
         case .invalidBTreeNodeKind: "InvalidBTreeNodeKind"
+        case .invalidCount: "InvalidCount"
         case .invalidRange: "InvalidRange"
         case .invalidLength: "InvalidLength"
         case .targetNotEmpty: "TargetNotEmpty"

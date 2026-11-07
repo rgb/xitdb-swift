@@ -522,8 +522,9 @@ public struct ByteWriter: ~Copyable {
     /// - Parameter bytes: The bytes to write.
     /// - Throws: ``XitDBError/unexpectedWriterPosition`` if the write would
     ///   make the array longer and something else has been written to the
-    ///   database since the writer was made,
-    ///   ``XitDBError/expectedTxStart`` if the transaction has ended, or
+    ///   database since the writer was made, or if the position, after a
+    ///   far ``seek(to:)``, lies beyond any position a storage has;
+    ///   ``XitDBError/expectedTxStart`` if the transaction has ended; or
     ///   ``XitDBError/storageFailure(errno:)`` if the storage fails.
     public mutating func write(_ bytes: Span<UInt8>) throws(XitDBError) {
         try record.write(bytes)

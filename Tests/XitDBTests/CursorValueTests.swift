@@ -371,6 +371,32 @@ import Testing
         }
     }
 
+    /// A seek so far that the next write's position is beyond any position
+    /// a storage has is the writer's own error, not the end of a stream:
+    /// nothing is read, and the storage is not asked. Zig traps on the sum.
+    @Test func aWriterRefusesAPositionBeyondAnyStorage() throws {
+        let database = try makeDatabase()
+        try database.withTransaction { cursor in
+            var value = try cursor.writePath([.hashMapGet(.value, sha1("far"))])
+            // the position itself would pass the largest number
+            #expect(throws: XitDBError.unexpectedWriterPosition) {
+                try value.writeBytes { writer in
+                    try writer.write([1])
+                    writer.seek(to: .max - 2)
+                    try writer.write([2, 3, 4])
+                }
+            }
+            // the position fits, but not added to where the array starts
+            #expect(throws: XitDBError.unexpectedWriterPosition) {
+                try value.writeBytes { writer in
+                    writer.seek(to: .max - 2)
+                    try writer.write([2])
+                }
+            }
+            #expect(try value.slot.isEmpty, "a refused write leaves the slot as it was")
+        }
+    }
+
     // MARK: Cursors
 
     @Test func writeIfEmptyGoesByTheSnapshot() throws {

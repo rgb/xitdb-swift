@@ -378,7 +378,7 @@ extension Database {
         var count: UInt64 = 0
         if map.counted {
             count = try reader.uint64(at: pointer.slot.value)
-            if count == .max { throw .invalidDatabase }
+            if count == .max { throw .invalidCount }
         }
 
         let found = try mapSlot(indexPosition: map.position, hash: hash, kind: kind, frozenAt: frozenAt)
@@ -410,7 +410,7 @@ extension Database {
             // rewrite, as in Zig, and what a callback that catches the
             // error leaves behind is for the transaction's poisoning
             // (finding 16).
-            if count == 0 { throw .invalidDatabase }
+            if count == 0 { throw .invalidCount }
             try write(count - 1, at: pointer.slot.value)
         }
 
