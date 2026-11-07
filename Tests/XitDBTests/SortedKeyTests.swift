@@ -45,7 +45,7 @@ import Testing
             for (index, shape) in shapes {
                 try map.put(.uint(UInt64(index)), forKey: shape.key)
             }
-            #expect(try map.count() == 12)
+            #expect(try map.count == 12)
         }
 
         let root = try HashMap(database.rootCursor.readOnly)
@@ -61,7 +61,7 @@ import Testing
             #expect(try pair.value.readUInt64() == UInt64(shape))
             // a key of at most eight bytes without a zero byte is in its slot
             let fits = key.count <= 8 && !key.contains(0)
-            #expect(try pair.key.slot().tag == (fits ? .shortBytes : .bytes), "\(Self.shapes[shape].name)")
+            #expect(try pair.key.slot.tag == (fits ? .shortBytes : .bytes), "\(Self.shapes[shape].name)")
         }
         #expect(seen == ordered)
 
@@ -69,7 +69,7 @@ import Testing
             #expect(try map.rank(of: key) == UInt64(index), "rank of \(key.count) bytes")
             let pair = try #require(try map.entry(at: Int64(index)))
             #expect(try pair.key.readBytes() == key)
-            #expect(try #require(try map.slot(forKey: key)) == (try pair.value.slot()))
+            #expect(try #require(try map.slot(forKey: key)) == (try pair.value.slot))
             var from = try map.iterator(fromKey: key)
             let first = try #require(try from.next())
             #expect(try first.readEntry().key.readBytes() == key)
@@ -148,7 +148,7 @@ import Testing
         }
         let root = try HashMap(database.rootCursor.readOnly)
         let map = try SortedMap(try #require(try root.cursor(forHash: sha1("map").bytes)))
-        #expect(try map.count() == 500)
+        #expect(try map.count == 500)
         #expect(try walked(map) == ordered)
         for (index, key) in ordered.enumerated() where index % 37 == 0 {
             #expect(try map.rank(of: key) == UInt64(index))
@@ -168,7 +168,7 @@ import Testing
             for (index, key) in ordered.enumerated() where index % 2 == 1 {
                 #expect(try map.remove(forKey: key))
             }
-            #expect(try map.count() == 250)
+            #expect(try map.count == 250)
         }
         let after = try SortedMap(
             try #require(try HashMap(database.rootCursor.readOnly).cursor(forHash: sha1("map").bytes)))

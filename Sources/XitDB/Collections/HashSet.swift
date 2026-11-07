@@ -21,8 +21,10 @@ public struct HashSet<Access: CursorAccess> {
     ///
     /// - Throws: Only for a set at the root of the database, if the root
     ///   cannot be read.
-    public func slot() throws(XitDBError) -> Slot {
-        try cursor.slot()
+    public var slot: Slot {
+        get throws(XitDBError) {
+            try cursor.slot
+        }
     }
 
     /// An iterator over the set's entries. Each cursor it gives is at an

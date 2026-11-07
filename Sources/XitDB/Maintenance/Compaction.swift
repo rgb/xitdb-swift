@@ -54,11 +54,11 @@ extension Database {
         // the target must be a new or empty database, because compaction
         // writes to it with ordinary transactions. this also rejects
         // compacting a database into its own file.
-        guard try target.rootCursor.slot().isEmpty else { throw .targetNotEmpty }
+        guard try target.rootCursor.slot.isEmpty else { throw .targetNotEmpty }
 
         // an empty root compacts to a new database. a root explicitly set
         // to nothing isn't empty, so it is remapped below.
-        let sourceRoot = try rootCursor.slot()
+        let sourceRoot = try rootCursor.slot
         if sourceRoot.isEmpty { return }
 
         // the target is written as one ordinary transaction, so it is

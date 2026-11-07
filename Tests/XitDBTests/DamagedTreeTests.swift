@@ -89,8 +89,8 @@ import Testing
         attempt("slice 0 5") { list, _ in try list.formSlice(offset: 0, count: 5) }
         attempt("slice 45 2") { list, _ in try list.formSlice(offset: 45, count: 2) }
         attempt("slice 20 5") { list, _ in try list.formSlice(offset: 20, count: 5) }
-        attempt("concat onto") { list, short in try short.append(contentsOf: try list.slot()) }
-        attempt("concat") { list, short in try list.append(contentsOf: try short.slot()) }
+        attempt("concat onto") { list, short in try short.append(contentsOf: try list.slot) }
+        attempt("concat") { list, short in try list.append(contentsOf: try short.slot) }
         attempt("iterate") { list, _ in
             var iterator = try list.iterator()
             while try iterator.next() != nil {}
@@ -114,7 +114,7 @@ import Testing
         var count = 0
         try subject.database.withTransaction { cursor in
             let list = try LinkedArrayList(try HashMap(cursor).putCursor(forHash: sha1("list").bytes))
-            #expect(try list.count() == 40)
+            #expect(try list.count == 40)
             #expect(throws: XitDBError.indexOutOfRange) { try list.put(.uint(1), at: 50) }
             #expect(throws: XitDBError.indexOutOfRange) { try list.formSlice(offset: 45, count: 2) }
             var iterator = try list.iterator()
@@ -246,9 +246,9 @@ import Testing
                 var short = try LinkedArrayList(try map.putCursor(forHash: sha1("short").bytes))
                 do {
                     if listOnto {
-                        try short.append(contentsOf: try list.slot())
+                        try short.append(contentsOf: try list.slot)
                     } else {
-                        try list.append(contentsOf: try short.slot())
+                        try list.append(contentsOf: try short.slot)
                     }
                 } catch XitDBError.invalidBTreeNode {
                     reported = true

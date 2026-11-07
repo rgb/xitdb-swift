@@ -898,9 +898,9 @@ final class ScriptRunner {
         case "slot":
             try op.allow("op", "note", "expect_error", "on", "as", "expect")
             let result = try read(try op.string("on")) {
-                try $0.slot()
+                try $0.slot
             } readOnly: {
-                try $0.slot()
+                try $0.slot
             }
             try expectSlot(op, result)
             try bind(try op.optionalString("as"), .slot(result))
@@ -1107,9 +1107,9 @@ final class ScriptRunner {
         case "count":
             try op.allow("op", "note", "expect_error", "on", "expect")
             let result = try read(try op.string("on")) {
-                try $0.count()
+                try $0.count
             } readOnly: {
-                try $0.count()
+                try $0.count
             }
             if op.has("expect"), try op.unsigned("expect") != result {
                 throw ScriptFailure("count gave \(result)")
@@ -1208,7 +1208,7 @@ final class ScriptRunner {
     /// An iterator over an array list from an index: `ArrayList.iteratorFrom`
     /// in Zig, or the linked array list's or the sorted map's, by the tag.
     private func iterator<Access>(of cursor: Cursor<Access>, from index: Int64) throws -> CollectionIterator {
-        switch try cursor.slot().tag {
+        switch try cursor.slot.tag {
         case .none, .arrayList: return try cursor.iterator(fromArrayListIndex: index)
         case .linkedArrayList: return try cursor.iterator(fromLinkedArrayListIndex: index)
         case .sortedMap, .sortedSet: return try cursor.iterator(fromSortedMapIndex: index)
@@ -1219,7 +1219,7 @@ final class ScriptRunner {
     /// An iterator over a sorted map or set from a key:
     /// `SortedMap.iteratorFrom` in Zig.
     private func iterator<Access>(of cursor: Cursor<Access>, fromKey key: [UInt8]) throws -> CollectionIterator {
-        switch try cursor.slot().tag {
+        switch try cursor.slot.tag {
         case .none, .sortedMap, .sortedSet: return try cursor.iterator(fromSortedMapKey: SortedKey(key))
         default: throw XitDBError.unexpectedTag
         }

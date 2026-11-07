@@ -52,7 +52,7 @@ import Testing
         }
         #expect(recorder.take() == [.barrier, .full])
         root = database.rootCursor
-        #expect(try root.count() == 3)
+        #expect(try root.count == 3)
     }
 
     /// Initialising a root that is already initialised commits nothing, so
@@ -66,7 +66,7 @@ import Testing
         let list = try database.rootCursor.writePath([.arrayListInit])
         #expect(recorder.take() == [])
         #expect(try database.committedSize == sizeBefore)
-        #expect(try list.count() == 0)
+        #expect(try list.count == 0)
     }
 
     /// An empty path on a root cursor commits nothing either.

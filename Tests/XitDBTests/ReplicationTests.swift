@@ -214,7 +214,7 @@ import Testing
         replica = try Database(storage: replicaSubject.storage, hashSize: 20)
         let sourceHistory = try ArrayList<ReadOnly>(source.rootCursor.readOnly)
         let replicaHistory = try ArrayList<ReadOnly>(replica.rootCursor.readOnly)
-        #expect(try sourceHistory.count() == replicaHistory.count())
+        #expect(try sourceHistory.count == replicaHistory.count)
         let momentCursor = try #require(try replicaHistory.cursor(at: -1))
         let moment = try HashMap<ReadOnly>(momentCursor)
         let key299 = try #require(try moment.cursor(forHash: hashInt("key-299")))
@@ -240,7 +240,7 @@ import Testing
             try expectSameCommittedBytes(target, compactedReplica)
 
             let compactedHistory = try ArrayList<ReadOnly>(compactedReplica.rootCursor.readOnly)
-            #expect(try compactedHistory.count() == 2)
+            #expect(try compactedHistory.count == 2)
             let compactedMomentCursor = try #require(try compactedHistory.cursor(at: -1))
             let compactedMoment = try HashMap<ReadOnly>(compactedMomentCursor)
             let compactedKey299 = try #require(try compactedMoment.cursor(forHash: hashInt("key-299")))
@@ -440,7 +440,7 @@ import Testing
             let inner = try HashMap<ReadOnly>(innerCursor)
             let listCursor = try #require(try inner.cursor(forHash: hashInt("list")))
             let list = try ArrayList<ReadOnly>(listCursor)
-            #expect(try list.count() == 2)
+            #expect(try list.count == 2)
             let last = try #require(try list.cursor(at: -1))
             #expect(try last.readUInt64() == 2)
         }
@@ -460,7 +460,7 @@ import Testing
             let inner = try HashMap<ReadOnly>(innerCursor)
             let listCursor = try #require(try inner.cursor(forHash: hashInt("list")))
             let list = try ArrayList<ReadOnly>(listCursor)
-            #expect(try list.count() == 2)
+            #expect(try list.count == 2)
 
             // a compacted database is a new file, so a replica of it is seeded from byte 0
             let compactedReplica = try Database(storage: MemoryStorage(), hashSize: 20)
@@ -478,7 +478,7 @@ import Testing
         let history = try ArrayList<ReadWrite>(db.rootCursor)
         try history.append(.uint(1))
         try history.append(.uint(2))
-        #expect(try history.count() == 2)
+        #expect(try history.count == 2)
         var iter = try history.iterator()
         var iterCount = 0
         while try iter.next() != nil { iterCount += 1 }
@@ -505,7 +505,7 @@ import Testing
         // a root cursor kept from before the write sees the new root
         // everywhere it reads its slot, not just in typed reads
         #expect(try retained.readUInt64() == 42)
-        #expect(try retained.slot().value == 42)
+        #expect(try retained.slot.value == 42)
         let retainedPathSlot = try #require(try retained.readPathSlot([]))
         #expect(retainedPathSlot.value == 42)
         let retainedPath = try #require(try retained.readPath([]))
@@ -556,7 +556,7 @@ import Testing
         try map.put(.uint(1), forKey: utf8("a"))
         try map.put(.uint(3), forKey: utf8("c"))
         #expect(try map.remove(forKey: utf8("c")))
-        #expect(try map.count() == 2)
+        #expect(try map.count == 2)
         #expect(try map.rank(of: utf8("b")) == 1)
         let a = try #require(try map.cursor(forKey: utf8("a")))
         #expect(try a.readUInt64() == 1)
@@ -576,7 +576,7 @@ import Testing
         try list.append(.uint(1))
         try list.append(.uint(3))
         try list.insert(.uint(2), at: 1)
-        #expect(try list.count() == 3)
+        #expect(try list.count == 3)
         let second = try #require(try list.cursor(at: 1))
         #expect(try second.readUInt64() == 2)
         try list.remove(at: 0)

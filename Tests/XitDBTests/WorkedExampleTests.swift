@@ -61,7 +61,7 @@ import Testing
         let value = try #require(try moment.readPath([.hashMapGet(.value, sha1("foo"))]))
         #expect(try value.readUInt64() == 42)
         #expect(try moment.readPath([.hashMapGet(.value, sha1("bar"))]) == nil)
-        #expect(try database.rootCursor.count() == 1)
-        #expect(try database.rootCursor.slot() == Slot(value: 71, tag: .arrayList))
+        #expect(try database.rootCursor.count == 1)
+        #expect(try database.rootCursor.slot == Slot(value: 71, tag: .arrayList))
     }
 }

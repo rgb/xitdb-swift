@@ -149,7 +149,7 @@ import Testing
         var count = 0
         try subject.database.withTransaction { cursor in
             let map = try SortedMap(try HashMap(cursor).putCursor(forHash: sha1("map").bytes))
-            #expect(try map.count() == 40)
+            #expect(try map.count == 40)
             #expect(try map.entry(at: 40) == nil)
             #expect(try map.entry(at: -41) == nil)
             var iterator = try map.iterator()
@@ -398,7 +398,7 @@ import Testing
         try database.withTransaction { cursor in
             let map = try SortedMap(try HashMap(cursor).putCursor(forHash: sha1("map").bytes))
             try map.put(.uint(1), forKey: long)
-            keyPtr = try #require(try map.entry(forKey: long)).key.slot().value
+            keyPtr = try #require(try map.entry(forKey: long)).key.slot.value
         }
         // the first chunk, the length and 248 bytes of the key, is there;
         // the second is not
@@ -485,7 +485,7 @@ import Testing
             let map = try SortedMap(try HashMap(cursor).putCursor(forHash: sha1("map").bytes))
             try map.put(.uint(1), forKey: long)
             let pair = try #require(try map.entry(forKey: long))
-            keyPtr = try pair.key.slot().value
+            keyPtr = try pair.key.slot.value
         }
         // claim one byte more than the file has after the record's length,
         // and read without a transaction, which would append to the file

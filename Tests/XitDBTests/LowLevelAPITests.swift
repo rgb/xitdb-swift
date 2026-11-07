@@ -73,7 +73,7 @@ import Testing
 
         /// lib.zig 4334-4336.
         func count() throws -> UInt64 {
-            try cursor.count()
+            try cursor.count
         }
 
         /// lib.zig 4352-4356.
@@ -249,7 +249,7 @@ import Testing
             .hashMapGet(.value, fooKey),
             .ctx,
         ]) { (cursor: inout Cursor<ReadWrite>) in
-            #expect(try cursor.slot().tag == .none)
+            #expect(try cursor.slot.tag == .none)
             try cursor.writeBytes { writer in
                 try writer.write(utf8("bar"))
             }
@@ -271,7 +271,7 @@ import Testing
                     _ = try cursor.database.rootCursor.writePath([.arrayListAppend])
                 }
             }
-            #expect(try database.rootCursor.count() == 1)
+            #expect(try database.rootCursor.count == 1)
         }
 
         // read foo
@@ -282,7 +282,7 @@ import Testing
                     .hashMapGet(.value, fooKey),
                 ])
             )
-            #expect(try barCursor.count() == 3)
+            #expect(try barCursor.count == 3)
             let barValue = try barCursor.readBytes(maxCount: maxReadBytes)
             #expect(barValue == utf8("bar"))
         }
@@ -297,7 +297,7 @@ import Testing
                 .hashMapGet(.value, fooKey),
                 .ctx,
             ]) { (cursor: inout Cursor<ReadWrite>) in
-                #expect(try cursor.slot().tag != .none)
+                #expect(try cursor.slot.tag != .none)
 
                 let value = try cursor.readBytes(maxCount: maxReadBytes)
                 #expect(value == utf8("bar"))
@@ -346,7 +346,7 @@ import Testing
                 .hashMapGet(.value, fooKey),
                 .ctx,
             ]) { (cursor: inout Cursor<ReadWrite>) in
-                #expect(try cursor.slot().tag != .none)
+                #expect(try cursor.slot.tag != .none)
 
                 try cursor.writeBytes { writer in
                     try writer.write(utf8("x"))
@@ -405,12 +405,12 @@ import Testing
             // appending must clear the failed moment's slot, including its stored value
             let history = try PathArrayList(database.rootCursor)
             let countBefore = try history.count()
-            #expect(try history.appendCursor().slot().isEmpty)
+            #expect(try history.appendCursor().slot.isEmpty)
             #expect(try history.getSlot(-1) == nil)
             try history.slice(countBefore)
             try history.append(.uint(999))
             try history.slice(countBefore)
-            #expect(try history.appendCursor().slot().isEmpty)
+            #expect(try history.appendCursor().slot.isEmpty)
             #expect(try history.getSlot(-1) == nil)
             try history.slice(countBefore)
             #expect(countBefore == 3)  // as in a run of the Zig test, with the length after it
@@ -430,7 +430,7 @@ import Testing
             ])
 
             // the slot tag is .bytes because the byte array is > 8 bytes long
-            #expect(try barCursor.slot().tag == .bytes)
+            #expect(try barCursor.slot.tag == .bytes)
 
             // writing again returns the same slot
             do {
@@ -483,8 +483,8 @@ import Testing
             ])
 
             // the slot tag is .short_bytes because the byte array is <= 8 bytes long
-            #expect(try barCursor.slot().tag == .shortBytes)
-            #expect(try barCursor.count() == 8)
+            #expect(try barCursor.slot.tag == .shortBytes)
+            #expect(try barCursor.count == 8)
 
             // make sure .short_bytes can be read with a reader
             var barReader = try barCursor.reader()
@@ -528,8 +528,8 @@ import Testing
                 ])
 
                 // the slot tag is .bytes because the byte array is > 8 bytes long including the format tag
-                #expect(try barCursor.slot().tag == .bytes)
-                #expect(try barCursor.count() == 8)
+                #expect(try barCursor.slot.tag == .bytes)
+                #expect(try barCursor.count == 8)
 
                 // read bar
                 let readBarCursor = try #require(
@@ -561,8 +561,8 @@ import Testing
                 ])
 
                 // the slot tag is .short_bytes because the byte array is <= 8 bytes long including the format tag
-                #expect(try barCursor.slot().tag == .shortBytes)
-                #expect(try barCursor.count() == 6)
+                #expect(try barCursor.slot.tag == .shortBytes)
+                #expect(try barCursor.count == 6)
 
                 // read bar
                 let readBarCursor = try #require(
@@ -584,7 +584,7 @@ import Testing
                 // the value is in the slot, so a cursor with no position can be
                 // read with a reader too. the format tag is not part of the value.
                 let slotCursor = Cursor<ReadOnly>(
-                    slotPointer: SlotPointer(position: nil, slot: try barCursor.slot()),
+                    slotPointer: SlotPointer(position: nil, slot: try barCursor.slot),
                     database: database
                 )
                 var slotReader = try slotCursor.reader()
@@ -609,8 +609,8 @@ import Testing
                 ])
 
                 // the slot tag is .short_bytes because the byte array is <= 8 bytes long including the format tag
-                #expect(try barCursor.slot().tag == .shortBytes)
-                #expect(try barCursor.count() == 5)
+                #expect(try barCursor.slot.tag == .shortBytes)
+                #expect(try barCursor.count == 5)
 
                 // read bar
                 let readBarCursor = try #require(
@@ -771,9 +771,9 @@ import Testing
                         .arrayListGet(-1)
                     ])
                 )
-                let indexPosition = try mapCursor.slot().value
+                let indexPosition = try mapCursor.slot.value
                 #expect(indexPosition == 7975)  // as in a run of the fix branch's Zig test
-                #expect(try mapCursor.slot().tag == .hashMap)
+                #expect(try mapCursor.slot.tag == .hashMap)
 
                 let slotSize = Slot.byteCount
 
@@ -824,9 +824,9 @@ import Testing
                         .arrayListGet(-1)
                     ])
                 )
-                let indexPosition = try mapCursor.slot().value
+                let indexPosition = try mapCursor.slot.value
                 #expect(indexPosition == 9215)  // as in a run of the fix branch's Zig test
-                #expect(try mapCursor.slot().tag == .hashMap)
+                #expect(try mapCursor.slot.tag == .hashMap)
 
                 let slotSize = Slot.byteCount
 
@@ -867,9 +867,9 @@ import Testing
                         .arrayListGet(-1)
                     ])
                 )
-                let indexPosition = try mapCursor.slot().value
+                let indexPosition = try mapCursor.slot.value
                 #expect(indexPosition == 9985)  // as in a run of the fix branch's Zig test
-                #expect(try mapCursor.slot().tag == .hashMap)
+                #expect(try mapCursor.slot.tag == .hashMap)
 
                 let slotSize = Slot.byteCount
 
@@ -1393,7 +1393,7 @@ import Testing
                     .arrayListGet(0)
                 ])
             )
-            #expect(try noneCursor.slot().tag == .none)
+            #expect(try noneCursor.slot.tag == .none)
             let noneValue = try noneCursor.readBytes(maxCount: maxReadBytes)
             #expect(noneValue == [])
             #expect(try readBytesIntoBuffer(noneCursor, bufferSize: 8) == [])
@@ -1413,7 +1413,7 @@ import Testing
                 .arrayListGet(-1)
             ])
         )
-        #expect(try listCursor.count() == 10)
+        #expect(try listCursor.count == 10)
 
         // the length of the storage here in a run of the Zig test, on every kind of storage
         #expect(try subject.storage.length == 3956)
@@ -1561,7 +1561,7 @@ import Testing
                     .hashMapGet(.value, sha1("even"))
                 ])
             )
-            #expect(UInt64(slotCount + 1) == (try evenListCursor.count()))
+            #expect(UInt64(slotCount + 1) == (try evenListCursor.count))
 
             // iterate over list
             let innerCursor = try #require(

@@ -42,7 +42,7 @@ import Testing
         #expect(try get(database, "minus").readInt64() == -1)
         #expect(try get(database, "float").readDouble().bitPattern == (-0.0).bitPattern)
         #expect(try get(database, "nan").readDouble().bitPattern == 0x7FF8_0000_0000_1234)
-        #expect(try get(database, "minus").slot() == Slot(value: .max, tag: .int))
+        #expect(try get(database, "minus").slot == Slot(value: .max, tag: .int))
     }
 
     @Test func readingTheWrongKindIsUnexpectedTag() throws {
@@ -58,14 +58,14 @@ import Testing
         #expect(throws: XitDBError.unexpectedTag) { try uint.readBytes() }
         #expect(throws: XitDBError.unexpectedTag) { try uint.readBytesWithFormatTag() }
         #expect(throws: XitDBError.unexpectedTag) { try uint.readEntry() }
-        #expect(throws: XitDBError.unexpectedTag) { try uint.count() }
+        #expect(throws: XitDBError.unexpectedTag) { try uint.count }
         var buffer = [UInt8](repeating: 0, count: 8)
         #expect(throws: XitDBError.unexpectedTag) {
             var span = buffer.mutableSpan
             return try uint.readBytes(into: &span)
         }
         #expect(throws: XitDBError.unexpectedTag) { try database.rootCursor.readUInt64() }
-        #expect(throws: XitDBError.unexpectedTag) { try database.rootCursor.count() }
+        #expect(throws: XitDBError.unexpectedTag) { try database.rootCursor.count }
     }
 
     // MARK: Bytes
@@ -81,14 +81,14 @@ import Testing
         try put(database, "tagged", .bytes(Array("123456".utf8), formatTag: "bi"))
         try put(database, "tagged7", .bytes(Array("1234567".utf8), formatTag: "bi"))
 
-        #expect(try get(database, "short").slot().tag == .shortBytes)
-        #expect(try get(database, "long").slot().tag == .bytes)
-        #expect(try get(database, "zero").slot().tag == .bytes)
-        #expect(try get(database, "empty").slot() == Slot(value: 0, tag: .shortBytes))
-        #expect(try get(database, "tagged").slot().tag == .shortBytes)
-        #expect(try get(database, "tagged").slot().full)
-        #expect(try get(database, "tagged7").slot().tag == .bytes)
-        #expect(try get(database, "tagged7").slot().full)
+        #expect(try get(database, "short").slot.tag == .shortBytes)
+        #expect(try get(database, "long").slot.tag == .bytes)
+        #expect(try get(database, "zero").slot.tag == .bytes)
+        #expect(try get(database, "empty").slot == Slot(value: 0, tag: .shortBytes))
+        #expect(try get(database, "tagged").slot.tag == .shortBytes)
+        #expect(try get(database, "tagged").slot.full)
+        #expect(try get(database, "tagged7").slot.tag == .bytes)
+        #expect(try get(database, "tagged7").slot.full)
 
         #expect(try get(database, "short").readBytes() == Array("12345678".utf8))
         #expect(try get(database, "long").readBytes() == Array("123456789".utf8))
@@ -101,11 +101,11 @@ import Testing
                 == Bytes(Array("1234567".utf8), formatTag: "bi"))
         #expect(try get(database, "long").readBytesWithFormatTag().formatTag == nil)
 
-        #expect(try get(database, "short").count() == 8)
-        #expect(try get(database, "long").count() == 9)
-        #expect(try get(database, "empty").count() == 0)
-        #expect(try get(database, "tagged").count() == 6)
-        #expect(try get(database, "tagged7").count() == 7)
+        #expect(try get(database, "short").count == 8)
+        #expect(try get(database, "long").count == 9)
+        #expect(try get(database, "empty").count == 0)
+        #expect(try get(database, "tagged").count == 6)
+        #expect(try get(database, "tagged7").count == 7)
     }
 
     @Test func bytesIsShortAgreesWithWhereTheValueGoes() {
@@ -210,10 +210,10 @@ import Testing
         let database = try makeDatabase()
         try put(database, "none", .slot(nil))
         let none = try get(database, "none")
-        #expect(try none.slot() == Slot(tag: .none, full: true))
+        #expect(try none.slot == Slot(tag: .none, full: true))
         #expect(try none.readBytes() == [])
         #expect(try none.readBytesWithFormatTag() == Bytes([]))
-        #expect(try none.count() == 0)
+        #expect(try none.count == 0)
 
         var buffer = [UInt8](repeating: 0xEE, count: 4)
         var span = buffer.mutableSpan
@@ -262,14 +262,14 @@ import Testing
         try database.withTransaction { cursor in
             var short = try cursor.writePath([.hashMapGet(.value, sha1("short"))])
             try short.writeBytes { writer in try writer.write([1, 2, 3]) }
-            #expect(try short.slot().tag == .bytes)
+            #expect(try short.slot.tag == .bytes)
             #expect(try short.readBytes() == [1, 2, 3])
 
             var empty = try cursor.writePath([.hashMapGet(.value, sha1("empty"))])
             try empty.writeBytes { _ in }
-            #expect(try empty.slot().tag == .bytes)
+            #expect(try empty.slot.tag == .bytes)
             #expect(try empty.readBytes() == [])
-            #expect(try empty.count() == 0)
+            #expect(try empty.count == 0)
 
             // Zig's test: three bytes, then each overwritten after a seek
             var seek = try cursor.writePath([.hashMapGet(.value, sha1("seek"))])
@@ -294,7 +294,7 @@ import Testing
                 try writer.write([5, 6].span)
             }
             #expect(try gap.readBytesWithFormatTag() == Bytes([1, 0, 0, 0, 5, 6], formatTag: FormatTag(0x67, 0x70)))
-            #expect(try gap.slot().full)
+            #expect(try gap.slot.full)
 
             // the tag can also be set by the body
             var tagged = try cursor.writePath([.hashMapGet(.value, sha1("tagged"))])
@@ -383,7 +383,7 @@ import Testing
             #expect(try first.readUInt64() == 1)
 
             // the stale copy still thinks the slot is empty, and overwrites
-            #expect(try stale.slot().isEmpty)
+            #expect(try stale.slot.isEmpty)
             try stale.writeIfEmpty(.uint(3))
             #expect(try stale.readUInt64() == 3)
             #expect(try first.readUInt64() == 1)
@@ -398,13 +398,13 @@ import Testing
             let value = try cursor.writePath([.hashMapGet(.value, sha1("a"))])
             let readOnly = value.readOnly
             #expect(try readOnly.readUInt64() == 5)
-            #expect(try readOnly.slot() == (try value.slot()))
+            #expect(try readOnly.slot == (try value.slot))
         }
         // a read-only copy of a root cursor still follows the root
         let root = database.rootCursor.readOnly
-        let before = try root.slot()
+        let before = try root.slot
         try put(database, "b", .uint(6))
-        #expect(try root.slot() != before)
+        #expect(try root.slot != before)
     }
 
     @Test func aKeyValuePairGivesItsKeyValueAndHash() throws {
@@ -414,7 +414,7 @@ import Testing
             _ = try cursor.writePath([.hashMapGet(.value, sha1("k")), .write(.uint(9))])
         }
         let entry = try #require(try database.rootCursor.readPath([.hashMapGet(.kvPair, sha1("k"))]))
-        #expect(try entry.slot().tag == .kvPair)
+        #expect(try entry.slot.tag == .kvPair)
         let pair = try entry.readEntry()
         #expect(pair.hash == sha1("k").bytes)
         #expect(try pair.key.readBytes() == Array("k".utf8))
@@ -449,11 +449,11 @@ import Testing
             _ = try cursor.writePath([.hashMapGet(.value, sha1("plain")), .hashMapInit()])
             _ = try cursor.writePath([.hashMapGet(.value, sha1("set")), .hashMapInit(set: true)])
         }
-        #expect(try get(database, "list").count() == 2)
-        #expect(try get(database, "counted").count() == 1)
-        #expect(try get(database, "countedSet").count() == 1)
-        #expect(throws: XitDBError.unexpectedTag) { try get(database, "plain").count() }
-        #expect(throws: XitDBError.unexpectedTag) { try get(database, "set").count() }
+        #expect(try get(database, "list").count == 2)
+        #expect(try get(database, "counted").count == 1)
+        #expect(try get(database, "countedSet").count == 1)
+        #expect(throws: XitDBError.unexpectedTag) { try get(database, "plain").count }
+        #expect(throws: XitDBError.unexpectedTag) { try get(database, "set").count }
         #expect(try database.rootCursor.readPath([.hashMapGet(.value, sha1("missing"))]) == nil)
     }
 }

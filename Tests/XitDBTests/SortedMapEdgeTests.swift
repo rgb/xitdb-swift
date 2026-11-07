@@ -27,7 +27,7 @@ import Testing
             let set = try SortedSet(try HashMap(cursor).putCursor(forHash: sha1("set").bytes))
             try set.insert(Array("k7".utf8))
             try set.insert(Array("k39".utf8))
-            #expect(try set.count() == 40)
+            #expect(try set.count == 40)
         }
         let after = try #require(try database.rootCursor.readPathSlot([.hashMapGet(.value, sha1("set"))]))
         let treeAfter = try database.reader.bTreeHeader(at: after.value)

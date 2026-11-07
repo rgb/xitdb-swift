@@ -194,7 +194,7 @@ import Testing
         // then pass it to the ArrayList.init method
         let fruitsCursor = try #require(try moment.cursor(forHash: hashInt("fruits")))
         let fruits = try ArrayList<ReadOnly>(fruitsCursor)
-        #expect(try fruits.count() == 3)
+        #expect(try fruits.count == 3)
 
         // now we can get the first item from the fruits list and read it
         let appleCursor = try #require(try fruits.cursor(at: 0))
@@ -203,7 +203,7 @@ import Testing
 
         let peopleCursor = try #require(try moment.cursor(forHash: hashInt("people")))
         let people = try ArrayList<ReadOnly>(peopleCursor)
-        #expect(try people.count() == 2)
+        #expect(try people.count == 2)
 
         let aliceCursor = try #require(try people.cursor(at: 0))
         let alice = try HashMap<ReadOnly>(aliceCursor)
@@ -212,7 +212,7 @@ import Testing
 
         let todosCursor = try #require(try moment.cursor(forHash: hashInt("todos")))
         let todos = try LinkedArrayList<ReadOnly>(todosCursor)
-        #expect(try todos.count() == 3)
+        #expect(try todos.count == 3)
 
         let todoCursor = try #require(try todos.cursor(at: 0))
         let todoValue = try todoCursor.readBytes(maxCount: maxReadBytes)
@@ -231,7 +231,7 @@ import Testing
                 let kvPair = try kvPairCursor.readEntry()
                 _ = try readBytes(kvPair.key, bufferSize: 100)
 
-                switch try kvPair.value.slot().tag {
+                switch try kvPair.value.slot.tag {
                 case .shortBytes, .bytes:
                     _ = try readBytes(kvPair.value, bufferSize: 100)
                 case .uint: _ = try kvPair.value.readUInt64()
@@ -245,7 +245,7 @@ import Testing
         do {
             let lettersCountedMapCursor = try #require(try moment.cursor(forHash: hashInt("letters-counted-map")))
             let lettersCountedMap = try CountedHashMap<ReadOnly>(lettersCountedMapCursor)
-            #expect(try lettersCountedMap.count() == 2)
+            #expect(try lettersCountedMap.count == 2)
 
             var iter = try lettersCountedMap.iterator()
             var count = 0
@@ -276,7 +276,7 @@ import Testing
         do {
             let lettersCountedSetCursor = try #require(try moment.cursor(forHash: hashInt("letters-counted-set")))
             let lettersCountedSet = try CountedHashSet<ReadOnly>(lettersCountedSetCursor)
-            #expect(try lettersCountedSet.count() == 2)
+            #expect(try lettersCountedSet.count == 2)
 
             var iter = try lettersCountedSet.iterator()
             var count = 0
@@ -349,7 +349,7 @@ import Testing
 
             let todosCursor = try moment.putCursor(forHash: hashInt("todos"))
             var todos = try LinkedArrayList<ReadWrite>(todosCursor)
-            try todos.append(contentsOf: try todosCursor.slot())
+            try todos.append(contentsOf: try todosCursor.slot)
             try todos.formSlice(offset: 1, count: 2)
             try todos.remove(at: 1)
 
@@ -380,12 +380,12 @@ import Testing
 
         let fruitsCursor = try #require(try moment.cursor(forHash: hashInt("fruits")))
         let fruits = try ArrayList<ReadOnly>(fruitsCursor)
-        #expect(try fruits.count() == 2)
+        #expect(try fruits.count == 2)
 
         // you can get both the key and value cursor this way
         let fruitsKvCursor = try #require(try moment.entry(forHash: hashInt("fruits")))
-        #expect(try fruitsKvCursor.key.slot().tag == .shortBytes)
-        #expect(try fruitsKvCursor.value.slot().tag == .arrayList)
+        #expect(try fruitsKvCursor.key.slot.tag == .shortBytes)
+        #expect(try fruitsKvCursor.value.slot.tag == .arrayList)
 
         let lemonCursor = try #require(try fruits.cursor(at: 0))
         let lemonValue = try lemonCursor.readBytes(maxCount: maxReadBytes)
@@ -393,7 +393,7 @@ import Testing
 
         let peopleCursor = try #require(try moment.cursor(forHash: hashInt("people")))
         let people = try ArrayList<ReadOnly>(peopleCursor)
-        #expect(try people.count() == 2)
+        #expect(try people.count == 2)
 
         let aliceCursor = try #require(try people.cursor(at: 0))
         let alice = try HashMap<ReadOnly>(aliceCursor)
@@ -402,7 +402,7 @@ import Testing
 
         let todosCursor = try #require(try moment.cursor(forHash: hashInt("todos")))
         let todos = try LinkedArrayList<ReadOnly>(todosCursor)
-        #expect(try todos.count() == 1)
+        #expect(try todos.count == 1)
 
         let todoCursor = try #require(try todos.cursor(at: 0))
         let todoValue = try todoCursor.readBytes(maxCount: maxReadBytes)
@@ -410,7 +410,7 @@ import Testing
 
         let lettersCountedMapCursor = try #require(try moment.cursor(forHash: hashInt("letters-counted-map")))
         let lettersCountedMap = try CountedHashMap<ReadOnly>(lettersCountedMapCursor)
-        #expect(try lettersCountedMap.count() == 1)
+        #expect(try lettersCountedMap.count == 1)
 
         let lettersSetCursor = try #require(try moment.cursor(forHash: hashInt("letters-set")))
         let lettersSet = try HashSet<ReadOnly>(lettersSetCursor)
@@ -419,7 +419,7 @@ import Testing
 
         let lettersCountedSetCursor = try #require(try moment.cursor(forHash: hashInt("letters-counted-set")))
         let lettersCountedSet = try CountedHashSet<ReadOnly>(lettersCountedSetCursor)
-        #expect(try lettersCountedSet.count() == 1)
+        #expect(try lettersCountedSet.count == 1)
     }
 
     /// test.zig 560-601: "the old data hasn't changed".
@@ -438,7 +438,7 @@ import Testing
 
         let fruitsCursor = try #require(try moment.cursor(forHash: hashInt("fruits")))
         let fruits = try ArrayList<ReadOnly>(fruitsCursor)
-        #expect(try fruits.count() == 3)
+        #expect(try fruits.count == 3)
 
         let appleCursor = try #require(try fruits.cursor(at: 0))
         let appleValue = try appleCursor.readBytes(maxCount: maxReadBytes)
@@ -446,7 +446,7 @@ import Testing
 
         let peopleCursor = try #require(try moment.cursor(forHash: hashInt("people")))
         let people = try ArrayList<ReadOnly>(peopleCursor)
-        #expect(try people.count() == 2)
+        #expect(try people.count == 2)
 
         let aliceCursor = try #require(try people.cursor(at: 0))
         let alice = try HashMap<ReadOnly>(aliceCursor)
@@ -455,7 +455,7 @@ import Testing
 
         let todosCursor = try #require(try moment.cursor(forHash: hashInt("todos")))
         let todos = try LinkedArrayList<ReadOnly>(todosCursor)
-        #expect(try todos.count() == 3)
+        #expect(try todos.count == 3)
 
         let todoCursor = try #require(try todos.cursor(at: 0))
         let todoValue = try todoCursor.readBytes(maxCount: maxReadBytes)
@@ -480,7 +480,7 @@ import Testing
 
         let fruitsCursor = try #require(try moment.cursor(forHash: hashInt("fruits")))
         let fruits = try ArrayList<ReadOnly>(fruitsCursor)
-        #expect(try fruits.count() == 3)
+        #expect(try fruits.count == 3)
 
         let appleCursor = try #require(try fruits.cursor(at: 0))
         let appleValue = try appleCursor.readBytes(maxCount: maxReadBytes)
@@ -488,7 +488,7 @@ import Testing
 
         let peopleCursor = try #require(try moment.cursor(forHash: hashInt("people")))
         let people = try ArrayList<ReadOnly>(peopleCursor)
-        #expect(try people.count() == 2)
+        #expect(try people.count == 2)
 
         let aliceCursor = try #require(try people.cursor(at: 0))
         let alice = try HashMap<ReadOnly>(aliceCursor)
@@ -497,7 +497,7 @@ import Testing
 
         let todosCursor = try #require(try moment.cursor(forHash: hashInt("todos")))
         let todos = try LinkedArrayList<ReadOnly>(todosCursor)
-        #expect(try todos.count() == 3)
+        #expect(try todos.count == 3)
 
         let todoCursor = try #require(try todos.cursor(at: 0))
         let todoValue = try todoCursor.readBytes(maxCount: maxReadBytes)
@@ -558,7 +558,7 @@ import Testing
             // create a new key called "food" whose initial value is
             // based on the "fruits" list
             var foodCursor = try moment.putCursor(forHash: hashInt("food"))
-            try foodCursor.write(.slot(try fruits.slot()))
+            try foodCursor.write(.slot(try fruits.slot))
 
             let food = try ArrayList<ReadWrite>(foodCursor)
             try food.append(.bytes(utf8("eggs")))
@@ -572,19 +572,19 @@ import Testing
         // the food list includes the fruits
         let foodCursor = try #require(try moment.cursor(forHash: hashInt("food")))
         let food = try ArrayList<ReadOnly>(foodCursor)
-        #expect(try food.count() == 6)
+        #expect(try food.count == 6)
 
         // ...but the fruits list hasn't been changed
         let fruitsCursor = try #require(try moment.cursor(forHash: hashInt("fruits")))
         let fruits = try ArrayList<ReadOnly>(fruitsCursor)
-        #expect(try fruits.count() == 3)
+        #expect(try fruits.count == 3)
     }
 
     /// test.zig 728-770: "accidental mutation when cloning inside a transaction".
     private func mutatesAccidentallyWhenCloningInsideATransaction(_ database: Database) throws {
         let history = try ArrayList<ReadWrite>(database.rootCursor)
 
-        let historyIndex = try history.count() - 1
+        let historyIndex = try history.count - 1
 
         try history.append(.slot(try history.slot(at: -1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
@@ -597,7 +597,7 @@ import Testing
             // create a new key called "cities" whose initial value is
             // based on the "big-cities" list
             var citiesCursor = try moment.putCursor(forHash: hashInt("cities"))
-            try citiesCursor.write(.slot(try bigCities.slot()))
+            try citiesCursor.write(.slot(try bigCities.slot))
 
             let cities = try ArrayList<ReadWrite>(citiesCursor)
             try cities.append(.bytes(utf8("Charleston, SC")))
@@ -610,12 +610,12 @@ import Testing
         // the cities list contains all four
         let citiesCursor = try #require(try moment.cursor(forHash: hashInt("cities")))
         let cities = try ArrayList<ReadOnly>(citiesCursor)
-        #expect(try cities.count() == 4)
+        #expect(try cities.count == 4)
 
         // ..but so does big-cities! we did not intend to mutate this
         let bigCitiesCursor = try #require(try moment.cursor(forHash: hashInt("big-cities")))
         let bigCities = try ArrayList<ReadOnly>(bigCitiesCursor)
-        #expect(try bigCities.count() == 4)
+        #expect(try bigCities.count == 4)
 
         // revert that change
         try history.append(.slot(try history.slot(at: Int64(historyIndex))))
@@ -671,7 +671,7 @@ import Testing
             // create a new key called "cities" whose initial value is
             // based on the "big-cities" list
             var citiesCursor = try moment.putCursor(forHash: hashInt("cities"))
-            try citiesCursor.write(.slot(try bigCities.slot()))
+            try citiesCursor.write(.slot(try bigCities.slot))
 
             // freeze here, so writes to cities won't mutate big-cities
             // note: you can also freeze globally with `cursor.db.freeze()`,
@@ -689,12 +689,12 @@ import Testing
         // the cities list contains all four
         let citiesCursor = try #require(try moment.cursor(forHash: hashInt("cities")))
         let cities = try ArrayList<ReadOnly>(citiesCursor)
-        #expect(try cities.count() == 4)
+        #expect(try cities.count == 4)
 
         // and big-cities only contains the original two
         let bigCitiesCursor = try #require(try moment.cursor(forHash: hashInt("big-cities")))
         let bigCities = try ArrayList<ReadOnly>(bigCitiesCursor)
-        #expect(try bigCities.count() == 2)
+        #expect(try bigCities.count == 2)
 
         // callbacks must see complete headers before freezing their collections
         for op in [FreezeOp.append, .slice, .linkedGet] {
@@ -717,7 +717,7 @@ import Testing
                     }
                 _ = try list.cursor.writePath(path) { _ in
                     try database.freeze()
-                    #expect(try frozenList.count() == (op == .append ? 2 : 1))
+                    #expect(try frozenList.count == (op == .append ? 2 : 1))
                     let get: PathPart = op == .linkedGet ? .linkedArrayListGet(0) : .arrayListGet(-1)
                     let value = try #require(try frozenList.readPath([get]))
                     #expect(try value.readUInt64() == (op == .slice ? 1 : 2))
@@ -784,14 +784,14 @@ import Testing
         let usernameToIDCursor = try #require(try moment.cursor(forHash: hashInt("username->id")))
         let usernameToID = try SortedMap<ReadOnly>(usernameToIDCursor)
 
-        #expect(try usernameToID.count() == UInt64(newUsers.count))
+        #expect(try usernameToID.count == UInt64(newUsers.count))
 
         // page through the index two at a time and check we get every user back
         // in alphabetical order by username (not the order they were inserted)
         let pageSize: UInt64 = 2
         let expectedNames = ["Alice Jones", "Bob Lee", "Carol White", "Dan Brown", "Dave Smith", "Eve Adams"]
 
-        let count = try usernameToID.count()
+        let count = try usernameToID.count
         var seen = 0
         var after: UInt64 = 0
         while after < count {

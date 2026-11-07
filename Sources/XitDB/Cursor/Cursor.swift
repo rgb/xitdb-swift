@@ -107,8 +107,10 @@ public struct Cursor<Access: CursorAccess> {
     /// The slot this cursor is at.
     ///
     /// - Throws: Only for a root cursor, if the root cannot be read.
-    public func slot() throws(XitDBError) -> Slot {
-        try resolved().slot
+    public var slot: Slot {
+        get throws(XitDBError) {
+            try resolved().slot
+        }
     }
 
     /// Reads the slot's value as an unsigned 64-bit integer.
@@ -244,8 +246,10 @@ public struct Cursor<Access: CursorAccess> {
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   that has no count: a number, or a hash map or set that does not
     ///   keep one.
-    public func count() throws(XitDBError) -> UInt64 {
-        try database.reader.count(try resolved().slot)
+    public var count: UInt64 {
+        get throws(XitDBError) {
+            try database.reader.count(try resolved().slot)
+        }
     }
 }
 

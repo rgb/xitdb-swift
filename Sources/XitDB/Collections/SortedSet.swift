@@ -28,8 +28,10 @@ public struct SortedSet<Access: CursorAccess> {
     ///
     /// - Throws: Only for a set at the root of the database, if the root
     ///   cannot be read.
-    public func slot() throws(XitDBError) -> Slot {
-        try cursor.slot()
+    public var slot: Slot {
+        get throws(XitDBError) {
+            try cursor.slot
+        }
     }
 
     /// The number of entries in the set.
@@ -37,8 +39,10 @@ public struct SortedSet<Access: CursorAccess> {
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot no longer holds a
     ///   sorted map or set, or ``XitDBError/endOfStream`` if the header
     ///   cannot be read.
-    public func count() throws(XitDBError) -> UInt64 {
-        try cursor.count()
+    public var count: UInt64 {
+        get throws(XitDBError) {
+            try cursor.count
+        }
     }
 
     /// An iterator over the set's entries in key order. Each cursor it

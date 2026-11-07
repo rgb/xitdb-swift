@@ -25,8 +25,10 @@ public struct HashMap<Access: CursorAccess> {
     ///
     /// - Throws: Only for a map at the root of the database, if the root
     ///   cannot be read.
-    public func slot() throws(XitDBError) -> Slot {
-        try cursor.slot()
+    public var slot: Slot {
+        get throws(XitDBError) {
+            try cursor.slot
+        }
     }
 
     /// An iterator over the map's entries. Each cursor it gives is at an

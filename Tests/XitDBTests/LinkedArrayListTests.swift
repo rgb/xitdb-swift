@@ -304,7 +304,7 @@ import Testing
                         #expect(values[Int(i)] == (try numCursor.readUInt64()))
                         i += 1
                     }
-                    #expect(try evenListCursor.count() + oddListCursor.count() == i)
+                    #expect(try evenListCursor.count + oddListCursor.count == i)
                 }
 
                 // there are no extra items

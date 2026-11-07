@@ -35,8 +35,10 @@ public struct LinkedArrayList<Access: CursorAccess> {
     ///
     /// - Throws: Only for a list at the root of the database, if the root
     ///   cannot be read.
-    public func slot() throws(XitDBError) -> Slot {
-        try cursor.slot()
+    public var slot: Slot {
+        get throws(XitDBError) {
+            try cursor.slot
+        }
     }
 
     /// The number of elements in the list.
@@ -44,8 +46,10 @@ public struct LinkedArrayList<Access: CursorAccess> {
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot no longer holds a
     ///   list, or ``XitDBError/endOfStream`` if the list's header cannot be
     ///   read.
-    public func count() throws(XitDBError) -> UInt64 {
-        try cursor.count()
+    public var count: UInt64 {
+        get throws(XitDBError) {
+            try cursor.count
+        }
     }
 
     /// An iterator over the list's elements, in order.
@@ -296,7 +300,7 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   what its header says, or an error of the storage or of a damaged
     ///   file.
     public mutating func append(contentsOf list: LinkedArrayList<some CursorAccess>) throws(XitDBError) {
-        try append(contentsOf: try list.slot())
+        try append(contentsOf: try list.slot)
     }
 
     /// Appends every element of another linked array list to this one. The
@@ -307,7 +311,7 @@ extension LinkedArrayList where Access == ReadWrite {
     /// written before it, as after ``Database/freeze()``. Other collections
     /// made before the call should be made again from their cursors.
     ///
-    /// - Parameter list: The slot of the other list, from its ``slot()``,
+    /// - Parameter list: The slot of the other list, from its ``slot``,
     ///   in this database.
     /// - Throws: ``XitDBError/unexpectedTag`` if `list` is not the slot of
     ///   a linked array list or this slot no longer holds one,

@@ -22,8 +22,10 @@ public struct ArrayList<Access: CursorAccess> {
     ///
     /// - Throws: Only for a list at the root of the database, if the root
     ///   cannot be read.
-    public func slot() throws(XitDBError) -> Slot {
-        try cursor.slot()
+    public var slot: Slot {
+        get throws(XitDBError) {
+            try cursor.slot
+        }
     }
 
     /// The number of elements in the list.
@@ -31,8 +33,10 @@ public struct ArrayList<Access: CursorAccess> {
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot no longer holds a
     ///   list, or ``XitDBError/endOfStream`` if the list's header cannot be
     ///   read.
-    public func count() throws(XitDBError) -> UInt64 {
-        try cursor.count()
+    public var count: UInt64 {
+        get throws(XitDBError) {
+            try cursor.count
+        }
     }
 
     /// An iterator over the list's elements, in order.

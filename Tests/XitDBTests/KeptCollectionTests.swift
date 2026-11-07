@@ -72,8 +72,8 @@ import Testing
             case .database: try cursor.database.freeze()
             case .concat:
                 var list = try #require(list)
-                try list.append(contentsOf: try other.slot())
-            case .concatElsewhere: try other.append(contentsOf: try other.slot())
+                try list.append(contentsOf: try other.slot)
+            case .concatElsewhere: try other.append(contentsOf: try other.slot)
             }
         }
     }
@@ -112,7 +112,7 @@ import Testing
 
     /// test.zig 3912-3917: `expectUints`.
     private func expectUints<Access>(_ list: LinkedArrayList<Access>, _ expected: [UInt64]) throws {
-        #expect(UInt64(expected.count) == (try list.count()))
+        #expect(UInt64(expected.count) == (try list.count))
         for (i, value) in expected.enumerated() {
             #expect(value == (try #require(try list.cursor(at: Int64(i))).readUInt64()))
         }
@@ -138,7 +138,7 @@ import Testing
             var list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try list.append(.uint(1))
             try list.append(.uint(2))
-            let slotBefore = try list.slot()
+            let slotBefore = try list.slot
 
             try freeze.run(cursor, moment, list)
             moment = try HashMap<ReadWrite>(cursor)
@@ -169,7 +169,7 @@ import Testing
             var list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try list.append(.uint(1))
             try list.append(.uint(2))
-            let slotBefore = try list.slot()
+            let slotBefore = try list.slot
 
             try Freeze.concat.run(cursor, moment, list)
             moment = try HashMap<ReadWrite>(cursor)
@@ -255,7 +255,7 @@ import Testing
             try listAgain.remove(at: 0)
             try expectUints(listAgain, [3, 4])
 
-            #expect(try list.count() == 4)
+            #expect(try list.count == 4)
             #expect(try #require(try list.cursor(at: 0)).readUInt64() == 3)
             #expect(throws: XitDBError.invalidBTreeNode) { try list.cursor(at: 2) }
             #expect(throws: XitDBError.invalidBTreeNode) { try list.append(.uint(5)) }
@@ -280,7 +280,7 @@ import Testing
             let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try list.append(.uint(1))
             var earlyCursor = try moment.putCursor(forHash: hashInt("early"))
-            try earlyCursor.write(.slot(try list.slot()))
+            try earlyCursor.write(.slot(try list.slot))
 
             try freeze.run(cursor, moment, list)
             try list.append(.uint(2))
@@ -288,7 +288,7 @@ import Testing
             try expectUints(early, [1, 2])
 
             var lateCursor = try moment.putCursor(forHash: hashInt("late"))
-            try lateCursor.write(.slot(try list.slot()))
+            try lateCursor.write(.slot(try list.slot))
             let late = try LinkedArrayList<ReadWrite>(lateCursor)
             try late.remove(at: 0)
             try expectUints(late, [2])
@@ -314,10 +314,10 @@ import Testing
             for i in 0..<UInt64(36) {
                 #expect(try mapAgain.remove(forKey: paddedKey(i, width: 3)))
             }
-            #expect(try mapAgain.count() == 5)
+            #expect(try mapAgain.count == 5)
 
             // the kept map's header counts 41 keys, in a tree that has 5
-            #expect(try map.count() == 41)
+            #expect(try map.count == 41)
             #expect(throws: XitDBError.invalidBTreeNode) { try map.entry(at: 40) }
             #expect(throws: XitDBError.invalidBTreeNode) { try map.iterator(fromIndex: 30) }
 
@@ -327,7 +327,7 @@ import Testing
             for key in ["k036", "k037", "k038", "k039", "k998"] {
                 #expect(try mapAgain.remove(forKey: utf8(key)))
             }
-            #expect(try mapAgain.count() == 0)
+            #expect(try mapAgain.count == 0)
             #expect(throws: XitDBError.invalidBTreeNode) { try mapAgain.remove(forKey: utf8("k999")) }
         }
     }
@@ -351,11 +351,11 @@ import Testing
             try counted.put(.uint(4), forHash: hashNumber(0x31))
 
             // the second count is 3, in a map that has 4 keys
-            #expect(try countedAgain.count() == 3)
+            #expect(try countedAgain.count == 3)
             for hash in [UInt8(0x01), 0x11, 0x21] {
                 #expect(try countedAgain.remove(forHash: hashNumber(hash)))
             }
-            #expect(try countedAgain.count() == 0)
+            #expect(try countedAgain.count == 0)
             #expect(throws: XitDBError.invalidDatabase) { try countedAgain.remove(forHash: hashNumber(0x31)) }
         }
     }
@@ -422,8 +422,8 @@ import Testing
 
             #expect(throws: XitDBError.invalidBTreeNode) { try list.remove(at: 0) }
             #expect(throws: XitDBError.invalidBTreeNode) { try list.formSlice(offset: 1, count: 2) }
-            #expect(throws: XitDBError.invalidBTreeNode) { try list.append(contentsOf: try shortList.slot()) }
-            #expect(throws: XitDBError.invalidBTreeNode) { try shortList.append(contentsOf: try list.slot()) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.append(contentsOf: try shortList.slot) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try shortList.append(contentsOf: try list.slot) }
             #expect(throws: XitDBError.invalidBTreeNode) { try map.remove(forKey: utf8("k00")) }
         }
     }

@@ -48,7 +48,7 @@ import Testing
         }
         let bottom = try #require(try target.rootCursor.readPath(down))
         #expect(try bottom.readUInt64() == 7)
-        #expect(try target.rootCursor.count() == 1)
+        #expect(try target.rootCursor.count == 1)
         #expect(try target.committedSize == (try targetSubject.storage.length))
     }
 
@@ -103,7 +103,7 @@ import Testing
         do throws(XitDBError) {
             try subject.database.compact(into: target, offsetMap: &map)
         } catch {
-            #expect(try target.rootCursor.slot().isEmpty)
+            #expect(try target.rootCursor.slot.isEmpty)
             #expect(try targetSubject.storage.length == (try target.committedSize))
             return (error, target, targetSubject)
         }
@@ -131,7 +131,7 @@ import Testing
     @Test(arguments: StorageKind.allCases)
     func aSlotWithAnUnknownTag(kind: StorageKind) throws {
         let subject = try Subject(kind, makeDatabase: makeDatabase)
-        let block = try subject.moment.slot().value
+        let block = try subject.moment.slot.value
         let slots = try subject.database.reader.indexBlock(at: block)
         let index = try #require((0..<16).first { slots.slots[$0].tag != .none })
         try subject.damage([0x7F], at: block + UInt64(index) * 9)
@@ -239,7 +239,7 @@ import Testing
             #expect(try copied.rank(of: key) == UInt64(index))
         }
         // the separators are records in the target, not in the source
-        let header = try target.reader.bTreeHeader(at: try copied.slot().value)
+        let header = try target.reader.bTreeHeader(at: try copied.slot.value)
         let root = try target.reader.sortedNode(at: header.rootPtr)
         let length = try targetSubject.storage.length
         for index in 1..<Int(root.num) {
@@ -269,19 +269,19 @@ import Testing
             try source.compact(into: target, offsetMap: &map)
             let after = try readBytes(targetSubject.storage, at: 0, count: Int(try targetSubject.storage.length))
             #expect(after == before)
-            #expect(try target.rootCursor.slot().isEmpty)
+            #expect(try target.rootCursor.slot.isEmpty)
         }
         // an empty source
         try compactingLeavesUntouched { _ in }
         // a history with no moments
         try compactingLeavesUntouched { source in
             _ = try source.rootCursor.writePath([.arrayListInit])
-            #expect(try source.rootCursor.count() == 0)
+            #expect(try source.rootCursor.count == 0)
         }
         // a history whose last moment was never written
         try compactingLeavesUntouched { source in
             _ = try source.rootCursor.writePath([.arrayListInit, .arrayListAppend])
-            #expect(try source.rootCursor.count() == 1)
+            #expect(try source.rootCursor.count == 1)
         }
         // but a root set to nothing is copied, as a commit
         let subject = try StorageUnderTest(kind)
@@ -294,7 +294,7 @@ import Testing
         var map = MemoryOffsetMap()
         try source.compact(into: target, offsetMap: &map)
         #expect(try targetSubject.storage.length > lengthBefore)
-        #expect(try target.rootCursor.slot() == Slot(value: 0, tag: .none, full: true))
+        #expect(try target.rootCursor.slot == Slot(value: 0, tag: .none, full: true))
     }
 
     /// A tree branch whose child points back at its root: the memo ends the

@@ -40,8 +40,8 @@ import Testing
         #expect(database.header.hashID == HashID(rawValue: 0))
         #expect(database.header.fileID == 0x0102_0304_0506_0708)
         #expect(try database.committedSize == 62)
-        #expect(try database.rootCursor.slot().isEmpty)
-        #expect(try database.rootCursor.count() == 0)
+        #expect(try database.rootCursor.slot.isEmpty)
+        #expect(try database.rootCursor.count == 0)
     }
 
     /// Creating a database asks the random source for nothing when the file
@@ -144,32 +144,32 @@ import Testing
         #expect(database.header.hashSize == 20)
         #expect(database.header.fileID == 0x172A_756F_2208_A5EC)
         #expect(try database.committedSize == 8550)
-        #expect(try database.rootCursor.slot() == Slot(value: 4847, tag: .arrayList))
-        #expect(try database.rootCursor.count() == 2)
+        #expect(try database.rootCursor.slot == Slot(value: 4847, tag: .arrayList))
+        #expect(try database.rootCursor.count == 2)
         #expect(try database.rootCursor.readPath([.arrayListGet(2)]) == nil)
         #expect(try database.rootCursor.readPath([.arrayListGet(-3)]) == nil)
         // the last moment by a negative index
-        #expect(try #require(try database.rootCursor.readPath([.arrayListGet(-1)])).slot() == (try moment(1).slot()))
-        #expect(try #require(try database.rootCursor.readPath([.arrayListGet(-2)])).slot() == (try moment(0).slot()))
+        #expect(try #require(try database.rootCursor.readPath([.arrayListGet(-1)])).slot == (try moment(1).slot))
+        #expect(try #require(try database.rootCursor.readPath([.arrayListGet(-2)])).slot == (try moment(0).slot))
     }
 
     @Test func theFirstMoment() throws {
         let moment = try moment(0)
-        #expect(try moment.slot().tag == .hashMap)
+        #expect(try moment.slot.tag == .hashMap)
 
         #expect(try text(try value(moment, "foo")) == "foo")
-        #expect(try value(moment, "foo").slot().tag == .shortBytes)
+        #expect(try value(moment, "foo").slot.tag == .shortBytes)
         #expect(try text(try value(moment, "bar")) == "bar")
-        #expect(try value(moment, "bar").slot().tag == .shortBytes)
+        #expect(try value(moment, "bar").slot.tag == .shortBytes)
 
         let fruits = try value(moment, "fruits")
-        #expect(try fruits.count() == 3)
+        #expect(try fruits.count == 3)
         let names = try (0..<3).map { try text(try #require(try fruits.readPath([.arrayListGet($0)]))) }
         #expect(names == ["apple", "pear", "grape"])
         #expect(try fruits.readPath([.arrayListGet(3)]) == nil)
 
         let people = try value(moment, "people")
-        #expect(try people.count() == 2)
+        #expect(try people.count == 2)
         let alice = try #require(try people.readPath([.arrayListGet(0)]))
         #expect(try text(try value(alice, "name")) == "Alice")
         #expect(try value(alice, "age").readUInt64() == 25)
@@ -190,8 +190,8 @@ import Testing
         // todos was appended to twice, had "Wash the car" inserted at 1, and
         // then a map inserted at 1 and removed again
         let todos = try value(moment, "todos")
-        #expect(try todos.slot().tag == .linkedArrayList)
-        #expect(try todos.count() == 3)
+        #expect(try todos.slot.tag == .linkedArrayList)
+        #expect(try todos.count == 3)
         let todoTexts = try (0..<3).map { try text(try #require(try todos.readPath([.linkedArrayListGet($0)]))) }
         #expect(todoTexts == ["Pay the bills", "Wash the car", "Get an oil change"])
         #expect(try todos.readPath([.linkedArrayListGet(3)]) == nil)
@@ -203,8 +203,8 @@ import Testing
         }
 
         let countedMap = try value(moment, "letters-counted-map")
-        #expect(try countedMap.slot().tag == .countedHashMap)
-        #expect(try countedMap.count() == 2)
+        #expect(try countedMap.slot.tag == .countedHashMap)
+        #expect(try countedMap.count == 2)
         #expect(try value(countedMap, "a").readUInt64() == 2)
         #expect(try value(countedMap, "c").readUInt64() == 3)
         #expect(try countedMap.readPath([.hashMapGet(.value, sha1("b"))]) == nil)
@@ -212,10 +212,10 @@ import Testing
         #expect(try text(try #require(try countedMap.readPath([.hashMapGet(.key, sha1("a"))]))) == "a")
 
         let set = try value(moment, "letters-set")
-        #expect(try set.slot().tag == .hashSet)
+        #expect(try set.slot.tag == .hashSet)
         let countedSet = try value(moment, "letters-counted-set")
-        #expect(try countedSet.slot().tag == .countedHashSet)
-        #expect(try countedSet.count() == 2)
+        #expect(try countedSet.slot.tag == .countedHashSet)
+        #expect(try countedSet.count == 2)
         for letters in [set, countedSet] {
             #expect(try text(try #require(try letters.readPath([.hashMapGet(.key, sha1("a"))]))) == "a")
             #expect(try text(try #require(try letters.readPath([.hashMapGet(.key, sha1("c"))]))) == "c")
@@ -223,16 +223,16 @@ import Testing
             // a set's entries have no value
             #expect(try letters.readPath([.hashMapGet(.value, sha1("a"))]) == nil)
             let pair = try #require(try letters.readPath([.hashMapGet(.kvPair, sha1("a"))])).readEntry()
-            #expect(try pair.value.slot().isEmpty)
+            #expect(try pair.value.slot.isEmpty)
         }
 
         let number = try value(moment, "random-number").readBytesWithFormatTag()
         #expect(number.value.count == 32)
         #expect(number.formatTag == "bi")
-        #expect(try value(moment, "random-number").slot().tag == .bytes)
+        #expect(try value(moment, "random-number").slot.tag == .bytes)
 
         let longText = try value(moment, "long-text")
-        #expect(try longText.count() == 700)
+        #expect(try longText.count == 700)
         #expect(try text(longText) == String(repeating: "hello, world!\n", count: 50))
         #expect(throws: XitDBError.streamTooLong) { try longText.readBytes(maxCount: 699) }
     }
@@ -248,18 +248,18 @@ import Testing
         // fruits got its key, its first element replaced and its last cut off
         let fruitsKey = try #require(try moment.readPath([.hashMapGet(.key, sha1("fruits"))]))
         #expect(try text(fruitsKey) == "fruits")
-        #expect(try fruitsKey.slot().tag == .shortBytes)
+        #expect(try fruitsKey.slot.tag == .shortBytes)
         let fruits = try value(moment, "fruits")
-        #expect(try fruits.count() == 2)
+        #expect(try fruits.count == 2)
         let names = try (0..<2).map { try text(try #require(try fruits.readPath([.arrayListGet($0)]))) }
         #expect(names == ["lemon", "pear"])
         #expect(try fruits.readPath([.arrayListGet(2)]) == nil)
         let pair = try #require(try moment.readPath([.hashMapGet(.kvPair, sha1("fruits"))])).readEntry()
-        #expect(try pair.key.slot().tag == .shortBytes)
-        #expect(try pair.value.slot().tag == .arrayList)
+        #expect(try pair.key.slot.tag == .shortBytes)
+        #expect(try pair.value.slot.tag == .arrayList)
 
         let people = try value(moment, "people")
-        #expect(try people.count() == 2)
+        #expect(try people.count == 2)
         let alice = try #require(try people.readPath([.arrayListGet(0)]))
         #expect(try value(alice, "age").readUInt64() == 26)
         #expect(try text(try value(alice, "name")) == "Alice")
@@ -269,8 +269,8 @@ import Testing
         // todos was concatenated with itself, cut down to its second and
         // third elements, and had the second of those removed
         let todos = try value(moment, "todos")
-        #expect(try todos.slot().tag == .linkedArrayList)
-        #expect(try todos.count() == 1)
+        #expect(try todos.slot.tag == .linkedArrayList)
+        #expect(try todos.count == 1)
         #expect(try text(try #require(try todos.readPath([.linkedArrayListGet(0)]))) == "Wash the car")
         #expect(try text(try #require(try todos.readPath([.linkedArrayListGet(-1)]))) == "Wash the car")
         #expect(try todos.readPath([.linkedArrayListGet(1)]) == nil)
@@ -281,27 +281,27 @@ import Testing
             try todos.readPathSlot([.linkedArrayListGet(0)]) == (try firstTodos.readPathSlot([.linkedArrayListGet(1)])))
 
         let countedMap = try value(moment, "letters-counted-map")
-        #expect(try countedMap.count() == 1)
+        #expect(try countedMap.count == 1)
         #expect(try value(countedMap, "a").readUInt64() == 2)
         #expect(try countedMap.readPath([.hashMapGet(.value, sha1("c"))]) == nil)
         let set = try value(moment, "letters-set")
         #expect(try set.readPath([.hashMapGet(.key, sha1("a"))]) != nil)
         #expect(try set.readPath([.hashMapGet(.key, sha1("c"))]) == nil)
         let countedSet = try value(moment, "letters-counted-set")
-        #expect(try countedSet.count() == 1)
+        #expect(try countedSet.count == 1)
         #expect(try countedSet.readPath([.hashMapGet(.key, sha1("c"))]) == nil)
 
         // what the second transaction did not touch is shared with the first
         let first = try self.moment(0)
-        #expect(try value(moment, "random-number").slot() == (try value(first, "random-number").slot()))
-        #expect(try value(moment, "long-text").slot() == (try value(first, "long-text").slot()))
+        #expect(try value(moment, "random-number").slot == (try value(first, "random-number").slot))
+        #expect(try value(moment, "long-text").slot == (try value(first, "long-text").slot))
     }
 
     /// The first moment still reads as it did before the second transaction.
     @Test func thePastIsUnchanged() throws {
         let first = try moment(0)
         #expect(try text(try value(first, "bar")) == "bar")
-        #expect(try value(first, "fruits").count() == 3)
+        #expect(try value(first, "fruits").count == 3)
         let alice = try #require(try value(first, "people").readPath([.arrayListGet(0)]))
         #expect(try value(alice, "age").readUInt64() == 25)
         #expect(try first.readPath([.hashMapGet(.key, sha1("fruits"))]) == nil)
@@ -318,7 +318,7 @@ import Testing
             cursor in
             _ = try cursor.writePath([.hashMapGet(.value, sha1("foo")), .write(.bytes(Array("changed".utf8)))])
         }
-        #expect(try root.count() == 3)
+        #expect(try root.count == 3)
         #expect(Array(storage.bytes[37..<8550]) == Array(try FixtureTests.load()[37...]))
 
         let reopened = try Database(storage: storage, hashSize: 20)
@@ -329,7 +329,7 @@ import Testing
         let second = try #require(try reopened.rootCursor.readPath([.arrayListGet(1)]))
         #expect(
             try #require(try second.readPath([.hashMapGet(.value, sha1("foo"))])).readBytes() == Array("foo".utf8))
-        #expect(try #require(try third.readPath([.hashMapGet(.value, sha1("fruits"))])).count() == 2)
+        #expect(try #require(try third.readPath([.hashMapGet(.value, sha1("fruits"))])).count == 2)
     }
 }
 
@@ -370,7 +370,7 @@ import Testing
 
         let list = try LinkedArrayList<ReadWrite>(database.rootCursor)
         try list.append(.uint(1))
-        #expect(try list.count() == 1)
+        #expect(try list.count == 1)
     }
 }
 
@@ -396,9 +396,9 @@ import Testing
                 let entry = try cursor.writePath([.hashMapGet(.value, sha1(key))])
                 let pair = try entry.readEntry()
                 #expect(pair.hash == [UInt8](repeating: 0, count: 20))
-                #expect(try pair.key.slot() == (try entry.slot()))
+                #expect(try pair.key.slot == (try entry.slot))
                 #expect(try pair.key.readBytes() == (try entry.readBytes()))
-                #expect(try pair.value.slot().isEmpty)
+                #expect(try pair.value.slot.isEmpty)
                 // neither has a position: there is no pair record to write
                 // into, so a write through either, were the entry writable,
                 // would be cursorNotWritable
@@ -421,7 +421,7 @@ import Testing
             var holder = try cursor.writePath([.hashMapGet(.value, sha1("record"))])
             try holder.writeBytes { writer in try writer.write(record) }
             // the record's bytes start after the byte array's length
-            let pairPosition = try holder.slot().value + 8
+            let pairPosition = try holder.slot.value + 8
 
             let entry = try cursor.writePath([
                 .hashMapGet(.value, sha1("entry")), .write(.slot(Slot(value: pairPosition, tag: .sortedKvPair))),
@@ -451,21 +451,21 @@ import Testing
             let map = try cursor.writePath([.hashMapInit(counted: true)])
             _ = try map.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(1))])
             _ = try map.writePath([.hashMapGet(.value, sha1("b")), .write(.uint(2))])
-            #expect(try map.count() == 2)
+            #expect(try map.count == 2)
 
             #expect(throws: XitDBError.keyNotFound) { try map.writePath([.hashMapRemove(sha1("missing"))]) }
-            #expect(try map.count() == 2)
+            #expect(try map.count == 2)
             // getting an entry that exists does not count it again
             _ = try map.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(3))])
             _ = try map.writePath([.hashMapGet(.key, sha1("a"))])
-            #expect(try map.count() == 2)
+            #expect(try map.count == 2)
 
             _ = try map.writePath([.hashMapRemove(sha1("a"))])
-            #expect(try map.count() == 1)
+            #expect(try map.count == 1)
             #expect(throws: XitDBError.keyNotFound) { try map.writePath([.hashMapRemove(sha1("a"))]) }
-            #expect(try map.count() == 1)
+            #expect(try map.count == 1)
         }
-        #expect(try database.rootCursor.count() == 1)
+        #expect(try database.rootCursor.count == 1)
         // an init of the other kind is refused
         #expect(throws: XitDBError.unexpectedTag) {
             try database.rootCursor.writePath([.hashMapInit(), .write(.uint(1))])
@@ -473,7 +473,7 @@ import Testing
         #expect(throws: XitDBError.unexpectedTag) {
             try database.rootCursor.writePath([.arrayListInit, .arrayListAppend])
         }
-        #expect(try database.rootCursor.count() == 1)
+        #expect(try database.rootCursor.count == 1)
     }
 
     /// A transaction on a root that is a sorted map or set runs that
@@ -487,16 +487,16 @@ import Testing
         _ = try database.rootCursor.writePath([
             .sortedMapInit(set: tag == .sortedSet), .sortedMapGet(.value, SortedKey([1])), .write(.uint(1)),
         ])
-        let before = try database.rootCursor.slot()
+        let before = try database.rootCursor.slot
         #expect(before.tag == tag)
-        #expect(try database.rootCursor.count() == 1)
+        #expect(try database.rootCursor.count == 1)
 
         try database.withTransaction { cursor in
-            #expect(try cursor.slot().tag == tag)
-            #expect(try cursor.slot().value != before.value)
+            #expect(try cursor.slot.tag == tag)
+            #expect(try cursor.slot.value != before.value)
             _ = try cursor.writePath([.sortedMapGet(.value, SortedKey([2])), .write(.uint(2))])
         }
-        #expect(try database.rootCursor.count() == 2)
+        #expect(try database.rootCursor.count == 2)
         // the moment before still has its own header and one entry
         #expect(try database.reader.bTreeHeader(at: before.value).size == 1)
         // an init of the other kind is refused
@@ -516,7 +516,7 @@ import Testing
         try database.withTransaction { cursor in
             let list = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("list")), .arrayListInit])
             _ = try list.writePath([.arrayListAppend, .write(.uint(1))])
-            listPosition = try list.slot().value
+            listPosition = try list.slot.value
         }
 
         // the list's header now says its index block is at the root header
@@ -571,7 +571,7 @@ import Testing
         /// How many index blocks lie between the map's root block and the
         /// base hash's pair.
         func depthOfBase(_ map: Cursor<ReadWrite>) throws -> Int {
-            var position = try map.slot().value
+            var position = try map.slot.value
             var depth = 0
             while true {
                 let slot = try database.reader.slot(at: position + 9 * 5)
@@ -720,7 +720,7 @@ import Testing
             let map = try cursor.writePath([.hashMapInit()])
             _ = try map.writePath([.hashMapGet(.value, first), .write(.uint(1))])
             _ = try map.writePath([.hashMapGet(.value, second), .write(.uint(2))])
-            let rootBlock = try map.slot().value
+            let rootBlock = try map.slot.value
             let inner = try database.reader.slot(at: rootBlock)
             #expect(inner.tag == .index)
 
@@ -761,9 +761,9 @@ import Testing
             let frozenAt = UInt64(storage.bytes.count)
 
             let list = try slot.writePath([.arrayListInit])
-            #expect(try list.slot().value == frozenAt)
+            #expect(try list.slot.value == frozenAt)
             let again = try slot.writePath([.arrayListInit])
-            #expect(try again.slot().value == frozenAt)
+            #expect(try again.slot.value == frozenAt)
             #expect(UInt64(storage.bytes.count) == frozenAt + 16 + 144)
         }
     }
@@ -780,11 +780,11 @@ import Testing
 
             // the list made before the freeze is copied now, to the freeze point
             let copied = try slot.writePath([.arrayListInit])
-            #expect(try copied.slot().value == frozenAt)
-            #expect(try copied.slot().value != (try before.slot().value))
+            #expect(try copied.slot.value == frozenAt)
+            #expect(try copied.slot.value != (try before.slot.value))
             // and the copy is the transaction's own
             let again = try slot.writePath([.arrayListInit])
-            #expect(try again.slot().value == frozenAt)
+            #expect(try again.slot.value == frozenAt)
             #expect(UInt64(storage.bytes.count) == frozenAt + 16 + 144)
         }
     }
@@ -801,15 +801,15 @@ import Testing
 
             _ = try slot.writePath([.ctx]) { inner in
                 let copy = try inner.writePath([.arrayListInit])
-                #expect(try copy.slot().value != (try original.slot().value))
+                #expect(try copy.slot.value != (try original.slot.value))
             }
 
             // a cursor that did not freeze still changes the list in place
             let unfrozen = try cursor.writePath([.hashMapGet(.value, sha1("list"))])
-            let current = try unfrozen.slot().value
+            let current = try unfrozen.slot.value
             _ = try unfrozen.writePath([.ctx]) { inner in
                 let inPlace = try inner.writePath([.arrayListInit])
-                #expect(try inPlace.slot().value == current)
+                #expect(try inPlace.slot.value == current)
             }
         }
     }
@@ -833,12 +833,12 @@ import Testing
         }
 
         let past = try #require(try root.readPath([.arrayListGet(0)]))
-        #expect(try past.count() == 20)
+        #expect(try past.count == 20)
         for index in 0..<20 {
             #expect(try #require(try past.readPath([.arrayListGet(Int64(index))])).readUInt64() == UInt64(index))
         }
         let present = try #require(try root.readPath([.arrayListGet(1)]))
-        #expect(try present.count() == 6)
+        #expect(try present.count == 6)
         let values = try (0..<6).map { try #require(try present.readPath([.arrayListGet($0)])).readUInt64() }
         #expect(values == [99, 1, 2, 3, 4, 100])
     }
@@ -851,11 +851,11 @@ import Testing
                 _ = try list.writePath([.arrayListAppend, .write(.uint(UInt64(index)))])
             }
             _ = try list.writePath([.arrayListSlice(size: 3)])
-            #expect(try list.count() == 3)
+            #expect(try list.count == 3)
             #expect(throws: XitDBError.indexOutOfRange) { try list.writePath([.arrayListSlice(size: 4)]) }
-            #expect(try list.count() == 3)
+            #expect(try list.count == 3)
             _ = try list.writePath([.arrayListSlice(size: 0)])
-            #expect(try list.count() == 0)
+            #expect(try list.count == 0)
             #expect(try list.readPath([.arrayListGet(0)]) == nil)
         }
     }
@@ -868,7 +868,7 @@ import Testing
         let database = try makeDatabase()
         // on an empty root
         try database.withTransaction { _ in }
-        #expect(try database.rootCursor.slot().isEmpty)
+        #expect(try database.rootCursor.slot.isEmpty)
         #expect(try database.committedSize == 62 + 9 + 25)
 
         // on a root that is a plain value
@@ -896,13 +896,13 @@ import Testing
         let part = Self.initParts[partIndex]
         let database = try makeDatabase()
         let created = try database.rootCursor.writePath([part])
-        let tag = try created.slot().tag
+        let tag = try created.slot.tag
         #expect(tag == part.initTag)
         let size = try database.committedSize
         let drawn = random.remaining
 
         let again = try database.rootCursor.writePath([part])
-        #expect(try again.slot() == (try created.slot()))
+        #expect(try again.slot == (try created.slot))
         #expect(try database.committedSize == size)
         #expect(random.remaining == drawn)
 
@@ -915,10 +915,10 @@ import Testing
                 _ = try cursor.writePath([.hashMapGet(.key, sha1("k")), .write(.uint(1))])
             }
         }
-        #expect(try database.rootCursor.slot().tag == tag)
+        #expect(try database.rootCursor.slot.tag == tag)
         #expect(random.remaining == drawn - 1)
         if tag != .hashMap && tag != .hashSet {
-            #expect(try database.rootCursor.count() == 1)
+            #expect(try database.rootCursor.count == 1)
         }
 
         // any other init is a transaction, and is refused or changes the root
@@ -926,7 +926,7 @@ import Testing
         let before = try database.committedSize
         _ = try? database.rootCursor.writePath([other])
         if try database.committedSize != before {
-            #expect(try database.rootCursor.slot().tag == other.initTag)
+            #expect(try database.rootCursor.slot.tag == other.initTag)
         }
     }
 
@@ -957,7 +957,7 @@ import Testing
         let pinned = try #require(try database.rootCursor.readPath([]))
         let position = try #require(pinned.slotPointer.position)
         #expect(position == (try database.committedSize) - 25)
-        #expect(try database.reader.slot(at: position) == (try pinned.slot()))
+        #expect(try database.reader.slot(at: position) == (try pinned.slot))
 
         // a later commit does not move it
         _ = try database.rootCursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("b")), .write(.uint(2))])
@@ -973,12 +973,12 @@ import Testing
             _ = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("a")), .write(.uint(1))])
             let written = try cursor.writePath([.hashMapGet(.kvPair, sha1("a"))])
             let writtenPosition = try #require(written.slotPointer.position)
-            #expect(try database.reader.slot(at: writtenPosition) == (try written.slot()))
-            #expect(try written.slot().tag == .kvPair)
+            #expect(try database.reader.slot(at: writtenPosition) == (try written.slot))
+            #expect(try written.slot.tag == .kvPair)
         }
         let read = try #require(try database.rootCursor.readPath([.hashMapGet(.kvPair, sha1("a"))]))
         let readPosition = try #require(read.slotPointer.position)
-        #expect(try database.reader.slot(at: readPosition) == (try read.slot()))
+        #expect(try database.reader.slot(at: readPosition) == (try read.slot))
     }
 
     /// `writeIfEmpty` on a root cursor looks at the root as it is now, not
@@ -1007,7 +1007,7 @@ import Testing
             }
             #expect(throws: XitDBError.invalidHashSize) { try database.rootCursor.writePath([.hashMapRemove(hash)]) }
         }
-        #expect(try database.rootCursor.count() == 0)
+        #expect(try database.rootCursor.count == 0)
     }
 
     // MARK: Counts that cannot be right
@@ -1023,10 +1023,10 @@ import Testing
                 .hashMapInit(), .hashMapGet(.value, sha1("map")), .hashMapInit(counted: true),
             ])
             _ = try map.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(1))])
-            mapPosition = Int(try map.slot().value)
+            mapPosition = Int(try map.slot.value)
             let list = try cursor.writePath([.hashMapGet(.value, sha1("list")), .arrayListInit])
             _ = try list.writePath([.arrayListAppend, .write(.uint(1))])
-            listPosition = Int(try list.slot().value)
+            listPosition = Int(try list.slot.value)
         }
 
         func damaged(at position: Int, _ value: UInt64) throws -> Database {

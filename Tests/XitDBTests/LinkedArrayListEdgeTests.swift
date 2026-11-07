@@ -38,9 +38,9 @@ import Testing
             for value in 16..<32 {
                 try b.append(.uint(UInt64(value)))
             }
-            try a.append(contentsOf: try b.slot())
+            try a.append(contentsOf: try b.slot)
             #expect(try subject.storage.length == 1485)
-            #expect(try a.count() == 32)
+            #expect(try a.count == 32)
 
             for removal in 0..<16 {
                 try a.remove(at: 0)
@@ -48,11 +48,11 @@ import Testing
                 // rewrites them in place
                 #expect(try subject.storage.length == 1485, "after removal \(removal)")
             }
-            #expect(try a.count() == 16)
+            #expect(try a.count == 16)
             let values = try (0..<16).map { try a.cursor(at: $0)?.readUInt64() }
             #expect(values == (16..<32).map { UInt64($0) })
             // the root is now the surviving leaf itself
-            let header = try database.reader.bTreeHeader(at: try a.slot().value)
+            let header = try database.reader.bTreeHeader(at: try a.slot.value)
             #expect(header.rootPtr == 1065)
             let root = try database.reader.bTreeNode(at: header.rootPtr)
             #expect(root.kind == .leaf && root.num == 16)
@@ -64,8 +64,8 @@ import Testing
             #expect(before == 1685)
             try c.remove(at: 0)
             #expect(try subject.storage.length == 1831)
-            #expect(try database.reader.bTreeHeader(at: try c.slot().value).rootPtr == 1685)
-            #expect(try c.count() == 0)
+            #expect(try database.reader.bTreeHeader(at: try c.slot.value).rootPtr == 1685)
+            #expect(try c.count == 0)
             #expect(try c.cursor(at: 0) == nil)
         }
         #expect(try subject.storage.length == 1856)
@@ -87,12 +87,12 @@ import Testing
             #expect(throws: XitDBError.indexOutOfRange) { try list.formSlice(offset: 1, count: 40) }
             #expect(throws: XitDBError.indexOutOfRange) { try list.formSlice(offset: .max, count: 1) }
             #expect(throws: XitDBError.indexOutOfRange) { try list.formSlice(offset: 1, count: .max) }
-            #expect(try list.count() == 40)
+            #expect(try list.count == 40)
             try list.formSlice(offset: 30, count: 10)
-            #expect(try list.count() == 10)
+            #expect(try list.count == 10)
             #expect(try list.cursor(at: 0)?.readUInt64() == 30)
             try list.formSlice(offset: 10, count: 0)
-            #expect(try list.count() == 0)
+            #expect(try list.count == 0)
         }
     }
 

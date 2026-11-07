@@ -94,7 +94,7 @@ import Testing
         let targetSubject = try StorageUnderTest(targetKind)
         let source = try Database(storage: sourceSubject.storage, hashSize: 20)
         let compacted = try source.compact(into: targetSubject.storage, offsetMap: &offsetMap)
-        #expect(try compacted.rootCursor.slot().isEmpty)
+        #expect(try compacted.rootCursor.slot.isEmpty)
     }
 
     /// test.zig 2976-3207: "basic compaction with various data types": three moments, the third with a map that
@@ -192,15 +192,15 @@ import Testing
 
                 // cycles must survive compaction rather than causing the
                 // remapper to recurse indefinitely.
-                try moment.put(.slot(try moment.slot()), forHash: hashInt("self"))
+                try moment.put(.slot(try moment.slot), forHash: hashInt("self"))
 
                 let cyclicList = try ArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("cyclic-list")))
-                try cyclicList.append(.slot(try cyclicList.slot()))
+                try cyclicList.append(.slot(try cyclicList.slot))
 
                 let mapA = try HashMap<ReadWrite>(try moment.putCursor(forHash: hashInt("map-a")))
                 let mapB = try HashMap<ReadWrite>(try moment.putCursor(forHash: hashInt("map-b")))
-                try mapA.put(.slot(try mapB.slot()), forHash: hashInt("map-b"))
-                try mapB.put(.slot(try mapA.slot()), forHash: hashInt("map-a"))
+                try mapA.put(.slot(try mapB.slot), forHash: hashInt("map-b"))
+                try mapB.put(.slot(try mapA.slot), forHash: hashInt("map-a"))
             }
         }
 
@@ -216,7 +216,7 @@ import Testing
 
         // target should have exactly 1 moment
         let history = try ArrayList<ReadOnly>(compacted.rootCursor.readOnly)
-        #expect(try history.count() == 1)
+        #expect(try history.count == 1)
 
         // verify all data from latest moment is correct
         let momentCursor = try #require(try history.cursor(at: 0))
@@ -225,19 +225,19 @@ import Testing
         // self-references and mutual references point back to the same compacted
         // objects rather than duplicate objects or dangling source offsets.
         let selfCursor = try #require(try moment.cursor(forHash: hashInt("self")))
-        #expect(try selfCursor.slot() == momentCursor.slot())
+        #expect(try selfCursor.slot == momentCursor.slot)
 
         let cyclicListCursor = try #require(try moment.cursor(forHash: hashInt("cyclic-list")))
         let cyclicList = try ArrayList<ReadOnly>(cyclicListCursor)
         let cyclicListFirst = try #require(try cyclicList.slot(at: 0))
-        #expect(try cyclicListFirst == cyclicListCursor.slot())
+        #expect(try cyclicListFirst == cyclicListCursor.slot)
 
         let mapACursor = try #require(try moment.cursor(forHash: hashInt("map-a")))
         let mapA = try HashMap<ReadOnly>(mapACursor)
         let mapBCursor = try #require(try mapA.cursor(forHash: hashInt("map-b")))
         let mapB = try HashMap<ReadOnly>(mapBCursor)
         let mapBToA = try #require(try mapB.slot(forHash: hashInt("map-a")))
-        #expect(try mapBToA == mapACursor.slot())
+        #expect(try mapBToA == mapACursor.slot)
 
         // key1 should have the final value
         let key1Cursor = try #require(try moment.cursor(forHash: hashInt("key1")))
@@ -269,7 +269,7 @@ import Testing
         // ArrayList
         let fruitsCursor = try #require(try moment.cursor(forHash: hashInt("fruits")))
         let fruits = try ArrayList<ReadOnly>(fruitsCursor)
-        #expect(try fruits.count() == 3)
+        #expect(try fruits.count == 3)
         let appleCursor = try #require(try fruits.cursor(at: 0))
         #expect(try appleCursor.readBytes(maxCount: 1024) == utf8("apple"))
         let cherryCursor = try #require(try fruits.cursor(at: 2))
@@ -278,7 +278,7 @@ import Testing
         // LinkedArrayList
         let todosCursor = try #require(try moment.cursor(forHash: hashInt("todos")))
         let todos = try LinkedArrayList<ReadOnly>(todosCursor)
-        #expect(try todos.count() == 3)
+        #expect(try todos.count == 3)
         let task1Cursor = try #require(try todos.cursor(at: 0))
         #expect(try task1Cursor.readBytes(maxCount: 1024) == utf8("task1"))
         let task3Cursor = try #require(try todos.cursor(at: 2))
@@ -287,7 +287,7 @@ import Testing
         // CountedHashMap
         let countedCursor = try #require(try moment.cursor(forHash: hashInt("counted")))
         let counted = try CountedHashMap<ReadOnly>(countedCursor)
-        #expect(try counted.count() == 2)
+        #expect(try counted.count == 2)
         let countedACursor = try #require(try counted.cursor(forHash: hashInt("a")))
         #expect(try countedACursor.readUInt64() == 1)
         let countedBCursor = try #require(try counted.cursor(forHash: hashInt("b")))
@@ -302,14 +302,14 @@ import Testing
         // CountedHashSet
         let csetCursor = try #require(try moment.cursor(forHash: hashInt("mycset")))
         let cset = try CountedHashSet<ReadOnly>(csetCursor)
-        #expect(try cset.count() == 2)
+        #expect(try cset.count == 2)
         let pCursor = try #require(try cset.cursor(forHash: hashInt("p")))
         #expect(try pCursor.readBytes(maxCount: 1024) == utf8("p"))
 
         // SortedMap
         let sortedCursor = try #require(try moment.cursor(forHash: hashInt("sorted")))
         let sorted = try SortedMap<ReadOnly>(sortedCursor)
-        #expect(try sorted.count() == 3)
+        #expect(try sorted.count == 3)
         let bananaCursor = try #require(try sorted.cursor(forKey: utf8("banana")))
         #expect(try bananaCursor.readUInt64() == 2)
         // lexicographic order is preserved across compaction
@@ -321,7 +321,7 @@ import Testing
         // SortedSet
         let sortedSetCursor = try #require(try moment.cursor(forHash: hashInt("sortedset")))
         let sortedSet = try SortedSet<ReadOnly>(sortedSetCursor)
-        #expect(try sortedSet.count() == 2)
+        #expect(try sortedSet.count == 2)
         #expect(try sortedSet.contains(utf8("foo")))
         #expect(try sortedSet.contains(utf8("bar")))
         #expect(try !sortedSet.contains(utf8("baz")))
@@ -361,7 +361,7 @@ import Testing
         let compacted = try source.compact(into: targetSubject.storage, offsetMap: &offsetMap)
 
         let history = try ArrayList<ReadOnly>(compacted.rootCursor.readOnly)
-        #expect(try history.count() == 1)
+        #expect(try history.count == 1)
 
         let momentCursor = try #require(try history.cursor(at: 0))
         let moment = try HashMap<ReadOnly>(momentCursor)
@@ -409,7 +409,7 @@ import Testing
         let reopened = try Database(storage: targetSubject.storage, hashSize: 20)
 
         let history = try ArrayList<ReadOnly>(reopened.rootCursor.readOnly)
-        #expect(try history.count() == 1)
+        #expect(try history.count == 1)
 
         let momentCursor = try #require(try history.cursor(at: 0))
         let moment = try HashMap<ReadOnly>(momentCursor)
@@ -453,7 +453,7 @@ import Testing
 
         // verify both old and new data
         let history = try ArrayList<ReadOnly>(compacted.rootCursor.readOnly)
-        #expect(try history.count() == 2)
+        #expect(try history.count == 2)
 
         // moment 0 (compacted original)
         let m0Cursor = try #require(try history.cursor(at: 0))

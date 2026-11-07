@@ -134,11 +134,11 @@ import Testing
             let key = paddedKey(i, width: 4)
             try map.put(.uint(UInt64(i)), forKey: key)
         }
-        #expect(try map.count() == UInt64(count))
+        #expect(try map.count == UInt64(count))
 
         // dedup: re-putting an existing key replaces the value, not the count
         try map.put(.uint(999), forKey: utf8("k0005"))
-        #expect(try map.count() == UInt64(count))
+        #expect(try map.count == UInt64(count))
         #expect(try #require(try map.cursor(forKey: utf8("k0005"))).readUInt64() == 999)
         try map.put(.uint(5), forKey: utf8("k0005"))
     }
@@ -225,7 +225,7 @@ import Testing
             #expect(try map.remove(forKey: paddedKey(j, width: 4)))
             j += 2
         }
-        #expect(try map.count() == UInt64(count / 2))
+        #expect(try map.count == UInt64(count / 2))
         #expect(try !map.remove(forKey: utf8("k0000")))  // already gone
 
         var iter = try map.iterator()
@@ -263,7 +263,7 @@ import Testing
         try set.insert(utf8("a-much-longer-key-stored-externally"))
         try set.insert(utf8("mid"))
         try set.insert(utf8("short"))  // dup is a no-op
-        #expect(try set.count() == 3)
+        #expect(try set.count == 3)
         #expect(try set.contains(utf8("mid")))
         #expect(try !set.contains(utf8("nope")))
         do {
@@ -310,7 +310,7 @@ import Testing
     /// test.zig 3552-3553: a key removed from the set.
     private func removesFromTheSet(_ set: SortedSet<ReadWrite>) throws {
         #expect(try set.remove(forKey: utf8("mid")))
-        #expect(try set.count() == 2)
+        #expect(try set.count == 2)
     }
 
     /// test.zig 3555-3563: the path parts that must not write.
@@ -335,14 +335,14 @@ import Testing
         // a write that fails after the key is inserted (a missing key written
         // through the non-writeable key slot) must still leave the count
         // consistent with the tree, not inserted-but-uncounted
-        let countBeforeFailedWrite = try map.count()
+        let countBeforeFailedWrite = try map.count
         #expect(throws: XitDBError.cursorNotWritable) {
             try map.cursor.writePath([
                 .sortedMapGet(.key, SortedKey(utf8("missing-key"))),
                 .write(.bytes(utf8("x"))),
             ])
         }
-        #expect(try map.count() == countBeforeFailedWrite + 1)
+        #expect(try map.count == countBeforeFailedWrite + 1)
         #expect(try map.entry(forKey: utf8("missing-key")) != nil)
         #expect(try map.remove(forKey: utf8("missing-key")))  // restore the map for the assertions below
     }
@@ -358,7 +358,7 @@ import Testing
             ])
         )
         let map = try SortedMap<ReadOnly>(mapCursor)
-        #expect(try map.count() == UInt64(count / 2))
+        #expect(try map.count == UInt64(count / 2))
         let first = try #require(try map.entry(at: 0))
         #expect(try readBytes(first.key, bufferSize: 8) == utf8("k0001"))
 
@@ -397,7 +397,7 @@ import Testing
                     ])
                 )
             )
-            #expect(try map0.count() == UInt64(count / 2))
+            #expect(try map0.count == UInt64(count / 2))
             #expect(try #require(try map0.cursor(forKey: utf8("k0001"))).readUInt64() == 1)
 
             // moment 1 reflects the mutation: k0001 re-added with value 7
@@ -409,7 +409,7 @@ import Testing
                     ])
                 )
             )
-            #expect(try map1.count() == UInt64(count / 2))
+            #expect(try map1.count == UInt64(count / 2))
             #expect(try #require(try map1.cursor(forKey: utf8("k0001"))).readUInt64() == 7)
         }
     }

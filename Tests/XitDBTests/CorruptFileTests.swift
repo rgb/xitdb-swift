@@ -71,7 +71,7 @@ import Testing
         var iterator = iterator
         var left = 2000
         while left > 0, let element = try iterator.next() {
-            _ = try element.slot()
+            _ = try element.slot
             left -= 1
         }
     }
@@ -109,17 +109,17 @@ import Testing
 
             // reads
             tolerating { _ = try database.committedSize }
-            tolerating { _ = try database.rootCursor.count() }
+            tolerating { _ = try database.rootCursor.count }
             for index in [Int64(0), -1, 2, .min] {
                 var found: Cursor<ReadOnly>?
                 tolerating { found = try database.rootCursor.readPath([.arrayListGet(index)]) }
                 guard let moment = found else { continue }
-                tolerating { _ = try moment.count() }
+                tolerating { _ = try moment.count }
                 for key in ["a", "long", "list", "counted", "linked", "b", "missing"] {
                     var value: Cursor<ReadOnly>?
                     tolerating { value = try moment.readPath([.hashMapGet(.value, sha1(key))]) }
                     guard let value else { continue }
-                    tolerating { _ = try value.count() }
+                    tolerating { _ = try value.count }
                     tolerating { _ = try value.readUInt64() }
                     tolerating { _ = try value.readBytesWithFormatTag() }
                     tolerating {
@@ -140,7 +140,7 @@ import Testing
                         while let entry = try entries.next() {
                             let pair = try entry.readEntry()
                             _ = try pair.key.readBytes(maxCount: 64)
-                            _ = try pair.value.slot()
+                            _ = try pair.value.slot
                             _ = pair.withHash { $0.count }
                         }
                     }
@@ -213,7 +213,7 @@ import Testing
                     self.tolerating { try linked.remove(at: 0) }
                     self.tolerating { try linked.formSlice(offset: 2, count: 5) }
                     self.tolerating { linked = try LinkedArrayList(try map.putCursor(forHash: sha1("linked").bytes)) }
-                    self.tolerating { try linked.append(contentsOf: try linked.slot()) }
+                    self.tolerating { try linked.append(contentsOf: try linked.slot) }
                     self.tolerating { try self.drain(try linked.iterator()) }
                 }
             }
@@ -228,10 +228,10 @@ import Testing
         let bytes = Self.sound
         try #require(bytes.count > 1500)
         let database = try Database(storage: MemoryStorage(bytes: bytes), hashSize: 20)
-        #expect(try database.rootCursor.count() == 2)
+        #expect(try database.rootCursor.count == 2)
         let moment = try #require(try database.rootCursor.readPath([.arrayListGet(-1)]))
-        #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("list"))])).count() == 20)
-        #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("counted"))])).count() == 2)
+        #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("list"))])).count == 20)
+        #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("counted"))])).count == 2)
         // and the exercise works on it as it is
         exercise(bytes)
     }
@@ -334,7 +334,7 @@ import Testing
         #expect(storage.bytes.count > 4095 * 144)
 
         let root = database.rootCursor
-        #expect(try root.count() == 2)
+        #expect(try root.count == 2)
         #expect(try #require(try root.readPath([.hashMapGet(.value, KeyHash(first))])).readUInt64() == 1)
         #expect(try #require(try root.readPath([.hashMapGet(.value, KeyHash(second))])).readUInt64() == 2)
 
@@ -354,7 +354,7 @@ import Testing
             _ = try cursor.writePath([.hashMapRemove(KeyHash(first))])
             #expect(throws: XitDBError.keyNotFound) { try cursor.writePath([.hashMapRemove(KeyHash(first))]) }
         }
-        #expect(try root.count() == 1)
+        #expect(try root.count == 1)
         #expect(try root.readPath([.hashMapGet(.value, KeyHash(first))]) == nil)
         #expect(try #require(try root.readPath([.hashMapGet(.value, KeyHash(second))])).readUInt64() == 3)
 
@@ -368,7 +368,7 @@ import Testing
         var bytes = Self.sound
         let database = try Database(storage: MemoryStorage(bytes: bytes), hashSize: 20)
         let moment = try #require(try database.rootCursor.readPath([.arrayListGet(-1)]))
-        let mapPosition = Int(try moment.slot().value)
+        let mapPosition = Int(try moment.slot.value)
         // every slot of the map's root block now points back at the block
         for slot in 0..<16 {
             bytes.replaceSubrange(
@@ -398,7 +398,7 @@ import Testing
         // twenty elements: a root block whose first two slots point at
         // blocks of elements. The second element block now points at the
         // first one in its third slot, where the element 18 was.
-        let header = try database.reader.arrayListHeader(at: try list.slot().value)
+        let header = try database.reader.arrayListHeader(at: try list.slot.value)
         let firstBlock = try database.reader.slot(at: header.ptr).value
         let secondBlock = Int(try database.reader.slot(at: header.ptr + 9).value)
         bytes.replaceSubrange(
@@ -444,7 +444,7 @@ import Testing
         let database = try Database(storage: MemoryStorage(bytes: bytes), hashSize: 20)
         let moment = try #require(try database.rootCursor.readPath([.arrayListGet(-1)]))
         let long = try #require(try moment.readPath([.hashMapGet(.value, sha1("long"))]))
-        let record = Int(try long.slot().value)
+        let record = Int(try long.slot.value)
         bytes.replaceSubrange(record..<(record + 8), with: bigEndianBytes(1 << 40))
         let damaged = try Database(storage: MemoryStorage(bytes: bytes), hashSize: 20)
         let damagedMoment = try #require(try damaged.rootCursor.readPath([.arrayListGet(-1)]))

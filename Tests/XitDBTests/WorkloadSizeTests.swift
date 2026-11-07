@@ -66,7 +66,7 @@ import Testing
         #expect(try subject.storage.length == workload.size)
 
         let moment = try lastMoment(database)
-        #expect(try moment.count() == UInt64(workload.count))
+        #expect(try moment.count == UInt64(workload.count))
         for index in 0..<workload.count {
             #expect(try #require(try moment.readPath([.arrayListGet(Int64(index))])).readUInt64() == UInt64(index))
         }

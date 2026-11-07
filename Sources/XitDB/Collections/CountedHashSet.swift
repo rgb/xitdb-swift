@@ -5,7 +5,7 @@
 /// bytes as the database's hash size, and gives the hash with the key. Two
 /// keys with the same hash are the same key to the set.
 ///
-/// A counted set keeps the number of its entries, which ``count()`` reads
+/// A counted set keeps the number of its entries, which ``count`` reads
 /// without going through them. It costs eight bytes and one more write for
 /// each entry added or removed.
 ///
@@ -25,8 +25,10 @@ public struct CountedHashSet<Access: CursorAccess> {
     ///
     /// - Throws: Only for a set at the root of the database, if the root
     ///   cannot be read.
-    public func slot() throws(XitDBError) -> Slot {
-        try cursor.slot()
+    public var slot: Slot {
+        get throws(XitDBError) {
+            try cursor.slot
+        }
     }
 
     /// The number of entries in the set.
@@ -34,8 +36,10 @@ public struct CountedHashSet<Access: CursorAccess> {
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   that has no count, or ``XitDBError/endOfStream`` if the count
     ///   cannot be read.
-    public func count() throws(XitDBError) -> UInt64 {
-        try cursor.count()
+    public var count: UInt64 {
+        get throws(XitDBError) {
+            try cursor.count
+        }
     }
 
     /// An iterator over the set's entries. Each cursor it gives is at an

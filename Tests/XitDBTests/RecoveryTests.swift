@@ -55,21 +55,21 @@ import Testing
     /// Checks that the database holds the two commits of `populate` and
     /// nothing of `transaction`.
     static func expectLastCommit(_ database: Database) throws {
-        #expect(try database.rootCursor.count() == 2)
+        #expect(try database.rootCursor.count == 2)
         let moment = try #require(try database.rootCursor.readPath([.arrayListGet(-1)]))
         #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("a"))])).readUInt64() == 1)
         #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("c"))])).readInt64() == -3)
         #expect(try moment.readPath([.hashMapGet(.value, sha1("b"))]) != nil)
         #expect(try moment.readPath([.hashMapGet(.value, sha1("d"))]) == nil)
-        #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("list"))])).count() == 1)
+        #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("list"))])).count == 1)
     }
 
     static func expectTransaction(_ database: Database) throws {
-        #expect(try database.rootCursor.count() == 3)
+        #expect(try database.rootCursor.count == 3)
         let moment = try #require(try database.rootCursor.readPath([.arrayListGet(-1)]))
         #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("a"))])).readUInt64() == 2)
         #expect(try moment.readPath([.hashMapGet(.value, sha1("b"))]) == nil)
-        #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("list"))])).count() == 2)
+        #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("list"))])).count == 2)
         let text = try #require(try moment.readPath([.hashMapGet(.value, sha1("text"))])).readBytesWithFormatTag()
         #expect(text == Bytes(Array("written in pieces".utf8), formatTag: "tx"))
     }
