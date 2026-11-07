@@ -89,15 +89,15 @@ public struct SortedSet<Access: CursorAccess> {
     /// key that is not below `key` on, which need not be there. A key
     /// beyond every entry gives an iterator of nothing.
     ///
-    /// - Parameter key: The key's bytes, in any collection of bytes: an
-    ///   array, a slice, a string's `utf8`. The `Span` overload takes bytes
+    /// - Parameter key: The key's bytes, in any sequence of bytes: an array,
+    ///   a slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
     ///   already borrowed.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
     @inlinable
-    public func iterator(fromKey key: some Collection<UInt8>) throws(XitDBError) -> CollectionIterator {
+    public func iterator(fromKey key: some Sequence<UInt8>) throws(XitDBError) -> CollectionIterator {
         let bytes = Array(key)
         return try iterator(fromKey: bytes.span)
     }
@@ -123,15 +123,15 @@ public struct SortedSet<Access: CursorAccess> {
     /// The number of keys in the set that are below `key`, which need
     /// not be there: the position it has, or would have.
     ///
-    /// - Parameter key: The key's bytes, in any collection of bytes: an
-    ///   array, a slice, a string's `utf8`. The `Span` overload takes bytes
+    /// - Parameter key: The key's bytes, in any sequence of bytes: an array,
+    ///   a slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
     ///   already borrowed.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
     @inlinable
-    public func rank(of key: some Collection<UInt8>) throws(XitDBError) -> UInt64 {
+    public func rank(of key: some Sequence<UInt8>) throws(XitDBError) -> UInt64 {
         let bytes = Array(key)
         return try rank(of: bytes.span)
     }
@@ -165,15 +165,15 @@ public struct SortedSet<Access: CursorAccess> {
 
     /// Whether `key` is in the set.
     ///
-    /// - Parameter key: The key's bytes, in any collection of bytes: an
-    ///   array, a slice, a string's `utf8`. The `Span` overload takes bytes
+    /// - Parameter key: The key's bytes, in any sequence of bytes: an array,
+    ///   a slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
     ///   already borrowed.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
     @inlinable
-    public func contains(_ key: some Collection<UInt8>) throws(XitDBError) -> Bool {
+    public func contains(_ key: some Sequence<UInt8>) throws(XitDBError) -> Bool {
         let bytes = Array(key)
         return try contains(bytes.span)
     }
@@ -263,8 +263,8 @@ extension SortedSet where Access == ReadWrite {
     /// Adds `key` to the set. A key that is there already is left as it
     /// is.
     ///
-    /// - Parameter key: The key's bytes, in any collection of bytes: an
-    ///   array, a slice, a string's `utf8`. The `Span` overload takes bytes
+    /// - Parameter key: The key's bytes, in any sequence of bytes: an array,
+    ///   a slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
     ///   already borrowed.
     /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not
     ///   the root cursor and no transaction is in progress,
@@ -274,7 +274,7 @@ extension SortedSet where Access == ReadWrite {
     ///   not hold what its header or its branches say, or an error of the
     ///   storage or of a damaged file.
     @inlinable
-    public func insert(_ key: some Collection<UInt8>) throws(XitDBError) {
+    public func insert(_ key: some Sequence<UInt8>) throws(XitDBError) {
         let bytes = Array(key)
         try insert(bytes.span)
     }
@@ -306,7 +306,9 @@ extension SortedSet where Access == ReadWrite {
     /// Removes the entry for a key. The place it had in its leaf stays
     /// empty; the tree is not rebalanced.
     ///
-    /// - Parameter key: The key's bytes.
+    /// - Parameter key: The key's bytes, in any sequence of bytes: an array,
+    ///   a slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
+    ///   already borrowed.
     /// - Returns: Whether there was an entry to remove.
     /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not
     ///   the root cursor and no transaction is in progress,
@@ -317,7 +319,7 @@ extension SortedSet where Access == ReadWrite {
     ///   storage or of a damaged file.
     @discardableResult
     @inlinable
-    public func remove(forKey key: some Collection<UInt8>) throws(XitDBError) -> Bool {
+    public func remove(forKey key: some Sequence<UInt8>) throws(XitDBError) -> Bool {
         let bytes = Array(key)
         return try remove(forKey: bytes.span)
     }

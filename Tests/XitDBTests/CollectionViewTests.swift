@@ -1,3 +1,5 @@
+import CryptoKit
+import Foundation
 import Testing
 
 @testable import XitDB
@@ -294,6 +296,34 @@ import Testing
             #expect(try countedSet.remove(forHash: hash.span))
             #expect(try !countedSet.remove(forHash: hash.span))
             #expect(try countedSet.count == 0)
+        }
+    }
+
+    /// A CryptoKit digest is a sequence of bytes and not a collection, and
+    /// the methods that take a hash take it as it is (D21 item 3, amended):
+    /// a SHA-1 digest goes straight into a map with a hash size of twenty,
+    /// and names the same entry as the array of its bytes. A digest of
+    /// another size is refused as any hash of the wrong size is.
+    @Test func aCryptoKitDigestGoesStraightIn() throws {
+        let database = try makeDatabase()
+        let digest = Insecure.SHA1.hash(data: Data("k".utf8))
+        let bytes = Array(digest)
+        #expect(bytes.count == 20)
+        try database.withTransaction { cursor in
+            let map = try HashMap(cursor)
+            try map.put(.uint(1), forHash: digest)
+            #expect(try map.cursor(forHash: digest)?.readUInt64() == 1)
+            #expect(
+                try map.cursor(forHash: bytes)?.readUInt64() == 1, "the array of the digest's bytes finds the entry")
+            try map.put(.uint(2), forHash: bytes)
+            #expect(try map.cursor(forHash: digest)?.readUInt64() == 2, "and the digest finds what the array wrote")
+            #expect(try map.cursor(forHash: Insecure.SHA1.hash(data: Data("other".utf8))) == nil)
+            #expect(throws: XitDBError.invalidHashSize) {
+                try map.put(.uint(3), forHash: SHA256.hash(data: Data("k".utf8)))
+            }
+            #expect(throws: XitDBError.invalidHashSize) {
+                try map.cursor(forHash: SHA256.hash(data: Data("k".utf8)))
+            }
         }
     }
 
