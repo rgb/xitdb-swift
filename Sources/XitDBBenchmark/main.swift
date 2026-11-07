@@ -169,6 +169,10 @@ struct Workload {
     /// cost time the phase does not.
     var afterWrite: (Database, Any) throws -> Void = { _, _ in }
     var afterRead: (Database, Any) throws -> Void = { _, _ in }
+    /// What the read phase needs put back before it runs, off the clock,
+    /// for a phase that changes the database it reads and is run again
+    /// on the same one under `--repeat`.
+    var beforeRead: (Database, Any) throws -> Void = { _, _ in }
 
     /// A workload whose write phase fills the prepared database.
     init(
@@ -393,6 +397,18 @@ func replicate(_ transactions: Int, kinds: [StorageKind]) -> Workload {
             throw BenchmarkFailure(description: "the incremental sync did not bring the replica to the source's size")
         }
     }
+    // The read phase syncs the ten transactions and keeps their bytes. Run
+    // again on the same replica, it would find nothing to sync and apply
+    // the kept bytes a second time, so the replica is put back to the full
+    // sync's state and the buffer emptied, and each run does the first
+    // run's work.
+    workload.beforeRead = { replica, prepared in
+        let run = prepared as! ReplicationRun
+        if try replica.committedSize != run.sizeAfterFirst {
+            try replica.applyReplicated(at: 0, bytes: run.fullSync)
+        }
+        run.incrementalSync = []
+    }
     return workload
 }
 
@@ -528,7 +544,7 @@ func median(_ values: [Double]) -> Double {
 
 func report(_ workload: Workload, _ phase: String, _ kind: StorageKind, _ times: [Double], _ fileSize: UInt64) {
     let line = String(
-        format: #"{"workload": "%@", "phase": "%@", "kind": "%@", "n": %d, "median_ms": %.6f, "file_size": %llu}"#,
+        format: #"{"workload": "%@", "phase": "%@", "kind": "%@", "n": %ld, "median_ms": %.6f, "file_size": %llu}"#,
         workload.name, phase, kind.rawValue, workload.size, median(times), fileSize
     )
     print(line)
@@ -549,6 +565,7 @@ func run(_ workload: Workload) throws {
             writeTimes.append(try milliseconds { database = try workload.write(storage, keys, prepared) })
             guard let database else { throw BenchmarkFailure(description: "the write phase gave no database") }
             try workload.afterWrite(database, prepared)
+            try workload.beforeRead(database, prepared)
             readTimes.append(try milliseconds { try workload.read(database, keys, prepared) })
             try workload.afterRead(database, prepared)
             iterateTimes.append(try milliseconds { try workload.iterate(database, keys, prepared) })
@@ -631,6 +648,7 @@ func runCounting(_ workload: Workload, _ kind: StorageKind) throws {
     let database = try workload.write(storage, keys, prepared)
     counts.report(workload, "write", kind)
     try workload.afterWrite(database, prepared)
+    try workload.beforeRead(database, prepared)
     counts.install(on: file)
     try workload.read(database, keys, prepared)
     counts.report(workload, "read", kind)
@@ -655,6 +673,7 @@ func runRepeatedly(_ workload: Workload, _ kind: StorageKind, phase: String, sec
         let database = try workload.write(storage, keys, prepared)
         let run = phase == "read" ? workload.read : workload.iterate
         while DispatchTime.now().uptimeNanoseconds < deadline {
+            if phase == "read" { try workload.beforeRead(database, prepared) }
             total += try milliseconds { try run(database, keys, prepared) }
             runs += 1
         }
@@ -667,7 +686,7 @@ func runRepeatedly(_ workload: Workload, _ kind: StorageKind, phase: String, sec
         }
     }
     let line = String(
-        format: #"{"workload": "%@", "phase": "%@", "kind": "%@", "n": %d, "runs": %d, "mean_ms": %.3f}"#,
+        format: #"{"workload": "%@", "phase": "%@", "kind": "%@", "n": %ld, "runs": %ld, "mean_ms": %.3f}"#,
         workload.name, phase, kind.rawValue, workload.size, runs, total / Double(max(runs, 1))
     )
     print(line)
