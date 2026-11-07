@@ -76,6 +76,7 @@ import Testing
             }
         }
         attempt("get 0") { list, _ in _ = try list.getCursor(0) }
+        attempt("get 24") { list, _ in _ = try list.getCursor(24) }
         attempt("get -1") { list, _ in _ = try list.getCursor(-1) }
         attempt("get 50") { list, _ in _ = try list.getCursor(50) }
         attempt("put 0") { list, _ in try list.put(0, .uint(1)) }
@@ -135,8 +136,8 @@ import Testing
         // Zig's does; the four leaves are still there.
         #expect(
             failed == [
-                "get 0", "get -1", "put 0", "insert 0", "append", "remove 0", "slice 0 5", "slice 20 5", "concat onto",
-                "concat", "iterate from 0",
+                "get 0", "get 24", "get -1", "put 0", "insert 0", "append", "remove 0", "slice 0 5", "slice 20 5",
+                "concat onto", "concat", "iterate from 0",
             ])
     }
 
@@ -157,8 +158,9 @@ import Testing
     /// The root's last child is not a node but a number, which happens to
     /// be where the first leaf is, so that taking it for a node would read a
     /// sound leaf and go on. Whatever goes through the last child is
-    /// reported: the last element, an append, a slice whose right part is
-    /// that child alone, and joining another list onto the right spine.
+    /// reported: its first element, which the first leaf could give, the
+    /// last element, an append, a slice whose right part is that child
+    /// alone, and joining another list onto the right spine.
     @Test(arguments: StorageKind.allCases)
     func aChildThatIsNotANode(kind: StorageKind) throws {
         let subject = try Subject(kind)
@@ -166,7 +168,7 @@ import Testing
         let database = try subject.damaged(
             slotBytes(Slot(value: firstLeaf, tag: .uint)), at: subject.rootPtr + 2 + 3 * 9)
         let failed = try failing(database)
-        #expect(failed == ["get -1", "append", "slice 20 5", "concat"])
+        #expect(failed == ["get 24", "get -1", "append", "slice 20 5", "concat"])
     }
 
     /// The root's first child points back at the root.

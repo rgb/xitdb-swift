@@ -87,6 +87,7 @@ import Testing
         attempt("put new first") { try $0.put(Array("k005".utf8), .uint(1)) }
         attempt("put new last") { try $0.put(missing, .uint(1)) }
         attempt("get index 0") { _ = try $0.getIndexKeyValuePair(0) }
+        attempt("get index 24") { _ = try $0.getIndexKeyValuePair(24) }
         attempt("get index -1") { _ = try $0.getIndexKeyValuePair(-1) }
         attempt("get index 50") { _ = try $0.getIndexKeyValuePair(50) }
         attempt("remove first") { try $0.remove(first) }
@@ -101,6 +102,10 @@ import Testing
         }
         attempt("iterate from index 0") {
             var iterator = try $0.iteratorFromIndex(0)
+            try walk(&iterator)
+        }
+        attempt("iterate from index 24") {
+            var iterator = try $0.iteratorFromIndex(24)
             try walk(&iterator)
         }
         attempt("iterate from index -1") {
@@ -169,9 +174,9 @@ import Testing
             failed
                 == invalid([
                     "get first", "get last", "get missing", "put first", "put last", "put new first", "put new last",
-                    "get index 0", "get index -1", "remove first", "remove last", "remove missing", "rank first",
-                    "rank last", "rank missing", "iterate from index 0", "iterate from index -1", "iterate from first",
-                    "iterate from last", "iterate from missing",
+                    "get index 0", "get index 24", "get index -1", "remove first", "remove last", "remove missing",
+                    "rank first", "rank last", "rank missing", "iterate from index 0", "iterate from index 24",
+                    "iterate from index -1", "iterate from first", "iterate from last", "iterate from missing",
                 ]))
     }
 
@@ -237,8 +242,9 @@ import Testing
     /// The root's last child is not a node but a number, which happens to
     /// be where the first leaf is, so that taking it for a node would read a
     /// sound leaf and go on. Whatever a search or a descent by rank leads
-    /// to the last child is reported. A walk that reaches it gives the
-    /// number as an entry, as Zig's does, which reads as no pair.
+    /// to the last child is reported, a rank that the first leaf could
+    /// satisfy included. A walk that reaches it gives the number as an
+    /// entry, as Zig's does, which reads as no pair.
     @Test(arguments: StorageKind.allCases)
     func aChildThatIsNotANode(kind: StorageKind) throws {
         let subject = try Subject(kind)
@@ -247,8 +253,9 @@ import Testing
             slotBytes(Slot(value: firstLeaf, tag: .uint)), at: subject.rootPtr + 2 + 3 * 9)
         let failed = try failing(database)
         var expected = invalid([
-            "get last", "get missing", "put last", "put new last", "get index -1", "remove last", "remove missing",
-            "rank last", "rank missing", "iterate from index -1", "iterate from last", "iterate from missing",
+            "get last", "get missing", "put last", "put new last", "get index 24", "get index -1", "remove last",
+            "remove missing", "rank last", "rank missing", "iterate from index 24", "iterate from index -1",
+            "iterate from last", "iterate from missing",
         ])
         for walk in ["iterate", "iterate from index 0", "iterate from first"] {
             expected[walk] = .unexpectedTag
@@ -331,6 +338,29 @@ import Testing
             }
             #expect(count == 40)
         }
+    }
+
+    /// A key slot that points so close to the end of the file that the
+    /// record's length is cut: the fourth entry of the first leaf, which
+    /// every search of that leaf compares first. The reads go without a
+    /// transaction, which would append to the file and lengthen it.
+    @Test(arguments: StorageKind.allCases)
+    func aKeySlotAtTheEndOfTheFile(kind: StorageKind) throws {
+        let keys = (0..<40).map { Array("a long key that is a record \($0 < 10 ? "0" : "")\($0)".utf8) }
+        let subject = try Subject(kind, keys: keys)
+        let firstLeaf = try subject.database.reader.sortedNode(at: subject.rootPtr).children[0].value
+        let leaf = try subject.database.reader.sortedNode(at: firstLeaf)
+        let entry = leaf.entries[4]
+        #expect(entry.tag == .sortedKvPair)
+        let length = try subject.subject.storage.length()
+        // the pair record starts with its key slot
+        let database = try subject.damaged(slotBytes(Slot(value: length - 4, tag: .bytes)), at: entry.value)
+        let root = try HashMap(database.rootCursor().readOnly())
+        let map = try SortedMap(try #require(try root.getCursor(sha1("map").bytes)))
+        #expect(throws: XitDBError.endOfStream) { try map.getCursor(keys[0]) }
+        #expect(throws: XitDBError.endOfStream) { try map.rank(keys[4]) }
+        #expect(throws: XitDBError.endOfStream) { try map.iteratorFrom(keys[7]) }
+        #expect(try #require(try map.getCursor(keys[20])).readUint() == 20)
     }
 
     /// A key record whose length fits the file but reaches past its end by
