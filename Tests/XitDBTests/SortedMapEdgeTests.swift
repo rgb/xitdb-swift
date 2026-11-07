@@ -16,7 +16,7 @@ import Testing
         try database.withTransaction { cursor in
             let set = try SortedSet(try HashMap(cursor).putCursor(forHash: sha1("set").bytes))
             for index in 0..<40 {
-                try set.put(Array("k\(index)".utf8))
+                try set.insert(Array("k\(index)".utf8))
             }
         }
         let before = try #require(try database.rootCursor.readPathSlot([.hashMapGet(.value, sha1("set"))]))
@@ -25,8 +25,8 @@ import Testing
 
         try database.withTransaction { cursor in
             let set = try SortedSet(try HashMap(cursor).putCursor(forHash: sha1("set").bytes))
-            try set.put(Array("k7".utf8))
-            try set.put(Array("k39".utf8))
+            try set.insert(Array("k7".utf8))
+            try set.insert(Array("k39".utf8))
             #expect(try set.count() == 40)
         }
         let after = try #require(try database.rootCursor.readPathSlot([.hashMapGet(.value, sha1("set"))]))

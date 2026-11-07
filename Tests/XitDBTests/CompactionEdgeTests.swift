@@ -222,7 +222,7 @@ import Testing
         try source.withTransaction { cursor in
             let map = try SortedMap(try HashMap(cursor).putCursor(forHash: sha1("sorted").bytes))
             for (index, key) in keys.enumerated() {
-                try map.put(key, .uint(UInt64(index)))
+                try map.put(.uint(UInt64(index)), forKey: key)
             }
         }
         let sourceHeader = try source.reader.bTreeHeader(
@@ -235,8 +235,8 @@ import Testing
         let copied = try SortedMap(
             try #require(try HashMap(target.rootCursor.readOnly).cursor(forHash: sha1("sorted").bytes)))
         for (index, key) in keys.enumerated() {
-            #expect(try #require(try copied.getCursor(key)).readUInt64() == UInt64(index))
-            #expect(try copied.rank(key) == UInt64(index))
+            #expect(try #require(try copied.cursor(forKey: key)).readUInt64() == UInt64(index))
+            #expect(try copied.rank(of: key) == UInt64(index))
         }
         // the separators are records in the target, not in the source
         let header = try target.reader.bTreeHeader(at: try copied.slot().value)
@@ -312,7 +312,7 @@ import Testing
             }
             let sorted = try SortedMap(try map.putCursor(forHash: sha1("sorted").bytes))
             for index in 0..<40 {
-                try sorted.put(Array("k\(index)".utf8), .uint(UInt64(index)))
+                try sorted.put(.uint(UInt64(index)), forKey: Array("k\(index)".utf8))
             }
         }
         // the last child of each root points at the root

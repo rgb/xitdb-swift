@@ -171,15 +171,15 @@ import Testing
                 // SortedMap
                 let sortedCursor = try moment.putCursor(forHash: hashInt("sorted"))
                 let sorted = try SortedMap<ReadWrite>(sortedCursor)
-                try sorted.put(utf8("apple"), .uint(1))
-                try sorted.put(utf8("banana"), .uint(2))
-                try sorted.put(utf8("cherry"), .uint(3))
+                try sorted.put(.uint(1), forKey: utf8("apple"))
+                try sorted.put(.uint(2), forKey: utf8("banana"))
+                try sorted.put(.uint(3), forKey: utf8("cherry"))
 
                 // SortedSet
                 let sortedSetCursor = try moment.putCursor(forHash: hashInt("sortedset"))
                 let sortedSet = try SortedSet<ReadWrite>(sortedSetCursor)
-                try sortedSet.put(utf8("foo"))
-                try sortedSet.put(utf8("bar"))
+                try sortedSet.insert(utf8("foo"))
+                try sortedSet.insert(utf8("bar"))
             }
         }
 
@@ -310,12 +310,12 @@ import Testing
         let sortedCursor = try #require(try moment.cursor(forHash: hashInt("sorted")))
         let sorted = try SortedMap<ReadOnly>(sortedCursor)
         #expect(try sorted.count() == 3)
-        let bananaCursor = try #require(try sorted.getCursor(utf8("banana")))
+        let bananaCursor = try #require(try sorted.cursor(forKey: utf8("banana")))
         #expect(try bananaCursor.readUInt64() == 2)
         // lexicographic order is preserved across compaction
-        let firstPair = try #require(try sorted.getIndexKeyValuePair(0))
+        let firstPair = try #require(try sorted.entry(at: 0))
         #expect(try firstPair.key.readBytes(maxCount: 1024) == utf8("apple"))
-        let lastPair = try #require(try sorted.getIndexKeyValuePair(-1))
+        let lastPair = try #require(try sorted.entry(at: -1))
         #expect(try lastPair.key.readBytes(maxCount: 1024) == utf8("cherry"))
 
         // SortedSet

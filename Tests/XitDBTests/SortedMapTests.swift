@@ -132,15 +132,15 @@ import Testing
         while i > 0 {
             i -= 1
             let key = paddedKey(i, width: 4)
-            try map.put(key, .uint(UInt64(i)))
+            try map.put(.uint(UInt64(i)), forKey: key)
         }
         #expect(try map.count() == UInt64(count))
 
         // dedup: re-putting an existing key replaces the value, not the count
-        try map.put(utf8("k0005"), .uint(999))
+        try map.put(.uint(999), forKey: utf8("k0005"))
         #expect(try map.count() == UInt64(count))
-        #expect(try #require(try map.getCursor(utf8("k0005"))).readUInt64() == 999)
-        try map.put(utf8("k0005"), .uint(5))
+        #expect(try #require(try map.cursor(forKey: utf8("k0005"))).readUInt64() == 999)
+        try map.put(.uint(5), forKey: utf8("k0005"))
     }
 
     /// test.zig 3424-3441: the iterator, and lookups of a present and an absent key.
@@ -159,8 +159,8 @@ import Testing
             #expect(n == count)
         }
 
-        #expect(try map.getCursor(utf8("k0042")) != nil)
-        #expect(try map.getCursor(utf8("nope")) == nil)
+        #expect(try map.cursor(forKey: utf8("k0042")) != nil)
+        #expect(try map.cursor(forKey: utf8("nope")) == nil)
     }
 
     /// test.zig 3443-3458: `getIndexKeyValuePair` and `rank`.
@@ -168,50 +168,50 @@ import Testing
         // getByIndex (positive and negative) and rank are inverses
         var idx = 0
         while idx < count {
-            let kv = try #require(try map.getIndexKeyValuePair(Int64(idx)))
+            let kv = try #require(try map.entry(at: Int64(idx)))
             let key = try readBytes(kv.key, bufferSize: 8)
             #expect(key == paddedKey(idx, width: 4))
-            #expect(try map.rank(key) == UInt64(idx))
+            #expect(try map.rank(of: key) == UInt64(idx))
             idx += 1
         }
-        let last = try #require(try map.getIndexKeyValuePair(-1))
+        let last = try #require(try map.entry(at: -1))
         #expect(try readBytes(last.key, bufferSize: 8) == utf8("k0059"))
-        #expect(try map.getIndexKeyValuePair(Int64(count)) == nil)
+        #expect(try map.entry(at: Int64(count)) == nil)
     }
 
     /// test.zig 3460-3495: `iteratorFrom` and `iteratorFromIndex`, with indexes in and out of range.
     private func iteratesFromAKeyAndFromAnIndex(_ map: SortedMap<ReadWrite>) throws {
         // lower-bound iteration from a present and an absent key
         do {
-            var iter = try map.iteratorFrom(utf8("k0030"))
+            var iter = try map.iterator(fromKey: utf8("k0030"))
             #expect(try nextKey(&iter) == utf8("k0030"))
         }
         do {
             // "k00095" sorts between "k0009" and "k0010"
-            var iter = try map.iteratorFrom(utf8("k00095"))
+            var iter = try map.iterator(fromKey: utf8("k00095"))
             #expect(try nextKey(&iter) == utf8("k0010"))
         }
         do {
-            var iter = try map.iteratorFromIndex(Int64(count - 2))
+            var iter = try map.iterator(fromIndex: Int64(count - 2))
             #expect(try nextKey(&iter) == utf8("k0058"))
         }
         // negative indexes count from the end: -1 is the last entry, -COUNT the first
         do {
-            var iter = try map.iteratorFromIndex(-1)
+            var iter = try map.iterator(fromIndex: -1)
             #expect(try nextKey(&iter) == utf8("k0059"))
             let afterLast = try iter.next()
             #expect(afterLast == nil)  // -1 is the last entry, so nothing follows
         }
         do {
-            var iter = try map.iteratorFromIndex(-Int64(count))
+            var iter = try map.iterator(fromIndex: -Int64(count))
             #expect(try nextKey(&iter) == utf8("k0000"))
         }
         // out of range past either end yields nothing
         do {
-            var itHi = try map.iteratorFromIndex(Int64(count))
+            var itHi = try map.iterator(fromIndex: Int64(count))
             let firstHi = try itHi.next()
             #expect(firstHi == nil)
-            var itLo = try map.iteratorFromIndex(-Int64(count) - 1)
+            var itLo = try map.iterator(fromIndex: -Int64(count) - 1)
             let firstLo = try itLo.next()
             #expect(firstLo == nil)
         }
@@ -222,11 +222,11 @@ import Testing
         // remove the even keys, then re-verify order, count, and presence
         var j = 0
         while j < count {
-            #expect(try map.remove(paddedKey(j, width: 4)))
+            #expect(try map.remove(forKey: paddedKey(j, width: 4)))
             j += 2
         }
         #expect(try map.count() == UInt64(count / 2))
-        #expect(try !map.remove(utf8("k0000")))  // already gone
+        #expect(try !map.remove(forKey: utf8("k0000")))  // already gone
 
         var iter = try map.iterator()
         var expectI = 1
@@ -247,10 +247,10 @@ import Testing
         // iterating-from on an unwritten (.none) map yields nothing, like iterator()
         let noneCursor = Cursor<ReadOnly>(slotPointer: SlotPointer(position: nil, slot: Slot()), database: database)
         let empty = try SortedMap<ReadOnly>(noneCursor)
-        var it1 = try empty.iteratorFrom(utf8("anything"))
+        var it1 = try empty.iterator(fromKey: utf8("anything"))
         let first1 = try it1.next()
         #expect(first1 == nil)
-        var it2 = try empty.iteratorFromIndex(0)
+        var it2 = try empty.iterator(fromIndex: 0)
         let first2 = try it2.next()
         #expect(first2 == nil)
     }
@@ -259,10 +259,10 @@ import Testing
     private func fillsTheSet(_ moment: HashMap<ReadWrite>) throws -> SortedSet<ReadWrite> {
         // SortedSet with mixed short (inline) and long (external) keys
         let set = try SortedSet<ReadWrite>(try moment.putCursor(forHash: hashInt("set")))
-        try set.put(utf8("short"))
-        try set.put(utf8("a-much-longer-key-stored-externally"))
-        try set.put(utf8("mid"))
-        try set.put(utf8("short"))  // dup is a no-op
+        try set.insert(utf8("short"))
+        try set.insert(utf8("a-much-longer-key-stored-externally"))
+        try set.insert(utf8("mid"))
+        try set.insert(utf8("short"))  // dup is a no-op
         #expect(try set.count() == 3)
         #expect(try set.contains(utf8("mid")))
         #expect(try !set.contains(utf8("nope")))
@@ -309,7 +309,7 @@ import Testing
 
     /// test.zig 3552-3553: a key removed from the set.
     private func removesFromTheSet(_ set: SortedSet<ReadWrite>) throws {
-        #expect(try set.remove(utf8("mid")))
+        #expect(try set.remove(forKey: utf8("mid")))
         #expect(try set.count() == 2)
     }
 
@@ -343,8 +343,8 @@ import Testing
             ])
         }
         #expect(try map.count() == countBeforeFailedWrite + 1)
-        #expect(try map.getKeyValuePair(utf8("missing-key")) != nil)
-        #expect(try map.remove(utf8("missing-key")))  // restore the map for the assertions below
+        #expect(try map.entry(forKey: utf8("missing-key")) != nil)
+        #expect(try map.remove(forKey: utf8("missing-key")))  // restore the map for the assertions below
     }
 
     /// test.zig 3586-3601: the committed moment, read through a read-only map.
@@ -359,7 +359,7 @@ import Testing
         )
         let map = try SortedMap<ReadOnly>(mapCursor)
         #expect(try map.count() == UInt64(count / 2))
-        let first = try #require(try map.getIndexKeyValuePair(0))
+        let first = try #require(try map.entry(at: 0))
         #expect(try readBytes(first.key, bufferSize: 8) == utf8("k0001"))
 
         // entries have no hash
@@ -382,8 +382,8 @@ import Testing
         ]) { (cursor: inout Cursor<ReadWrite>) in
             let moment = try HashMap<ReadWrite>(cursor)
             let map = try SortedMap<ReadWrite>(try moment.putCursor(forHash: hashInt("map")))
-            #expect(try map.remove(utf8("k0001")))
-            try map.put(utf8("k0001"), .uint(7))  // not in moment 0
+            #expect(try map.remove(forKey: utf8("k0001")))
+            try map.put(.uint(7), forKey: utf8("k0001"))  // not in moment 0
         }
         do {
             let history = try ArrayList<ReadOnly>(database.rootCursor.readOnly)
@@ -398,7 +398,7 @@ import Testing
                 )
             )
             #expect(try map0.count() == UInt64(count / 2))
-            #expect(try #require(try map0.getCursor(utf8("k0001"))).readUInt64() == 1)
+            #expect(try #require(try map0.cursor(forKey: utf8("k0001"))).readUInt64() == 1)
 
             // moment 1 reflects the mutation: k0001 re-added with value 7
             let m1 = try #require(try history.cursor(at: 1))
@@ -410,7 +410,7 @@ import Testing
                 )
             )
             #expect(try map1.count() == UInt64(count / 2))
-            #expect(try #require(try map1.getCursor(utf8("k0001"))).readUInt64() == 7)
+            #expect(try #require(try map1.cursor(forKey: utf8("k0001"))).readUInt64() == 7)
         }
     }
 }

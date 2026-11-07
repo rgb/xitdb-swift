@@ -1096,9 +1096,9 @@ final class ScriptRunner {
             // The rank of a `SortedMap(.read_only)` on the cursor, whose
             // init checks the tag.
             let result = try read(try op.string("on")) {
-                try SortedMap($0.readOnly).rank(key)
+                try SortedMap($0.readOnly).rank(of: key)
             } readOnly: {
-                try SortedMap($0).rank(key)
+                try SortedMap($0).rank(of: key)
             }
             if op.has("expect"), try op.unsigned("expect") != result {
                 throw ScriptFailure("rank gave \(result)")

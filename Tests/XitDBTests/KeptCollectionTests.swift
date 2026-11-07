@@ -305,30 +305,30 @@ import Testing
             let moment = try HashMap<ReadWrite>(cursor)
             let map = try SortedMap<ReadWrite>(try moment.putCursor(forHash: hashInt("map")))
             for i in 0..<UInt64(40) {
-                try map.put(paddedKey(i, width: 3), .uint(i))
+                try map.put(.uint(i), forKey: paddedKey(i, width: 3))
             }
 
             try freeze.run(cursor, moment, nil)
-            try map.put(utf8("k999"), .uint(999))
+            try map.put(.uint(999), forKey: utf8("k999"))
             let mapAgain = try SortedMap<ReadWrite>(try moment.putCursor(forHash: hashInt("map")))
             for i in 0..<UInt64(36) {
-                #expect(try mapAgain.remove(paddedKey(i, width: 3)))
+                #expect(try mapAgain.remove(forKey: paddedKey(i, width: 3)))
             }
             #expect(try mapAgain.count() == 5)
 
             // the kept map's header counts 41 keys, in a tree that has 5
             #expect(try map.count() == 41)
-            #expect(throws: XitDBError.invalidBTreeNode) { try map.getIndexKeyValuePair(40) }
-            #expect(throws: XitDBError.invalidBTreeNode) { try map.iteratorFromIndex(30) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try map.entry(at: 40) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try map.iterator(fromIndex: 30) }
 
             // after one more key from the kept map, the second header
             // counts one key less than the tree has
-            try map.put(utf8("k998"), .uint(998))
+            try map.put(.uint(998), forKey: utf8("k998"))
             for key in ["k036", "k037", "k038", "k039", "k998"] {
-                #expect(try mapAgain.remove(utf8(key)))
+                #expect(try mapAgain.remove(forKey: utf8(key)))
             }
             #expect(try mapAgain.count() == 0)
-            #expect(throws: XitDBError.invalidBTreeNode) { try mapAgain.remove(utf8("k999")) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try mapAgain.remove(forKey: utf8("k999")) }
         }
     }
 
@@ -394,7 +394,7 @@ import Testing
             let map = try SortedMap<ReadWrite>(try moment.putCursor(forHash: hashInt("map")))
             for i in 0..<(Self.slotCount + 1) {
                 try list.append(.uint(i))
-                try map.put(paddedKey(i, width: 2), .uint(i))
+                try map.put(.uint(i), forKey: paddedKey(i, width: 2))
             }
             let shortList = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("short-list")))
             try shortList.append(.uint(0))
@@ -424,7 +424,7 @@ import Testing
             #expect(throws: XitDBError.invalidBTreeNode) { try list.formSlice(offset: 1, count: 2) }
             #expect(throws: XitDBError.invalidBTreeNode) { try list.append(contentsOf: try shortList.slot()) }
             #expect(throws: XitDBError.invalidBTreeNode) { try shortList.append(contentsOf: try list.slot()) }
-            #expect(throws: XitDBError.invalidBTreeNode) { try map.remove(utf8("k00")) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try map.remove(forKey: utf8("k00")) }
         }
     }
 

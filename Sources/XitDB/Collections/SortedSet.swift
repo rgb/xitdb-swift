@@ -56,13 +56,13 @@ public struct SortedSet<Access: CursorAccess> {
     /// on.
     ///
     /// - Parameter index: The position of the first entry to give. A
-    ///   negative index counts from the end. An index that names no entry
-    ///   gives an iterator of nothing.
+    ///   negative index counts from the end: `-1` is the last entry. An
+    ///   index that names no entry gives an iterator of nothing.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
-    public func iteratorFromIndex(_ index: Int64) throws(XitDBError) -> CollectionIterator {
+    public func iterator(fromIndex index: Int64) throws(XitDBError) -> CollectionIterator {
         try cursor.iterator(fromSortedMapIndex: index)
     }
 
@@ -75,7 +75,7 @@ public struct SortedSet<Access: CursorAccess> {
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
-    public func iteratorFrom(_ key: Span<UInt8>) throws(XitDBError) -> CollectionIterator {
+    public func iterator(fromKey key: Span<UInt8>) throws(XitDBError) -> CollectionIterator {
         try cursor.iterator(fromSortedMapKey: SortedKey(key))
     }
 
@@ -88,7 +88,7 @@ public struct SortedSet<Access: CursorAccess> {
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
-    public func iteratorFrom(_ key: [UInt8]) throws(XitDBError) -> CollectionIterator {
+    public func iterator(fromKey key: [UInt8]) throws(XitDBError) -> CollectionIterator {
         try cursor.iterator(fromSortedMapKey: SortedKey(key))
     }
 
@@ -100,7 +100,7 @@ public struct SortedSet<Access: CursorAccess> {
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
-    public func rank(_ key: Span<UInt8>) throws(XitDBError) -> UInt64 {
+    public func rank(of key: Span<UInt8>) throws(XitDBError) -> UInt64 {
         let slot = try cursor.resolved().slot
         if slot.tag == .none { return 0 }
         let header = try cursor.database.reader.sortedMapHeader(slot)
@@ -118,7 +118,7 @@ public struct SortedSet<Access: CursorAccess> {
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
-    public func rank(_ key: [UInt8]) throws(XitDBError) -> UInt64 {
+    public func rank(of key: [UInt8]) throws(XitDBError) -> UInt64 {
         let slot = try cursor.resolved().slot
         if slot.tag == .none { return 0 }
         let header = try cursor.database.reader.sortedMapHeader(slot)
@@ -132,12 +132,12 @@ public struct SortedSet<Access: CursorAccess> {
     /// value, or `nil` if there is no entry at `index`.
     ///
     /// - Parameter index: The entry's position in key order. A negative
-    ///   index counts from the end.
+    ///   index counts from the end: `-1` is the last entry.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
-    public func getIndexKeyValuePair(_ index: Int64) throws(XitDBError) -> Entry? {
+    public func entry(at index: Int64) throws(XitDBError) -> Entry? {
         let path: InlineArray<1, PathPart> = [.sortedMapGetIndex(index)]
         return try cursor.readPath(path.span)?.readEntry()
     }
@@ -237,7 +237,7 @@ extension SortedSet where Access == ReadWrite {
     ///   sorted map or set, ``XitDBError/invalidBTreeNode`` if the tree does
     ///   not hold what its header or its branches say, or an error of the
     ///   storage or of a damaged file.
-    public func put(_ key: Span<UInt8>) throws(XitDBError) {
+    public func insert(_ key: Span<UInt8>) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.sortedMapGet(.key, SortedKey(key))]
         _ = try cursor.writePath(path.span)
     }
@@ -253,7 +253,7 @@ extension SortedSet where Access == ReadWrite {
     ///   sorted map or set, ``XitDBError/invalidBTreeNode`` if the tree does
     ///   not hold what its header or its branches say, or an error of the
     ///   storage or of a damaged file.
-    public func put(_ key: [UInt8]) throws(XitDBError) {
+    public func insert(_ key: [UInt8]) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.sortedMapGet(.key, SortedKey(key))]
         _ = try cursor.writePath(path.span)
     }
@@ -271,7 +271,7 @@ extension SortedSet where Access == ReadWrite {
     ///   not hold what its header or its branches say, or an error of the
     ///   storage or of a damaged file.
     @discardableResult
-    public func remove(_ key: Span<UInt8>) throws(XitDBError) -> Bool {
+    public func remove(forKey key: Span<UInt8>) throws(XitDBError) -> Bool {
         let path: InlineArray<1, PathPart> = [.sortedMapRemove(SortedKey(key))]
         do throws(XitDBError) {
             _ = try cursor.writePath(path.span)
@@ -295,7 +295,7 @@ extension SortedSet where Access == ReadWrite {
     ///   not hold what its header or its branches say, or an error of the
     ///   storage or of a damaged file.
     @discardableResult
-    public func remove(_ key: [UInt8]) throws(XitDBError) -> Bool {
+    public func remove(forKey key: [UInt8]) throws(XitDBError) -> Bool {
         let path: InlineArray<1, PathPart> = [.sortedMapRemove(SortedKey(key))]
         do throws(XitDBError) {
             _ = try cursor.writePath(path.span)

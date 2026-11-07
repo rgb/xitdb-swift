@@ -771,7 +771,7 @@ import Testing
                 try userMap.put(.bytes(utf8(user.name)), forHash: hashInt("name"))
 
                 // the key is the username (the sort key); the value is the id
-                try usernameToID.put(utf8(user.username), .bytes(utf8(user.id)))
+                try usernameToID.put(.bytes(utf8(user.id)), forKey: utf8(user.username))
             }
         }
 
@@ -796,7 +796,7 @@ import Testing
         var after: UInt64 = 0
         while after < count {
             let end = min(after + pageSize, count)
-            var iter = try usernameToID.iteratorFromIndex(Int64(after))
+            var iter = try usernameToID.iterator(fromIndex: Int64(after))
             var i = after
             while i < end {
                 let idCursor = try #require(try iter.next())
@@ -822,7 +822,7 @@ import Testing
         let prefix = "da"
         let expectedMatches = ["dan", "dave"]
         var matches = 0
-        var acIter = try usernameToID.iteratorFrom(utf8(prefix))
+        var acIter = try usernameToID.iterator(fromKey: utf8(prefix))
         while let nextCursor = try acIter.next() {
             let idKV = try nextCursor.readEntry()
             let username = try readBytes(idKV.key, bufferSize: 64)

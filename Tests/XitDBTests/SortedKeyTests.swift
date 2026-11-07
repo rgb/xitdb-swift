@@ -43,7 +43,7 @@ import Testing
         try database.withTransaction { cursor in
             let map = try SortedMap(try HashMap(cursor).putCursor(forHash: sha1("map").bytes))
             for (index, shape) in shapes {
-                try map.put(shape.key, .uint(UInt64(index)))
+                try map.put(.uint(UInt64(index)), forKey: shape.key)
             }
             #expect(try map.count() == 12)
         }
@@ -66,11 +66,11 @@ import Testing
         #expect(seen == ordered)
 
         for (index, key) in ordered.enumerated() {
-            #expect(try map.rank(key) == UInt64(index), "rank of \(key.count) bytes")
-            let pair = try #require(try map.getIndexKeyValuePair(Int64(index)))
+            #expect(try map.rank(of: key) == UInt64(index), "rank of \(key.count) bytes")
+            let pair = try #require(try map.entry(at: Int64(index)))
             #expect(try pair.key.readBytes() == key)
-            #expect(try #require(try map.getSlot(key)) == (try pair.value.slot()))
-            var from = try map.iteratorFrom(key)
+            #expect(try #require(try map.slot(forKey: key)) == (try pair.value.slot()))
+            var from = try map.iterator(fromKey: key)
             let first = try #require(try from.next())
             #expect(try first.readEntry().key.readBytes() == key)
         }
@@ -85,7 +85,7 @@ import Testing
         try database.withTransaction { cursor in
             let map = try SortedMap(try HashMap(cursor).putCursor(forHash: sha1("map").bytes))
             for shape in Self.shapes {
-                try map.put(shape.key, .uint(1))
+                try map.put(.uint(1), forKey: shape.key)
             }
         }
         let root = try HashMap(database.rootCursor.readOnly)
@@ -102,10 +102,10 @@ import Testing
             [0, 0, 0],
         ]
         for key in absent {
-            #expect(try map.getCursor(key) == nil)
+            #expect(try map.cursor(forKey: key) == nil)
             let below = ordered.filter { $0.lexicographicallyPrecedes(key) }.count
-            #expect(try map.rank(key) == UInt64(below), "rank of \(key.count) bytes")
-            var from = try map.iteratorFrom(key)
+            #expect(try map.rank(of: key) == UInt64(below), "rank of \(key.count) bytes")
+            var from = try map.iterator(fromKey: key)
             if below < ordered.count {
                 let first = try #require(try from.next())
                 #expect(try first.readEntry().key.readBytes() == ordered[below])
@@ -135,7 +135,7 @@ import Testing
         try database.withTransaction { cursor in
             let map = try SortedMap(try HashMap(cursor).putCursor(forHash: sha1("map").bytes))
             for (index, key) in scrambled.enumerated() {
-                try map.put(key, .uint(UInt64(index)))
+                try map.put(.uint(UInt64(index)), forKey: key)
             }
         }
         func walked(_ map: SortedMap<ReadOnly>) throws -> [[UInt8]] {
@@ -151,22 +151,22 @@ import Testing
         #expect(try map.count() == 500)
         #expect(try walked(map) == ordered)
         for (index, key) in ordered.enumerated() where index % 37 == 0 {
-            #expect(try map.rank(key) == UInt64(index))
-            var from = try map.iteratorFrom(key)
+            #expect(try map.rank(of: key) == UInt64(index))
+            var from = try map.iterator(fromKey: key)
             var rest: [[UInt8]] = []
             while let entry = try from.next() {
                 rest.append(try entry.readEntry().key.readBytes())
             }
             #expect(rest == Array(ordered[index...]))
-            var fromIndex = try map.iteratorFromIndex(Int64(index))
+            var fromIndex = try map.iterator(fromIndex: Int64(index))
             #expect(try #require(try fromIndex.next()).readEntry().key.readBytes() == key)
-            #expect(try #require(try map.getIndexKeyValuePair(Int64(index) - 500)).key.readBytes() == key)
+            #expect(try #require(try map.entry(at: Int64(index) - 500)).key.readBytes() == key)
         }
 
         try database.withTransaction { cursor in
             let map = try SortedMap(try HashMap(cursor).putCursor(forHash: sha1("map").bytes))
             for (index, key) in ordered.enumerated() where index % 2 == 1 {
-                #expect(try map.remove(key))
+                #expect(try map.remove(forKey: key))
             }
             #expect(try map.count() == 250)
         }
@@ -175,8 +175,8 @@ import Testing
         let kept = ordered.enumerated().filter { $0.offset % 2 == 0 }.map(\.element)
         #expect(try walked(after) == kept)
         for (index, key) in kept.enumerated() where index % 23 == 0 {
-            #expect(try after.rank(key) == UInt64(index))
-            #expect(try #require(try after.getIndexKeyValuePair(Int64(index))).key.readBytes() == key)
+            #expect(try after.rank(of: key) == UInt64(index))
+            #expect(try #require(try after.entry(at: Int64(index))).key.readBytes() == key)
         }
         // the moment before the removes still has every key
         #expect(try walked(map) == ordered)

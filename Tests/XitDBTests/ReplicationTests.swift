@@ -552,13 +552,13 @@ import Testing
         let db = try Database(storage: subject.storage, hashSize: 20)
 
         let map = try SortedMap<ReadWrite>(db.rootCursor)
-        try map.put(utf8("b"), .uint(2))
-        try map.put(utf8("a"), .uint(1))
-        try map.put(utf8("c"), .uint(3))
-        #expect(try map.remove(utf8("c")))
+        try map.put(.uint(2), forKey: utf8("b"))
+        try map.put(.uint(1), forKey: utf8("a"))
+        try map.put(.uint(3), forKey: utf8("c"))
+        #expect(try map.remove(forKey: utf8("c")))
         #expect(try map.count() == 2)
-        #expect(try map.rank(utf8("b")) == 1)
-        let a = try #require(try map.getCursor(utf8("a")))
+        #expect(try map.rank(of: utf8("b")) == 1)
+        let a = try #require(try map.cursor(forKey: utf8("a")))
         #expect(try a.readUInt64() == 1)
 
         let size = try db.committedSize
