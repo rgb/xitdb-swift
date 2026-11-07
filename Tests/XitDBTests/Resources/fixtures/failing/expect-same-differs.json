@@ -1,0 +1,5 @@
+{ "format": "xitdb-script/1", "description": "expected failure: aren't the same as", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "read_committed", "start": 0, "end": 62, "as": "a" },
+    { "op": "read_committed", "start": 37, "end": 62, "as": "b", "expect_same": "a" }
+  ] }

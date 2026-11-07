@@ -1,0 +1,5 @@
+{ "format": "xitdb-script/1", "description": "expected failure: already has a file ID", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "create_database", "name": "o", "file_id": "0000000000000002" },
+    { "op": "compact", "into": "o", "file_id": "0000000000000003", "offset_map": "memory" }
+  ] }

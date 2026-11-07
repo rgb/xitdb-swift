@@ -1,0 +1,8 @@
+{ "format": "xitdb-script/1", "description": "expected failure: expected 1, got 0", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "create_database", "name": "o", "file_id": "0000000000000002" },
+    { "op": "use", "name": "o" },
+    { "op": "replica_state", "as": "s" },
+    { "op": "use", "name": "main" },
+    { "op": "replication_start", "state": "s", "expect": 1 }
+  ] }

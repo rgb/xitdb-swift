@@ -1,0 +1,9 @@
+{ "format": "xitdb-script/1", "description": "expected failure: expected 96, got 62", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "create_database", "name": "o", "file_id": "0000000000000002" },
+    { "op": "use", "name": "o" },
+    { "op": "write", "on": "root", "data": { "uint": 1 } },
+    { "op": "committed_size", "as": "n" },
+    { "op": "use", "name": "main" },
+    { "op": "committed_size", "expect": { "var": "n" } }
+  ] }

@@ -1,0 +1,57 @@
+{
+  "format": "xitdb-script/1",
+  "description": "More than one database in a script. root means the current one's, and the ops on a database act on the current one. A cursor stays with the database it came from, and can be used whichever is current, including to commit in it, and the sidecar says which database each op was about. All of them take their commit IDs from the one list.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "0011223344556677",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "write": { "uint": 1 } }] },
+    { "op": "create_database", "name": "other", "file_id": "00000000000000aa" },
+    { "op": "slot", "on": "root", "expect": { "tag": "array_list" }, "note": "making one doesn't make it current" },
+    { "op": "use", "name": "other" },
+    { "op": "slot", "on": "root", "expect": { "tag": "none", "full": false }, "note": "this is the other one's root" },
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "a" } } }, { "write": { "uint": 2 } }] },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "a" } } }], "as": "in_other" },
+    { "op": "write_path", "on": "root", "path": [], "as": "other_root", "note": "a root cursor to keep, with no transaction" },
+    { "op": "run_context", "ctx": { "as": "c", "ops": [
+      { "op": "write_path", "on": "c", "path": [{ "hash_map_init": {} }], "as": "c" },
+      { "op": "write_path", "on": "c", "path": [{ "hash_map_get": { "value": { "sha1": "b" } } }, { "write": { "uint": 3 } }], "as": "kept_in_other" }
+    ] } },
+
+    { "op": "use", "name": "main" },
+    { "op": "slot", "on": "root", "expect": { "tag": "array_list" }, "note": "and this is main's again" },
+    { "op": "read_uint", "on": "in_other", "expect": 2, "note": "this cursor is the other one's, and it doesn't matter which is current" },
+    { "op": "read_path", "on": "other_root", "path": [{ "hash_map_get": { "value": { "sha1": "b" } } }], "as": "v" },
+    { "op": "read_uint", "on": "v", "expect": 3 },
+    { "op": "write_path", "on": "other_root", "path": [{ "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "c" } } }, { "write": { "uint": 4 } }], "note": "this commits in the other one, which is what the sidecar says" },
+    { "op": "count", "on": "root", "expect": 1, "note": "and main hasn't changed, and it's still the current one" },
+    { "op": "read_path", "on": "other_root", "path": [{ "hash_map_get": { "value": { "sha1": "c" } } }], "as": "v" },
+    { "op": "read_uint", "on": "v", "expect": 4 },
+    { "op": "write", "on": "kept_in_other", "data": { "uint": 5 }, "expect_error": "ExpectedTxStart" },
+
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "ctx": { "as": "e", "ops": [
+      { "op": "write", "on": "kept_in_other", "data": { "uint": 5 }, "expect_error": "ExpectedTxStart", "note": "a transaction in main is no transaction in the other one" },
+      { "op": "read_uint", "on": "in_other", "expect": 2 },
+      { "op": "iterator", "on": "other_root", "as": "it" },
+      { "op": "next", "on": "it", "expect_null": false },
+      { "op": "db_freeze", "note": "this means the current database, which is the one with the transaction" },
+      { "op": "write", "on": "e", "data": { "uint": 6 } }
+    ] } }] },
+    { "op": "count", "on": "root", "expect": 2 },
+
+    { "op": "close", "note": "this closes the current one, and unbinds every name" },
+    { "op": "use", "name": "other", "note": "the other one is still open" },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "a" } } }], "as": "v" },
+    { "op": "read_uint", "on": "v", "expect": 2 },
+    { "op": "use", "name": "main", "note": "a closed database can be current, for the ops that can run on one" },
+    { "op": "raw_append", "bytes": "left behind" },
+    { "op": "reopen" },
+    { "op": "count", "on": "root", "expect": 2 },
+    { "op": "write_path", "on": "root", "path": ["array_list_init"], "note": "free, and this truncates what was left behind" },
+
+    { "op": "create_database", "name": "named_hash", "file_id": "00000000000000ab", "hash_id": "abcd" },
+    { "op": "create_database", "name": "no_hash", "file_id": "00000000000000ac", "hash_id": null },
+    { "op": "use", "name": "other" },
+    { "op": "close", "note": "and it can stay closed to the end" }
+  ]
+}

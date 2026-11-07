@@ -5,8 +5,8 @@ What the Zig implementation of xitdb does, for a Swift port to match byte for by
 
 It was produced from:
 
-- conformance repository: commit `a429d459602078e94a0ccbc65ec1a0dd7494fc05`
-- xitdb, the Zig original: commit `6b93af1af3a260399fa0a0b1b268ded2cbf5eec5`
+- conformance repository: commit `054593377b879cbc7f9d0ddfc26da3b7dac49373`
+- xitdb, the Zig original: commit `6b93af1af3a260399fa0a0b1b268ded2cbf5eec5`, or the one the manifest gives for that fixture as its `zig_commit`
 - Zig 0.17.1, with the runner `run` built in debug mode and using the `buffered_file` storage kind
 
 `SCRIPT-FORMAT.md` in the conformance repository describes the scripts, and how to run them.
@@ -20,18 +20,30 @@ It was produced from:
   `iterators` (`iterator` and `next`), `rank`, `byte_stream` (`read_stream`) and `byte_buffers`
   (`read_bytes_into`, and `max_size` on `read_bytes`).
 - `valid/<name>.json`: a script that passes, with `<name>.db`, the file Zig wrote, and `<name>.db.sidecar.json`, its
-  committed sizes and commit IDs. Those called `gen-<seed>` and `reads-<seed>` come from the generator `gen`, and
+  committed sizes and commit IDs. Those called `gen-<seed>`, `reads-<seed>` and `compact-<seed>` come from the generator `gen`, and
   are harder to read, but they do things in combinations nobody thought of. Those called `deep-*` have transactions of
   hundreds of writes, and they're what tells copying from rewriting in place. These and `iterator-tiers*` come from
   `longscripts`, because they're too long to write by hand.
+- `valid/<name>.<database>.db`: for a script with several databases, each one's file. `other_databases` in the
+  manifest lists them.
 - `failing/<name>.json`: a well-formed script that must fail in every runner. The text after `expected failure:` in
   its description is why it fails in Zig, and it has no expected file, as there's nothing to compare.
+
+## Which milestone a script waits for
+
+The package's milestones go by what a script lists, and the highest of these is the one it waits for: `replication`
+is M8, `compaction` is M7, `sorted_map` is M6, `linked_array_list` is M5, and `iterators`, `rank`, `byte_stream` or
+`byte_buffers` is M4. Anything else runs at M3. A script with `several_databases` and no other reason to wait can
+run as soon as the runner can make more than one.
 
 ## Using them
 
 For a script in `valid/`, give the implementation a random source that returns the sidecar's non-null commit IDs in
 order. After each top-level op, check the committed size against the sidecar. At the end, none of the commit IDs
 should be left, and the file must equal `<name>.db` in every byte.
+
+A script with several databases uses one list of commit IDs for all of them, in the order the sidecar has them, and an
+entry's `db` says which database it's about. Every one of them has to equal its expected file.
 
 For a script in `failing/`, the run must fail. Any commit IDs will do.
 

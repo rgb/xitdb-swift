@@ -1,0 +1,54 @@
+{
+  "format": "xitdb-script/1",
+  "description": "What a compaction can write to. A name that isn't a database yet makes a new one, with a file ID given, and takes the source's hash ID unless given another. A database that exists and has an empty root is fine, and keeps its own file ID and hash ID. One with something in it raises TargetNotEmpty and is left as it is, which goes for the source itself too.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "0011223344556677",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "a" } } }, { "write": { "bytes": "a long value to compact" } }] },
+
+    { "op": "compact", "into": "new_target", "file_id": "00000000000000b1", "offset_map": "memory" },
+    { "op": "compact", "into": "new_with_hash", "file_id": "00000000000000b2", "hash_id": "abcd", "offset_map": "memory" },
+    { "op": "compact", "into": "new_null_hash", "file_id": "00000000000000b3", "hash_id": null, "offset_map": "memory", "note": "null means the source's, as it's the same as saying nothing" },
+
+    { "op": "create_database", "name": "empty_target", "file_id": "00000000000000c1", "hash_id": "wxyz" },
+    { "op": "use", "name": "empty_target" },
+    { "op": "committed_size", "expect": 62 },
+    { "op": "use", "name": "main" },
+    { "op": "compact", "into": "empty_target", "offset_map": "memory", "note": "a database that has never been written to" },
+    { "op": "use", "name": "empty_target" },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "a" } } }], "as": "v" },
+    { "op": "read_bytes", "on": "v", "expect": "a long value to compact" },
+    { "op": "use", "name": "main" },
+
+    { "op": "create_database", "name": "kept_cursors", "file_id": "00000000000000c2" },
+    { "op": "use", "name": "kept_cursors" },
+    { "op": "write_path", "on": "root", "path": [], "as": "kept_root", "note": "a cursor made before the compaction goes on working after it" },
+    { "op": "use", "name": "main" },
+    { "op": "compact", "into": "kept_cursors", "offset_map": "memory" },
+    { "op": "slot", "on": "kept_root", "expect": { "tag": "hash_map" } },
+
+    { "op": "compact", "into": "new_target", "offset_map": "memory", "expect_error": "TargetNotEmpty", "note": "one with something in it" },
+    { "op": "compact", "into": "empty_target", "offset_map": "disk", "expect_error": "TargetNotEmpty" },
+    { "op": "compact", "into": "main", "offset_map": "memory", "expect_error": "TargetNotEmpty", "note": "and the source itself" },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "a" } } }], "as": "v", "note": "which is as it was" },
+    { "op": "read_bytes", "on": "v", "expect": "a long value to compact" },
+
+    { "op": "create_database", "name": "empty_source", "file_id": "00000000000000d1" },
+    { "op": "use", "name": "empty_source" },
+    { "op": "compact", "into": "empty_copy", "file_id": "00000000000000d2", "offset_map": "memory", "note": "an empty root makes a new database, with no commit" },
+    { "op": "use", "name": "empty_copy" },
+    { "op": "committed_size", "expect": 62 },
+    { "op": "slot", "on": "root", "expect": { "tag": "none", "full": false } },
+    { "op": "use", "name": "empty_source" },
+    { "op": "compact", "into": "empty_source", "offset_map": "memory", "note": "and since its own root is empty, it can even be its own target, for which there's nothing to do" },
+    { "op": "committed_size", "expect": 62 },
+
+    { "op": "use", "name": "main" },
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "b" } } }, { "write": { "uint": 2 } }] },
+    { "op": "compact", "into": "after_more", "file_id": "00000000000000b4", "offset_map": "memory", "note": "the map from the compaction before this one has nothing to say about this one" },
+    { "op": "use", "name": "after_more" },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "b" } } }], "as": "v" },
+    { "op": "read_uint", "on": "v", "expect": 2 }
+  ]
+}

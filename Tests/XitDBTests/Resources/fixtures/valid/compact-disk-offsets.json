@@ -1,0 +1,28 @@
+{
+  "format": "xitdb-script/1",
+  "description": "Compaction with its offsets in a database of its own, which is what a disk-backed offset map means in test.zig. That database has its own source of commit IDs, and isn't compared with anything. What's written to the target doesn't depend on it, including for shared data and references in circles. A second compaction starts afresh.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "0011223344556677",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "hash_map_init": {} }, { "ctx": { "as": "m", "ops": [
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "text" } } }, { "write": { "bytes": "a long value that two keys share" } }] },
+      { "op": "read_path_slot", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "text" } } }], "as": "text" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "text_again" } } }, { "write": { "slot": { "var": "text" } } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "list" } } }, "array_list_init", "array_list_append", { "write": { "uint": 1 } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "linked" } } }, "linked_array_list_init", "linked_array_list_append", { "write": { "uint": 2 } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "sorted" } } }, { "sorted_map_init": {} }, { "sorted_map_get": { "value": "k" } }, { "write": { "uint": 3 } }] },
+      { "op": "slot", "on": "m", "as": "moment_slot" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "self" } } }, { "write": { "slot": { "var": "moment_slot" } } }] }
+    ] } }] },
+    { "op": "compact", "into": "first", "file_id": "00000000000000b1", "offset_map": "disk" },
+    { "op": "compact", "into": "second", "file_id": "00000000000000b2", "offset_map": "disk", "note": "the same offsets would point into the first target, so these have to be new" },
+    { "op": "compact", "into": "by_memory", "file_id": "00000000000000b3", "offset_map": "memory" },
+    { "op": "use", "name": "second" },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "sha1": "self" } } }, { "hash_map_get": { "value": { "sha1": "text_again" } } }], "as": "v" },
+    { "op": "read_bytes", "on": "v", "expect": "a long value that two keys share" },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "sha1": "sorted" } } }, { "sorted_map_get": { "value": "k" } }], "as": "v" },
+    { "op": "read_uint", "on": "v", "expect": 3 },
+    { "op": "compact", "into": "from_a_target", "file_id": "00000000000000b4", "offset_map": "disk", "note": "and a compacted file can be compacted too" }
+  ]
+}

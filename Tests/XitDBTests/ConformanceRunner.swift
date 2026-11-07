@@ -379,6 +379,8 @@ final class ScriptRunner {
                 switch name {
                 case "array_list_init": parts.append(.arrayListInit)
                 case "array_list_append": parts.append(.arrayListAppend)
+                case "linked_array_list_init": parts.append(.linkedArrayListInit)
+                case "linked_array_list_append": parts.append(.linkedArrayListAppend)
                 default: throw UnknownInScript("unknown path part '\(name)'")
                 }
                 continue
@@ -395,6 +397,25 @@ final class ScriptRunner {
                 let slice = try ScriptObject(payload, "array_list_slice")
                 try slice.allow("size")
                 parts.append(.arrayListSlice(size: try slice.unsigned("size")))
+            case "linked_array_list_get":
+                parts.append(.linkedArrayListGet(try ScriptObject.signed(payload, "linked_array_list_get")))
+            case "linked_array_list_slice":
+                let slice = try ScriptObject(payload, "linked_array_list_slice")
+                try slice.allow("offset", "size")
+                parts.append(
+                    .linkedArrayListSlice(offset: try slice.unsigned("offset"), size: try slice.unsigned("size")))
+            case "linked_array_list_concat":
+                let concat = try ScriptObject(payload, "linked_array_list_concat")
+                try concat.allow("list")
+                // A slot that is null cannot be concatenated: a script failure.
+                guard let list = try slot(concat.fields["list"], "list") else {
+                    throw ScriptFailure("linked_array_list_concat with a null list")
+                }
+                parts.append(.linkedArrayListConcat(list))
+            case "linked_array_list_insert":
+                parts.append(.linkedArrayListInsert(try ScriptObject.signed(payload, "linked_array_list_insert")))
+            case "linked_array_list_remove":
+                parts.append(.linkedArrayListRemove(try ScriptObject.signed(payload, "linked_array_list_remove")))
             case "hash_map_init":
                 let options = try ScriptObject(payload, "hash_map_init")
                 try options.allow("counted", "set")
@@ -931,7 +952,8 @@ final class ScriptRunner {
     private func iterator<Access>(of cursor: Cursor<Access>, from index: Int64) throws -> Cursor<Access>.Iter {
         switch try cursor.slot().tag {
         case .none, .arrayList: return try cursor.iterator(fromArrayListIndex: index)
-        case .linkedArrayList, .sortedMap, .sortedSet: throw XitDBError.notImplemented
+        case .linkedArrayList: return try cursor.iterator(fromLinkedArrayListIndex: index)
+        case .sortedMap, .sortedSet: throw XitDBError.notImplemented
         default: throw XitDBError.unexpectedTag
         }
     }
@@ -1009,9 +1031,17 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
     /// The milestone that brings what this script still needs, or `nil` if
     /// it can run now.
     var waitsFor: String? {
-        // A script that uses both waits for the later of the two.
+        // A script that needs several waits for the latest.
+        if features.contains("replication") { return "M8" }
+        if features.contains("compaction") { return "M7" }
         if collections.contains("sorted_map") { return "M6" }
-        if collections.contains("linked_array_list") { return "M5" }
+        return nil
+    }
+
+    /// An op the runner does not have yet, which keeps the script from
+    /// running although nothing in the engine is missing.
+    var needsOp: String? {
+        if features.contains("several_databases") { return "several_databases" }
         return nil
     }
 

@@ -1,0 +1,4 @@
+{ "format": "xitdb-script/1", "description": "expected failure: is not bound", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
+  "ops": [
+    { "op": "apply_replicated", "start": 0, "bytes": "b" }
+  ] }

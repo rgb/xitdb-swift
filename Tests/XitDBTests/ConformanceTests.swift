@@ -9,7 +9,7 @@ import Testing
 @Suite struct ConformanceTests {
     /// The scripts that can run now, on each storage they apply to.
     static let runnable: [(ConformanceFixture, ScriptStorageKind)] = ConformanceFixture.all
-        .filter { $0.waitsFor == nil }
+        .filter { $0.waitsFor == nil && $0.needsOp == nil }
         .flatMap { fixture in
             ScriptStorageKind.allCases
                 // The memory storage has no read-only mode, in Zig or here.
@@ -31,34 +31,19 @@ import Testing
     /// silently: a script that starts to wait, or stops, changes this test.
     @Test func everyScriptRunsOrWaitsForANamedMilestone() {
         let all = ConformanceFixture.all
-        #expect(all.count == 149)
-        #expect(all.filter { $0.waitsFor == nil && $0.mustPass }.count == 43)
-        #expect(all.filter { $0.waitsFor == nil && !$0.mustPass }.count == 69)
-        #expect(all.filter { $0.waitsFor == "M5" && $0.mustPass }.count == 16)
-        #expect(all.filter { $0.waitsFor == "M5" && !$0.mustPass }.count == 1)
+        #expect(all.count == 195)
+        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && $0.mustPass }.count == 59)
+        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && !$0.mustPass }.count == 70)
         #expect(all.filter { $0.waitsFor == "M6" && $0.mustPass }.count == 19)
         #expect(all.filter { $0.waitsFor == "M6" && !$0.mustPass }.count == 1)
+        #expect(all.filter { $0.waitsFor == "M7" && $0.mustPass }.count == 10)
+        #expect(all.filter { $0.waitsFor == "M7" && !$0.mustPass }.count == 6)
+        #expect(all.filter { $0.waitsFor == "M8" && $0.mustPass }.count == 8)
+        #expect(all.filter { $0.waitsFor == "M8" && !$0.mustPass }.count == 16)
 
         let waiting = all.filter { $0.waitsFor != nil }.map { "\($0.waitsFor ?? ""): \($0.name)" }.sorted()
         #expect(
             waiting == [
-                "M5: deep-linked",
-                "M5: every-construct-linked",
-                "M5: gen-1",
-                "M5: gen-10",
-                "M5: gen-13",
-                "M5: gen-16",
-                "M5: gen-4",
-                "M5: gen-7",
-                "M5: iterator-tiers-linked",
-                "M5: nested-linked",
-                "M5: null-slot-var-in-concat",
-                "M5: overwriting-committed-bytes-linked",
-                "M5: reads-103",
-                "M5: reads-106",
-                "M5: reads-112",
-                "M5: reads-iterators-linked",
-                "M5: reads-stream-linked",
                 "M6: deep-sorted",
                 "M6: every-construct-sorted",
                 "M6: gen-11",
@@ -79,6 +64,59 @@ import Testing
                 "M6: reads-sorted-root",
                 "M6: reads-stream-sorted",
                 "M6: wrong-rank",
+                "M7: compact-201",
+                "M7: compact-202",
+                "M7: compact-203",
+                "M7: compact-204",
+                "M7: compact-205",
+                "M7: compact-206",
+                "M7: compact-disk-offsets",
+                "M7: compact-every-collection",
+                "M7: compact-existing-with-file-id",
+                "M7: compact-into-closed",
+                "M7: compact-new-without-file-id",
+                "M7: compact-partial-blocks",
+                "M7: compact-shared",
+                "M7: compact-while-closed",
+                "M7: target-not-empty-not-handled",
+                "M7: target-not-empty-not-raised",
+                "M8: bytes-not-bytes",
+                "M8: bytes-unbound",
+                "M8: compact-roots",
+                "M8: compact-targets",
+                "M8: expect-same-differs",
+                "M8: expect-same-not-bytes",
+                "M8: failed-read-committed-binds-nothing",
+                "M8: invalid-range-not-handled",
+                "M8: invalid-range-not-raised",
+                "M8: number-used-as-cursor",
+                "M8: replicate-bad-trailer",
+                "M8: replicate-failed-first-sync",
+                "M8: replicate-history",
+                "M8: replicate-interrupted",
+                "M8: replicate-other-file",
+                "M8: replicate-roots",
+                "M8: short-apply-not-handled",
+                "M8: start-not-a-number",
+                "M8: start-unbound",
+                "M8: state-not-a-state",
+                "M8: state-unbound",
+                "M8: wrong-committed-size",
+                "M8: wrong-committed-size-var",
+                "M8: wrong-replication-start",
+            ]
+        )
+
+        // scripts that need an op the runner does not have yet
+        let needing = all.filter { $0.waitsFor == nil && $0.needsOp != nil }.map(\.name).sorted()
+        #expect(
+            needing == [
+                "closed-database-made-current-again",
+                "create-database-main",
+                "create-database-twice",
+                "name-after-close-of-another-database",
+                "several-databases",
+                "use-unknown-database",
             ]
         )
 
