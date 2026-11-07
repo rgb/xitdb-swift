@@ -216,8 +216,13 @@ extension SortedSet where Access == ReadWrite {
     /// A slot that holds nothing becomes an empty sorted set. One from an
     /// earlier transaction is readied for this one: its header is copied,
     /// so that writing to it leaves earlier moments as they were; its nodes
-    /// are copied as they are written to. A sorted map becomes a
-    /// sorted set.
+    /// are copied as they are written to.
+    ///
+    /// **A sorted map becomes a sorted set.** A sorted map and a sorted
+    /// set are one kind to the slot, as in Zig: the slot's tag is written
+    /// as a set and the entries stay, values included, though a set reads
+    /// only their keys. On the root, where this is a transaction of its
+    /// own, a map is a set from then on; a map is opened with ``SortedMap``.
     ///
     /// On the root cursor this is a transaction of its own, unless the root
     /// is a sorted set already, in which case nothing is written.
@@ -226,7 +231,8 @@ extension SortedSet where Access == ReadWrite {
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a sorted map or set, ``XitDBError/expectedTxStart`` if
     ///   no transaction is in progress and `cursor` is not the root cursor,
-    ///   or an error of the storage or of a damaged file.
+    ///   ``XitDBError/nestedTopLevelWrite`` if `cursor` is the root cursor
+    ///   and one is, or an error of the storage or of a damaged file.
     public init(_ cursor: Cursor<ReadWrite>) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.sortedMapInit(set: true)]
         self.cursor = try cursor.writePath(path.span)

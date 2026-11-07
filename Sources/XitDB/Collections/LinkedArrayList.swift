@@ -149,11 +149,15 @@ extension LinkedArrayList where Access == ReadWrite {
     /// On the root cursor this is a transaction of its own, unless the root
     /// is a linked array list already, in which case nothing is written.
     ///
+    /// A linked array list has no sibling kind: a slot that holds an
+    /// ``ArrayList`` is refused, and the tag of a slot is never rewritten.
+    ///
     /// - Parameter cursor: A cursor at the slot.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a linked array list, ``XitDBError/expectedTxStart`` if
     ///   no transaction is in progress and `cursor` is not the root cursor,
-    ///   or an error of the storage or of a damaged file.
+    ///   ``XitDBError/nestedTopLevelWrite`` if `cursor` is the root cursor
+    ///   and one is, or an error of the storage or of a damaged file.
     public init(_ cursor: Cursor<ReadWrite>) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.linkedArrayListInit]
         self.cursor = try cursor.writePath(path.span)

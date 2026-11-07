@@ -246,17 +246,27 @@ extension CountedHashMap where Access == ReadWrite {
     /// A view of the map at a cursor's slot, for reading and writing.
     ///
     /// A slot that holds nothing becomes an empty map. A map from an
-    /// earlier transaction is readied for this one: its first block is
-    /// copied, so that writing to it leaves earlier moments as they were.
+    /// earlier transaction is readied for this one: its count and first
+    /// block are copied, so that writing to it leaves earlier moments as
+    /// they were.
+    ///
+    /// **A counted hash set becomes a counted hash map.** A counted map
+    /// and a counted set are one kind to the slot, as in Zig: the slot's
+    /// tag is written as a map, and the count and the entries stay. On the
+    /// root, where this is a transaction of its own, a set is a map from
+    /// then on; a set is opened with ``CountedHashSet``. A map or set that
+    /// keeps no count is another kind, and is refused.
     ///
     /// On the root cursor this is a transaction of its own, unless the root
     /// is such a map already, in which case nothing is written.
     ///
     /// - Parameter cursor: A cursor at the slot.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
-    ///   other than a counted hash map, ``XitDBError/expectedTxStart`` if no
-    ///   transaction is in progress and `cursor` is not the root cursor, or
-    ///   an error of the storage or of a damaged file.
+    ///   other than a counted hash map or set,
+    ///   ``XitDBError/expectedTxStart`` if no transaction is in progress
+    ///   and `cursor` is not the root cursor,
+    ///   ``XitDBError/nestedTopLevelWrite`` if `cursor` is the root cursor
+    ///   and one is, or an error of the storage or of a damaged file.
     public init(_ cursor: Cursor<ReadWrite>) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.hashMapInit(counted: true, set: false)]
         self.cursor = try cursor.writePath(path.span)
