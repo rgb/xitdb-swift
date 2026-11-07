@@ -496,7 +496,10 @@ struct Compactor {
                 return try begin(.slot(Slot(value: blockPtr, tag: .index)), stack: &stack, offsetMap: &offsetMap)
             }
             let offset = try reserve(144)
-            let used = Int(min((size + childSize - 1) / childSize, Trie.slotsPerBlock))
+            // The children Zig reads: one while any of the size is left, so
+            // a last child that is not full counts. Rounding up through a
+            // sum overflowed for a size near the largest.
+            let used = Int(min(size / childSize + (size % childSize == 0 ? 0 : 1), Trie.slotsPerBlock))
             // Zig reads the used children one by one and stops, so only
             // those are read and checked; the rest of the block stays empty.
             var frame = Frame(

@@ -173,6 +173,32 @@ import Testing
         #expect(try compacting(subject, into: kind).error == .unexpectedTag)
     }
 
+    /// An array list whose header says the largest size there is: a trie
+    /// of fifteen levels whose blocks of sixteen are nearly all full, so
+    /// that the walk's arithmetic has no room for an overflow (it trapped
+    /// on rounding the size up to blocks), and whose root block holds
+    /// numbers where blocks are expected, which Zig reports as
+    /// `UnexpectedTag`. The read path meets the same header and reports
+    /// an error too: a get at the front of the list finds a number where a
+    /// block should be, and one at the end finds nothing.
+    @Test(arguments: StorageKind.allCases)
+    func aHeaderAtTheLargestSize(kind: StorageKind) throws {
+        let subject = try Subject(kind, makeDatabase: makeDatabase)
+        let header = try subject.slot("list").value
+        try subject.damage(bigEndianBytes(UInt64.max), at: header)
+        #expect(try compacting(subject, into: kind).error == .unexpectedTag)
+
+        let list = try #require(try subject.moment.readPath([.hashMapGet(.value, sha1("list"))]))
+        #expect(try ArrayList(list).count == UInt64.max)
+        for index in [Int64(0), 4, 15] {
+            #expect(throws: XitDBError.unexpectedTag) { try list.readPath([.arrayListGet(index)]) }
+            #expect(throws: XitDBError.unexpectedTag) { try ArrayList(list).cursor(at: index) }
+        }
+        #expect(try list.readPath([.arrayListGet(-1)]) == nil)
+        #expect(try ArrayList(list).cursor(at: -1) == nil)
+        #expect(try ArrayList(list).cursor(at: Int64.max) == nil)
+    }
+
     /// A hash trie whose block points at itself ends in the memo: the copy
     /// has the same block pointing at itself.
     @Test(arguments: StorageKind.allCases)
