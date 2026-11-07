@@ -165,8 +165,8 @@ struct Workload {
     let keyCount: Int
     let prepare: (RunStorage, Keys) throws -> Any
     let write: (RunStorage, Keys, Any) throws -> Database
-    let read: (Database, Keys) throws -> Void
-    let iterate: (Database, Keys) throws -> Void
+    let read: (Database, Keys, Any) throws -> Void
+    let iterate: (Database, Keys, Any) throws -> Void
 
     /// A workload whose write phase fills the prepared database.
     init(
@@ -186,17 +186,18 @@ struct Workload {
             try write(database, keys)
             return database
         }
-        self.read = read
-        self.iterate = iterate
+        self.read = { database, keys, _ in try read(database, keys) }
+        self.iterate = { database, keys, _ in try iterate(database, keys) }
     }
 
-    /// A workload whose write phase makes the database it measures.
+    /// A workload whose write phase makes the database it measures, and
+    /// whose phases all see what was prepared.
     init(
         name: String, size: Int, kinds: [StorageKind], keyKind: Keys.Kind, keyCount: Int,
         prepare: @escaping (RunStorage, Keys) throws -> Any,
         write: @escaping (RunStorage, Keys, Any) throws -> Database,
-        read: @escaping (Database, Keys) throws -> Void,
-        iterate: @escaping (Database, Keys) throws -> Void
+        read: @escaping (Database, Keys, Any) throws -> Void,
+        iterate: @escaping (Database, Keys, Any) throws -> Void
     ) {
         self.name = name
         self.size = size
@@ -259,10 +260,11 @@ func listAppend(_ size: Int, kinds: [StorageKind]) -> Workload {
 }
 
 /// Writes `transactions` transactions of ten keys each, every one a new
-/// moment of the history: `map_transactions`' write phase.
-func writeTransactions(_ transactions: Int, into database: Database, _ keys: Keys) throws {
+/// moment of the history: `map_transactions`' write phase. The keys are
+/// the ten of each transaction, counted from `first`.
+func writeTransactions(_ transactions: Int, into database: Database, _ keys: Keys, from first: Int = 0) throws {
     let hashes = keys.hashes
-    for transaction in 0..<transactions {
+    for transaction in first..<(first + transactions) {
         let lastPath: InlineArray<1, PathPart> = [.arrayListGet(-1)]
         let last = try database.rootCursor().readPathSlot(lastPath.span)
         let path: InlineArray<5, PathPart> = [
@@ -319,10 +321,63 @@ func mapCompact(_ transactions: Int, kinds: [StorageKind]) -> Workload {
         // the target's header and everything after it are written here
         return try run.source.compact(
             into: storage.storage, fileID: 0x0011_2233_4455_6677, offsetMap: &run.offsetMap)
-    } read: { database, keys in
+    } read: { database, keys, _ in
         try readMap(try lastMoment(database), keys)
-    } iterate: { database, keys in
+    } iterate: { database, keys, _ in
         try iterateMap(try lastMoment(database), keys)
+    }
+}
+
+/// What a replication run has before the clock starts: the source with
+/// `transactions` + 10 transactions, its committed size after the first
+/// `transactions` noted, and the replica, a new database over the run's
+/// storage.
+final class ReplicationRun {
+    let sourceStorage: RunStorage
+    let source: Database
+    let sizeAfterFirst: UInt64
+    let replica: Database
+
+    init(_ storage: RunStorage, transactions: Int, _ keys: Keys) throws {
+        sourceStorage = try RunStorage(storage.kind)
+        source = try newDatabase(sourceStorage.storage)
+        try writeTransactions(transactions, into: source, keys)
+        sizeAfterFirst = try source.committedSize()
+        try writeTransactions(10, into: source, keys, from: transactions)
+        replica = try newDatabase(storage.storage)
+    }
+}
+
+/// A full sync of the source's first `transactions` transactions into an
+/// empty replica, then an incremental sync of the ten after them, the bytes
+/// travelling through memory; then a walk of the replica's last moment.
+func replicate(_ transactions: Int, kinds: [StorageKind]) -> Workload {
+    Workload(
+        name: "replicate", size: transactions, kinds: kinds, keyKind: .hashes, keyCount: (transactions + 10) * 10
+    ) { storage, keys in
+        try ReplicationRun(storage, transactions: transactions, keys)
+    } write: { _, _, prepared in
+        let run = prepared as! ReplicationRun
+        let bytes = try run.source.readCommitted(from: 0, to: run.sizeAfterFirst)
+        try run.replica.applyReplicated(at: 0, bytes: bytes)
+        guard try run.replica.committedSize() == run.sizeAfterFirst else {
+            throw BenchmarkFailure(description: "the full sync did not bring the replica to the source's size")
+        }
+        return run.replica
+    } read: { replica, _, prepared in
+        let run = prepared as! ReplicationRun
+        let start = try run.source.replicationStart(try replica.replicaState())
+        guard start == run.sizeAfterFirst else {
+            throw BenchmarkFailure(description: "the replica is not a prefix of the source")
+        }
+        let end = try run.source.committedSize()
+        let bytes = try run.source.readCommitted(from: start, to: end)
+        try replica.applyReplicated(at: start, bytes: bytes)
+        guard try replica.committedSize() == end else {
+            throw BenchmarkFailure(description: "the incremental sync did not bring the replica to the source's size")
+        }
+    } iterate: { replica, keys, _ in
+        try iterateMap(try lastMoment(replica), keys)
     }
 }
 
@@ -448,6 +503,8 @@ let workloads: [Workload] = [
     sortedInsert(10_000, kinds: [.file]),
     mapCompact(2_000, kinds: [.memory, .bufferedFile]),
     mapCompact(200, kinds: [.file]),
+    replicate(2_000, kinds: [.memory, .bufferedFile]),
+    replicate(200, kinds: [.file]),
 ]
 
 func median(_ values: [Double]) -> Double {
@@ -476,13 +533,15 @@ func run(_ workload: Workload) throws {
             var database: Database? = nil
             writeTimes.append(try milliseconds { database = try workload.write(storage, keys, prepared) })
             guard let database else { throw BenchmarkFailure(description: "the write phase gave no database") }
+            readTimes.append(try milliseconds { try workload.read(database, keys, prepared) })
+            iterateTimes.append(try milliseconds { try workload.iterate(database, keys, prepared) })
+            // the file as the phases leave it: reads change nothing, and
+            // a replication's read phase is its second sync
             let size = try storage.storage.length()
             if fileSize != 0 && size != fileSize {
                 throw BenchmarkFailure(description: "\(workload.name) left files of different sizes")
             }
             fileSize = size
-            readTimes.append(try milliseconds { try workload.read(database, keys) })
-            iterateTimes.append(try milliseconds { try workload.iterate(database, keys) })
         }
         report(workload, "write", kind, writeTimes, fileSize)
         report(workload, "read", kind, readTimes, fileSize)
@@ -501,10 +560,11 @@ func runRepeatedly(_ workload: Workload, _ kind: StorageKind, phase: String, sec
     var total = 0.0
     if phase == "read" || phase == "iterate" {
         let storage = try RunStorage(kind)
-        let database = try workload.write(storage, keys, try workload.prepare(storage, keys))
+        let prepared = try workload.prepare(storage, keys)
+        let database = try workload.write(storage, keys, prepared)
         let run = phase == "read" ? workload.read : workload.iterate
         while DispatchTime.now().uptimeNanoseconds < deadline {
-            total += try milliseconds { try run(database, keys) }
+            total += try milliseconds { try run(database, keys, prepared) }
             runs += 1
         }
     } else {
