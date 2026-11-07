@@ -210,6 +210,132 @@ import Testing
         #expect(bytesAfter == bytesFresh)
     }
 
+    /// A sorted map whose tree has a branch, and whose keys are long enough
+    /// to be records, so that its separators are records too: every one is
+    /// copied, and the keys are found through them in the target.
+    @Test(arguments: StorageKind.allCases)
+    func aSortedMapWithRecordSeparatorsCompacts(kind: StorageKind) throws {
+        let keys = (0..<40).map { Array("a key long enough for a record \($0 < 10 ? "0" : "")\($0)".utf8) }
+        let subject = try StorageUnderTest(kind)
+        let source = try makeDatabase(subject)
+        try source.runContext { cursor in
+            let map = try SortedMap(try HashMap(cursor).putCursor(sha1("sorted").bytes))
+            for (index, key) in keys.enumerated() {
+                try map.put(key, .uint(UInt64(index)))
+            }
+        }
+        let sourceHeader = try source.reader.bTreeHeader(
+            at: try #require(try source.rootCursor().readPathSlot([.hashMapGet(.value, sha1("sorted"))])).value)
+        #expect(try source.reader.sortedNode(at: sourceHeader.rootPtr).kind == .branch)
+
+        let targetSubject = try StorageUnderTest(kind)
+        var map = MemoryOffsetMap()
+        let target = try source.compact(into: targetSubject.storage, fileID: 8, offsetMap: &map)
+        let copied = try SortedMap(
+            try #require(try HashMap(target.rootCursor().readOnly()).getCursor(sha1("sorted").bytes)))
+        for (index, key) in keys.enumerated() {
+            #expect(try #require(try copied.getCursor(key)).readUint() == UInt64(index))
+            #expect(try copied.rank(key) == UInt64(index))
+        }
+        // the separators are records in the target, not in the source
+        let header = try target.reader.bTreeHeader(at: try copied.slot().value)
+        let root = try target.reader.sortedNode(at: header.rootPtr)
+        let length = try targetSubject.storage.length()
+        for index in 1..<Int(root.num) {
+            #expect(root.separators[index].tag == .bytes)
+            #expect(root.separators[index].value < length)
+            let key = keys[8 * index]
+            let order = try SortedKey(key).withBytes { (bytes: Span<UInt8>) throws(XitDBError) in
+                try target.reader.compareKey(root.separators[index], to: bytes)
+            }
+            #expect(order == .equal)
+        }
+    }
+
+    /// An empty source commits nothing in the target, and neither does a
+    /// history with no moments, or one whose last moment was never written:
+    /// the target is left as it was, byte for byte.
+    @Test(arguments: StorageKind.allCases)
+    func aSourceWithNoLastMomentCommitsNothing(kind: StorageKind) throws {
+        func compactingLeavesUntouched(_ prepare: (Database) throws -> Void) throws {
+            let subject = try StorageUnderTest(kind)
+            let source = try makeDatabase(subject)
+            try prepare(source)
+            let targetSubject = try StorageUnderTest(kind)
+            let target = try Database(storage: targetSubject.storage, hashSize: 20, fileID: 8)
+            let before = try readBytes(targetSubject.storage, at: 0, count: Int(try targetSubject.storage.length()))
+            var map = MemoryOffsetMap()
+            try source.compact(into: target, offsetMap: &map)
+            let after = try readBytes(targetSubject.storage, at: 0, count: Int(try targetSubject.storage.length()))
+            #expect(after == before)
+            #expect(try target.rootCursor().slot().isEmpty)
+        }
+        // an empty source
+        try compactingLeavesUntouched { _ in }
+        // a history with no moments
+        try compactingLeavesUntouched { source in
+            _ = try source.rootCursor().writePath([.arrayListInit])
+            #expect(try source.rootCursor().count() == 0)
+        }
+        // a history whose last moment was never written
+        try compactingLeavesUntouched { source in
+            _ = try source.rootCursor().writePath([.arrayListInit, .arrayListAppend])
+            #expect(try source.rootCursor().count() == 1)
+        }
+        // but a root set to nothing is copied, as a commit
+        let subject = try StorageUnderTest(kind)
+        let source = try makeDatabase(subject)
+        var root = source.rootCursor()
+        try root.write(.slot(nil))
+        let targetSubject = try StorageUnderTest(kind)
+        let target = try Database(storage: targetSubject.storage, hashSize: 20, fileID: 8)
+        let lengthBefore = try targetSubject.storage.length()
+        var map = MemoryOffsetMap()
+        try source.compact(into: target, offsetMap: &map)
+        #expect(try targetSubject.storage.length() > lengthBefore)
+        #expect(try target.rootCursor().slot() == Slot(value: 0, tag: .none, full: true))
+    }
+
+    /// A tree branch whose child points back at its root: the memo ends the
+    /// walk, and the copy has the same cycle. For the linked array list and
+    /// the sorted map, whose nodes are memoised by their own offsets.
+    @Test(arguments: StorageKind.allCases)
+    func aTreeThatPointsAtItselfEnds(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let source = try makeDatabase(subject)
+        try source.runContext { cursor in
+            let map = try HashMap(cursor)
+            let linked = try LinkedArrayList(try map.putCursor(sha1("linked").bytes))
+            for index in 0..<40 {
+                try linked.append(.uint(UInt64(index)))
+            }
+            let sorted = try SortedMap(try map.putCursor(sha1("sorted").bytes))
+            for index in 0..<40 {
+                try sorted.put(Array("k\(index)".utf8), .uint(UInt64(index)))
+            }
+        }
+        // the last child of each root points at the root
+        for name in ["linked", "sorted"] {
+            let header = try source.reader.bTreeHeader(
+                at: try #require(try source.rootCursor().readPathSlot([.hashMapGet(.value, sha1(name))])).value)
+            let num = try source.reader.sortedNode(at: header.rootPtr).num
+            try writeBytes(
+                subject.storage, slotBytes(Slot(value: header.rootPtr, tag: .index)),
+                at: header.rootPtr + 2 + UInt64(num - 1) * 9)
+        }
+        let targetSubject = try StorageUnderTest(kind)
+        var map = MemoryOffsetMap()
+        let target = try source.compact(into: targetSubject.storage, fileID: 8, offsetMap: &map)
+        for name in ["linked", "sorted"] {
+            let header = try target.reader.bTreeHeader(
+                at: try #require(try target.rootCursor().readPathSlot([.hashMapGet(.value, sha1(name))])).value)
+            let root = try target.reader.sortedNode(at: header.rootPtr)
+            #expect(root.children[Int(root.num) - 1] == Slot(value: header.rootPtr, tag: .index))
+            #expect(root.children[0].tag == .index)
+            #expect(root.children[0].value != header.rootPtr)
+        }
+    }
+
     /// The source itself as the target, and a target with something in its
     /// root, are refused and left as they were.
     @Test(arguments: StorageKind.allCases)
