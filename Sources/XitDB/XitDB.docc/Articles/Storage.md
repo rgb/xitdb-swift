@@ -50,7 +50,8 @@ let bytes = source.bytes
 
 // On the other side there is nothing to decode.
 let received = try Database(opening: MemoryStorage(bytes: bytes))
-let answer = try HashMap<ReadOnly>(received.rootCursor).cursor(forHash: sha256("answer"))!.readUInt64()
+let answers = try HashMap<ReadOnly>(received.rootCursor)
+let answer = try answers.cursor(forHash: sha256("answer"))!.readUInt64()
 ```
 
 A memory storage can have a limit, ``MemoryStorage/maxSize``. A write that would pass it throws
@@ -137,8 +138,11 @@ To keep the bytes anywhere else, write a class that conforms to ``WritableStorag
 final class ArrayStorage: WritableStorage {
     private(set) var bytes: [UInt8] = []
 
-    func read(into buffer: inout MutableSpan<UInt8>, range: Range<Int>, at offset: UInt64) throws(XitDBError) -> Int
-    {
+    func read(
+        into buffer: inout MutableSpan<UInt8>,
+        range: Range<Int>,
+        at offset: UInt64
+    ) throws(XitDBError) -> Int {
         guard offset < UInt64(bytes.count) else { return 0 }
         let start = Int(offset)
         let count = min(range.count, bytes.count - start)

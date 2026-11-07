@@ -100,7 +100,7 @@ import XitDB
         func open(_ storage: any WritableStorage) throws -> Database? {
             do {
                 return try Database(opening: storage)
-            } catch XitDBError.invalidDatabase, XitDBError.truncatedDatabase, XitDBError.endOfStream {
+            } catch .invalidDatabase, .truncatedDatabase, .endOfStream {
                 return nil
             }
         }

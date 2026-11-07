@@ -195,7 +195,8 @@ import XitDB
         }
 
         // Nothing here needs to survive a crash, so nothing is synced.
-        let scratchStorage = try FileStorage(path: scratch.path("offsets.db"), access: .truncate, durability: .none)
+        let scratchStorage = try FileStorage(
+            path: scratch.path("offsets.db"), access: .truncate, durability: .none)
         let offsetsDatabase = try Database(creating: scratchStorage, hashSize: 8)
         let target = try BufferedFileStorage(path: scratch.path("compact.db"), access: .truncate)
 
