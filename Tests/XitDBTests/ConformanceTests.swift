@@ -38,48 +38,11 @@ import Testing
     @Test func everyScriptRunsOrWaitsForANamedMilestone() {
         let all = ConformanceFixture.all
         #expect(all.count == 206)
-        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && $0.mustPass }.count == 92)
-        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && !$0.mustPass }.count == 82)
-        #expect(all.filter { $0.waitsFor == "M8" && $0.mustPass }.count == 16)
-        #expect(all.filter { $0.waitsFor == "M8" && !$0.mustPass }.count == 16)
+        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && $0.mustPass }.count == 108)
+        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && !$0.mustPass }.count == 98)
 
-        let waiting = all.filter { $0.waitsFor != nil }.map { "\($0.waitsFor ?? ""): \($0.name)" }.sorted()
-        #expect(
-            waiting == [
-                "M8: bytes-not-bytes",
-                "M8: bytes-unbound",
-                "M8: compact-roots",
-                "M8: compact-targets",
-                "M8: expect-same-differs",
-                "M8: expect-same-not-bytes",
-                "M8: failed-read-committed-binds-nothing",
-                "M8: invalid-range-not-handled",
-                "M8: invalid-range-not-raised",
-                "M8: number-used-as-cursor",
-                "M8: replica-301",
-                "M8: replica-302",
-                "M8: replica-303",
-                "M8: replica-304",
-                "M8: replica-305",
-                "M8: replica-306",
-                "M8: replicate-bad-trailer",
-                "M8: replicate-earlier-commit",
-                "M8: replicate-failed-first-sync",
-                "M8: replicate-history",
-                "M8: replicate-interrupted",
-                "M8: replicate-other-file",
-                "M8: replicate-roots",
-                "M8: replicate-wrong-requests",
-                "M8: short-apply-not-handled",
-                "M8: start-not-a-number",
-                "M8: start-unbound",
-                "M8: state-not-a-state",
-                "M8: state-unbound",
-                "M8: wrong-committed-size",
-                "M8: wrong-committed-size-var",
-                "M8: wrong-replication-start",
-            ]
-        )
+        // nothing waits for a milestone any more
+        #expect(all.filter { $0.waitsFor != nil }.isEmpty)
 
         // every op of the script format is in the runner
         #expect(all.filter { $0.needsOp != nil }.isEmpty)

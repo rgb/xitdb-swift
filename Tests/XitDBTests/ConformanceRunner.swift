@@ -208,6 +208,12 @@ final class ScriptRunner {
         case nullCursor
         case slot(Slot?)
         case iterator(IteratorBox)
+        /// A number: a committed size or a replication start.
+        case number(UInt64)
+        /// A replica's state.
+        case replicaState(ReplicaState)
+        /// Committed bytes, read from a database and applied to another.
+        case committedBytes([UInt8])
     }
 
     /// An iterator under a name. Unlike a cursor, an iterator is not a
@@ -280,10 +286,12 @@ final class ScriptRunner {
     }
 
     /// The committed size of a database, the current one if no name is
-    /// given, or `nil` while it is closed.
+    /// given, or `nil` while it is closed or in no state to say, as the
+    /// sidecar records it: a failed sync at 0 leaves no database.
     func committedSize(of name: String? = nil) throws -> UInt64? {
         guard let place = databases[name ?? current] else { throw ScriptFailure("no database called '\(name ?? "")'") }
-        return try place.database?.committedSize()
+        guard let database = place.database else { return nil }
+        return try? database.committedSize()
     }
 
     /// Everything in a database's storage as it is now.
@@ -378,6 +386,20 @@ final class ScriptRunner {
     private func tag(_ name: String) throws -> XitDB.Tag {
         guard let tag = Self.tagNames[name] else { throw UnknownInScript("unknown tag '\(name)'") }
         return tag
+    }
+
+    /// A number: an integer, or `{"var": NAME}` with a name that holds one.
+    private func number(_ value: Any?, _ what: String) throws -> UInt64 {
+        if let object = value as? [String: Any], object["var"] != nil {
+            let reference = try ScriptObject(object, what)
+            try reference.allow("var")
+            let name = try reference.string("var")
+            guard case .number(let number) = try bound(name) else {
+                throw ScriptFailure("'\(name)' does not hold a number")
+            }
+            return number
+        }
+        return try ScriptObject.unsigned(value, what)
     }
 
     /// A slot: a name that holds one, a literal, or `null`.
@@ -553,6 +575,8 @@ final class ScriptRunner {
         case .nullCursor: throw ScriptFailure("'\(name)' is a null cursor")
         case .slot: throw ScriptFailure("'\(name)' holds a slot, not a cursor")
         case .iterator: throw ScriptFailure("'\(name)' holds an iterator, not a cursor")
+        case .number, .replicaState, .committedBytes:
+            throw ScriptFailure("'\(name)' holds a number, a state or bytes, not a cursor")
         }
     }
 
@@ -672,7 +696,10 @@ final class ScriptRunner {
     }
 
     private func perform(_ name: String, _ op: ScriptObject, topLevel: Bool) throws {
-        let topLevelOps = ["close", "reopen", "raw_append", "raw_write", "create_database", "use", "compact"]
+        let topLevelOps = [
+            "close", "reopen", "raw_append", "raw_write", "create_database", "use", "compact", "replica_state",
+            "replication_start", "committed_size", "read_committed", "apply_replicated",
+        ]
         if topLevelOps.contains(name) && !topLevel {
             throw UnknownInScript("'\(name)' inside a callback")
         }
@@ -839,6 +866,8 @@ final class ScriptRunner {
             case .nullCursor: throw ScriptFailure("a null cursor was used")
             case .slot: throw ScriptFailure("a slot was used as a cursor")
             case .iterator: throw ScriptFailure("an iterator was used as a cursor")
+            case .number, .replicaState, .committedBytes:
+                throw ScriptFailure("a number, a state or bytes were used as a cursor")
             }
             try expectNull(op, isNull: result == nil)
             try bind(try op.optionalString("as"), result.map { .readOnly($0) } ?? .nullCursor)
@@ -853,6 +882,8 @@ final class ScriptRunner {
             case .nullCursor: throw ScriptFailure("a null cursor was used")
             case .slot: throw ScriptFailure("a slot was used as a cursor")
             case .iterator: throw ScriptFailure("an iterator was used as a cursor")
+            case .number, .replicaState, .committedBytes:
+                throw ScriptFailure("a number, a state or bytes were used as a cursor")
             }
             try expectNull(op, isNull: result == nil)
             try expectSlot(op, result)
@@ -887,6 +918,8 @@ final class ScriptRunner {
             case .nullCursor: throw ScriptFailure("a null cursor was used")
             case .slot: throw ScriptFailure("a slot was used as a cursor")
             case .iterator: throw ScriptFailure("an iterator was used as a cursor")
+            case .number, .replicaState, .committedBytes:
+                throw ScriptFailure("a number, a state or bytes were used as a cursor")
             }
             if op.has("expect_hash") {
                 let expected = try hash(op.fields["expect_hash"], "expect_hash")
@@ -1068,6 +1101,60 @@ final class ScriptRunner {
                 throw ScriptFailure("count gave \(result)")
             }
 
+        case "replica_state":
+            try op.allow("op", "note", "expect_error", "as")
+            let state = try openDatabase("replica_state").replicaState()
+            try bind(try op.string("as"), .replicaState(state))
+
+        case "replication_start":
+            try op.allow("op", "note", "expect_error", "state", "as", "expect")
+            let stateName = try op.string("state")
+            guard case .replicaState(let state) = try bound(stateName) else {
+                throw ScriptFailure("'\(stateName)' does not hold a replica's state")
+            }
+            let start = try openDatabase("replication_start").replicationStart(state)
+            if op.has("expect"), try number(op.fields["expect"], "expect") != start {
+                throw ScriptFailure("replication_start gave \(start)")
+            }
+            try bind(try op.optionalString("as"), .number(start))
+
+        case "committed_size":
+            try op.allow("op", "note", "expect_error", "as", "expect")
+            let size = try openDatabase("committed_size").committedSize()
+            if op.has("expect"), try number(op.fields["expect"], "expect") != size {
+                throw ScriptFailure("committed_size gave \(size)")
+            }
+            try bind(try op.optionalString("as"), .number(size))
+
+        case "read_committed":
+            try op.allow("op", "note", "expect_error", "start", "end", "as", "expect_same")
+            let start = try number(op.fields["start"], "start")
+            let end = try number(op.fields["end"], "end")
+            let read = try openDatabase("read_committed").readCommitted(from: start, to: end)
+            if op.has("expect_same") {
+                let other = try op.string("expect_same")
+                guard case .committedBytes(let expected) = try bound(other) else {
+                    throw ScriptFailure("'\(other)' does not hold committed bytes")
+                }
+                guard read == expected else { throw ScriptFailure("read_committed gave other bytes than '\(other)'") }
+            }
+            try bind(try op.string("as"), .committedBytes(read))
+
+        case "apply_replicated":
+            try op.allow("op", "note", "expect_error", "start", "bytes", "short_by")
+            let start = try number(op.fields["start"], "start")
+            let bytesName = try op.string("bytes")
+            guard case .committedBytes(let bytes) = try bound(bytesName) else {
+                throw ScriptFailure("'\(bytesName)' does not hold committed bytes")
+            }
+            // `short_by` is the sync that was interrupted: the bytes end
+            // that many short, and so does the length asked for, so the
+            // append goes through and fails on the trailer it does not find
+            let shortBy = op.has("short_by") ? Int(clamping: try op.unsigned("short_by")) : 0
+            guard shortBy <= bytes.count else { throw UnknownInScript("short_by is more than the bytes") }
+            let sent = Array(bytes[0..<(bytes.count - shortBy)])
+            try openDatabase("apply_replicated").applyReplicated(at: start, bytes: sent)
+
         case "close":
             try op.allow("op", "note")
             database = nil
@@ -1145,6 +1232,8 @@ final class ScriptRunner {
         case .nullCursor: throw ScriptFailure("'\(name)' is a null cursor")
         case .slot: throw ScriptFailure("'\(name)' holds a slot, not a cursor")
         case .iterator: throw ScriptFailure("'\(name)' holds an iterator, not a cursor")
+        case .number, .replicaState, .committedBytes:
+            throw ScriptFailure("'\(name)' holds a number, a state or bytes, not a cursor")
         }
     }
 
@@ -1191,8 +1280,7 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
     /// The milestone that brings what this script still needs, or `nil` if
     /// it can run now.
     var waitsFor: String? {
-        if features.contains("replication") { return "M8" }
-        return nil
+        nil
     }
 
     /// An op the runner does not have yet, which keeps the script from
