@@ -145,7 +145,7 @@ import Testing
                 var iter = try evenListSliceCursor.iterator()
                 var i: UInt64 = 0
                 while let numCursor = try iter.next() {
-                    #expect(values[Int(sliceOffset + i)] == (try numCursor.readUint()))
+                    #expect(values[Int(sliceOffset + i)] == (try numCursor.readUInt64()))
                     i += 1
                 }
                 #expect(sliceSize == i)
@@ -301,7 +301,7 @@ import Testing
                     var iter = try comboListCursor.iterator()
                     var i: UInt64 = 0
                     while let numCursor = try iter.next() {
-                        #expect(values[Int(i)] == (try numCursor.readUint()))
+                        #expect(values[Int(i)] == (try numCursor.readUInt64()))
                         i += 1
                     }
                     #expect(try evenListCursor.count() + oddListCursor.count() == i)
@@ -387,7 +387,7 @@ import Testing
                 var iter = try evenListInsertCursor.iterator()
                 var i: UInt64 = 0
                 while let numCursor = try iter.next() {
-                    #expect(values[Int(i)] == (try numCursor.readUint()))
+                    #expect(values[Int(i)] == (try numCursor.readUInt64()))
                     i += 1
                 }
                 #expect(UInt64(values.count) == i)
@@ -439,7 +439,7 @@ import Testing
                 var iter = try evenListInsertCursor.iterator()
                 var i: UInt64 = 0
                 while let numCursor = try iter.next() {
-                    #expect(values[Int(i)] == (try numCursor.readUint()))
+                    #expect(values[Int(i)] == (try numCursor.readUInt64()))
                     i += 1
                 }
                 #expect(UInt64(values.count) == i)

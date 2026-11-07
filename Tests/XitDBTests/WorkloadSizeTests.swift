@@ -50,7 +50,7 @@ import Testing
 
         let moment = try lastMoment(database)
         for index in 0..<workload.count {
-            #expect(try #require(try moment.readPath([.hashMapGet(.value, key(index))])).readUint() == UInt64(index))
+            #expect(try #require(try moment.readPath([.hashMapGet(.value, key(index))])).readUInt64() == UInt64(index))
         }
     }
 
@@ -68,7 +68,7 @@ import Testing
         let moment = try lastMoment(database)
         #expect(try moment.count() == UInt64(workload.count))
         for index in 0..<workload.count {
-            #expect(try #require(try moment.readPath([.arrayListGet(Int64(index))])).readUint() == UInt64(index))
+            #expect(try #require(try moment.readPath([.arrayListGet(Int64(index))])).readUInt64() == UInt64(index))
         }
     }
 
@@ -90,7 +90,7 @@ import Testing
 
         let moment = try lastMoment(database)
         for index in 0..<(workload.count * 10) {
-            #expect(try #require(try moment.readPath([.hashMapGet(.value, key(index))])).readUint() == UInt64(index))
+            #expect(try #require(try moment.readPath([.hashMapGet(.value, key(index))])).readUInt64() == UInt64(index))
         }
     }
 }

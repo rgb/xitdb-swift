@@ -39,7 +39,7 @@ public struct CountedHashSet<Access: CursorAccess> {
     }
 
     /// An iterator over the set's entries. Each cursor it gives is at an
-    /// entry; ``Cursor/readKeyValuePair()`` reads the entry's key.
+    /// entry; ``Cursor/readEntry()`` reads the entry's key.
     ///
     /// The order is that of the hashes' last bits, which has nothing to do
     /// with the order of insertion.
@@ -47,7 +47,7 @@ public struct CountedHashSet<Access: CursorAccess> {
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   that is not a collection, or an error of the storage or of a
     ///   damaged file.
-    public func iterator() throws(XitDBError) -> Cursor<Access>.Iter {
+    public func iterator() throws(XitDBError) -> CollectionIterator {
         try cursor.iterator()
     }
 
@@ -148,8 +148,8 @@ extension CountedHashSet where Access == ReadWrite {
     }
 
     /// A view of the same set that can only read.
-    public func readOnly() -> CountedHashSet<ReadOnly> {
-        CountedHashSet<ReadOnly>(unchecked: cursor.readOnly())
+    public var readOnly: CountedHashSet<ReadOnly> {
+        CountedHashSet<ReadOnly>(unchecked: cursor.readOnly)
     }
 
     /// Adds a key to the set under its hash. If the set already has a key

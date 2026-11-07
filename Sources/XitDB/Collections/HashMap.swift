@@ -30,7 +30,7 @@ public struct HashMap<Access: CursorAccess> {
     }
 
     /// An iterator over the map's entries. Each cursor it gives is at an
-    /// entry; ``Cursor/readKeyValuePair()`` reads the entry's key and value.
+    /// entry; ``Cursor/readEntry()`` reads the entry's key and value.
     ///
     /// The order is that of the hashes' last bits, which has nothing to do
     /// with the order of insertion.
@@ -38,7 +38,7 @@ public struct HashMap<Access: CursorAccess> {
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   that is not a collection, or an error of the storage or of a
     ///   damaged file.
-    public func iterator() throws(XitDBError) -> Cursor<Access>.Iter {
+    public func iterator() throws(XitDBError) -> CollectionIterator {
         try cursor.iterator()
     }
 
@@ -163,9 +163,9 @@ public struct HashMap<Access: CursorAccess> {
     ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
     ///   the slot holds something other than a hash map or set, or an error
     ///   of the storage or of a damaged file.
-    public func getKeyValuePair(_ hash: Span<UInt8>) throws(XitDBError) -> KeyValuePairCursor<ReadOnly>? {
+    public func getKeyValuePair(_ hash: Span<UInt8>) throws(XitDBError) -> Entry? {
         let path: InlineArray<1, PathPart> = [.hashMapGet(.kvPair, KeyHash(hash))]
-        return try cursor.readPath(path.span)?.readKeyValuePair()
+        return try cursor.readPath(path.span)?.readEntry()
     }
 
     /// The entry stored under a hash, as a cursor for its key and one for
@@ -177,9 +177,9 @@ public struct HashMap<Access: CursorAccess> {
     ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
     ///   the slot holds something other than a hash map or set, or an error
     ///   of the storage or of a damaged file.
-    public func getKeyValuePair(_ hash: [UInt8]) throws(XitDBError) -> KeyValuePairCursor<ReadOnly>? {
+    public func getKeyValuePair(_ hash: [UInt8]) throws(XitDBError) -> Entry? {
         let path: InlineArray<1, PathPart> = [.hashMapGet(.kvPair, KeyHash(hash))]
-        return try cursor.readPath(path.span)?.readKeyValuePair()
+        return try cursor.readPath(path.span)?.readEntry()
     }
 
 }
@@ -223,8 +223,8 @@ extension HashMap where Access == ReadWrite {
     }
 
     /// A view of the same map that can only read.
-    public func readOnly() -> HashMap<ReadOnly> {
-        HashMap<ReadOnly>(unchecked: cursor.readOnly())
+    public var readOnly: HashMap<ReadOnly> {
+        HashMap<ReadOnly>(unchecked: cursor.readOnly)
     }
 
     /// Stores a value under a hash, in place of any value that was there.

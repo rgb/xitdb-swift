@@ -42,13 +42,13 @@ public struct SortedSet<Access: CursorAccess> {
     }
 
     /// An iterator over the set's entries in key order. Each cursor it
-    /// gives is at an entry; ``Cursor/readKeyValuePair()`` reads the
+    /// gives is at an entry; ``Cursor/readEntry()`` reads the
     /// entry's key.
     ///
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   that is not a collection, or an error of the storage or of a
     ///   damaged file.
-    public func iterator() throws(XitDBError) -> Cursor<Access>.Iter {
+    public func iterator() throws(XitDBError) -> CollectionIterator {
         try cursor.iterator()
     }
 
@@ -62,7 +62,7 @@ public struct SortedSet<Access: CursorAccess> {
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
-    public func iteratorFromIndex(_ index: Int64) throws(XitDBError) -> Cursor<Access>.Iter {
+    public func iteratorFromIndex(_ index: Int64) throws(XitDBError) -> CollectionIterator {
         try cursor.iterator(fromSortedMapIndex: index)
     }
 
@@ -75,7 +75,7 @@ public struct SortedSet<Access: CursorAccess> {
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
-    public func iteratorFrom(_ key: Span<UInt8>) throws(XitDBError) -> Cursor<Access>.Iter {
+    public func iteratorFrom(_ key: Span<UInt8>) throws(XitDBError) -> CollectionIterator {
         try cursor.iterator(fromSortedMapKey: SortedKey(key))
     }
 
@@ -88,7 +88,7 @@ public struct SortedSet<Access: CursorAccess> {
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
-    public func iteratorFrom(_ key: [UInt8]) throws(XitDBError) -> Cursor<Access>.Iter {
+    public func iteratorFrom(_ key: [UInt8]) throws(XitDBError) -> CollectionIterator {
         try cursor.iterator(fromSortedMapKey: SortedKey(key))
     }
 
@@ -137,9 +137,9 @@ public struct SortedSet<Access: CursorAccess> {
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
-    public func getIndexKeyValuePair(_ index: Int64) throws(XitDBError) -> KeyValuePairCursor<ReadOnly>? {
+    public func getIndexKeyValuePair(_ index: Int64) throws(XitDBError) -> Entry? {
         let path: InlineArray<1, PathPart> = [.sortedMapGetIndex(index)]
-        return try cursor.readPath(path.span)?.readKeyValuePair()
+        return try cursor.readPath(path.span)?.readEntry()
     }
 
     /// Whether `key` is in the set.
@@ -209,8 +209,8 @@ extension SortedSet where Access == ReadWrite {
     }
 
     /// A view of the same set that can only read.
-    public func readOnly() -> SortedSet<ReadOnly> {
-        SortedSet<ReadOnly>(unchecked: cursor.readOnly())
+    public var readOnly: SortedSet<ReadOnly> {
+        SortedSet<ReadOnly>(unchecked: cursor.readOnly)
     }
 
     /// Adds `key` to the set. A key that is there already is left as it

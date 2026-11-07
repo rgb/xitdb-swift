@@ -17,7 +17,7 @@ import Testing
 // of `appendContext` here; `cursor.db.freeze()` is `cursor.database.freeze()`, `list.?` is `#require(list)`,
 // and `expectError(error.X, call)` is `#expect(throws: XitDBError.x) { call }`. Zig's `error.InvalidCount`,
 // for a counted hash map whose count disagrees with its entries, is `invalidDatabase` in the port, which has no
-// `InvalidCount`. Where Zig damages bytes of the file through `db.core.writer()`, the bytes are written to the
+// `InvalidCount`. Where Zig damages bytes of the file through `db.core.writeBytes()`, the bytes are written to the
 // storage directly. Zig's allocator and `buffer` lines have no counterpart.
 //
 // Left out, with what each part tests and the feature it waits for:
@@ -112,7 +112,7 @@ import Testing
     private func expectUints<Access>(_ list: LinkedArrayList<Access>, _ expected: [UInt64]) throws {
         #expect(UInt64(expected.count) == (try list.count()))
         for (i, value) in expected.enumerated() {
-            #expect(value == (try #require(try list.getCursor(Int64(i))).readUint()))
+            #expect(value == (try #require(try list.getCursor(Int64(i))).readUInt64()))
         }
     }
 
@@ -254,7 +254,7 @@ import Testing
             try expectUints(listAgain, [3, 4])
 
             #expect(try list.count() == 4)
-            #expect(try #require(try list.getCursor(0)).readUint() == 3)
+            #expect(try #require(try list.getCursor(0)).readUInt64() == 3)
             #expect(throws: XitDBError.invalidBTreeNode) { try list.getCursor(2) }
             #expect(throws: XitDBError.invalidBTreeNode) { try list.append(.uint(5)) }
             #expect(throws: XitDBError.invalidBTreeNode) { try list.insert(3, .uint(5)) }
@@ -375,7 +375,7 @@ import Testing
             try array.append(.uint(20))
             let arrayAgain = try ArrayList<ReadWrite>(try moment.putCursor(hashInt("array")))
             try arrayAgain.put(20, .uint(99))
-            #expect(try #require(try array.getCursor(20)).readUint() == 99)
+            #expect(try #require(try array.getCursor(20)).readUInt64() == 99)
         }
     }
 

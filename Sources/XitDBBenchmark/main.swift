@@ -113,7 +113,7 @@ func readMap(_ moment: Cursor<ReadOnly>, _ keys: Keys) throws {
     let hashes = keys.hashes
     for index in hashes.indices {
         let path: InlineArray<1, PathPart> = [.hashMapGet(.value, hashes[index])]
-        guard let cursor = try moment.readPath(path.span), try cursor.readUint() == UInt64(index) else {
+        guard let cursor = try moment.readPath(path.span), try cursor.readUInt64() == UInt64(index) else {
             throw BenchmarkFailure(description: "key-\(index) does not read back")
         }
     }
@@ -129,8 +129,8 @@ func iterateMap(_ moment: Cursor<ReadOnly>, _ keys: Keys) throws {
     var count: UInt64 = 0
     var sum: UInt64 = 0
     while let entry = try iterator.next() {
-        let pair = try entry.readKeyValuePair()
-        let value = try pair.valueCursor.readUint()
+        let pair = try entry.readEntry()
+        let value = try pair.value.readUInt64()
         guard value < UInt64(hashes.count), pair.keyHash == hashes[Int(value)] else {
             throw BenchmarkFailure(description: "an entry is not one of the keys written")
         }
@@ -241,7 +241,7 @@ func listAppend(_ size: Int, kinds: [StorageKind]) -> Workload {
         let moment = try lastMoment(database)
         for index in 0..<size {
             let path: InlineArray<1, PathPart> = [.arrayListGet(Int64(index))]
-            guard let cursor = try moment.readPath(path.span), try cursor.readUint() == UInt64(index) else {
+            guard let cursor = try moment.readPath(path.span), try cursor.readUInt64() == UInt64(index) else {
                 throw BenchmarkFailure(description: "element \(index) does not read back")
             }
         }
@@ -250,7 +250,7 @@ func listAppend(_ size: Int, kinds: [StorageKind]) -> Workload {
         var iterator = try list.iterator()
         var count: UInt64 = 0
         while let element = try iterator.next() {
-            guard try element.readUint() == count else {
+            guard try element.readUInt64() == count else {
                 throw BenchmarkFailure(description: "element \(count) is not in its place")
             }
             count += 1
@@ -409,7 +409,7 @@ func linkedAppend(_ size: Int, kinds: [StorageKind]) -> Workload {
         let moment = try lastMoment(database)
         for index in 0..<size {
             let path: InlineArray<1, PathPart> = [.linkedArrayListGet(Int64(index))]
-            guard let cursor = try moment.readPath(path.span), try cursor.readUint() == UInt64(index) else {
+            guard let cursor = try moment.readPath(path.span), try cursor.readUInt64() == UInt64(index) else {
                 throw BenchmarkFailure(description: "element \(index) does not read back")
             }
         }
@@ -418,7 +418,7 @@ func linkedAppend(_ size: Int, kinds: [StorageKind]) -> Workload {
         var iterator = try list.iterator()
         var count: UInt64 = 0
         while let element = try iterator.next() {
-            guard try element.readUint() == count else {
+            guard try element.readUInt64() == count else {
                 throw BenchmarkFailure(description: "element \(count) is not in its place")
             }
             count += 1
@@ -446,7 +446,7 @@ func sortedInsert(_ size: Int, kinds: [StorageKind]) -> Workload {
         let sortedKeys = keys.sortedKeys
         for index in sortedKeys.indices {
             let path: InlineArray<1, PathPart> = [.sortedMapGet(.value, sortedKeys[index])]
-            guard let cursor = try moment.readPath(path.span), try cursor.readUint() == UInt64(index) else {
+            guard let cursor = try moment.readPath(path.span), try cursor.readUInt64() == UInt64(index) else {
                 throw BenchmarkFailure(description: "key-\(index) does not read back")
             }
         }
@@ -461,13 +461,13 @@ func sortedInsert(_ size: Int, kinds: [StorageKind]) -> Workload {
         var previous = [UInt8](repeating: 0, count: 16)
         var previousCount = 0
         while let entry = try iterator.next() {
-            let pair = try entry.readKeyValuePair()
-            let value = try pair.valueCursor.readUint()
+            let pair = try entry.readEntry()
+            let value = try pair.value.readUInt64()
             guard value < UInt64(texts.count) else {
                 throw BenchmarkFailure(description: "an entry is not one of the keys written")
             }
             var span = buffer.mutableSpan
-            let read = try pair.keyCursor.readBytes(into: &span)
+            let read = try pair.key.readBytes(into: &span)
             guard sameBytes(buffer, read, texts[Int(value)], texts[Int(value)].count) else {
                 throw BenchmarkFailure(description: "the key of key-\(value) does not read back")
             }

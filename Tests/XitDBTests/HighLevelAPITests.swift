@@ -56,7 +56,7 @@ import Testing
     private func readBytesObject<Access>(_ cursor: Cursor<Access>, bufferSize: Int) throws -> Bytes {
         var buffer = [UInt8](repeating: 0, count: bufferSize)
         var span = buffer.mutableSpan
-        let read = try cursor.readBytesObject(into: &span)
+        let read = try cursor.readBytesWithFormatTag(into: &span)
         return Bytes(Array(buffer[..<read.count]), formatTag: read.formatTag)
     }
 
@@ -172,7 +172,7 @@ import Testing
             )
 
             var longTextCursor = try moment.putCursor(hashInt("long-text"))
-            try longTextCursor.writer { writer in
+            try longTextCursor.writeBytes { writer in
                 for _ in 0..<50 {
                     try writer.write(utf8("hello, world!\n"))
                 }
@@ -187,7 +187,7 @@ import Testing
         // we can read the value of "foo" from the map by getting
         // the cursor to "foo" and then calling readBytesAlloc on it
         let fooCursor = try #require(try moment.getCursor(hashInt("foo")))
-        let fooValue = try fooCursor.readBytesAlloc(maxSize: maxReadBytes)
+        let fooValue = try fooCursor.readBytes(maxCount: maxReadBytes)
         #expect(fooValue == utf8("foo"))
 
         #expect(try #require(try moment.getSlot(hashInt("foo"))).tag == .shortBytes)
@@ -201,7 +201,7 @@ import Testing
 
         // now we can get the first item from the fruits list and read it
         let appleCursor = try #require(try fruits.getCursor(0))
-        let appleValue = try appleCursor.readBytesAlloc(maxSize: maxReadBytes)
+        let appleValue = try appleCursor.readBytes(maxCount: maxReadBytes)
         #expect(appleValue == utf8("apple"))
 
         let peopleCursor = try #require(try moment.getCursor(hashInt("people")))
@@ -211,14 +211,14 @@ import Testing
         let aliceCursor = try #require(try people.getCursor(0))
         let alice = try HashMap<ReadOnly>(aliceCursor)
         let aliceAgeCursor = try #require(try alice.getCursor(hashInt("age")))
-        #expect(try aliceAgeCursor.readUint() == 25)
+        #expect(try aliceAgeCursor.readUInt64() == 25)
 
         let todosCursor = try #require(try moment.getCursor(hashInt("todos")))
         let todos = try LinkedArrayList<ReadOnly>(todosCursor)
         #expect(try todos.count() == 3)
 
         let todoCursor = try #require(try todos.getCursor(0))
-        let todoValue = try todoCursor.readBytesAlloc(maxSize: maxReadBytes)
+        let todoValue = try todoCursor.readBytes(maxCount: maxReadBytes)
         #expect(todoValue == utf8("Pay the bills"))
 
         var fruitsIter = try fruits.iterator()
@@ -231,15 +231,15 @@ import Testing
             let person = try HashMap<ReadOnly>(personCursor)
             var personIter = try person.iterator()
             while let kvPairCursor = try personIter.next() {
-                let kvPair = try kvPairCursor.readKeyValuePair()
-                _ = try readBytes(kvPair.keyCursor, bufferSize: 100)
+                let kvPair = try kvPairCursor.readEntry()
+                _ = try readBytes(kvPair.key, bufferSize: 100)
 
-                switch try kvPair.valueCursor.slot().tag {
+                switch try kvPair.value.slot().tag {
                 case .shortBytes, .bytes:
-                    _ = try readBytes(kvPair.valueCursor, bufferSize: 100)
-                case .uint: _ = try kvPair.valueCursor.readUint()
-                case .int: _ = try kvPair.valueCursor.readInt()
-                case .float: _ = try kvPair.valueCursor.readFloat()
+                    _ = try readBytes(kvPair.value, bufferSize: 100)
+                case .uint: _ = try kvPair.value.readUInt64()
+                case .int: _ = try kvPair.value.readInt64()
+                case .float: _ = try kvPair.value.readDouble()
                 default: throw UnexpectedTagType()
                 }
             }
@@ -253,8 +253,8 @@ import Testing
             var iter = try lettersCountedMap.iterator()
             var count = 0
             while let kvPairCursor = try iter.next() {
-                let kvPair = try kvPairCursor.readKeyValuePair()
-                _ = try readBytes(kvPair.keyCursor, bufferSize: 8)
+                let kvPair = try kvPairCursor.readEntry()
+                _ = try readBytes(kvPair.key, bufferSize: 8)
                 count += 1
             }
             #expect(count == 2)
@@ -269,8 +269,8 @@ import Testing
             var iter = try lettersSet.iterator()
             var count = 0
             while let kvPairCursor = try iter.next() {
-                let kvPair = try kvPairCursor.readKeyValuePair()
-                _ = try readBytes(kvPair.keyCursor, bufferSize: 8)
+                let kvPair = try kvPairCursor.readEntry()
+                _ = try readBytes(kvPair.key, bufferSize: 8)
                 count += 1
             }
             #expect(count == 2)
@@ -284,8 +284,8 @@ import Testing
             var iter = try lettersCountedSet.iterator()
             var count = 0
             while let kvPairCursor = try iter.next() {
-                let kvPair = try kvPairCursor.readKeyValuePair()
-                _ = try readBytes(kvPair.keyCursor, bufferSize: 8)
+                let kvPair = try kvPairCursor.readEntry()
+                _ = try readBytes(kvPair.key, bufferSize: 8)
                 count += 1
             }
             #expect(count == 2)
@@ -378,7 +378,7 @@ import Testing
         #expect(try moment.getCursor(hashInt("bar")) == nil)
 
         let fruitsKeyCursor = try #require(try moment.getKeyCursor(hashInt("fruits")))
-        let fruitsKeyValue = try fruitsKeyCursor.readBytesAlloc(maxSize: maxReadBytes)
+        let fruitsKeyValue = try fruitsKeyCursor.readBytes(maxCount: maxReadBytes)
         #expect(fruitsKeyValue == utf8("fruits"))
 
         let fruitsCursor = try #require(try moment.getCursor(hashInt("fruits")))
@@ -387,11 +387,11 @@ import Testing
 
         // you can get both the key and value cursor this way
         let fruitsKvCursor = try #require(try moment.getKeyValuePair(hashInt("fruits")))
-        #expect(try fruitsKvCursor.keyCursor.slot().tag == .shortBytes)
-        #expect(try fruitsKvCursor.valueCursor.slot().tag == .arrayList)
+        #expect(try fruitsKvCursor.key.slot().tag == .shortBytes)
+        #expect(try fruitsKvCursor.value.slot().tag == .arrayList)
 
         let lemonCursor = try #require(try fruits.getCursor(0))
-        let lemonValue = try lemonCursor.readBytesAlloc(maxSize: maxReadBytes)
+        let lemonValue = try lemonCursor.readBytes(maxCount: maxReadBytes)
         #expect(lemonValue == utf8("lemon"))
 
         let peopleCursor = try #require(try moment.getCursor(hashInt("people")))
@@ -401,14 +401,14 @@ import Testing
         let aliceCursor = try #require(try people.getCursor(0))
         let alice = try HashMap<ReadOnly>(aliceCursor)
         let aliceAgeCursor = try #require(try alice.getCursor(hashInt("age")))
-        #expect(try aliceAgeCursor.readUint() == 26)
+        #expect(try aliceAgeCursor.readUInt64() == 26)
 
         let todosCursor = try #require(try moment.getCursor(hashInt("todos")))
         let todos = try LinkedArrayList<ReadOnly>(todosCursor)
         #expect(try todos.count() == 1)
 
         let todoCursor = try #require(try todos.getCursor(0))
-        let todoValue = try todoCursor.readBytesAlloc(maxSize: maxReadBytes)
+        let todoValue = try todoCursor.readBytes(maxCount: maxReadBytes)
         #expect(todoValue == utf8("Wash the car"))
 
         let lettersCountedMapCursor = try #require(try moment.getCursor(hashInt("letters-counted-map")))
@@ -433,7 +433,7 @@ import Testing
         let moment = try HashMap<ReadOnly>(momentCursor)
 
         let fooCursor = try #require(try moment.getCursor(hashInt("foo")))
-        let fooValue = try fooCursor.readBytesAlloc(maxSize: maxReadBytes)
+        let fooValue = try fooCursor.readBytes(maxCount: maxReadBytes)
         #expect(fooValue == utf8("foo"))
 
         #expect(try #require(try moment.getSlot(hashInt("foo"))).tag == .shortBytes)
@@ -444,7 +444,7 @@ import Testing
         #expect(try fruits.count() == 3)
 
         let appleCursor = try #require(try fruits.getCursor(0))
-        let appleValue = try appleCursor.readBytesAlloc(maxSize: maxReadBytes)
+        let appleValue = try appleCursor.readBytes(maxCount: maxReadBytes)
         #expect(appleValue == utf8("apple"))
 
         let peopleCursor = try #require(try moment.getCursor(hashInt("people")))
@@ -454,14 +454,14 @@ import Testing
         let aliceCursor = try #require(try people.getCursor(0))
         let alice = try HashMap<ReadOnly>(aliceCursor)
         let aliceAgeCursor = try #require(try alice.getCursor(hashInt("age")))
-        #expect(try aliceAgeCursor.readUint() == 25)
+        #expect(try aliceAgeCursor.readUInt64() == 25)
 
         let todosCursor = try #require(try moment.getCursor(hashInt("todos")))
         let todos = try LinkedArrayList<ReadOnly>(todosCursor)
         #expect(try todos.count() == 3)
 
         let todoCursor = try #require(try todos.getCursor(0))
-        let todoValue = try todoCursor.readBytesAlloc(maxSize: maxReadBytes)
+        let todoValue = try todoCursor.readBytes(maxCount: maxReadBytes)
         #expect(todoValue == utf8("Pay the bills"))
     }
 
@@ -475,7 +475,7 @@ import Testing
         let moment = try HashMap<ReadOnly>(momentCursor)
 
         let fooCursor = try #require(try moment.getCursor(hashInt("foo")))
-        let fooValue = try fooCursor.readBytesAlloc(maxSize: maxReadBytes)
+        let fooValue = try fooCursor.readBytes(maxCount: maxReadBytes)
         #expect(fooValue == utf8("foo"))
 
         #expect(try #require(try moment.getSlot(hashInt("foo"))).tag == .shortBytes)
@@ -486,7 +486,7 @@ import Testing
         #expect(try fruits.count() == 3)
 
         let appleCursor = try #require(try fruits.getCursor(0))
-        let appleValue = try appleCursor.readBytesAlloc(maxSize: maxReadBytes)
+        let appleValue = try appleCursor.readBytes(maxCount: maxReadBytes)
         #expect(appleValue == utf8("apple"))
 
         let peopleCursor = try #require(try moment.getCursor(hashInt("people")))
@@ -496,14 +496,14 @@ import Testing
         let aliceCursor = try #require(try people.getCursor(0))
         let alice = try HashMap<ReadOnly>(aliceCursor)
         let aliceAgeCursor = try #require(try alice.getCursor(hashInt("age")))
-        #expect(try aliceAgeCursor.readUint() == 25)
+        #expect(try aliceAgeCursor.readUInt64() == 25)
 
         let todosCursor = try #require(try moment.getCursor(hashInt("todos")))
         let todos = try LinkedArrayList<ReadOnly>(todosCursor)
         #expect(try todos.count() == 3)
 
         let todoCursor = try #require(try todos.getCursor(0))
-        let todoValue = try todoCursor.readBytesAlloc(maxSize: maxReadBytes)
+        let todoValue = try todoCursor.readBytes(maxCount: maxReadBytes)
         #expect(todoValue == utf8("Pay the bills"))
     }
 
@@ -711,7 +711,7 @@ import Testing
                 map = try HashMap<ReadWrite>(map.cursor)
                 list = try FreezeList(op, try map.putCursor(hashInt("freeze-callback")))
                 // Zig's `FreezeCtx`, with the list's read-only cursor as its field
-                let frozenList = list.cursor.readOnly()
+                let frozenList = list.cursor.readOnly
                 let path: [PathPart] =
                     switch op {
                     case .append: [.arrayListAppend, .write(.uint(2)), .ctx]
@@ -723,7 +723,7 @@ import Testing
                     #expect(try frozenList.count() == (op == .append ? 2 : 1))
                     let get: PathPart = op == .linkedGet ? .linkedArrayListGet(0) : .arrayListGet(-1)
                     let value = try #require(try frozenList.readPath([get]))
-                    #expect(try value.readUint() == (op == .slice ? 1 : 2))
+                    #expect(try value.readUInt64() == (op == .slice ? 1 : 2))
                 }
             }
         }
@@ -803,8 +803,8 @@ import Testing
             var i = after
             while i < end {
                 let idCursor = try #require(try iter.next())
-                let idKV = try idCursor.readKeyValuePair()
-                let userID = try readBytes(idKV.valueCursor, bufferSize: userIDSize)
+                let idKV = try idCursor.readEntry()
+                let userID = try readBytes(idKV.value, bufferSize: userIDSize)
 
                 let userCursor = try #require(try idToUser.getCursor(hashInt(String(decoding: userID, as: UTF8.self))))
                 let userMap = try HashMap<ReadOnly>(userCursor)
@@ -826,8 +826,8 @@ import Testing
         var matches = 0
         var acIter = try usernameToID.iteratorFrom(utf8(prefix))
         while let nextCursor = try acIter.next() {
-            let idKV = try nextCursor.readKeyValuePair()
-            let username = try readBytes(idKV.keyCursor, bufferSize: 64)
+            let idKV = try nextCursor.readEntry()
+            let username = try readBytes(idKV.key, bufferSize: 64)
             if !username.starts(with: utf8(prefix)) { break }
             #expect(username == utf8(expectedMatches[matches]))
             matches += 1
@@ -848,7 +848,7 @@ import Testing
             try map.put(bigEndianBytes(hash), .uint(UInt64(i)))
         }
         for (i, hash) in hashes.enumerated() {
-            #expect(try #require(try map.getCursor(bigEndianBytes(hash))).readUint() == UInt64(i))
+            #expect(try #require(try map.getCursor(bigEndianBytes(hash))).readUInt64() == UInt64(i))
         }
         for hash in hashes {
             #expect(try map.remove(bigEndianBytes(hash)))
@@ -886,7 +886,7 @@ import Testing
             }
         }
 
-        let history = try ArrayList<ReadOnly>(database.rootCursor.readOnly())
+        let history = try ArrayList<ReadOnly>(database.rootCursor.readOnly)
         let moment = try HashMap<ReadOnly>(try #require(try history.getCursor(-1)))
         let list = try ArrayList<ReadOnly>(try #require(try moment.getCursor(hashInt("list"))))
         let linked = try LinkedArrayList<ReadOnly>(try #require(try moment.getCursor(hashInt("linked"))))
@@ -901,7 +901,7 @@ import Testing
                 var iter = try list.iteratorFrom(start)
                 var expected = resolved
                 while let c = try iter.next() {
-                    #expect(try c.readUint() == expected)
+                    #expect(try c.readUInt64() == expected)
                     expected += 1
                 }
                 #expect(expected == UInt64(count))
@@ -910,7 +910,7 @@ import Testing
                 var iter = try linked.iteratorFrom(start)
                 var expected = resolved
                 while let c = try iter.next() {
-                    #expect(try c.readUint() == expected)
+                    #expect(try c.readUInt64() == expected)
                     expected += 1
                 }
                 #expect(expected == UInt64(count))
@@ -923,7 +923,7 @@ import Testing
             var b = try list.iteratorFrom(0)
             while let ca = try a.next() {
                 let cb = try #require(try b.next())
-                #expect(try ca.readUint() == (try cb.readUint()))
+                #expect(try ca.readUInt64() == (try cb.readUInt64()))
             }
             let afterLast = try b.next()
             #expect(afterLast == nil)

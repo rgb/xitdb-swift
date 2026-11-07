@@ -47,7 +47,7 @@ import Testing
             down.append(.arrayListGet(0))
         }
         let bottom = try #require(try target.rootCursor.readPath(down))
-        #expect(try bottom.readUint() == 7)
+        #expect(try bottom.readUInt64() == 7)
         #expect(try target.rootCursor.count() == 1)
         #expect(try target.committedSize == (try targetSubject.storage.length))
     }
@@ -119,9 +119,10 @@ import Testing
         let moment = try #require(try target.rootCursor.readPath([.arrayListGet(-1)]))
         #expect(
             try #require(try moment.readPath([.hashMapGet(.value, sha1("map")), .hashMapGet(.value, sha1("k"))]))
-                .readUint() == 9)
+                .readUInt64() == 9)
         #expect(
-            try #require(try moment.readPath([.hashMapGet(.value, sha1("linked")), .linkedArrayListGet(2)])).readUint()
+            try #require(try moment.readPath([.hashMapGet(.value, sha1("linked")), .linkedArrayListGet(2)]))
+                .readUInt64()
                 == 2)
     }
 
@@ -187,7 +188,7 @@ import Testing
         #expect(slots.slots[15] == Slot(value: copied.value, tag: .index))
         #expect(
             try #require(try moment.readPath([.hashMapGet(.value, sha1("map")), .hashMapGet(.value, sha1("k"))]))
-                .readUint() == 9)
+                .readUInt64() == 9)
     }
 
     /// A compaction that fails leaves the target as a transaction that did
@@ -232,9 +233,9 @@ import Testing
         var map = MemoryOffsetMap()
         let target = try source.compact(into: targetSubject.storage, fileID: 8, offsetMap: &map)
         let copied = try SortedMap(
-            try #require(try HashMap(target.rootCursor.readOnly()).getCursor(sha1("sorted").bytes)))
+            try #require(try HashMap(target.rootCursor.readOnly).getCursor(sha1("sorted").bytes)))
         for (index, key) in keys.enumerated() {
-            #expect(try #require(try copied.getCursor(key)).readUint() == UInt64(index))
+            #expect(try #require(try copied.getCursor(key)).readUInt64() == UInt64(index))
             #expect(try copied.rank(key) == UInt64(index))
         }
         // the separators are records in the target, not in the source

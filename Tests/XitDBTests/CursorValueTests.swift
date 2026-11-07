@@ -37,11 +37,11 @@ import Testing
         let nan = Double(bitPattern: 0x7FF8_0000_0000_1234)
         try put(database, "nan", .double(nan))
 
-        #expect(try get(database, "uint").readUint() == .max)
-        #expect(try get(database, "int").readInt() == .min)
-        #expect(try get(database, "minus").readInt() == -1)
-        #expect(try get(database, "float").readFloat().bitPattern == (-0.0).bitPattern)
-        #expect(try get(database, "nan").readFloat().bitPattern == 0x7FF8_0000_0000_1234)
+        #expect(try get(database, "uint").readUInt64() == .max)
+        #expect(try get(database, "int").readInt64() == .min)
+        #expect(try get(database, "minus").readInt64() == -1)
+        #expect(try get(database, "float").readDouble().bitPattern == (-0.0).bitPattern)
+        #expect(try get(database, "nan").readDouble().bitPattern == 0x7FF8_0000_0000_1234)
         #expect(try get(database, "minus").slot() == Slot(value: .max, tag: .int))
     }
 
@@ -52,19 +52,19 @@ import Testing
         let uint = try get(database, "uint")
         let bytes = try get(database, "bytes")
 
-        #expect(throws: XitDBError.unexpectedTag) { try uint.readInt() }
-        #expect(throws: XitDBError.unexpectedTag) { try uint.readFloat() }
-        #expect(throws: XitDBError.unexpectedTag) { try bytes.readUint() }
-        #expect(throws: XitDBError.unexpectedTag) { try uint.readBytesAlloc() }
-        #expect(throws: XitDBError.unexpectedTag) { try uint.readBytesObjectAlloc() }
-        #expect(throws: XitDBError.unexpectedTag) { try uint.readKeyValuePair() }
+        #expect(throws: XitDBError.unexpectedTag) { try uint.readInt64() }
+        #expect(throws: XitDBError.unexpectedTag) { try uint.readDouble() }
+        #expect(throws: XitDBError.unexpectedTag) { try bytes.readUInt64() }
+        #expect(throws: XitDBError.unexpectedTag) { try uint.readBytes() }
+        #expect(throws: XitDBError.unexpectedTag) { try uint.readBytesWithFormatTag() }
+        #expect(throws: XitDBError.unexpectedTag) { try uint.readEntry() }
         #expect(throws: XitDBError.unexpectedTag) { try uint.count() }
         var buffer = [UInt8](repeating: 0, count: 8)
         #expect(throws: XitDBError.unexpectedTag) {
             var span = buffer.mutableSpan
             return try uint.readBytes(into: &span)
         }
-        #expect(throws: XitDBError.unexpectedTag) { try database.rootCursor.readUint() }
+        #expect(throws: XitDBError.unexpectedTag) { try database.rootCursor.readUInt64() }
         #expect(throws: XitDBError.unexpectedTag) { try database.rootCursor.count() }
     }
 
@@ -90,16 +90,16 @@ import Testing
         #expect(try get(database, "tagged7").slot().tag == .bytes)
         #expect(try get(database, "tagged7").slot().full)
 
-        #expect(try get(database, "short").readBytesAlloc() == Array("12345678".utf8))
-        #expect(try get(database, "long").readBytesAlloc() == Array("123456789".utf8))
-        #expect(try get(database, "zero").readBytesAlloc() == [1, 0, 2])
-        #expect(try get(database, "empty").readBytesAlloc() == [])
+        #expect(try get(database, "short").readBytes() == Array("12345678".utf8))
+        #expect(try get(database, "long").readBytes() == Array("123456789".utf8))
+        #expect(try get(database, "zero").readBytes() == [1, 0, 2])
+        #expect(try get(database, "empty").readBytes() == [])
         #expect(
-            try get(database, "tagged").readBytesObjectAlloc() == Bytes(Array("123456".utf8), formatTag: "bi"))
+            try get(database, "tagged").readBytesWithFormatTag() == Bytes(Array("123456".utf8), formatTag: "bi"))
         #expect(
-            try get(database, "tagged7").readBytesObjectAlloc()
+            try get(database, "tagged7").readBytesWithFormatTag()
                 == Bytes(Array("1234567".utf8), formatTag: "bi"))
-        #expect(try get(database, "long").readBytesObjectAlloc().formatTag == nil)
+        #expect(try get(database, "long").readBytesWithFormatTag().formatTag == nil)
 
         #expect(try get(database, "short").count() == 8)
         #expect(try get(database, "long").count() == 9)
@@ -127,12 +127,12 @@ import Testing
         let long = try get(database, "long")
         let short = try get(database, "short")
 
-        #expect(try long.readBytesAlloc(maxSize: 3000) == Self.longValue)
-        #expect(throws: XitDBError.streamTooLong) { try long.readBytesAlloc(maxSize: 2999) }
-        #expect(throws: XitDBError.streamTooLong) { try long.readBytesAlloc(maxSize: 0) }
-        #expect(try short.readBytesAlloc(maxSize: 3) == [1, 2, 3])
-        #expect(throws: XitDBError.streamTooLong) { try short.readBytesAlloc(maxSize: 2) }
-        #expect(throws: XitDBError.streamTooLong) { try short.readBytesObjectAlloc(maxSize: 0) }
+        #expect(try long.readBytes(maxCount: 3000) == Self.longValue)
+        #expect(throws: XitDBError.streamTooLong) { try long.readBytes(maxCount: 2999) }
+        #expect(throws: XitDBError.streamTooLong) { try long.readBytes(maxCount: 0) }
+        #expect(try short.readBytes(maxCount: 3) == [1, 2, 3])
+        #expect(throws: XitDBError.streamTooLong) { try short.readBytes(maxCount: 2) }
+        #expect(throws: XitDBError.streamTooLong) { try short.readBytesWithFormatTag(maxCount: 0) }
     }
 
     @Test func readingIntoABufferLeavesTheRestOfItAlone() throws {
@@ -144,7 +144,7 @@ import Testing
         // a buffer larger than the value
         var large = [UInt8](repeating: 0xEE, count: 5000)
         var largeSpan = large.mutableSpan
-        let long = try get(database, "long").readBytesObject(into: &largeSpan)
+        let long = try get(database, "long").readBytesWithFormatTag(into: &largeSpan)
         #expect(long.count == 3000)
         #expect(long.formatTag == FormatTag(0x74, 0x67))
         #expect(Array(large[..<3000]) == Self.longValue)
@@ -171,7 +171,7 @@ import Testing
         #expect(eight == [1, 2, 3, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE])
         var eightAgain = [UInt8](repeating: 0xEE, count: 8)
         var eightAgainSpan = eightAgain.mutableSpan
-        let tagged = try get(database, "tagged").readBytesObject(into: &eightAgainSpan)
+        let tagged = try get(database, "tagged").readBytesWithFormatTag(into: &eightAgainSpan)
         #expect(tagged.count == 2)
         #expect(tagged.formatTag == "bi")
         var two = [UInt8](repeating: 0xEE, count: 2)
@@ -211,13 +211,13 @@ import Testing
         try put(database, "none", .slot(nil))
         let none = try get(database, "none")
         #expect(try none.slot() == Slot(tag: .none, full: true))
-        #expect(try none.readBytesAlloc() == [])
-        #expect(try none.readBytesObjectAlloc() == Bytes([]))
+        #expect(try none.readBytes() == [])
+        #expect(try none.readBytesWithFormatTag() == Bytes([]))
         #expect(try none.count() == 0)
 
         var buffer = [UInt8](repeating: 0xEE, count: 4)
         var span = buffer.mutableSpan
-        let read = try none.readBytesObject(into: &span)
+        let read = try none.readBytesWithFormatTag(into: &span)
         #expect(read.count == 0)
         #expect(read.formatTag == nil)
         #expect(buffer == [0xEE, 0xEE, 0xEE, 0xEE])
@@ -236,14 +236,14 @@ import Testing
         try put(database, "long", .bytes(Array("a value too long for a slot".utf8)))
         for name in ["short", "long"] {
             var reader = try get(database, name).reader()
-            let value = try get(database, name).readBytesAlloc()
+            let value = try get(database, name).readBytes()
             #expect(reader.size == UInt64(value.count))
             #expect(reader.position == 0)
-            #expect(throws: XitDBError.streamTooLong) { try reader.readRemaining(maxSize: value.count - 1) }
+            #expect(throws: XitDBError.streamTooLong) { try reader.readRemaining(maxCount: value.count - 1) }
             #expect(reader.position == 0, "a refused read moves nothing")
-            #expect(try reader.readRemaining(maxSize: value.count) == value)
+            #expect(try reader.readRemaining(maxCount: value.count) == value)
             #expect(reader.position == UInt64(value.count))
-            #expect(try reader.readRemaining(maxSize: 0) == [], "at the end there is nothing to refuse")
+            #expect(try reader.readRemaining(maxCount: 0) == [], "at the end there is nothing to refuse")
             reader.seek(to: 1)
             #expect(try reader.readRemaining() == Array(value[1...]))
             reader.seek(to: .max)
@@ -261,19 +261,19 @@ import Testing
         let database = try makeDatabase()
         try database.withTransaction { cursor in
             var short = try cursor.writePath([.hashMapGet(.value, sha1("short"))])
-            try short.writer { writer in try writer.write([1, 2, 3]) }
+            try short.writeBytes { writer in try writer.write([1, 2, 3]) }
             #expect(try short.slot().tag == .bytes)
-            #expect(try short.readBytesAlloc() == [1, 2, 3])
+            #expect(try short.readBytes() == [1, 2, 3])
 
             var empty = try cursor.writePath([.hashMapGet(.value, sha1("empty"))])
-            try empty.writer { _ in }
+            try empty.writeBytes { _ in }
             #expect(try empty.slot().tag == .bytes)
-            #expect(try empty.readBytesAlloc() == [])
+            #expect(try empty.readBytes() == [])
             #expect(try empty.count() == 0)
 
             // Zig's test: three bytes, then each overwritten after a seek
             var seek = try cursor.writePath([.hashMapGet(.value, sha1("seek"))])
-            try seek.writer { writer in
+            try seek.writeBytes { writer in
                 try writer.write(Array("x".utf8))
                 try writer.write(Array("x".utf8))
                 try writer.write(Array("x".utf8))
@@ -284,29 +284,29 @@ import Testing
                 writer.seek(to: 1)
                 try writer.write(Array("a".utf8))
             }
-            #expect(try seek.readBytesAlloc() == Array("baz".utf8))
+            #expect(try seek.readBytes() == Array("baz".utf8))
 
             // a seek past the end leaves zeros in between
             var gap = try cursor.writePath([.hashMapGet(.value, sha1("gap"))])
-            try gap.writer(formatTag: FormatTag(0x67, 0x70)) { writer in
+            try gap.writeBytes(formatTag: FormatTag(0x67, 0x70)) { writer in
                 try writer.write([1])
                 writer.seek(to: 4)
                 try writer.write([5, 6].span)
             }
-            #expect(try gap.readBytesObjectAlloc() == Bytes([1, 0, 0, 0, 5, 6], formatTag: FormatTag(0x67, 0x70)))
+            #expect(try gap.readBytesWithFormatTag() == Bytes([1, 0, 0, 0, 5, 6], formatTag: FormatTag(0x67, 0x70)))
             #expect(try gap.slot().full)
 
             // the tag can also be set by the body
             var tagged = try cursor.writePath([.hashMapGet(.value, sha1("tagged"))])
-            try tagged.writer { writer in
+            try tagged.writeBytes { writer in
                 try writer.write([9])
                 writer.formatTag = FormatTag(0x74, 0x67)
                 #expect(writer.formatTag == FormatTag(0x74, 0x67))
             }
-            #expect(try tagged.readBytesObjectAlloc() == Bytes([9], formatTag: FormatTag(0x74, 0x67)))
+            #expect(try tagged.readBytesWithFormatTag() == Bytes([9], formatTag: FormatTag(0x74, 0x67)))
         }
-        #expect(try get(database, "seek").readBytesAlloc() == Array("baz".utf8))
-        #expect(try get(database, "gap").readBytesAlloc() == [1, 0, 0, 0, 5, 6])
+        #expect(try get(database, "seek").readBytes() == Array("baz".utf8))
+        #expect(try get(database, "gap").readBytes() == [1, 0, 0, 0, 5, 6])
     }
 
     @Test func aWriterWhoseBodyThrowsLeavesTheSlotAsItWas() throws {
@@ -315,29 +315,29 @@ import Testing
         try database.withTransaction { cursor in
             var value = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(1))])
             #expect(throws: Cancel.self) {
-                try value.writer { writer in
+                try value.writeBytes { writer in
                     try writer.write([1, 2, 3])
                     throw Cancel()
                 }
             }
-            #expect(try value.readUint() == 1)
+            #expect(try value.readUInt64() == 1)
         }
-        #expect(try get(database, "a").readUint() == 1)
+        #expect(try get(database, "a").readUInt64() == 1)
     }
 
     @Test func theWriterNeedsATransactionAndASlotBelowTheRoot() throws {
         let database = try makeDatabase()
         var root = database.rootCursor
-        #expect(throws: XitDBError.cursorNotWritable) { try root.writer { _ in } }
+        #expect(throws: XitDBError.cursorNotWritable) { try root.writeBytes { _ in } }
 
         var kept: Cursor<ReadWrite>?
         try database.withTransaction { cursor in
             kept = try cursor.writePath([.hashMapGet(.value, sha1("a"))])
             var inner = database.rootCursor
-            #expect(throws: XitDBError.cursorNotWritable) { try inner.writer { _ in } }
+            #expect(throws: XitDBError.cursorNotWritable) { try inner.writeBytes { _ in } }
         }
         var outside = try #require(kept)
-        #expect(throws: XitDBError.expectedTxStart) { try outside.writer { _ in } }
+        #expect(throws: XitDBError.expectedTxStart) { try outside.writeBytes { _ in } }
         #expect(throws: XitDBError.expectedTxStart) { try outside.write(.uint(1)) }
         #expect(throws: XitDBError.expectedTxStart) { try outside.freeze() }
         #expect(throws: XitDBError.expectedTxStart) { try database.freeze() }
@@ -350,7 +350,7 @@ import Testing
             var value = try cursor.writePath([.hashMapGet(.value, sha1("a"))])
             var other = try cursor.writePath([.hashMapGet(.value, sha1("b"))])
             #expect(throws: XitDBError.unexpectedWriterPosition) {
-                try value.writer { writer in
+                try value.writeBytes { writer in
                     try writer.write([1, 2, 3])
                     try other.write(.bytes(Self.longValue))
                     // rewriting what is there is fine
@@ -363,7 +363,7 @@ import Testing
             }
             // with a format tag the end is checked when finishing too
             #expect(throws: XitDBError.unexpectedWriterPosition) {
-                try value.writer(formatTag: FormatTag(1, 2)) { writer in
+                try value.writeBytes(formatTag: FormatTag(1, 2)) { writer in
                     try writer.write([1, 2, 3])
                     try other.write(.bytes(Self.longValue))
                 }
@@ -380,15 +380,15 @@ import Testing
             var stale = first
             try first.writeIfEmpty(.uint(1))
             try first.writeIfEmpty(.uint(2))
-            #expect(try first.readUint() == 1)
+            #expect(try first.readUInt64() == 1)
 
             // the stale copy still thinks the slot is empty, and overwrites
             #expect(try stale.slot().isEmpty)
             try stale.writeIfEmpty(.uint(3))
-            #expect(try stale.readUint() == 3)
-            #expect(try first.readUint() == 1)
+            #expect(try stale.readUInt64() == 3)
+            #expect(try first.readUInt64() == 1)
         }
-        #expect(try get(database, "a").readUint() == 3)
+        #expect(try get(database, "a").readUInt64() == 3)
     }
 
     @Test func aReadOnlyCopyReadsTheSameSlot() throws {
@@ -396,12 +396,12 @@ import Testing
         try put(database, "a", .uint(5))
         try database.withTransaction { cursor in
             let value = try cursor.writePath([.hashMapGet(.value, sha1("a"))])
-            let readOnly = value.readOnly()
-            #expect(try readOnly.readUint() == 5)
+            let readOnly = value.readOnly
+            #expect(try readOnly.readUInt64() == 5)
             #expect(try readOnly.slot() == (try value.slot()))
         }
         // a read-only copy of a root cursor still follows the root
-        let root = database.rootCursor.readOnly()
+        let root = database.rootCursor.readOnly
         let before = try root.slot()
         try put(database, "b", .uint(6))
         #expect(try root.slot() != before)
@@ -415,18 +415,22 @@ import Testing
         }
         let entry = try #require(try database.rootCursor.readPath([.hashMapGet(.kvPair, sha1("k"))]))
         #expect(try entry.slot().tag == .kvPair)
-        let pair = try entry.readKeyValuePair()
+        let pair = try entry.readEntry()
         #expect(pair.hash == sha1("k").bytes)
-        #expect(try pair.keyCursor.readBytesAlloc() == Array("k".utf8))
-        #expect(try pair.valueCursor.readUint() == 9)
+        #expect(try pair.key.readBytes() == Array("k".utf8))
+        #expect(try pair.value.readUInt64() == 9)
 
-        // through a read-write cursor the two cursors can be written
+        // the entry is read-only through a read-write cursor too: a value is
+        // changed through its map, and a key only through the map's
+        // operations, which keep the map's index right
         try database.withTransaction { cursor in
             let entry = try cursor.writePath([.hashMapGet(.kvPair, sha1("k"))])
-            var pair = try entry.readKeyValuePair()
-            try pair.valueCursor.write(.uint(10))
+            let pair = try entry.readEntry()
+            #expect(type(of: pair.value) == Cursor<ReadOnly>.self)
+            #expect(type(of: pair.key) == Cursor<ReadOnly>.self)
+            #expect(try pair.value.readUInt64() == 9)
         }
-        #expect(try get(database, "k").readUint() == 10)
+        #expect(try get(database, "k").readUInt64() == 9)
     }
 
     @Test func countReadsHeadersOnly() throws {

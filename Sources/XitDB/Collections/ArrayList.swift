@@ -42,7 +42,7 @@ public struct ArrayList<Access: CursorAccess> {
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   that is not a collection, or an error of the storage or of a
     ///   damaged file.
-    public func iterator() throws(XitDBError) -> Cursor<Access>.Iter {
+    public func iterator() throws(XitDBError) -> CollectionIterator {
         try cursor.iterator()
     }
 
@@ -53,7 +53,7 @@ public struct ArrayList<Access: CursorAccess> {
     ///   iterator of nothing.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a list, or an error of the storage or of a damaged file.
-    public func iteratorFrom(_ index: Int64) throws(XitDBError) -> Cursor<Access>.Iter {
+    public func iteratorFrom(_ index: Int64) throws(XitDBError) -> CollectionIterator {
         try cursor.iterator(fromArrayListIndex: index)
     }
 
@@ -124,8 +124,8 @@ extension ArrayList where Access == ReadWrite {
     }
 
     /// A view of the same list that can only read.
-    public func readOnly() -> ArrayList<ReadOnly> {
-        ArrayList<ReadOnly>(unchecked: cursor.readOnly())
+    public var readOnly: ArrayList<ReadOnly> {
+        ArrayList<ReadOnly>(unchecked: cursor.readOnly)
     }
 
     /// Writes an element.

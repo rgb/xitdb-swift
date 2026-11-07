@@ -63,7 +63,8 @@ and the replica takes the bytes with ``Database/applyReplicated(at:from:count:)`
 - ``ReadOnly``
 - ``ReadWrite``
 - ``CursorAccess``
-- ``KeyValuePairCursor``
+- ``Entry``
+- ``CollectionIterator``
 - ``WritableData``
 - ``Bytes``
 - ``ByteReader``

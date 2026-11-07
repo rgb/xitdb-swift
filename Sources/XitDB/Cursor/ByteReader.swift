@@ -85,16 +85,17 @@ public struct ByteReader {
     /// Reads everything from the reader's position to the end of the value,
     /// and moves the position there.
     ///
-    /// - Parameter maxSize: The most bytes to accept, or `nil` for no limit.
+    /// - Parameter maxCount: The most bytes to accept, or `nil` for no
+    ///   limit.
     /// - Returns: The bytes, which are none at the end of the value and
     ///   beyond it.
-    /// - Throws: ``XitDBError/streamTooLong`` if more than `maxSize` bytes
+    /// - Throws: ``XitDBError/streamTooLong`` if more than `maxCount` bytes
     ///   are left, or ``XitDBError/endOfStream`` if the database ends before
     ///   the value does.
-    public mutating func readRemaining(maxSize: Int? = nil) throws(XitDBError) -> [UInt8] {
+    public mutating func readRemaining(maxCount: Int? = nil) throws(XitDBError) -> [UInt8] {
         guard position < size else { return [] }
         let remaining = size - position
-        if let maxSize, remaining > UInt64(max(maxSize, 0)) { throw .streamTooLong }
+        if let maxCount, remaining > UInt64(max(maxCount, 0)) { throw .streamTooLong }
         if shortBytes == nil {
             // A size that the storage cannot hold comes from a damaged file.
             // It must not be allocated.
@@ -123,7 +124,7 @@ extension Cursor {
     ///
     /// The reader reads the value this cursor holds now: if the slot is
     /// written afterwards, the reader does not notice. A slot set to nothing
-    /// reads as no bytes, as it does with ``readBytesAlloc(maxSize:)``.
+    /// reads as no bytes, as it does with ``readBytes(maxCount:)``.
     ///
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot does not hold
     ///   bytes, or ``XitDBError/endOfStream`` if the database ends where the

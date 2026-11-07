@@ -271,7 +271,7 @@ struct CollectingSink: ByteSink {
         #expect(try replica.replicaState == (try source.replicaState))
         #expect(
             try #require(try replica.rootCursor.readPath([.arrayListGet(-1), .hashMapGet(.value, sha1("moment"))]))
-                .readUint() == 2)
+                .readUInt64() == 2)
     }
 
     /// A database whose root header claims more than the file has: every

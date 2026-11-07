@@ -67,7 +67,7 @@ import Testing
 
     /// Goes through an iterator, up to a limit: a damaged file can make a
     /// finite walk very long by pointing several slots at one block.
-    private func drain<Access>(_ iterator: Cursor<Access>.Iter) throws {
+    private func drain(_ iterator: CollectionIterator) throws {
         var iterator = iterator
         var left = 2000
         while left > 0, let element = try iterator.next() {
@@ -87,7 +87,7 @@ import Testing
         reader.seek(to: .max - 2)
         _ = try reader.read(into: &span)
         reader.seek(to: 0)
-        _ = try reader.readRemaining(maxSize: 1 << 20)
+        _ = try reader.readRemaining(maxCount: 1 << 20)
     }
 
     /// What a caller might do with a database, each step on its own so that
@@ -120,12 +120,12 @@ import Testing
                     tolerating { value = try moment.readPath([.hashMapGet(.value, sha1(key))]) }
                     guard let value else { continue }
                     tolerating { _ = try value.count() }
-                    tolerating { _ = try value.readUint() }
-                    tolerating { _ = try value.readBytesObjectAlloc() }
+                    tolerating { _ = try value.readUInt64() }
+                    tolerating { _ = try value.readBytesWithFormatTag() }
                     tolerating {
                         var buffer = [UInt8](repeating: 0, count: 64)
                         var span = buffer.mutableSpan
-                        _ = try value.readBytesObject(into: &span)
+                        _ = try value.readBytesWithFormatTag(into: &span)
                     }
                     tolerating { try stream(value) }
                     tolerating { try drain(try value.iterator()) }
@@ -133,30 +133,31 @@ import Testing
                     tolerating { try drain(try ArrayList(value).iteratorFrom(-1)) }
                     tolerating { try drain(try LinkedArrayList(value).iteratorFrom(17)) }
                     for element in [Int64(0), 19, -21] {
-                        tolerating { _ = try LinkedArrayList(value).getCursor(element)?.readUint() }
+                        tolerating { _ = try LinkedArrayList(value).getCursor(element)?.readUInt64() }
                     }
                     tolerating {
                         var entries = try CountedHashMap(value).iterator()
                         while let entry = try entries.next() {
-                            let pair = try entry.readKeyValuePair()
-                            _ = try pair.keyCursor.readBytesAlloc(maxSize: 64)
-                            _ = try pair.valueCursor.slot()
+                            let pair = try entry.readEntry()
+                            _ = try pair.key.readBytes(maxCount: 64)
+                            _ = try pair.value.slot()
                             _ = pair.withHash { $0.count }
                         }
                     }
                 }
                 tolerating { try drain(try moment.iterator()) }
-                tolerating { _ = try HashMap(moment).getKeyValuePair(sha1("a").bytes)?.keyCursor.readUint() }
-                tolerating { _ = try moment.readPath([.hashMapGet(.key, sha1("a"))])?.readBytesAlloc(maxSize: 4) }
-                tolerating { _ = try moment.readPath([.hashMapGet(.kvPair, sha1("a"))])?.readKeyValuePair() }
+                tolerating { _ = try HashMap(moment).getKeyValuePair(sha1("a").bytes)?.key.readUInt64() }
+                tolerating { _ = try moment.readPath([.hashMapGet(.key, sha1("a"))])?.readBytes(maxCount: 4) }
+                tolerating { _ = try moment.readPath([.hashMapGet(.kvPair, sha1("a"))])?.readEntry() }
                 for element in [Int64(0), 15, 16, 19, 20, -1, -21] {
                     tolerating {
-                        _ = try moment.readPath([.hashMapGet(.value, sha1("list")), .arrayListGet(element)])?.readUint()
+                        _ = try moment.readPath([.hashMapGet(.value, sha1("list")), .arrayListGet(element)])?
+                            .readUInt64()
                     }
                 }
                 tolerating {
                     _ = try moment.readPath([.hashMapGet(.value, sha1("counted")), .hashMapGet(.value, sha1("x"))])?
-                        .readInt()
+                        .readInt64()
                 }
             }
 
@@ -334,8 +335,8 @@ import Testing
 
         let root = database.rootCursor
         #expect(try root.count() == 2)
-        #expect(try #require(try root.readPath([.hashMapGet(.value, KeyHash(first))])).readUint() == 1)
-        #expect(try #require(try root.readPath([.hashMapGet(.value, KeyHash(second))])).readUint() == 2)
+        #expect(try #require(try root.readPath([.hashMapGet(.value, KeyHash(first))])).readUInt64() == 1)
+        #expect(try #require(try root.readPath([.hashMapGet(.value, KeyHash(second))])).readUInt64() == 2)
 
         // a third hash that parts ways at the top is not found, and one that
         // agrees with both to the last level is not found either
@@ -355,7 +356,7 @@ import Testing
         }
         #expect(try root.count() == 1)
         #expect(try root.readPath([.hashMapGet(.value, KeyHash(first))]) == nil)
-        #expect(try #require(try root.readPath([.hashMapGet(.value, KeyHash(second))])).readUint() == 3)
+        #expect(try #require(try root.readPath([.hashMapGet(.value, KeyHash(second))])).readUInt64() == 3)
 
         // a hash of the wrong size is refused
         #expect(throws: XitDBError.invalidHashSize) { try root.readPath([.hashMapGet(.value, sha1("a"))]) }
@@ -409,12 +410,12 @@ import Testing
         var seen: [UInt64] = []
         #expect(throws: XitDBError.maxShiftExceeded) {
             while let element = try iterator.next() {
-                seen.append(try element.readUint())
+                seen.append(try element.readUInt64())
             }
         }
         #expect(seen == Array(0..<18))
         var fromIndex = try damagedList.iterator(fromArrayListIndex: 17)
-        #expect(try fromIndex.next()?.readUint() == 17)
+        #expect(try fromIndex.next()?.readUInt64() == 17)
         #expect(throws: XitDBError.maxShiftExceeded) { try fromIndex.next() }
         // reading by index hands the slot over as it is, as Zig does
         #expect(try damagedList.readPathSlot([.arrayListGet(18)])?.tag == .index)
@@ -431,7 +432,7 @@ import Testing
         let upperList = try #require(try upperMoment.readPath([.hashMapGet(.value, sha1("list"))]))
         #expect(throws: XitDBError.unexpectedTag) { try upperList.iterator(fromArrayListIndex: 17) }
         var fromStart = try upperList.iterator(fromArrayListIndex: 15)
-        #expect(try fromStart.next()?.readUint() == 15)
+        #expect(try fromStart.next()?.readUInt64() == 15)
         exercise(upper)
     }
 
@@ -461,7 +462,7 @@ import Testing
         reader.seek(to: 0)
         #expect(throws: XitDBError.endOfStream) { try reader.readRemaining() }
         // the whole-value reads say the same
-        #expect(throws: XitDBError.endOfStream) { try damagedLong.readBytesAlloc() }
+        #expect(throws: XitDBError.endOfStream) { try damagedLong.readBytes() }
         exercise(bytes)
     }
 }

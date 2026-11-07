@@ -9,7 +9,7 @@ import Testing
 // The comments inside the tests are Zig's. Zig's `root_cursor.writePath(Ctx, ...)` with a `Ctx` whose `run`
 // method does the writing is `rootCursor.writePath([...]) { cursor in ... }` here. Zig's allocator argument has
 // no counterpart, nor do the buffers it hands to `readBytes` and `cursor.reader`: `kv.key_cursor.readBytes(&kbuf)`
-// with a buffer of eight or sixty-four bytes is `readBytes(kv.keyCursor, bufferSize:)`, and
+// with a buffer of eight or sixty-four bytes is `readBytes(kv.key, bufferSize:)`, and
 // `std.mem.print(&kbuf, "k{d:0>4}", .{i})` is `paddedKey(i, width: 4)`. Zig's `expectError(error.X, call)` is
 // `#expect(throws: XitDBError.x) { call }`, and `map.cursor.writePath(void, ...)` is `map.cursor.writePath(...)`.
 //
@@ -79,10 +79,10 @@ import Testing
     }
 
     /// The key of the entry an iterator gives next, Zig's
-    /// `(try (try iter.next()).?.readKeyValuePair()).key_cursor.readBytes(&kbuf)` with an eight-byte buffer.
-    private func nextKey<Access>(_ iter: inout Cursor<Access>.Iter) throws -> [UInt8] {
+    /// `(try (try iter.next()).?.readEntry()).key_cursor.readBytes(&kbuf)` with an eight-byte buffer.
+    private func nextKey(_ iter: inout CollectionIterator) throws -> [UInt8] {
         let entry = try #require(try iter.next())
-        return try readBytes(try entry.readKeyValuePair().keyCursor, bufferSize: 8)
+        return try readBytes(try entry.readEntry().key, bufferSize: 8)
     }
 
     /// test.zig 3393-3639: `testSortedMap`. The function is one database from start to finish, each block
@@ -139,7 +139,7 @@ import Testing
         // dedup: re-putting an existing key replaces the value, not the count
         try map.put(utf8("k0005"), .uint(999))
         #expect(try map.count() == UInt64(count))
-        #expect(try #require(try map.getCursor(utf8("k0005"))).readUint() == 999)
+        #expect(try #require(try map.getCursor(utf8("k0005"))).readUInt64() == 999)
         try map.put(utf8("k0005"), .uint(5))
     }
 
@@ -150,10 +150,10 @@ import Testing
             var iter = try map.iterator()
             var n = 0
             while let c = try iter.next() {
-                let kv = try c.readKeyValuePair()
+                let kv = try c.readEntry()
                 let expect = paddedKey(n, width: 4)
-                #expect(try readBytes(kv.keyCursor, bufferSize: 8) == expect)
-                #expect(try kv.valueCursor.readUint() == UInt64(n))
+                #expect(try readBytes(kv.key, bufferSize: 8) == expect)
+                #expect(try kv.value.readUInt64() == UInt64(n))
                 n += 1
             }
             #expect(n == count)
@@ -169,13 +169,13 @@ import Testing
         var idx = 0
         while idx < count {
             let kv = try #require(try map.getIndexKeyValuePair(Int64(idx)))
-            let key = try readBytes(kv.keyCursor, bufferSize: 8)
+            let key = try readBytes(kv.key, bufferSize: 8)
             #expect(key == paddedKey(idx, width: 4))
             #expect(try map.rank(key) == UInt64(idx))
             idx += 1
         }
         let last = try #require(try map.getIndexKeyValuePair(-1))
-        #expect(try readBytes(last.keyCursor, bufferSize: 8) == utf8("k0059"))
+        #expect(try readBytes(last.key, bufferSize: 8) == utf8("k0059"))
         #expect(try map.getIndexKeyValuePair(Int64(count)) == nil)
     }
 
@@ -232,8 +232,8 @@ import Testing
         var expectI = 1
         var seen = 0
         while let c = try iter.next() {
-            let kv = try c.readKeyValuePair()
-            #expect(try readBytes(kv.keyCursor, bufferSize: 8) == paddedKey(expectI, width: 4))
+            let kv = try c.readEntry()
+            #expect(try readBytes(kv.key, bufferSize: 8) == paddedKey(expectI, width: 4))
             expectI += 2
             seen += 1
         }
@@ -271,8 +271,8 @@ import Testing
             let want = ["a-much-longer-key-stored-externally", "mid", "short"]
             var n = 0
             while let c = try iter.next() {
-                let kv = try c.readKeyValuePair()
-                #expect(try readBytes(kv.keyCursor, bufferSize: 64) == utf8(want[n]))
+                let kv = try c.readEntry()
+                #expect(try readBytes(kv.key, bufferSize: 64) == utf8(want[n]))
                 n += 1
             }
             #expect(n == 3)
@@ -288,9 +288,9 @@ import Testing
         // it can be read with a reader like a long key.
         var iter = try set.iterator()
         while let c = try iter.next() {
-            let kv = try c.readKeyValuePair()
-            let key = try readBytes(kv.keyCursor, bufferSize: 64)
-            var keyReader = try kv.keyCursor.reader()
+            let kv = try c.readEntry()
+            let key = try readBytes(kv.key, bufferSize: 64)
+            var keyReader = try kv.key.reader()
             let whole = try readShort(&keyReader, size: 64)
             #expect(whole.count == key.count)
             #expect(Array(whole.buffer[0..<key.count]) == key)
@@ -350,7 +350,7 @@ import Testing
     /// test.zig 3586-3601: the committed moment, read through a read-only map.
     private func theMapPersistsInTheCommittedMoment(_ database: Database) throws {
         // the map persists in the committed moment
-        let history = try ArrayList<ReadOnly>(database.rootCursor.readOnly())
+        let history = try ArrayList<ReadOnly>(database.rootCursor.readOnly)
         let moment = try #require(try history.getCursor(-1))
         let mapCursor = try #require(
             try moment.readPath([
@@ -360,7 +360,7 @@ import Testing
         let map = try SortedMap<ReadOnly>(mapCursor)
         #expect(try map.count() == UInt64(count / 2))
         let first = try #require(try map.getIndexKeyValuePair(0))
-        #expect(try readBytes(first.keyCursor, bufferSize: 8) == utf8("k0001"))
+        #expect(try readBytes(first.key, bufferSize: 8) == utf8("k0001"))
 
         // entries have no hash
         let entry = try #require(try map.cursor.readPathSlot([.sortedMapGet(.kvPair, SortedKey(utf8("k0001")))]))
@@ -386,7 +386,7 @@ import Testing
             try map.put(utf8("k0001"), .uint(7))  // not in moment 0
         }
         do {
-            let history = try ArrayList<ReadOnly>(database.rootCursor.readOnly())
+            let history = try ArrayList<ReadOnly>(database.rootCursor.readOnly)
 
             // moment 0 (original) is unchanged: k0001 still present with value 1
             let m0 = try #require(try history.getCursor(0))
@@ -398,7 +398,7 @@ import Testing
                 )
             )
             #expect(try map0.count() == UInt64(count / 2))
-            #expect(try #require(try map0.getCursor(utf8("k0001"))).readUint() == 1)
+            #expect(try #require(try map0.getCursor(utf8("k0001"))).readUInt64() == 1)
 
             // moment 1 reflects the mutation: k0001 re-added with value 7
             let m1 = try #require(try history.getCursor(1))
@@ -410,7 +410,7 @@ import Testing
                 )
             )
             #expect(try map1.count() == UInt64(count / 2))
-            #expect(try #require(try map1.getCursor(utf8("k0001"))).readUint() == 7)
+            #expect(try #require(try map1.getCursor(utf8("k0001"))).readUInt64() == 7)
         }
     }
 }

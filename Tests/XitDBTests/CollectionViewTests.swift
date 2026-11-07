@@ -29,7 +29,7 @@ import Testing
             _ = try cursor.writePath([.hashMapGet(.value, sha1("number")), .write(.uint(1))])
             _ = try cursor.writePath([.hashMapGet(.value, sha1("none")), .write(.slot(nil))])
         }
-        let moment = database.rootCursor.readOnly()
+        let moment = database.rootCursor.readOnly
         func at(_ name: String) throws -> Cursor<ReadOnly> {
             try #require(try moment.readPath([.hashMapGet(.value, sha1(name))]))
         }
@@ -110,11 +110,11 @@ import Testing
             #expect(try HashMap(try map.putCursor(key("set"))).slot().tag == .hashMap)
 
             // and the read-only form of each keeps the slot
-            #expect(try list.readOnly().slot() == (try list.slot()))
-            #expect(try countedMap.readOnly().count() == 0)
-            #expect(try set.readOnly().getCursor(key("x")) == nil)
-            #expect(try countedSet.readOnly().count() == 0)
-            #expect(try map.readOnly().getCursor(key("list"))?.slot().tag == .arrayList)
+            #expect(try list.readOnly.slot() == (try list.slot()))
+            #expect(try countedMap.readOnly.count() == 0)
+            #expect(try set.readOnly.getCursor(key("x")) == nil)
+            #expect(try countedSet.readOnly.count() == 0)
+            #expect(try map.readOnly.getCursor(key("list"))?.slot().tag == .arrayList)
         }
         #expect(try database.rootCursor.slot().tag == .hashMap)
     }
@@ -131,19 +131,19 @@ import Testing
             try map.putKey(hash, .bytes(Array("k".utf8)))
             try map.putKey(hash.span, .bytes(Array("other".utf8)))
             try map.putKey(hash, .bytes(Array("another".utf8)))
-            #expect(try map.getKeyCursor(hash)?.readBytesAlloc() == Array("k".utf8), "a key is only written once")
+            #expect(try map.getKeyCursor(hash)?.readBytes() == Array("k".utf8), "a key is only written once")
             #expect(try !map.remove(key("missing").span))
             #expect(try !map.remove(key("missing")))
-            #expect(try map.getCursor(hash.span)?.readUint() == 1)
-            #expect(try map.getCursor(hash)?.readUint() == 1)
-            #expect(try map.getKeyCursor(hash.span)?.readBytesAlloc() == Array("k".utf8))
+            #expect(try map.getCursor(hash.span)?.readUInt64() == 1)
+            #expect(try map.getCursor(hash)?.readUInt64() == 1)
+            #expect(try map.getKeyCursor(hash.span)?.readBytes() == Array("k".utf8))
             #expect(try map.getKeySlot(hash)?.tag == .shortBytes)
             #expect(try map.getSlot(hash.span)?.tag == .uint)
             let pair = try #require(try map.getKeyValuePair(hash.span))
             #expect(pair.hash == hash)
             #expect(pair.withHash { Array($0.indices.map { pair.hash[$0] }) } == hash)
-            #expect(try map.putCursor(hash.span).readUint() == 1)
-            #expect(try map.putKeyCursor(hash).readBytesAlloc() == Array("k".utf8))
+            #expect(try map.putCursor(hash.span).readUInt64() == 1)
+            #expect(try map.putKeyCursor(hash).readBytes() == Array("k".utf8))
 
             #expect(throws: XitDBError.invalidHashSize) { try map.put(wrong, .uint(2)) }
             #expect(throws: XitDBError.invalidHashSize) { try map.put(wrong.span, .uint(2)) }
@@ -162,9 +162,9 @@ import Testing
             try set.put(hash.span, .bytes(Array("k".utf8)))
             try set.put(hash.span, .bytes(Array("other".utf8)))
             try set.put(hash, .bytes(Array("another".utf8)))
-            #expect(try set.getCursor(hash)?.readBytesAlloc() == Array("k".utf8))
+            #expect(try set.getCursor(hash)?.readBytes() == Array("k".utf8))
             #expect(try set.getSlot(hash.span)?.tag == .shortBytes)
-            #expect(try set.putCursor(hash).readBytesAlloc() == Array("k".utf8))
+            #expect(try set.putCursor(hash).readBytes() == Array("k".utf8))
             #expect(throws: XitDBError.invalidHashSize) { try set.put(wrong, .uint(2)) }
             #expect(throws: XitDBError.invalidHashSize) { try set.getCursor(wrong.span) }
             #expect(throws: XitDBError.invalidHashSize) { try set.getSlot(wrong) }
@@ -181,13 +181,13 @@ import Testing
             #expect(try !counted.remove(key("missing")))
             #expect(try !counted.remove(key("missing").span))
             #expect(try counted.count() == 1)
-            #expect(try counted.getCursor(hash.span)?.readUint() == 3)
-            #expect(try counted.getKeyValuePair(hash)?.keyCursor.readBytesAlloc() == [1])
-            #expect(try counted.getKeyCursor(hash)?.readBytesAlloc() == [1])
+            #expect(try counted.getCursor(hash.span)?.readUInt64() == 3)
+            #expect(try counted.getKeyValuePair(hash)?.key.readBytes() == [1])
+            #expect(try counted.getKeyCursor(hash)?.readBytes() == [1])
             #expect(try counted.getKeySlot(hash.span)?.tag == .shortBytes)
             #expect(try counted.getSlot(hash)?.tag == .uint)
-            #expect(try counted.putCursor(hash).readUint() == 3)
-            #expect(try counted.putKeyCursor(hash.span).readBytesAlloc() == [1])
+            #expect(try counted.putCursor(hash).readUInt64() == 3)
+            #expect(try counted.putKeyCursor(hash.span).readBytes() == [1])
             #expect(throws: XitDBError.invalidHashSize) { try counted.remove(wrong.span) }
             #expect(try counted.remove(hash))
             #expect(try counted.count() == 0)
@@ -197,9 +197,9 @@ import Testing
             try countedSet.put(hash, .bytes([3]))
             try countedSet.put(hash.span, .bytes([4]))
             #expect(try countedSet.count() == 1)
-            #expect(try countedSet.getCursor(hash)?.readBytesAlloc() == [2], "a key is only written once")
+            #expect(try countedSet.getCursor(hash)?.readBytes() == [2], "a key is only written once")
             #expect(try countedSet.getSlot(hash.span)?.tag == .shortBytes)
-            #expect(try countedSet.putCursor(hash.span).readBytesAlloc() == [2])
+            #expect(try countedSet.putCursor(hash.span).readBytes() == [2])
             #expect(throws: XitDBError.invalidHashSize) { try countedSet.put(wrong.span, .uint(1)) }
             #expect(try countedSet.remove(hash.span))
             #expect(try !countedSet.remove(hash.span))
@@ -221,25 +221,25 @@ import Testing
             #expect(try list.count() == 3)
             try list.put(-1, .uint(30))
             try list.put(0, .uint(11))
-            #expect(try list.getCursor(0)?.readUint() == 11)
-            #expect(try list.getCursor(-1)?.readUint() == 30)
+            #expect(try list.getCursor(0)?.readUInt64() == 11)
+            #expect(try list.getCursor(-1)?.readUInt64() == 30)
             #expect(try list.getSlot(3) == nil)
             #expect(try list.getSlot(-4) == nil)
             #expect(throws: XitDBError.keyNotFound) { try list.slice(4) }
             try list.slice(2)
             #expect(try list.count() == 2)
             var fromIndex = try list.iteratorFrom(1)
-            #expect(try fromIndex.next()?.readUint() == 20)
+            #expect(try fromIndex.next()?.readUInt64() == 20)
             #expect(try fromIndex.next() == nil)
             for empty in [Int64(2), 3, -3, .max, .min] {
                 var iterator = try list.iteratorFrom(empty)
                 #expect(try iterator.next() == nil, "from \(empty)")
             }
             try list.appendContext(.uint(40)) { element in
-                #expect(try element.readUint() == 40)
+                #expect(try element.readUInt64() == 40)
                 try element.write(.uint(41))
             }
-            #expect(try list.getCursor(2)?.readUint() == 41)
+            #expect(try list.getCursor(2)?.readUInt64() == 41)
         }
     }
 

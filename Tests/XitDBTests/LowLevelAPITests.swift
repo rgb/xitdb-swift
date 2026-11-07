@@ -14,7 +14,7 @@ import Testing
 // makes a new storage and a database in it. Zig's allocator arguments and `defer allocator.free` lines have no
 // counterpart, nor do the buffers it hands to `cursor.reader` and `cursor.writer`. Zig's
 // `reader.interface.readSliceAll` is `readAll(into:)` here, `readSliceShort` is `read(into:)`, `takeInt(u8)` is
-// a read of one byte, `allocRemaining` is `readRemaining(maxSize:)` and `seekTo` is `seek(to:)`.
+// a read of one byte, `allocRemaining` is `readRemaining(maxCount:)` and `seekTo` is `seek(to:)`.
 //
 // The port also has the tests that the fix branch of the Zig original (`xitdb-fixes`) added to this function,
 // in the places that branch's test.zig has them. They pin three read behaviours that the Swift port has from
@@ -136,7 +136,7 @@ import Testing
     private func readBytesObjectIntoBuffer<Access>(_ cursor: Cursor<Access>, bufferSize: Int) throws -> Bytes {
         var buffer = [UInt8](repeating: 0, count: bufferSize)
         var span = buffer.mutableSpan
-        let read = try cursor.readBytesObject(into: &span)
+        let read = try cursor.readBytesWithFormatTag(into: &span)
         return Bytes(Array(buffer[..<read.count]), formatTag: read.formatTag)
     }
 
@@ -250,7 +250,7 @@ import Testing
             .ctx,
         ]) { (cursor: inout Cursor<ReadWrite>) in
             #expect(try cursor.slot().tag == .none)
-            try cursor.writer { writer in
+            try cursor.writeBytes { writer in
                 try writer.write(utf8("bar"))
             }
             let root = cursor.database.rootCursor
@@ -283,7 +283,7 @@ import Testing
                 ])
             )
             #expect(try barCursor.count() == 3)
-            let barValue = try barCursor.readBytesAlloc(maxSize: maxReadBytes)
+            let barValue = try barCursor.readBytes(maxCount: maxReadBytes)
             #expect(barValue == utf8("bar"))
         }
 
@@ -299,7 +299,7 @@ import Testing
             ]) { (cursor: inout Cursor<ReadWrite>) in
                 #expect(try cursor.slot().tag != .none)
 
-                let value = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+                let value = try cursor.readBytes(maxCount: maxReadBytes)
                 #expect(value == utf8("bar"))
 
                 var barReader = try cursor.reader()
@@ -348,7 +348,7 @@ import Testing
             ]) { (cursor: inout Cursor<ReadWrite>) in
                 #expect(try cursor.slot().tag != .none)
 
-                try cursor.writer { writer in
+                try cursor.writeBytes { writer in
                     try writer.write(utf8("x"))
                     try writer.write(utf8("x"))
                     try writer.write(utf8("x"))
@@ -360,7 +360,7 @@ import Testing
                     try writer.write(utf8("a"))
                 }
 
-                let value = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+                let value = try cursor.readBytes(maxCount: maxReadBytes)
                 #expect(value == utf8("baz"))
             }
         }
@@ -378,7 +378,7 @@ import Testing
                     .hashMapGet(.value, fooKey),
                     .ctx,
                 ]) { (cursor: inout Cursor<ReadWrite>) in
-                    try cursor.writer { writer in
+                    try cursor.writeBytes { writer in
                         try writer.write(utf8("this value won't be visible"))
                     }
                     throw CancelTransaction()
@@ -394,7 +394,7 @@ import Testing
                     .hashMapGet(.value, fooKey),
                 ])
             )
-            let value = try valueCursor.readBytesAlloc(maxSize: nil)  // make sure null max size works
+            let value = try valueCursor.readBytes(maxCount: nil)  // make sure null max size works
             #expect(value == utf8("baz"))
 
             // verify that the db is properly truncated back to its original size after error
@@ -466,7 +466,7 @@ import Testing
                         .hashMapGet(.value, barKey),
                     ])
                 )
-                let barValue = try readBarCursor.readBytesAlloc(maxSize: maxReadBytes)
+                let barValue = try readBarCursor.readBytes(maxCount: maxReadBytes)
                 #expect(barValue == utf8("longstring"))
             }
         }
@@ -488,7 +488,7 @@ import Testing
 
             // make sure .short_bytes can be read with a reader
             var barReader = try barCursor.reader()
-            let barValue = try barReader.readRemaining(maxSize: maxReadBytes)
+            let barValue = try barReader.readRemaining(maxCount: maxReadBytes)
             #expect(barValue == utf8("shortstr"))
         }
 
@@ -538,14 +538,14 @@ import Testing
                         .hashMapGet(.value, barKey),
                     ])
                 )
-                let bytes = try readBarCursor.readBytesObjectAlloc(maxSize: maxReadBytes)
+                let bytes = try readBarCursor.readBytesWithFormatTag(maxCount: maxReadBytes)
                 #expect(bytes.value == utf8("shortstr"))
                 let tag = try #require(bytes.formatTag)
                 #expect(tag == "st")
 
                 // make sure .bytes can be read with a reader
                 var barReader = try barCursor.reader()
-                let barValue = try barReader.readRemaining(maxSize: maxReadBytes)
+                let barValue = try barReader.readRemaining(maxCount: maxReadBytes)
                 #expect(barValue == utf8("shortstr"))
             }
 
@@ -578,7 +578,7 @@ import Testing
 
                 // make sure .short_bytes can be read with a reader
                 var barReader = try barCursor.reader()
-                let barValue = try barReader.readRemaining(maxSize: maxReadBytes)
+                let barValue = try barReader.readRemaining(maxCount: maxReadBytes)
                 #expect(barValue == utf8("shorts"))
 
                 // the value is in the slot, so a cursor with no position can be
@@ -626,7 +626,7 @@ import Testing
 
                 // make sure .short_bytes can be read with a reader
                 var barReader = try barCursor.reader()
-                let barValue = try barReader.readRemaining(maxSize: maxReadBytes)
+                let barValue = try barReader.readRemaining(maxCount: maxReadBytes)
                 #expect(barValue == utf8("short"))
             }
         }
@@ -668,7 +668,7 @@ import Testing
                 .hashMapGet(.value, fooKey),
             ])
         )
-        let barValue = try barCursor.readBytesAlloc(maxSize: maxReadBytes)
+        let barValue = try barCursor.readBytes(maxCount: maxReadBytes)
         #expect(barValue == utf8("bar"))
 
         // can still read the old value
@@ -678,7 +678,7 @@ import Testing
                 .hashMapGet(.value, fooKey),
             ])
         )
-        let bazValue = try bazCursor.readBytesAlloc(maxSize: maxReadBytes)
+        let bazValue = try bazCursor.readBytes(maxCount: maxReadBytes)
         #expect(bazValue == utf8("baz"))
 
         // key not found
@@ -721,7 +721,7 @@ import Testing
                 .hashMapGet(.value, conflictKey),
             ])
         )
-        let helloValue = try helloCursor.readBytesAlloc(maxSize: maxReadBytes)
+        let helloValue = try helloCursor.readBytes(maxCount: maxReadBytes)
         #expect(helloValue == utf8("hello"))
 
         // we can still read foo
@@ -731,7 +731,7 @@ import Testing
                 .hashMapGet(.value, fooKey),
             ])
         )
-        let barValue2 = try barCursor2.readBytesAlloc(maxSize: maxReadBytes)
+        let barValue2 = try barCursor2.readBytes(maxCount: maxReadBytes)
         #expect(barValue2 == utf8("bar"))
 
         // overwrite conflicting key
@@ -749,7 +749,7 @@ import Testing
                 .hashMapGet(.value, conflictKey),
             ])
         )
-        let goodbyeValue = try goodbyeCursor.readBytesAlloc(maxSize: maxReadBytes)
+        let goodbyeValue = try goodbyeCursor.readBytes(maxCount: maxReadBytes)
         #expect(goodbyeValue == utf8("goodbye"))
 
         // we can still read the old conflicting key
@@ -759,7 +759,7 @@ import Testing
                 .hashMapGet(.value, conflictKey),
             ])
         )
-        let helloValue2 = try helloCursor2.readBytesAlloc(maxSize: maxReadBytes)
+        let helloValue2 = try helloCursor2.readBytes(maxCount: maxReadBytes)
         #expect(helloValue2 == utf8("hello"))
 
         // remove the conflicting keys
@@ -898,7 +898,7 @@ import Testing
                     .arrayListGet(-1),
                     .hashMapGet(.value, fooKey),
                 ])
-            ).readUint()
+            ).readUInt64()
             #expect(uintValue == 42)
         }
 
@@ -919,7 +919,7 @@ import Testing
                     .arrayListGet(-1),
                     .hashMapGet(.value, fooKey),
                 ])
-            ).readInt()
+            ).readInt64()
             #expect(intValue == -42)
         }
 
@@ -940,7 +940,7 @@ import Testing
                     .arrayListGet(-1),
                     .hashMapGet(.value, fooKey),
                 ])
-            ).readFloat()
+            ).readDouble()
             #expect(floatValue == 42.5)
         }
 
@@ -994,7 +994,7 @@ import Testing
                     .arrayListGet(-1),
                 ])
             )
-            let appleValue = try appleCursor.readBytesAlloc(maxSize: maxReadBytes)
+            let appleValue = try appleCursor.readBytes(maxCount: maxReadBytes)
             #expect(appleValue == utf8("apple"))
 
             // write banana
@@ -1017,7 +1017,7 @@ import Testing
                     .arrayListGet(-1),
                 ])
             )
-            let bananaValue = try bananaCursor.readBytesAlloc(maxSize: maxReadBytes)
+            let bananaValue = try bananaCursor.readBytes(maxCount: maxReadBytes)
             #expect(bananaValue == utf8("banana"))
 
             // can't read banana in older array_list
@@ -1061,7 +1061,7 @@ import Testing
                     .arrayListGet(-2),
                 ])
             )
-            let pearValue = try pearCursor.readBytesAlloc(maxSize: maxReadBytes)
+            let pearValue = try pearCursor.readBytes(maxCount: maxReadBytes)
             #expect(pearValue == utf8("pear"))
 
             // read grape
@@ -1072,7 +1072,7 @@ import Testing
                     .arrayListGet(-1),
                 ])
             )
-            let grapeValue = try grapeCursor.readBytesAlloc(maxSize: maxReadBytes)
+            let grapeValue = try grapeCursor.readBytes(maxCount: maxReadBytes)
             #expect(grapeValue == utf8("grape"))
         }
 
@@ -1109,7 +1109,7 @@ import Testing
                     .hashMapGet(.value, watKey),
                 ])
             )
-            let value2 = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+            let value2 = try cursor.readBytes(maxCount: maxReadBytes)
             #expect(value2 == utf8(value))
         }
 
@@ -1176,7 +1176,7 @@ import Testing
                     .hashMapGet(.value, watKey),
                 ])
             )
-            let value2 = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+            let value2 = try cursor.readBytes(maxCount: maxReadBytes)
             #expect(value2 == utf8(value))
         }
 
@@ -1219,7 +1219,7 @@ import Testing
                     .arrayListGet(i),
                 ])
             )
-            let value2 = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+            let value2 = try cursor.readBytes(maxCount: maxReadBytes)
             #expect(value2 == utf8(value))
         }
 
@@ -1242,7 +1242,7 @@ import Testing
                     .arrayListGet(i),
                 ])
             )
-            let value2 = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+            let value2 = try cursor.readBytes(maxCount: maxReadBytes)
             #expect(value2 == utf8(value))
         }
 
@@ -1272,7 +1272,7 @@ import Testing
                     .arrayListGet(-1),
                 ])
             )
-            let value = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+            let value = try cursor.readBytes(maxCount: maxReadBytes)
             #expect(value == utf8("hello"))
         }
 
@@ -1294,7 +1294,7 @@ import Testing
                     .arrayListGet(-1),
                 ])
             )
-            let value = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+            let value = try cursor.readBytes(maxCount: maxReadBytes)
             #expect(value == utf8("goodbye"))
         }
 
@@ -1306,7 +1306,7 @@ import Testing
                     .arrayListGet(-1),
                 ])
             )
-            let value = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+            let value = try cursor.readBytes(maxCount: maxReadBytes)
             #expect(value == utf8("hello"))
         }
 
@@ -1340,7 +1340,7 @@ import Testing
                     .arrayListGet(-1),
                 ])
             )
-            let value2 = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+            let value2 = try cursor.readBytes(maxCount: maxReadBytes)
             #expect(value2 == utf8(value))
         }
 
@@ -1355,7 +1355,7 @@ import Testing
             var i = 0
             while let nextCursor = try iter.next() {
                 let value = "wat\(i)"
-                let value2 = try nextCursor.readBytesAlloc(maxSize: maxReadBytes)
+                let value2 = try nextCursor.readBytes(maxCount: maxReadBytes)
                 #expect(value2 == utf8(value))
                 i += 1
             }
@@ -1394,7 +1394,7 @@ import Testing
                 ])
             )
             #expect(try noneCursor.slot().tag == .none)
-            let noneValue = try noneCursor.readBytesAlloc(maxSize: maxReadBytes)
+            let noneValue = try noneCursor.readBytes(maxCount: maxReadBytes)
             #expect(noneValue == [])
             #expect(try readBytesIntoBuffer(noneCursor, bufferSize: 8) == [])
             #expect(try readBytesIntoBuffer(noneCursor, bufferSize: 0) == [])
@@ -1445,7 +1445,7 @@ import Testing
                     .hashMapGet(.value, watKey),
                 ])
             )
-            let value2 = try cursor.readBytesAlloc(maxSize: maxReadBytes)
+            let value2 = try cursor.readBytes(maxCount: maxReadBytes)
             #expect(value2 == utf8(value))
         }
 
@@ -1487,13 +1487,13 @@ import Testing
             var iter = try innerCursor.iterator()
             var i = 0
             while let kvPairCursor = try iter.next() {
-                let kvPair = try kvPairCursor.readKeyValuePair()
+                let kvPair = try kvPairCursor.readEntry()
                 if kvPair.hash == fooKey.bytes {
-                    let key = try kvPair.keyCursor.readBytesAlloc(maxSize: maxReadBytes)
+                    let key = try kvPair.key.readBytes(maxCount: maxReadBytes)
                     #expect(key == utf8("foo"))
-                    #expect(kvPair.valueCursor.slotPointer.slot.value == 42)
+                    #expect(kvPair.value.slotPointer.slot.value == 42)
                 } else {
-                    let value = try kvPair.valueCursor.readBytesAlloc(maxSize: maxReadBytes)
+                    let value = try kvPair.value.readBytes(maxCount: maxReadBytes)
                     #expect(kvPair.hash == sha1(String(decoding: value, as: UTF8.self)).bytes)
                 }
                 i += 1
@@ -1511,9 +1511,9 @@ import Testing
             var iter = try innerCursor.iterator()
             var i = 0
             while let kvPairCursor = try iter.next() {
-                let kvPair = try kvPairCursor.readKeyValuePair()
+                let kvPair = try kvPairCursor.readEntry()
                 if kvPair.hash == fooKey.bytes {
-                    #expect(try kvPair.valueCursor.readUint() == 42)
+                    #expect(try kvPair.value.readUInt64() == 42)
                 }
                 i += 1
             }

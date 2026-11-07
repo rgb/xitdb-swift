@@ -71,9 +71,9 @@ import Testing
                 Issue.record("\(name) raised \(error)")
             }
         }
-        func walk(_ iterator: inout Cursor<ReadWrite>.Iter) throws {
+        func walk(_ iterator: inout CollectionIterator) throws {
             while let entry = try iterator.next() {
-                _ = try entry.readKeyValuePair()
+                _ = try entry.readEntry()
             }
         }
         let first = Subject.key(5)
@@ -154,7 +154,7 @@ import Testing
             #expect(try map.getIndexKeyValuePair(-41) == nil)
             var iterator = try map.iterator()
             while let entry = try iterator.next() {
-                #expect(try entry.readKeyValuePair().valueCursor.readUint() == UInt64(count))
+                #expect(try entry.readEntry().value.readUInt64() == UInt64(count))
                 count += 1
             }
         }
@@ -255,7 +255,7 @@ import Testing
         try database.withTransaction { cursor in
             let map = try SortedMap(try HashMap(cursor).putCursor(sha1("map").bytes))
             #expect(try map.rank(Subject.key(10)) == 2)
-            #expect(try #require(try map.getCursor(Subject.key(10))).readUint() == 10)
+            #expect(try #require(try map.getCursor(Subject.key(10))).readUInt64() == 10)
         }
     }
 
@@ -342,17 +342,17 @@ import Testing
             #expect(throws: XitDBError.endOfStream) { try map.put(keys[4], .uint(1)) }
             #expect(throws: XitDBError.endOfStream) { try map.remove(keys[4]) }
             #expect(throws: XitDBError.endOfStream) { try map.iteratorFrom(keys[4]) }
-            #expect(try #require(try map.getCursor(keys[20])).readUint() == 20)
+            #expect(try #require(try map.getCursor(keys[20])).readUInt64() == 20)
             // the walks read the key itself only through its cursor, which
             // refuses the length before reading
             var iterator = try map.iterator()
             var count = 0
             while let entry = try iterator.next() {
-                let pair = try entry.readKeyValuePair()
+                let pair = try entry.readEntry()
                 if count == 4 {
-                    #expect(throws: XitDBError.streamTooLong) { try pair.keyCursor.readBytesAlloc(maxSize: 100) }
+                    #expect(throws: XitDBError.streamTooLong) { try pair.key.readBytes(maxCount: 100) }
                 } else {
-                    #expect(try pair.keyCursor.readBytesAlloc(maxSize: 100) == keys[count])
+                    #expect(try pair.key.readBytes(maxCount: 100) == keys[count])
                 }
                 count += 1
             }
@@ -375,12 +375,12 @@ import Testing
         let length = try subject.subject.storage.length
         // the pair record starts with its key slot
         let database = try subject.damaged(slotBytes(Slot(value: length - 4, tag: .bytes)), at: entry.value)
-        let root = try HashMap(database.rootCursor.readOnly())
+        let root = try HashMap(database.rootCursor.readOnly)
         let map = try SortedMap(try #require(try root.getCursor(sha1("map").bytes)))
         #expect(throws: XitDBError.endOfStream) { try map.getCursor(keys[0]) }
         #expect(throws: XitDBError.endOfStream) { try map.rank(keys[4]) }
         #expect(throws: XitDBError.endOfStream) { try map.iteratorFrom(keys[7]) }
-        #expect(try #require(try map.getCursor(keys[20])).readUint() == 20)
+        #expect(try #require(try map.getCursor(keys[20])).readUInt64() == 20)
     }
 
     /// A storage that gives nothing for the second chunk of a long key, or
@@ -398,13 +398,13 @@ import Testing
         try database.withTransaction { cursor in
             let map = try SortedMap(try HashMap(cursor).putCursor(sha1("map").bytes))
             try map.put(long, .uint(1))
-            keyPtr = try #require(try map.getKeyValuePair(long)).keyCursor.slot().value
+            keyPtr = try #require(try map.getKeyValuePair(long)).key.slot().value
         }
         // the first chunk, the length and 248 bytes of the key, is there;
         // the second is not
         let faulty = FaultInjectingStorage(subject.storage, faults: [.readNothing((keyPtr + 256)..<(keyPtr + 308))])
         let damaged = try Database(storage: faulty, hashSize: 20, hashID: nil, fileID: nil, random: FixedRandom([9]))
-        let root = try HashMap(damaged.rootCursor.readOnly())
+        let root = try HashMap(damaged.rootCursor.readOnly)
         let map = try SortedMap(try #require(try root.getCursor(sha1("map").bytes)))
         #expect(throws: XitDBError.endOfStream) { try map.getCursor(long) }
         #expect(throws: XitDBError.endOfStream) { try map.rank(long) }
@@ -416,7 +416,7 @@ import Testing
         let silent = FaultInjectingStorage(subject.storage, faults: [.readNothing(keyPtr..<(keyPtr + 1))])
         let unread = try Database(storage: silent, hashSize: 20, hashID: nil, fileID: nil, random: FixedRandom([9]))
         let unreadMap = try SortedMap(
-            try #require(try HashMap(unread.rootCursor.readOnly()).getCursor(sha1("map").bytes)))
+            try #require(try HashMap(unread.rootCursor.readOnly).getCursor(sha1("map").bytes)))
         #expect(throws: XitDBError.endOfStream) { try unreadMap.getCursor(long) }
         #expect(throws: XitDBError.endOfStream) { try unreadMap.rank([0x60]) }
     }
@@ -468,7 +468,7 @@ import Testing
                 try crafted.rootCursor.readPath([
                     .hashMapGet(.value, sha1("sorted")), .sortedMapGet(.value, SortedKey(key)),
                 ])
-            ).readUint() == 3)
+            ).readUInt64() == 3)
     }
 
     /// A key record whose length fits the file but reaches past its end by
@@ -485,7 +485,7 @@ import Testing
             let map = try SortedMap(try HashMap(cursor).putCursor(sha1("map").bytes))
             try map.put(long, .uint(1))
             let pair = try #require(try map.getKeyValuePair(long))
-            keyPtr = try pair.keyCursor.slot().value
+            keyPtr = try pair.key.slot().value
         }
         // claim one byte more than the file has after the record's length,
         // and read without a transaction, which would append to the file
@@ -493,13 +493,13 @@ import Testing
         try writeBytes(subject.storage, bigEndianBytes(length - keyPtr - 8 + 1), at: keyPtr)
         let damaged = try Database(
             storage: subject.storage, hashSize: 20, hashID: nil, fileID: nil, random: FixedRandom([9]))
-        let root = try HashMap(damaged.rootCursor.readOnly())
+        let root = try HashMap(damaged.rootCursor.readOnly)
         let map = try SortedMap(try #require(try root.getCursor(sha1("map").bytes)))
         #expect(throws: XitDBError.endOfStream) { try map.getCursor(long) }
         #expect(throws: XitDBError.endOfStream) { try map.rank(long + [0x61]) }
         // with the length it had, the key is read in two chunks and found
         try writeBytes(subject.storage, bigEndianBytes(300), at: keyPtr)
-        #expect(try #require(try map.getCursor(long)).readUint() == 1)
+        #expect(try #require(try map.getCursor(long)).readUInt64() == 1)
         #expect(try map.rank(long + [0x61]) == 1)
         #expect(try map.rank(long.dropLast()) == 0)
     }

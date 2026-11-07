@@ -49,7 +49,7 @@ import Testing
                 #expect(try subject.storage.length == 1485, "after removal \(removal)")
             }
             #expect(try a.count() == 16)
-            let values = try (0..<16).map { try a.getCursor($0)?.readUint() }
+            let values = try (0..<16).map { try a.getCursor($0)?.readUInt64() }
             #expect(values == (16..<32).map { UInt64($0) })
             // the root is now the surviving leaf itself
             let header = try database.reader.bTreeHeader(at: try a.slot().value)
@@ -90,7 +90,7 @@ import Testing
             #expect(try list.count() == 40)
             try list.slice(offset: 30, size: 10)
             #expect(try list.count() == 10)
-            #expect(try list.getCursor(0)?.readUint() == 30)
+            #expect(try list.getCursor(0)?.readUInt64() == 30)
             try list.slice(offset: 10, size: 0)
             #expect(try list.count() == 0)
         }
@@ -125,8 +125,8 @@ import Testing
             // and the next write into the same leaf is in this transaction
             try list.put(4, .uint(96))
             #expect(storage.writeCount == writes + 5)
-            #expect(try list.getCursor(3)?.readUint() == 97)
-            #expect(try list.getCursor(4)?.readUint() == 96)
+            #expect(try list.getCursor(3)?.readUInt64() == 97)
+            #expect(try list.getCursor(4)?.readUInt64() == 96)
         }
     }
 }

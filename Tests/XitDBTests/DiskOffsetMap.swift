@@ -51,7 +51,7 @@ struct DiskOffsetMap: OffsetMap {
 
     mutating func get(_ sourceOffset: UInt64) throws(XitDBError) -> UInt64? {
         guard let cursor = try map.getCursor(Self.hash(sourceOffset)) else { return nil }
-        return try cursor.readUint()
+        return try cursor.readUInt64()
     }
 
     mutating func put(_ sourceOffset: UInt64, _ targetOffset: UInt64) throws(XitDBError) {

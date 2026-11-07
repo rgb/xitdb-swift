@@ -222,7 +222,7 @@ final class ScriptRunner {
     final class IteratorBox {
         private let advance: () throws(XitDBError) -> Cursor<ReadOnly>?
 
-        init<Access>(_ iterator: Cursor<Access>.Iter) {
+        init(_ iterator: CollectionIterator) {
             var iterator = iterator
             advance = { () throws(XitDBError) in try iterator.next() }
         }
@@ -823,7 +823,7 @@ final class ScriptRunner {
             var cursor = try readWrite(on)
             let tag = op.has("format_tag") ? try formatTag(op.fields["format_tag"], "format_tag") : nil
             let steps = try op.array("steps")
-            try cursor.writer { writer in
+            try cursor.writeBytes { writer in
                 if let tag { writer.formatTag = tag }
                 for step in steps {
                     let step = try ScriptObject(step, "a writer step")
@@ -904,7 +904,7 @@ final class ScriptRunner {
 
         case "read_only":
             try op.allow("op", "note", "expect_error", "on", "as")
-            try bind(try op.string("as"), .readOnly(try readWrite(try op.string("on")).readOnly()))
+            try bind(try op.string("as"), .readOnly(try readWrite(try op.string("on")).readOnly))
 
         case "read_key_value_pair":
             try op.allow("op", "note", "expect_error", "on", "key_as", "value_as", "expect_hash")
@@ -913,11 +913,19 @@ final class ScriptRunner {
             let value: Value
             switch try bound(try op.string("on")) {
             case .readWrite(let cursor):
-                let pair = try cursor.readKeyValuePair()
-                (pairHash, key, value) = (pair.hash, .readWrite(pair.keyCursor), .readWrite(pair.valueCursor))
+                // Zig's pair keeps the cursor's write mode, and a script may
+                // write through the pair's cursors; the port's Entry is
+                // read-only, so the runner makes the read-write cursors the
+                // package would not, at the entry's positions.
+                let pair = try cursor.readEntry()
+                let keyCursor = Cursor<ReadWrite>(
+                    slotPointer: pair.key.slotPointer, database: pair.key.database, frozenAt: pair.key.frozenAt)
+                let valueCursor = Cursor<ReadWrite>(
+                    slotPointer: pair.value.slotPointer, database: pair.value.database, frozenAt: pair.value.frozenAt)
+                (pairHash, key, value) = (pair.hash, .readWrite(keyCursor), .readWrite(valueCursor))
             case .readOnly(let cursor):
-                let pair = try cursor.readKeyValuePair()
-                (pairHash, key, value) = (pair.hash, .readOnly(pair.keyCursor), .readOnly(pair.valueCursor))
+                let pair = try cursor.readEntry()
+                (pairHash, key, value) = (pair.hash, .readOnly(pair.key), .readOnly(pair.value))
             case .nullCursor: throw ScriptFailure("a null cursor was used")
             case .slot: throw ScriptFailure("a slot was used as a cursor")
             case .iterator: throw ScriptFailure("an iterator was used as a cursor")
@@ -936,9 +944,9 @@ final class ScriptRunner {
         case "read_uint":
             try op.allow("op", "note", "expect_error", "on", "expect")
             let result = try read(try op.string("on")) {
-                try $0.readUint()
+                try $0.readUInt64()
             } readOnly: {
-                try $0.readUint()
+                try $0.readUInt64()
             }
             if op.has("expect"), try op.unsigned("expect") != result {
                 throw ScriptFailure("read_uint gave \(result)")
@@ -947,9 +955,9 @@ final class ScriptRunner {
         case "read_int":
             try op.allow("op", "note", "expect_error", "on", "expect")
             let result = try read(try op.string("on")) {
-                try $0.readInt()
+                try $0.readInt64()
             } readOnly: {
-                try $0.readInt()
+                try $0.readInt64()
             }
             if op.has("expect"), try op.signed("expect") != result {
                 throw ScriptFailure("read_int gave \(result)")
@@ -958,9 +966,9 @@ final class ScriptRunner {
         case "read_float":
             try op.allow("op", "note", "expect_error", "on", "expect")
             let result = try read(try op.string("on")) {
-                try $0.readFloat()
+                try $0.readDouble()
             } readOnly: {
-                try $0.readFloat()
+                try $0.readDouble()
             }
             if op.has("expect"), try float(op.fields["expect"], "expect").bitPattern != result.bitPattern {
                 throw ScriptFailure("read_float gave the bits \(String(result.bitPattern, radix: 16))")
@@ -971,9 +979,9 @@ final class ScriptRunner {
             // A limit beyond what an Int holds is no limit a value could reach.
             let maxSize = op.has("max_size") ? Int(clamping: try op.unsigned("max_size")) : nil
             let result = try read(try op.string("on")) {
-                try $0.readBytesObjectAlloc(maxSize: maxSize)
+                try $0.readBytesWithFormatTag(maxCount: maxSize)
             } readOnly: {
-                try $0.readBytesObjectAlloc(maxSize: maxSize)
+                try $0.readBytesWithFormatTag(maxCount: maxSize)
             }
             if op.has("expect"), try bytes(op.fields["expect"], "expect") != result.value {
                 throw ScriptFailure("read_bytes gave \(result.value)")
@@ -989,9 +997,9 @@ final class ScriptRunner {
             do {
                 var span = buffer.mutableSpan
                 result = try read(try op.string("on")) {
-                    try $0.readBytesObject(into: &span)
+                    try $0.readBytesWithFormatTag(into: &span)
                 } readOnly: {
-                    try $0.readBytesObject(into: &span)
+                    try $0.readBytesWithFormatTag(into: &span)
                 }
             }
             if op.has("expect"), try bytes(op.fields["expect"], "expect") != Array(buffer[..<result.count]) {
@@ -1085,7 +1093,7 @@ final class ScriptRunner {
             // The rank of a `SortedMap(.read_only)` on the cursor, whose
             // init checks the tag.
             let result = try read(try op.string("on")) {
-                try SortedMap($0.readOnly()).rank(key)
+                try SortedMap($0.readOnly).rank(key)
             } readOnly: {
                 try SortedMap($0).rank(key)
             }
@@ -1196,7 +1204,7 @@ final class ScriptRunner {
 
     /// An iterator over an array list from an index: `ArrayList.iteratorFrom`
     /// in Zig, or the linked array list's or the sorted map's, by the tag.
-    private func iterator<Access>(of cursor: Cursor<Access>, from index: Int64) throws -> Cursor<Access>.Iter {
+    private func iterator<Access>(of cursor: Cursor<Access>, from index: Int64) throws -> CollectionIterator {
         switch try cursor.slot().tag {
         case .none, .arrayList: return try cursor.iterator(fromArrayListIndex: index)
         case .linkedArrayList: return try cursor.iterator(fromLinkedArrayListIndex: index)
@@ -1207,7 +1215,7 @@ final class ScriptRunner {
 
     /// An iterator over a sorted map or set from a key:
     /// `SortedMap.iteratorFrom` in Zig.
-    private func iterator<Access>(of cursor: Cursor<Access>, fromKey key: [UInt8]) throws -> Cursor<Access>.Iter {
+    private func iterator<Access>(of cursor: Cursor<Access>, fromKey key: [UInt8]) throws -> CollectionIterator {
         switch try cursor.slot().tag {
         case .none, .sortedMap, .sortedSet: return try cursor.iterator(fromSortedMapKey: SortedKey(key))
         default: throw XitDBError.unexpectedTag

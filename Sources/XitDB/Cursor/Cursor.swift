@@ -109,28 +109,28 @@ public struct Cursor<Access: CursorAccess> {
         try resolved().slot
     }
 
-    /// Reads the slot's value as an unsigned integer.
+    /// Reads the slot's value as an unsigned 64-bit integer.
     ///
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot does not hold one.
-    public func readUint() throws(XitDBError) -> UInt64 {
+    public func readUInt64() throws(XitDBError) -> UInt64 {
         let slot = try resolved().slot
         if slot.tag != .uint { throw .unexpectedTag }
         return slot.value
     }
 
-    /// Reads the slot's value as a signed integer.
+    /// Reads the slot's value as a signed 64-bit integer.
     ///
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot does not hold one.
-    public func readInt() throws(XitDBError) -> Int64 {
+    public func readInt64() throws(XitDBError) -> Int64 {
         let slot = try resolved().slot
         if slot.tag != .int { throw .unexpectedTag }
         return Int64(bitPattern: slot.value)
     }
 
-    /// Reads the slot's value as a floating-point number.
+    /// Reads the slot's value as a 64-bit floating-point number.
     ///
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot does not hold one.
-    public func readFloat() throws(XitDBError) -> Double {
+    public func readDouble() throws(XitDBError) -> Double {
         let slot = try resolved().slot
         if slot.tag != .float { throw .unexpectedTag }
         return Double(bitPattern: slot.value)
@@ -140,26 +140,28 @@ public struct Cursor<Access: CursorAccess> {
     ///
     /// An empty slot reads as no bytes.
     ///
-    /// - Parameter maxSize: The most bytes to accept, or `nil` for no limit.
+    /// - Parameter maxCount: The most bytes to accept, or `nil` for no
+    ///   limit.
     /// - Throws: ``XitDBError/streamTooLong`` if the value is larger than
-    ///   `maxSize`, ``XitDBError/unexpectedTag`` if the slot does not hold
+    ///   `maxCount`, ``XitDBError/unexpectedTag`` if the slot does not hold
     ///   bytes, or ``XitDBError/endOfStream`` if the database ends before
     ///   the value does.
-    public func readBytesAlloc(maxSize: Int? = nil) throws(XitDBError) -> [UInt8] {
-        try readBytesObjectAlloc(maxSize: maxSize).value
+    public func readBytes(maxCount: Int? = nil) throws(XitDBError) -> [UInt8] {
+        try readBytesWithFormatTag(maxCount: maxCount).value
     }
 
     /// Reads the slot's value as a byte array, with its format tag.
     ///
     /// An empty slot reads as no bytes and no tag.
     ///
-    /// - Parameter maxSize: The most bytes to accept, or `nil` for no limit.
+    /// - Parameter maxCount: The most bytes to accept, or `nil` for no
+    ///   limit.
     /// - Throws: ``XitDBError/streamTooLong`` if the value is larger than
-    ///   `maxSize`, ``XitDBError/unexpectedTag`` if the slot does not hold
+    ///   `maxCount`, ``XitDBError/unexpectedTag`` if the slot does not hold
     ///   bytes, or ``XitDBError/endOfStream`` if the database ends before
     ///   the value does.
-    public func readBytesObjectAlloc(maxSize: Int? = nil) throws(XitDBError) -> Bytes {
-        try database.reader.bytesObject(try resolved().slot, maxSize: maxSize)
+    public func readBytesWithFormatTag(maxCount: Int? = nil) throws(XitDBError) -> Bytes {
+        try database.reader.bytesObject(try resolved().slot, maxSize: maxCount)
     }
 
     /// Reads the slot's value as a byte array into a buffer, without
@@ -175,7 +177,7 @@ public struct Cursor<Access: CursorAccess> {
     ///   bytes, or ``XitDBError/endOfStream`` if the database ends before
     ///   the value does.
     public func readBytes(into buffer: inout MutableSpan<UInt8>) throws(XitDBError) -> Int {
-        try readBytesObject(into: &buffer).count
+        try readBytesWithFormatTag(into: &buffer).count
     }
 
     /// Reads the slot's value as a byte array into a buffer, with its format
@@ -191,36 +193,41 @@ public struct Cursor<Access: CursorAccess> {
     ///   `buffer`, ``XitDBError/unexpectedTag`` if the slot does not hold
     ///   bytes, or ``XitDBError/endOfStream`` if the database ends before
     ///   the value does.
-    public func readBytesObject(
+    public func readBytesWithFormatTag(
         into buffer: inout MutableSpan<UInt8>
     ) throws(XitDBError) -> (count: Int, formatTag: FormatTag?) {
         try database.reader.bytesObject(try resolved().slot, into: &buffer)
     }
 
-    /// Reads the entry of a map or set that this cursor is at, giving a
-    /// cursor for its key and one for its value.
+    /// Reads the entry of a map or set that this cursor is at: its key, its
+    /// value and its hash.
     ///
-    /// The cursor must be at an entry: one obtained by asking a map for a
-    /// key-value pair, or by iterating over a map or set.
+    /// The cursor must be at an entry: one obtained by asking a map for an
+    /// entry, or by iterating over a map or set. A slot that holds bytes is
+    /// read as a key on its own, which is what a sorted set's entry is.
+    ///
+    /// The entry is read-only whatever this cursor is: an entry's key is
+    /// what the collection is ordered or indexed by, and is changed only
+    /// through the collection.
     ///
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot is not an entry.
-    public func readKeyValuePair() throws(XitDBError) -> KeyValuePairCursor<Access> {
+    public func readEntry() throws(XitDBError) -> Entry {
         let entry = try resolved().slot
         let found = try database.reader.keyValuePair(entry)
         let hashSize = database.header.hashSize
-        return KeyValuePairCursor(
-            valueCursor: Cursor(
+        return Entry(
+            key: Cursor<ReadOnly>(
                 slotPointer: SlotPointer(
-                    position: KeyValuePair.valuePosition(of: entry, hashSize: hashSize),
-                    slot: found.pair.valueSlot
+                    position: KeyValuePair.keyPosition(of: entry, hashSize: hashSize),
+                    slot: found.pair.keySlot
                 ),
                 database: database,
                 frozenAt: frozenAt
             ),
-            keyCursor: Cursor(
+            value: Cursor<ReadOnly>(
                 slotPointer: SlotPointer(
-                    position: KeyValuePair.keyPosition(of: entry, hashSize: hashSize),
-                    slot: found.pair.keySlot
+                    position: KeyValuePair.valuePosition(of: entry, hashSize: hashSize),
+                    slot: found.pair.valueSlot
                 ),
                 database: database,
                 frozenAt: frozenAt
@@ -240,13 +247,18 @@ public struct Cursor<Access: CursorAccess> {
     }
 }
 
-/// The key and the value of one entry of a map or set, each as a cursor.
-public struct KeyValuePairCursor<Access: CursorAccess> {
-    /// A cursor at the entry's value. In a set it is empty.
-    public var valueCursor: Cursor<Access>
-
+/// One entry of a map or set: its key and its value, each as a read-only
+/// cursor, and the hash it is stored under.
+///
+/// Everything that gives an entry gives a read-only one: a key is changed
+/// only through its collection, which keeps the collection's order and
+/// index right.
+public struct Entry {
     /// A cursor at the entry's key.
-    public var keyCursor: Cursor<Access>
+    public let key: Cursor<ReadOnly>
+
+    /// A cursor at the entry's value. In a set it is empty.
+    public let value: Cursor<ReadOnly>
 
     /// The hash the entry is stored under, kept in the pair itself so that
     /// reading a pair allocates nothing.
@@ -278,7 +290,7 @@ public struct KeyValuePairCursor<Access: CursorAccess> {
 
 extension Cursor where Access == ReadWrite {
     /// A cursor at the same slot that can only read.
-    public func readOnly() -> Cursor<ReadOnly> {
+    public var readOnly: Cursor<ReadOnly> {
         Cursor<ReadOnly>(slotPointer: slotPointer, database: database)
     }
 
@@ -463,7 +475,7 @@ extension Cursor where Access == ReadWrite {
     ///   position; ``XitDBError/expectedTxStart`` outside a transaction;
     ///   ``XitDBError/unexpectedWriterPosition`` if something else was
     ///   written while `body` ran; and whatever `body` throws.
-    public mutating func writer(
+    public mutating func writeBytes(
         formatTag: FormatTag? = nil,
         _ body: (inout ByteWriter) throws -> Void
     ) throws {
@@ -488,7 +500,7 @@ extension Cursor where Access == ReadWrite {
     }
 }
 
-/// Writes the bytes of a byte array, for ``Cursor/writer(formatTag:_:)``.
+/// Writes the bytes of a byte array, for ``Cursor/writeBytes(formatTag:_:)``.
 public struct ByteWriter: ~Copyable {
     var record: ByteRecordWriter
 
@@ -541,7 +553,7 @@ extension Database {
     /// the root header.
     ///
     /// The cursor is read-write on every storage, as in Zig. A reader opens
-    /// its storage with ``FileAccess/readOnly`` and wraps ``Cursor/readOnly()``
+    /// its storage with ``FileAccess/readOnly`` and wraps ``Cursor/readOnly``
     /// in the read-only collections, or gives the cursor to their read-only
     /// inits; a write through the root cursor on a read-only storage fails
     /// with the storage's write error and truncates nothing. Two processes

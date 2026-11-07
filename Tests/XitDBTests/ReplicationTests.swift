@@ -22,7 +22,7 @@ import Testing
 // and its `error.Fail` is `Fail`. Zig's `history.appendContext(.{ .slot = ... }, Ctx{})` is
 // `history.appendContext(.slot(...)) { cursor in ... }`, and `map.cursor.writePath(Ctx, &.{ ..., .{ .ctx = Ctx{} } })`
 // is `map.cursor.writePath([..., .ctx]) { cursor in ... }`. Zig's `readBytes(&buffer)` into a fixed buffer is
-// `readBytesAlloc(maxSize:)` with the buffer's size. Zig's `xitdb.VERSION` is `DatabaseHeader.currentVersion`, and
+// `readBytes(maxCount:)` with the buffer's size. Zig's `xitdb.VERSION` is `DatabaseHeader.currentVersion`, and
 // `@bitSizeOf(xitdb.DatabaseHeader) / 8` is `DatabaseHeader.byteCount`. Zig's `takeInt(u8)` through the core's
 // reader and `writeByte` through its writer, which damage the replica's file directly, are `readBytes` and
 // `writeBytes` on the replica's storage. Zig's `expect` aborts the test, so where a failure would make a later line
@@ -212,17 +212,17 @@ import Testing
 
         // the replica can be reopened and read
         replica = try Database(storage: replicaSubject.storage, hashSize: 20)
-        let sourceHistory = try ArrayList<ReadOnly>(source.rootCursor.readOnly())
-        let replicaHistory = try ArrayList<ReadOnly>(replica.rootCursor.readOnly())
+        let sourceHistory = try ArrayList<ReadOnly>(source.rootCursor.readOnly)
+        let replicaHistory = try ArrayList<ReadOnly>(replica.rootCursor.readOnly)
         #expect(try sourceHistory.count() == replicaHistory.count())
         let momentCursor = try #require(try replicaHistory.getCursor(-1))
         let moment = try HashMap<ReadOnly>(momentCursor)
         let key299 = try #require(try moment.getCursor(hashInt("key-299")))
-        #expect(try key299.readUint() == 299)
+        #expect(try key299.readUInt64() == 299)
         // removed by the slice
         #expect(try moment.getCursor(hashInt("key-180")) == nil)
         let key149 = try #require(try moment.getCursor(hashInt("key-149")))
-        #expect(try key149.readUint() == 149)
+        #expect(try key149.readUInt64() == 149)
 
         // a compacted database is a new file, so a replica of it is seeded from byte 0
         do {
@@ -239,12 +239,12 @@ import Testing
             try replicate(target, compactedReplica)
             try expectSameCommittedBytes(target, compactedReplica)
 
-            let compactedHistory = try ArrayList<ReadOnly>(compactedReplica.rootCursor.readOnly())
+            let compactedHistory = try ArrayList<ReadOnly>(compactedReplica.rootCursor.readOnly)
             #expect(try compactedHistory.count() == 2)
             let compactedMomentCursor = try #require(try compactedHistory.getCursor(-1))
             let compactedMoment = try HashMap<ReadOnly>(compactedMomentCursor)
             let compactedKey299 = try #require(try compactedMoment.getCursor(hashInt("key-299")))
-            #expect(try compactedKey299.readUint() == 299)
+            #expect(try compactedKey299.readUInt64() == 299)
         }
 
         // a database whose trailer doesn't match its header is invalid
@@ -313,7 +313,7 @@ import Testing
             #expect(try copyA.committedSize == copyB.committedSize)
             #expect(try copyB.replicationStart(for: try copyReplica.replicaState) == 0)
             try replicate(copyB, copyReplica)
-            #expect(try copyReplica.rootCursor.readBytesAlloc(maxSize: 16) == utf8("bbbbbbbbbbbb"))
+            #expect(try copyReplica.rootCursor.readBytes(maxCount: 16) == utf8("bbbbbbbbbbbb"))
         }
 
         // while the real source only sends the new bytes
@@ -385,8 +385,8 @@ import Testing
         try map.putKey(hashInt("key-1"), .bytes(utf8("key-1")))
         do {
             let kv = try #require(try map.getKeyValuePair(hashInt("key-1")))
-            #expect(try kv.keyCursor.readBytesAlloc(maxSize: 8) == utf8("key-1"))
-            #expect(try kv.valueCursor.readUint() == 1)
+            #expect(try kv.key.readBytes(maxCount: 8) == utf8("key-1"))
+            #expect(try kv.value.readUInt64() == 1)
         }
 
         // nested collections are written inside one transaction
@@ -415,9 +415,9 @@ import Testing
             try source.withTransaction { cursor in try writeBatch(cursor, fail: false) }
             #expect(try source.committedSize > sizeBefore)
             let batch0 = try #require(try map.getCursor(hashInt("batch-0")))
-            #expect(try batch0.readUint() == 0)
+            #expect(try batch0.readUInt64() == 0)
             let batch99 = try #require(try map.getCursor(hashInt("batch-99")))
-            #expect(try batch99.readUint() == 99)
+            #expect(try batch99.readUInt64() == 99)
             try replicate(source, replica)
             try expectSameCommittedBytes(source, replica)
         }
@@ -432,9 +432,9 @@ import Testing
         // the replica can be reopened and read
         replica = try Database(storage: replicaSubject.storage, hashSize: 20)
         do {
-            let replicaMap = try HashMap<ReadOnly>(replica.rootCursor.readOnly())
+            let replicaMap = try HashMap<ReadOnly>(replica.rootCursor.readOnly)
             let key99 = try #require(try replicaMap.getCursor(hashInt("key-99")))
-            #expect(try key99.readUint() == 99)
+            #expect(try key99.readUInt64() == 99)
             #expect(try replicaMap.getCursor(hashInt("key-25")) == nil)
             let innerCursor = try #require(try replicaMap.getCursor(hashInt("inner")))
             let inner = try HashMap<ReadOnly>(innerCursor)
@@ -442,7 +442,7 @@ import Testing
             let list = try ArrayList<ReadOnly>(listCursor)
             #expect(try list.count() == 2)
             let last = try #require(try list.getCursor(-1))
-            #expect(try last.readUint() == 2)
+            #expect(try last.readUInt64() == 2)
         }
 
         // it can be compacted
@@ -452,9 +452,9 @@ import Testing
             let target = try replica.compact(into: MemoryStorage(), offsetMap: &offsetMap)
             #expect(try target.committedSize < replica.committedSize)
 
-            let targetMap = try HashMap<ReadOnly>(target.rootCursor.readOnly())
+            let targetMap = try HashMap<ReadOnly>(target.rootCursor.readOnly)
             let key99 = try #require(try targetMap.getCursor(hashInt("key-99")))
-            #expect(try key99.readUint() == 99)
+            #expect(try key99.readUInt64() == 99)
             #expect(try targetMap.getCursor(hashInt("key-25")) == nil)
             let innerCursor = try #require(try targetMap.getCursor(hashInt("inner")))
             let inner = try HashMap<ReadOnly>(innerCursor)
@@ -499,24 +499,24 @@ import Testing
         let retained = db.rootCursor
         var root = db.rootCursor
         try root.write(.uint(42))
-        #expect(try root.readUint() == 42)
-        #expect(try db.rootCursor.readUint() == 42)
+        #expect(try root.readUInt64() == 42)
+        #expect(try db.rootCursor.readUInt64() == 42)
 
         // a root cursor kept from before the write sees the new root
         // everywhere it reads its slot, not just in typed reads
-        #expect(try retained.readUint() == 42)
+        #expect(try retained.readUInt64() == 42)
         #expect(try retained.slot().value == 42)
         let retainedPathSlot = try #require(try retained.readPathSlot([]))
         #expect(retainedPathSlot.value == 42)
         let retainedPath = try #require(try retained.readPath([]))
-        #expect(try retainedPath.readUint() == 42)
+        #expect(try retainedPath.readUInt64() == 42)
 
         // the cursor stays a root cursor, so it can keep writing
         try root.write(.bytes(utf8("this is too long to fit in a slot")))
-        #expect(try db.rootCursor.readBytesAlloc(maxSize: 64) == utf8("this is too long to fit in a slot"))
+        #expect(try db.rootCursor.readBytes(maxCount: 64) == utf8("this is too long to fit in a slot"))
 
         // bytes can't be streamed into the root
-        #expect(throws: XitDBError.cursorNotWritable) { try root.writer { _ in } }
+        #expect(throws: XitDBError.cursorNotWritable) { try root.writeBytes { _ in } }
 
         // a scalar root can't be initialized as a collection
         #expect(throws: XitDBError.unexpectedTag) { _ = try HashMap<ReadWrite>(db.rootCursor) }
@@ -526,7 +526,7 @@ import Testing
         let map = try HashMap<ReadWrite>(db.rootCursor)
         try map.put(hashInt("foo"), .uint(1))
         let foo = try #require(try map.getCursor(hashInt("foo")))
-        #expect(try foo.readUint() == 1)
+        #expect(try foo.readUInt64() == 1)
     }
 
     /// test.zig 4315-4327: "a hash set root".
@@ -540,9 +540,9 @@ import Testing
         try set.put(hashInt("a"), .bytes(utf8("a")))
         try set.put(hashInt("b"), .bytes(utf8("b")))
         let a = try #require(try set.getCursor(hashInt("a")))
-        #expect(try a.readBytesAlloc(maxSize: 8) == utf8("a"))
+        #expect(try a.readBytes(maxCount: 8) == utf8("a"))
         let b = try #require(try set.getCursor(hashInt("b")))
-        #expect(try b.readBytesAlloc(maxSize: 8) == utf8("b"))
+        #expect(try b.readBytes(maxCount: 8) == utf8("b"))
     }
 
     /// test.zig 4329-4346: "a sorted map root".
@@ -559,7 +559,7 @@ import Testing
         #expect(try map.count() == 2)
         #expect(try map.rank(utf8("b")) == 1)
         let a = try #require(try map.getCursor(utf8("a")))
-        #expect(try a.readUint() == 1)
+        #expect(try a.readUInt64() == 1)
 
         let size = try db.committedSize
         _ = try SortedMap<ReadWrite>(db.rootCursor)
@@ -578,10 +578,10 @@ import Testing
         try list.insert(1, .uint(2))
         #expect(try list.count() == 3)
         let second = try #require(try list.getCursor(1))
-        #expect(try second.readUint() == 2)
+        #expect(try second.readUInt64() == 2)
         try list.remove(0)
         let first = try #require(try list.getCursor(0))
-        #expect(try first.readUint() == 2)
+        #expect(try first.readUInt64() == 2)
 
         let size = try db.committedSize
         _ = try LinkedArrayList<ReadWrite>(db.rootCursor)

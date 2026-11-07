@@ -44,13 +44,13 @@ public struct SortedMap<Access: CursorAccess> {
     }
 
     /// An iterator over the map's entries in key order. Each cursor it
-    /// gives is at an entry; ``Cursor/readKeyValuePair()`` reads the
+    /// gives is at an entry; ``Cursor/readEntry()`` reads the
     /// entry's key and value.
     ///
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   that is not a collection, or an error of the storage or of a
     ///   damaged file.
-    public func iterator() throws(XitDBError) -> Cursor<Access>.Iter {
+    public func iterator() throws(XitDBError) -> CollectionIterator {
         try cursor.iterator()
     }
 
@@ -64,7 +64,7 @@ public struct SortedMap<Access: CursorAccess> {
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
-    public func iteratorFromIndex(_ index: Int64) throws(XitDBError) -> Cursor<Access>.Iter {
+    public func iteratorFromIndex(_ index: Int64) throws(XitDBError) -> CollectionIterator {
         try cursor.iterator(fromSortedMapIndex: index)
     }
 
@@ -77,7 +77,7 @@ public struct SortedMap<Access: CursorAccess> {
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
-    public func iteratorFrom(_ key: Span<UInt8>) throws(XitDBError) -> Cursor<Access>.Iter {
+    public func iteratorFrom(_ key: Span<UInt8>) throws(XitDBError) -> CollectionIterator {
         try cursor.iterator(fromSortedMapKey: SortedKey(key))
     }
 
@@ -90,7 +90,7 @@ public struct SortedMap<Access: CursorAccess> {
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
-    public func iteratorFrom(_ key: [UInt8]) throws(XitDBError) -> Cursor<Access>.Iter {
+    public func iteratorFrom(_ key: [UInt8]) throws(XitDBError) -> CollectionIterator {
         try cursor.iterator(fromSortedMapKey: SortedKey(key))
     }
 
@@ -139,9 +139,9 @@ public struct SortedMap<Access: CursorAccess> {
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
-    public func getIndexKeyValuePair(_ index: Int64) throws(XitDBError) -> KeyValuePairCursor<ReadOnly>? {
+    public func getIndexKeyValuePair(_ index: Int64) throws(XitDBError) -> Entry? {
         let path: InlineArray<1, PathPart> = [.sortedMapGetIndex(index)]
-        return try cursor.readPath(path.span)?.readKeyValuePair()
+        return try cursor.readPath(path.span)?.readEntry()
     }
 
     /// A cursor at the value stored under a key, or `nil` if the map has no
@@ -204,9 +204,9 @@ public struct SortedMap<Access: CursorAccess> {
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
-    public func getKeyValuePair(_ key: Span<UInt8>) throws(XitDBError) -> KeyValuePairCursor<ReadOnly>? {
+    public func getKeyValuePair(_ key: Span<UInt8>) throws(XitDBError) -> Entry? {
         let path: InlineArray<1, PathPart> = [.sortedMapGet(.kvPair, SortedKey(key))]
-        return try cursor.readPath(path.span)?.readKeyValuePair()
+        return try cursor.readPath(path.span)?.readEntry()
     }
 
     /// The entry stored under a key, as a cursor for its key and one for
@@ -217,9 +217,9 @@ public struct SortedMap<Access: CursorAccess> {
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
-    public func getKeyValuePair(_ key: [UInt8]) throws(XitDBError) -> KeyValuePairCursor<ReadOnly>? {
+    public func getKeyValuePair(_ key: [UInt8]) throws(XitDBError) -> Entry? {
         let path: InlineArray<1, PathPart> = [.sortedMapGet(.kvPair, SortedKey(key))]
-        return try cursor.readPath(path.span)?.readKeyValuePair()
+        return try cursor.readPath(path.span)?.readEntry()
     }
 
 }
@@ -265,8 +265,8 @@ extension SortedMap where Access == ReadWrite {
     }
 
     /// A view of the same map that can only read.
-    public func readOnly() -> SortedMap<ReadOnly> {
-        SortedMap<ReadOnly>(unchecked: cursor.readOnly())
+    public var readOnly: SortedMap<ReadOnly> {
+        SortedMap<ReadOnly>(unchecked: cursor.readOnly)
     }
 
     /// Stores a value under a key, in place of any value that was there.

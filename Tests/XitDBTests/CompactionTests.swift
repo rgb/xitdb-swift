@@ -217,7 +217,7 @@ import Testing
         #expect(targetSize < sourceSize)
 
         // target should have exactly 1 moment
-        let history = try ArrayList<ReadOnly>(compacted.rootCursor.readOnly())
+        let history = try ArrayList<ReadOnly>(compacted.rootCursor.readOnly)
         #expect(try history.count() == 1)
 
         // verify all data from latest moment is correct
@@ -243,27 +243,27 @@ import Testing
 
         // key1 should have the final value
         let key1Cursor = try #require(try moment.getCursor(hashInt("key1")))
-        #expect(try key1Cursor.readBytesAlloc(maxSize: 1024) == utf8("final_value"))
+        #expect(try key1Cursor.readBytes(maxCount: 1024) == utf8("final_value"))
 
         // key2 from moment 2
         let key2Cursor = try #require(try moment.getCursor(hashInt("key2")))
-        #expect(try key2Cursor.readUint() == 200)
+        #expect(try key2Cursor.readUInt64() == 200)
 
         // key3 - int
         let key3Cursor = try #require(try moment.getCursor(hashInt("key3")))
-        #expect(try key3Cursor.readInt() == -42)
+        #expect(try key3Cursor.readInt64() == -42)
 
         // key4 - float
         let key4Cursor = try #require(try moment.getCursor(hashInt("key4")))
-        #expect(try key4Cursor.readFloat() == 3.14)
+        #expect(try key4Cursor.readDouble() == 3.14)
 
         // short bytes
         let shortCursor = try #require(try moment.getCursor(hashInt("short")))
-        #expect(try shortCursor.readBytesAlloc(maxSize: 1024) == utf8("hi"))
+        #expect(try shortCursor.readBytes(maxCount: 1024) == utf8("hi"))
 
         // tagged bytes
         let taggedCursor = try #require(try moment.getCursor(hashInt("tagged")))
-        let taggedObject = try taggedCursor.readBytesObjectAlloc(maxSize: 1024)
+        let taggedObject = try taggedCursor.readBytesWithFormatTag(maxCount: 1024)
         #expect(taggedObject.value == utf8("this is a long tagged string!!"))
         let taggedFormatTag = try #require(taggedObject.formatTag)
         #expect(taggedFormatTag == "bi")
@@ -273,52 +273,52 @@ import Testing
         let fruits = try ArrayList<ReadOnly>(fruitsCursor)
         #expect(try fruits.count() == 3)
         let appleCursor = try #require(try fruits.getCursor(0))
-        #expect(try appleCursor.readBytesAlloc(maxSize: 1024) == utf8("apple"))
+        #expect(try appleCursor.readBytes(maxCount: 1024) == utf8("apple"))
         let cherryCursor = try #require(try fruits.getCursor(2))
-        #expect(try cherryCursor.readBytesAlloc(maxSize: 1024) == utf8("cherry"))
+        #expect(try cherryCursor.readBytes(maxCount: 1024) == utf8("cherry"))
 
         // LinkedArrayList
         let todosCursor = try #require(try moment.getCursor(hashInt("todos")))
         let todos = try LinkedArrayList<ReadOnly>(todosCursor)
         #expect(try todos.count() == 3)
         let task1Cursor = try #require(try todos.getCursor(0))
-        #expect(try task1Cursor.readBytesAlloc(maxSize: 1024) == utf8("task1"))
+        #expect(try task1Cursor.readBytes(maxCount: 1024) == utf8("task1"))
         let task3Cursor = try #require(try todos.getCursor(2))
-        #expect(try task3Cursor.readBytesAlloc(maxSize: 1024) == utf8("task3"))
+        #expect(try task3Cursor.readBytes(maxCount: 1024) == utf8("task3"))
 
         // CountedHashMap
         let countedCursor = try #require(try moment.getCursor(hashInt("counted")))
         let counted = try CountedHashMap<ReadOnly>(countedCursor)
         #expect(try counted.count() == 2)
         let countedACursor = try #require(try counted.getCursor(hashInt("a")))
-        #expect(try countedACursor.readUint() == 1)
+        #expect(try countedACursor.readUInt64() == 1)
         let countedBCursor = try #require(try counted.getCursor(hashInt("b")))
-        #expect(try countedBCursor.readUint() == 2)
+        #expect(try countedBCursor.readUInt64() == 2)
 
         // HashSet
         let setCursor = try #require(try moment.getCursor(hashInt("myset")))
         let set = try HashSet<ReadOnly>(setCursor)
         let xCursor = try #require(try set.getCursor(hashInt("x")))
-        #expect(try xCursor.readBytesAlloc(maxSize: 1024) == utf8("x"))
+        #expect(try xCursor.readBytes(maxCount: 1024) == utf8("x"))
 
         // CountedHashSet
         let csetCursor = try #require(try moment.getCursor(hashInt("mycset")))
         let cset = try CountedHashSet<ReadOnly>(csetCursor)
         #expect(try cset.count() == 2)
         let pCursor = try #require(try cset.getCursor(hashInt("p")))
-        #expect(try pCursor.readBytesAlloc(maxSize: 1024) == utf8("p"))
+        #expect(try pCursor.readBytes(maxCount: 1024) == utf8("p"))
 
         // SortedMap
         let sortedCursor = try #require(try moment.getCursor(hashInt("sorted")))
         let sorted = try SortedMap<ReadOnly>(sortedCursor)
         #expect(try sorted.count() == 3)
         let bananaCursor = try #require(try sorted.getCursor(utf8("banana")))
-        #expect(try bananaCursor.readUint() == 2)
+        #expect(try bananaCursor.readUInt64() == 2)
         // lexicographic order is preserved across compaction
         let firstPair = try #require(try sorted.getIndexKeyValuePair(0))
-        #expect(try firstPair.keyCursor.readBytesAlloc(maxSize: 1024) == utf8("apple"))
+        #expect(try firstPair.key.readBytes(maxCount: 1024) == utf8("apple"))
         let lastPair = try #require(try sorted.getIndexKeyValuePair(-1))
-        #expect(try lastPair.keyCursor.readBytesAlloc(maxSize: 1024) == utf8("cherry"))
+        #expect(try lastPair.key.readBytes(maxCount: 1024) == utf8("cherry"))
 
         // SortedSet
         let sortedSetCursor = try #require(try moment.getCursor(hashInt("sortedset")))
@@ -362,7 +362,7 @@ import Testing
 
         let compacted = try source.compact(into: targetSubject.storage, offsetMap: &offsetMap)
 
-        let history = try ArrayList<ReadOnly>(compacted.rootCursor.readOnly())
+        let history = try ArrayList<ReadOnly>(compacted.rootCursor.readOnly)
         #expect(try history.count() == 1)
 
         let momentCursor = try #require(try history.getCursor(0))
@@ -371,12 +371,12 @@ import Testing
         // verify shared keys are intact
         for i in 0..<20 {
             let keyCursor = try #require(try moment.getCursor(hashInt("shared_key_\(i)")))
-            #expect(try keyCursor.readUint() == UInt64(i))
+            #expect(try keyCursor.readUInt64() == UInt64(i))
         }
 
         // verify changing key has latest value
         let changingKeyCursor = try #require(try moment.getCursor(hashInt("changing_key")))
-        #expect(try changingKeyCursor.readUint() == 103)
+        #expect(try changingKeyCursor.readUInt64() == 103)
     }
 
     /// test.zig 3263-3301: "re-open after compact". Zig opens a second database over the target's file handle;
@@ -410,15 +410,15 @@ import Testing
         // re-open the target
         let reopened = try Database(storage: targetSubject.storage, hashSize: 20)
 
-        let history = try ArrayList<ReadOnly>(reopened.rootCursor.readOnly())
+        let history = try ArrayList<ReadOnly>(reopened.rootCursor.readOnly)
         #expect(try history.count() == 1)
 
         let momentCursor = try #require(try history.getCursor(0))
         let moment = try HashMap<ReadOnly>(momentCursor)
         let persistCursor = try #require(try moment.getCursor(hashInt("persist")))
-        #expect(try persistCursor.readBytesAlloc(maxSize: 1024) == utf8("persistent_value"))
+        #expect(try persistCursor.readBytes(maxCount: 1024) == utf8("persistent_value"))
         let numberCursor = try #require(try moment.getCursor(hashInt("number")))
-        #expect(try numberCursor.readUint() == 999)
+        #expect(try numberCursor.readUInt64() == 999)
     }
 
     /// test.zig 3303-3358: "compact then continue writing".
@@ -454,23 +454,23 @@ import Testing
         }
 
         // verify both old and new data
-        let history = try ArrayList<ReadOnly>(compacted.rootCursor.readOnly())
+        let history = try ArrayList<ReadOnly>(compacted.rootCursor.readOnly)
         #expect(try history.count() == 2)
 
         // moment 0 (compacted original)
         let m0Cursor = try #require(try history.getCursor(0))
         let m0 = try HashMap<ReadOnly>(m0Cursor)
         let originalCursor = try #require(try m0.getCursor(hashInt("original")))
-        #expect(try originalCursor.readBytesAlloc(maxSize: 1024) == utf8("original_data"))
+        #expect(try originalCursor.readBytes(maxCount: 1024) == utf8("original_data"))
 
         // moment 1 (new data added after compact)
         let m1Cursor = try #require(try history.getCursor(1))
         let m1 = try HashMap<ReadOnly>(m1Cursor)
         let newCursor = try #require(try m1.getCursor(hashInt("new_key")))
-        #expect(try newCursor.readBytesAlloc(maxSize: 1024) == utf8("new_data"))
+        #expect(try newCursor.readBytes(maxCount: 1024) == utf8("new_data"))
 
         // original data should still be in moment 1 (inherited)
         let originalInM1Cursor = try #require(try m1.getCursor(hashInt("original")))
-        #expect(try originalInM1Cursor.readBytesAlloc(maxSize: 1024) == utf8("original_data"))
+        #expect(try originalInM1Cursor.readBytes(maxCount: 1024) == utf8("original_data"))
     }
 }

@@ -119,7 +119,7 @@ import Testing
             #expect(throws: XitDBError.keyNotFound) { try list.slice(offset: 45, size: 2) }
             var iterator = try list.iterator()
             while let element = try iterator.next() {
-                #expect(try element.readUint() == UInt64(count))
+                #expect(try element.readUInt64() == UInt64(count))
                 count += 1
             }
         }

@@ -45,7 +45,7 @@ import Testing
                 .hashMapGet(.value, sha1("list")), .arrayListInit, .arrayListAppend, .write(.uint(11)),
             ])
             var text = try cursor.writePath([.hashMapGet(.value, sha1("text"))])
-            try text.writer(formatTag: "tx") { writer in
+            try text.writeBytes(formatTag: "tx") { writer in
                 try writer.write(Array("written in ".utf8))
                 try writer.write(Array("pieces".utf8))
             }
@@ -57,8 +57,8 @@ import Testing
     static func expectLastCommit(_ database: Database) throws {
         #expect(try database.rootCursor.count() == 2)
         let moment = try #require(try database.rootCursor.readPath([.arrayListGet(-1)]))
-        #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("a"))])).readUint() == 1)
-        #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("c"))])).readInt() == -3)
+        #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("a"))])).readUInt64() == 1)
+        #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("c"))])).readInt64() == -3)
         #expect(try moment.readPath([.hashMapGet(.value, sha1("b"))]) != nil)
         #expect(try moment.readPath([.hashMapGet(.value, sha1("d"))]) == nil)
         #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("list"))])).count() == 1)
@@ -67,10 +67,10 @@ import Testing
     static func expectTransaction(_ database: Database) throws {
         #expect(try database.rootCursor.count() == 3)
         let moment = try #require(try database.rootCursor.readPath([.arrayListGet(-1)]))
-        #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("a"))])).readUint() == 2)
+        #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("a"))])).readUInt64() == 2)
         #expect(try moment.readPath([.hashMapGet(.value, sha1("b"))]) == nil)
         #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("list"))])).count() == 2)
-        let text = try #require(try moment.readPath([.hashMapGet(.value, sha1("text"))])).readBytesObjectAlloc()
+        let text = try #require(try moment.readPath([.hashMapGet(.value, sha1("text"))])).readBytesWithFormatTag()
         #expect(text == Bytes(Array("written in pieces".utf8), formatTag: "tx"))
     }
 
