@@ -1,8 +1,8 @@
-/// A list in a database, indexed by position: Zig's `ArrayList`.
+/// A list in a database, indexed by position.
 ///
 /// Elements are appended at the end, read and written by index, and cut off
-/// from the end with ``truncate(to:)``. A negative index counts from the
-/// end: `-1` is the last element.
+/// from the end with ``truncate(to:)``; it is Zig's `ArrayList`. A negative
+/// index counts from the end: `-1` is the last element.
 ///
 /// A list is a view of a slot. Making one that can only read checks that
 /// the slot holds a list, or nothing. Making one that can write makes the
@@ -222,7 +222,10 @@ extension ArrayList where Access == ReadWrite {
     /// run: `value` is usually the slot of the last element, so that the new
     /// element starts as a copy of the last moment, and `body` makes the
     /// changes. The transaction commits when `body` returns. If `body`
-    /// throws, nothing of it is kept and the error is rethrown.
+    /// throws, the error is rethrown; what was appended is discarded only
+    /// if this call started the transaction, as it does on the root. Inside
+    /// a transaction the element stays, with what `body` wrote before it
+    /// threw, as a ``LinkedArrayList``'s does.
     ///
     /// The result may be ignored: a transaction is often run for its writes
     /// alone, with a body whose one expression happens to have a value.

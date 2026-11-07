@@ -297,6 +297,53 @@ import Testing
         }
     }
 
+    /// A read-only view over a slot that holds nothing checks no hash: a
+    /// hash of the wrong size finds nothing there, as in Zig, and is
+    /// refused with `invalidHashSize` once the slot holds a map, which the
+    /// first put makes it (D6). A writing view's init makes the slot a map,
+    /// so it checks from its first call.
+    @Test func anEmptyViewChecksNoHash() throws {
+        let database = try makeDatabase()
+        let wrong = [UInt8](repeating: 1, count: 19)
+        let root = database.rootCursor
+        #expect(try root.slot.tag == .none)
+        #expect(try HashMap<ReadOnly>(root).cursor(forHash: wrong) == nil)
+        #expect(try HashMap<ReadOnly>(root).slot(forHash: wrong.span) == nil)
+        #expect(try HashMap<ReadOnly>(root).keyCursor(forHash: wrong) == nil)
+        #expect(try HashMap<ReadOnly>(root).keySlot(forHash: wrong) == nil)
+        #expect(try HashMap<ReadOnly>(root).entry(forHash: wrong) == nil)
+        #expect(try HashSet<ReadOnly>(root).cursor(forHash: wrong) == nil)
+        #expect(try !HashSet<ReadOnly>(root).contains(hash: wrong))
+        #expect(try CountedHashMap<ReadOnly>(root).cursor(forHash: wrong.span) == nil)
+        #expect(try !CountedHashSet<ReadOnly>(root).contains(hash: wrong.span))
+
+        try HashMap(root).put(.uint(1), forHash: key("k"))
+        #expect(try root.slot.tag == .hashMap)
+        let map = try HashMap<ReadOnly>(root)
+        #expect(throws: XitDBError.invalidHashSize) { try map.cursor(forHash: wrong) }
+        #expect(throws: XitDBError.invalidHashSize) { try map.slot(forHash: wrong.span) }
+        #expect(throws: XitDBError.invalidHashSize) { try map.keyCursor(forHash: wrong) }
+        #expect(throws: XitDBError.invalidHashSize) { try map.keySlot(forHash: wrong) }
+        #expect(throws: XitDBError.invalidHashSize) { try map.entry(forHash: wrong) }
+        #expect(throws: XitDBError.invalidHashSize) { try HashSet<ReadOnly>(root).contains(hash: wrong) }
+        #expect(try map.cursor(forHash: key("k"))?.readUInt64() == 1)
+
+        // a slot set to nothing below the root is as empty, and a writing
+        // view's slot is a map from its init on
+        try database.withTransaction { cursor in
+            let root = try HashMap(cursor)
+            _ = try cursor.writePath([.hashMapGet(.value, sha1("none")), .write(.slot(nil))])
+            let none = try #require(try root.cursor(forHash: key("none")))
+            #expect(try CountedHashMap(none).cursor(forHash: wrong) == nil)
+            #expect(try !CountedHashSet(none).contains(hash: wrong))
+            let fresh = try CountedHashMap(try root.putCursor(forHash: key("fresh")))
+            #expect(try fresh.count == 0)
+            #expect(throws: XitDBError.invalidHashSize) { try fresh.cursor(forHash: wrong) }
+            #expect(throws: XitDBError.invalidHashSize) { try fresh.put(.uint(1), forHash: wrong) }
+            #expect(throws: XitDBError.invalidHashSize) { try fresh.remove(forHash: wrong) }
+        }
+    }
+
     /// A set says whether a key is stored under a hash: not before the key
     /// is written, and not after it is removed.
     @Test func aSetSaysWhetherItContainsAHash() throws {

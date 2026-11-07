@@ -1,13 +1,12 @@
-/// A list in a database that can be changed anywhere, not only at its end:
-/// Zig's `LinkedArrayList`.
+/// A list in a database that can be changed anywhere, not only at its end.
 ///
 /// Elements are addressed by position, as in an ``ArrayList``, and can also
-/// be inserted and removed at any position. Two lists are joined with
-/// ``append(contentsOf:)-(Slot)`` and a part of one kept with
-/// ``formSlice(offset:count:)``, each in time that grows with the logarithm
-/// of the size, because the result shares what it can with the lists it
-/// came from. A negative index counts from the end: `-1` is the last
-/// element.
+/// be inserted and removed at any position; it is Zig's `LinkedArrayList`.
+/// Two lists are joined with ``append(contentsOf:)-(Slot)`` and a part of
+/// one kept with ``formSlice(offset:count:)``, each in time that grows with
+/// the logarithm of the size, because the result shares what it can with
+/// the lists it came from. A negative index counts from the end: `-1` is
+/// the last element.
 ///
 /// Underneath is a tree whose nodes hold up to sixteen elements or children
 /// and whose branches count the elements beneath each child.

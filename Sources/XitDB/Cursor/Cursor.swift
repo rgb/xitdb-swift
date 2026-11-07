@@ -206,15 +206,19 @@ public struct Cursor<Access: CursorAccess> {
     /// Reads the entry of a map or set that this cursor is at: its key, its
     /// value and its hash.
     ///
-    /// The cursor must be at an entry: one obtained by asking a map for an
-    /// entry, or by iterating over a map or set. A slot that holds bytes is
-    /// read as a key on its own, which is what a sorted set's entry is.
+    /// The cursor should be at an entry: one obtained by asking a map for an
+    /// entry, or by iterating over a map or set. Any slot that holds bytes
+    /// is read as a key on its own, which is what a sorted set's entry is,
+    /// so on a cursor at a byte value this succeeds, as Zig's does: the
+    /// key cursor is at the bytes, the value is empty and the hash is
+    /// zeros. Nothing tells such a value from a set's key.
     ///
     /// The entry is read-only whatever this cursor is: an entry's key is
     /// what the collection is ordered or indexed by, and is changed only
     /// through the collection.
     ///
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot is not an entry.
+    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds anything
+    ///   else: a number, a collection, or nothing.
     public func readEntry() throws(XitDBError) -> Entry {
         let entry = try resolved().slot
         let found = try database.reader.keyValuePair(entry)
@@ -543,7 +547,10 @@ public struct ByteWriter: ~Copyable {
     /// the start of the array.
     ///
     /// Writing beyond the end of what has been written leaves zeros in
-    /// between.
+    /// between: a seek far past the end makes the next write grow the
+    /// array, and the storage with it, to where the position reaches, and
+    /// the array stays that long. A position beyond any a storage has is
+    /// reported by that write.
     ///
     /// - Parameter offset: The new position.
     public mutating func seek(to offset: UInt64) {
