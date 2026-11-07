@@ -199,6 +199,22 @@ import Testing
         #expect(failed == invalid(["remove first", "remove last"]))
     }
 
+    /// The header says the map has as many entries as a number can hold.
+    @Test(arguments: StorageKind.allCases)
+    func aHeaderAtTheLargestSize(kind: StorageKind) throws {
+        let subject = try Subject(kind)
+        let database = try subject.damaged(bigEndianBytes(UInt64.max), at: subject.headerPtr)
+        // A new entry cannot be counted; a rank from the end is beyond the
+        // tree. Everything else works, removes counting down included.
+        let failed = try failing(database)
+        #expect(
+            failed
+                == invalid([
+                    "put new first", "put new last", "get index -1", "get index 50", "iterate from index -1",
+                    "iterate from index 50",
+                ]))
+    }
+
     /// The root's count for its first child is zero.
     @Test(arguments: StorageKind.allCases)
     func aCountOfZeroForAChildWithEntries(kind: StorageKind) throws {
