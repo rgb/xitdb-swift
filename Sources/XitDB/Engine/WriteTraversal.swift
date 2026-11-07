@@ -174,8 +174,8 @@ extension Database {
         }
         let header = try reader.arrayListHeader(at: pointer.slot.value)
         guard let key = DatabaseReader.arrayListKey(index: index, size: header.size) else { throw .indexOutOfRange }
-        let lastKey = header.size - 1
-        let shift: UInt8 = lastKey < Trie.slotsPerBlock ? 0 : Trie.arrayListShift(lastIndex: lastKey)
+        // The size is at least one, since the index names an element.
+        let shift = Trie.arrayListShift(lastIndex: header.size - 1)
         return try arrayListSlot(indexPosition: header.ptr, key: key, shift: shift, frozenAt: frozenAt)
     }
 
