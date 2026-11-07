@@ -440,4 +440,118 @@ import Testing
             try subject.database.compact(into: smallTarget, offsetMap: &map)
         }
     }
+
+    /// What an offset map of the tests' own throws.
+    private struct Refused: Error, CustomStringConvertible {
+        var description: String { "refused by the test" }
+    }
+
+    /// An offset map that throws on one of its operations and otherwise
+    /// keeps its mappings in memory.
+    private struct ThrowingOffsetMap: OffsetMap {
+        enum Operation {
+            case reset, get, put
+        }
+        let failing: Operation
+        private var memory = MemoryOffsetMap()
+
+        init(failing: Operation) {
+            self.failing = failing
+        }
+
+        mutating func reset() throws {
+            if failing == .reset { throw Refused() }
+            memory.reset()
+        }
+
+        mutating func get(_ sourceOffset: UInt64) throws -> UInt64? {
+            if failing == .get { throw Refused() }
+            return memory.get(sourceOffset)
+        }
+
+        mutating func put(_ sourceOffset: UInt64, _ targetOffset: UInt64) throws {
+            if failing == .put { throw Refused() }
+            memory.put(sourceOffset, targetOffset)
+        }
+    }
+
+    /// An offset map that throws has its error carried as `callerError`,
+    /// from whichever operation: the reset before anything is written, a
+    /// lookup or a record during the walk. The source is left as it was
+    /// and the target as a transaction that did not commit; through the
+    /// compaction that opens its target, a reset that throws leaves the
+    /// storage untouched, since the map is reset before the target is
+    /// opened, as in Zig.
+    @Test(arguments: StorageKind.allCases)
+    func anOffsetMapThatThrows(kind: StorageKind) throws {
+        let subject = try Subject(kind, makeDatabase: makeDatabase)
+        let sourceStorage = subject.subject.storage
+        let sourceBytes = try readBytes(sourceStorage, at: 0, count: Int(try sourceStorage.length))
+        for operation in [ThrowingOffsetMap.Operation.reset, .get, .put] {
+            let targetSubject = try StorageUnderTest(kind)
+            let target = try Database(
+                storage: targetSubject.storage, hashSize: 20, hashID: nil, fileID: 8, random: FixedRandom([3]))
+            var map = ThrowingOffsetMap(failing: operation)
+            #expect(throws: XitDBError.callerError(Refused())) {
+                try subject.database.compact(into: target, offsetMap: &map)
+            }
+            #expect(try target.rootCursor.slot.isEmpty)
+            #expect(try targetSubject.storage.length == (try target.committedSize))
+        }
+        #expect(try readBytes(sourceStorage, at: 0, count: Int(try sourceStorage.length)) == sourceBytes)
+
+        let untouched = try StorageUnderTest(kind)
+        var map = ThrowingOffsetMap(failing: .reset)
+        #expect(throws: XitDBError.callerError(Refused())) {
+            try subject.database.compact(into: untouched.storage, fileID: 8, offsetMap: &map)
+        }
+        #expect(try untouched.storage.length == 0)
+    }
+
+    /// The target's storage failing during a compaction: at a write of the
+    /// walk, at the first sync of the commit, and at its second. The error
+    /// is reported and the source left as it was; the target is a
+    /// transaction that did not commit, until the root header is written,
+    /// after which the commit is made and only its last sync is missing.
+    @Test(arguments: StorageKind.allCases)
+    func aTargetStorageThatFails(kind: StorageKind) throws {
+        let subject = try Subject(kind, makeDatabase: makeDatabase)
+        let sourceStorage = subject.subject.storage
+        let sourceBytes = try readBytes(sourceStorage, at: 0, count: Int(try sourceStorage.length))
+
+        func compacting(faults: (FaultInjectingStorage) -> [FaultInjectingStorage.Fault]) throws -> (
+            target: Database, storage: FaultInjectingStorage
+        ) {
+            let faulty = FaultInjectingStorage(try StorageUnderTest(kind).storage)
+            let target = try Database(storage: faulty, hashSize: 20, hashID: nil, fileID: 8, random: FixedRandom([3]))
+            faulty.faults = faults(faulty)
+            var map = MemoryOffsetMap()
+            #expect(throws: FaultInjectingStorage.failure) {
+                try subject.database.compact(into: target, offsetMap: &map)
+            }
+            faulty.faults = []
+            return (target, faulty)
+        }
+
+        // a write in the middle of the walk
+        let midway = try compacting { [.failWrite($0.writeCount + 6)] }
+        #expect(try midway.target.rootCursor.slot.isEmpty)
+        #expect(try midway.storage.length == (try midway.target.committedSize))
+
+        // the sync before the root header
+        let unsynced = try compacting { [.failSync($0.syncCount + 1)] }
+        #expect(try unsynced.target.rootCursor.slot.isEmpty)
+        #expect(try unsynced.storage.length == (try unsynced.target.committedSize))
+
+        // the sync after it: the commit is made
+        let committed = try compacting { [.failSync($0.syncCount + 2)] }
+        #expect(try committed.target.rootCursor.count == 1)
+        #expect(try committed.storage.length == (try committed.target.committedSize))
+        let moment = try #require(try committed.target.rootCursor.readPath([.arrayListGet(-1)]))
+        #expect(
+            try #require(try moment.readPath([.hashMapGet(.value, sha1("map")), .hashMapGet(.value, sha1("k"))]))
+                .readUInt64() == 9)
+
+        #expect(try readBytes(sourceStorage, at: 0, count: Int(try sourceStorage.length)) == sourceBytes)
+    }
 }
