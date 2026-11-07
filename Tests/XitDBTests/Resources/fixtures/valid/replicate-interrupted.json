@@ -94,6 +94,13 @@
     { "op": "apply_replicated", "start": 0, "bytes": "new_database", "note": "and it can go back to nothing" },
     { "op": "committed_size", "expect": 62 },
     { "op": "slot", "on": "root", "expect": { "tag": "none", "full": false } },
-    { "op": "read_committed", "start": 0, "end": 62, "as": "got", "expect_same": "new_database" }
+    { "op": "read_committed", "start": 0, "end": 62, "as": "got", "expect_same": "new_database" },
+
+    { "op": "create_database", "name": "cleared", "file_id": "0000000000000005" },
+    { "op": "use", "name": "cleared" },
+    { "op": "apply_replicated", "start": 0, "bytes": "first" },
+    { "op": "apply_replicated", "start": 96, "bytes": "second", "short_by": 1, "expect_error": "InvalidDatabase", "note": "this leaves 33 bytes behind" },
+    { "op": "apply_replicated", "start": 96, "bytes": "second", "short_by": 34, "note": "and this clears them, with nothing to put there, so its expected file ends at 96" },
+    { "op": "committed_size", "expect": 96 }
   ]
 }

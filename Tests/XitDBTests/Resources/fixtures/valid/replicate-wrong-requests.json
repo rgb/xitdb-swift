@@ -1,0 +1,60 @@
+{
+  "format": "xitdb-script/1",
+  "description": "Asking for the wrong thing, against a replica that has something to lose. Bytes that aren't committed can't be read, and bytes can't be applied anywhere but at 0 or where a database's committed bytes end. What a failed sync leaves behind is gone after the next one, even one shorter than it. A replica ahead of a copy of its own source is replaced from that copy.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "0000000000000001",
+  "ops": [
+    { "op": "create_database", "name": "replica", "file_id": "0000000000000002" },
+    { "op": "create_database", "name": "behind", "file_id": "0000000000000003" },
+    { "op": "write", "on": "root", "data": { "uint": 1 } },
+    { "op": "write", "on": "root", "data": { "uint": 2 } },
+    { "op": "write", "on": "root", "data": { "uint": 3 } },
+    { "op": "committed_size", "expect": 164 },
+
+    { "op": "read_committed", "start": 0, "end": 200, "as": "bad", "expect_error": "InvalidRange" },
+    { "op": "read_committed", "start": 96, "end": 165, "as": "bad", "expect_error": "InvalidRange" },
+    { "op": "read_committed", "start": 130, "end": 96, "as": "bad", "expect_error": "InvalidRange" },
+    { "op": "read_committed", "start": 1, "end": 96, "as": "bad", "expect_error": "InvalidRange" },
+    { "op": "read_committed", "start": 30, "end": 96, "as": "bad", "expect_error": "InvalidRange" },
+
+    { "op": "read_committed", "start": 0, "end": 96, "as": "to_96" },
+    { "op": "read_committed", "start": 96, "end": 164, "as": "to_164" },
+    { "op": "read_committed", "start": 96, "end": 130, "as": "to_130" },
+    { "op": "read_committed", "start": 130, "end": 164, "as": "last" },
+    { "op": "read_committed", "start": 0, "end": 164, "as": "all_of_main" },
+
+    { "op": "use", "name": "behind" },
+    { "op": "apply_replicated", "start": 0, "bytes": "to_96" },
+
+    { "op": "use", "name": "replica" },
+    { "op": "apply_replicated", "start": 0, "bytes": "to_96" },
+    { "op": "apply_replicated", "start": 62, "bytes": "last", "expect_error": "InvalidRange", "note": "where the first commit ends, which isn't where its committed bytes do" },
+    { "op": "apply_replicated", "start": 97, "bytes": "last", "expect_error": "InvalidRange" },
+    { "op": "apply_replicated", "start": 130, "bytes": "last", "expect_error": "InvalidRange", "note": "where the bytes were read from, but it hasn't got that far" },
+    { "op": "committed_size", "expect": 96 },
+    { "op": "read_uint", "on": "root", "expect": 1 },
+
+    { "op": "apply_replicated", "start": 96, "bytes": "to_164", "short_by": 1, "expect_error": "InvalidDatabase", "note": "this leaves 67 bytes past what's committed" },
+    { "op": "committed_size", "expect": 96 },
+    { "op": "apply_replicated", "start": 96, "bytes": "to_130", "note": "and this is shorter than that, so they'd still be there if it didn't clear them" },
+    { "op": "committed_size", "expect": 130 },
+    { "op": "read_uint", "on": "root", "expect": 2 },
+    { "op": "read_committed", "start": 0, "end": 130, "as": "got" },
+    { "op": "use", "name": "main" },
+    { "op": "read_committed", "start": 0, "end": 130, "as": "from_main", "expect_same": "got" },
+    { "op": "use", "name": "replica" },
+    { "op": "apply_replicated", "start": 130, "bytes": "last" },
+    { "op": "read_committed", "start": 0, "end": 164, "as": "got", "expect_same": "all_of_main" },
+
+    { "op": "replica_state", "as": "ahead" },
+    { "op": "use", "name": "behind" },
+    { "op": "replication_start", "state": "ahead", "expect": 0, "note": "it's a copy of the same file, and it can't know that the replica is right" },
+    { "op": "committed_size", "as": "size", "expect": 96 },
+    { "op": "use", "name": "replica" },
+    { "op": "apply_replicated", "start": 0, "bytes": "to_96", "note": "so it goes back" },
+    { "op": "committed_size", "expect": { "var": "size" } },
+    { "op": "read_uint", "on": "root", "expect": 1 },
+    { "op": "read_committed", "start": 0, "end": 96, "as": "got", "expect_same": "to_96" }
+  ]
+}

@@ -16,7 +16,8 @@
       { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "self" } } }, { "write": { "slot": { "var": "moment_slot" } } }] }
     ] } }] },
     { "op": "compact", "into": "first", "file_id": "00000000000000b1", "offset_map": "disk" },
-    { "op": "compact", "into": "second", "file_id": "00000000000000b2", "offset_map": "disk", "note": "the same offsets would point into the first target, so these have to be new" },
+    { "op": "compact", "into": "second", "file_id": "00000000000000b2", "hash_id": "abcd", "offset_map": "disk", "note": "the same offsets would point into the first target, so these have to be new, and it has a hash ID of its own" },
+    { "op": "compact", "into": "first", "offset_map": "disk", "expect_error": "TargetNotEmpty" },
     { "op": "compact", "into": "by_memory", "file_id": "00000000000000b3", "offset_map": "memory" },
     { "op": "use", "name": "second" },
     { "op": "read_path", "on": "root", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "sha1": "self" } } }, { "hash_map_get": { "value": { "sha1": "text_again" } } }], "as": "v" },

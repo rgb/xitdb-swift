@@ -1,0 +1,66 @@
+{
+  "format": "xitdb-sidecar/1",
+  "file_id": "0000000000000001",
+  "initial_size": 62,
+  "file_size": 164,
+  "databases": {
+    "main": {"file_id": "0000000000000001", "file_size": 164, "trailers": [
+      {"position": 71, "commit_id": "118c6e56f2369f0d", "file_id": "0000000000000001"},
+      {"position": 105, "commit_id": "f133e19d6138917d", "file_id": "0000000000000001"},
+      {"position": 139, "commit_id": "d9f4619235b88d83", "file_id": "0000000000000001"}
+    ]},
+    "replica": {"file_id": "0000000000000001", "file_size": 96, "trailers": [
+      {"position": 71, "commit_id": "118c6e56f2369f0d", "file_id": "0000000000000001"}
+    ]},
+    "behind": {"file_id": "0000000000000001", "file_size": 96, "trailers": [
+      {"position": 71, "commit_id": "118c6e56f2369f0d", "file_id": "0000000000000001"}
+    ]}
+  },
+  "ops": [
+    {"committed_size": 62, "commit_id": null},
+    {"committed_size": 62, "commit_id": null},
+    {"committed_size": 96, "commit_id": "118c6e56f2369f0d"},
+    {"committed_size": 130, "commit_id": "f133e19d6138917d"},
+    {"committed_size": 164, "commit_id": "d9f4619235b88d83"},
+    {"committed_size": 164, "commit_id": null},
+    {"committed_size": 164, "commit_id": null},
+    {"committed_size": 164, "commit_id": null},
+    {"committed_size": 164, "commit_id": null},
+    {"committed_size": 164, "commit_id": null},
+    {"committed_size": 164, "commit_id": null},
+    {"committed_size": 164, "commit_id": null},
+    {"committed_size": 164, "commit_id": null},
+    {"committed_size": 164, "commit_id": null},
+    {"committed_size": 164, "commit_id": null},
+    {"committed_size": 164, "commit_id": null},
+    {"db": "behind", "committed_size": 62, "commit_id": null},
+    {"db": "behind", "committed_size": 96, "commit_id": null},
+    {"db": "replica", "committed_size": 62, "commit_id": null},
+    {"db": "replica", "committed_size": 96, "commit_id": null},
+    {"db": "replica", "committed_size": 96, "commit_id": null},
+    {"db": "replica", "committed_size": 96, "commit_id": null},
+    {"db": "replica", "committed_size": 96, "commit_id": null},
+    {"db": "replica", "committed_size": 96, "commit_id": null},
+    {"db": "replica", "committed_size": 96, "commit_id": null},
+    {"db": "replica", "committed_size": 96, "commit_id": null},
+    {"db": "replica", "committed_size": 96, "commit_id": null},
+    {"db": "replica", "committed_size": 130, "commit_id": null},
+    {"db": "replica", "committed_size": 130, "commit_id": null},
+    {"db": "replica", "committed_size": 130, "commit_id": null},
+    {"db": "replica", "committed_size": 130, "commit_id": null},
+    {"committed_size": 164, "commit_id": null},
+    {"committed_size": 164, "commit_id": null},
+    {"db": "replica", "committed_size": 130, "commit_id": null},
+    {"db": "replica", "committed_size": 164, "commit_id": null},
+    {"db": "replica", "committed_size": 164, "commit_id": null},
+    {"db": "replica", "committed_size": 164, "commit_id": null},
+    {"db": "behind", "committed_size": 96, "commit_id": null},
+    {"db": "behind", "committed_size": 96, "commit_id": null},
+    {"db": "behind", "committed_size": 96, "commit_id": null},
+    {"db": "replica", "committed_size": 164, "commit_id": null},
+    {"db": "replica", "committed_size": 96, "commit_id": null},
+    {"db": "replica", "committed_size": 96, "commit_id": null},
+    {"db": "replica", "committed_size": 96, "commit_id": null},
+    {"db": "replica", "committed_size": 96, "commit_id": null}
+  ]
+}

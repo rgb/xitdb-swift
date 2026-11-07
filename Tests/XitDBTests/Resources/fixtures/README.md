@@ -5,7 +5,7 @@ What the Zig implementation of xitdb does, for a Swift port to match byte for by
 
 It was produced from:
 
-- conformance repository: commit `054593377b879cbc7f9d0ddfc26da3b7dac49373`
+- conformance repository: commit `1a6b8d33684aa9d63c17aa003377ff260c913eea`
 - xitdb, the Zig original: commit `6b93af1af3a260399fa0a0b1b268ded2cbf5eec5`, or the one the manifest gives for that fixture as its `zig_commit`
 - Zig 0.17.1, with the runner `run` built in debug mode and using the `buffered_file` storage kind
 
@@ -20,7 +20,7 @@ It was produced from:
   `iterators` (`iterator` and `next`), `rank`, `byte_stream` (`read_stream`) and `byte_buffers`
   (`read_bytes_into`, and `max_size` on `read_bytes`).
 - `valid/<name>.json`: a script that passes, with `<name>.db`, the file Zig wrote, and `<name>.db.sidecar.json`, its
-  committed sizes and commit IDs. Those called `gen-<seed>`, `reads-<seed>` and `compact-<seed>` come from the generator `gen`, and
+  committed sizes and commit IDs. Those called `gen-<seed>`, `reads-<seed>`, `compact-<seed>` and `replica-<seed>` come from the generator `gen`, and
   are harder to read, but they do things in combinations nobody thought of. Those called `deep-*` have transactions of
   hundreds of writes, and they're what tells copying from rewriting in place. These and `iterator-tiers*` come from
   `longscripts`, because they're too long to write by hand.

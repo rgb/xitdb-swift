@@ -81,6 +81,7 @@
     ] } }] },
 
     { "op": "compact", "into": "target", "file_id": "00000000000000bb", "offset_map": "memory" },
+    { "op": "compact", "into": "target", "offset_map": "memory", "expect_error": "TargetNotEmpty", "note": "and it can't be done over the top of that" },
     { "op": "count", "on": "root", "expect": 3, "note": "the source is as it was, and is still the current one" },
     { "op": "use", "name": "target" },
     { "op": "count", "on": "root", "expect": 1, "note": "only the last moment" },

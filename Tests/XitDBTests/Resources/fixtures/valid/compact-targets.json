@@ -8,8 +8,8 @@
     { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "a" } } }, { "write": { "bytes": "a long value to compact" } }] },
 
     { "op": "compact", "into": "new_target", "file_id": "00000000000000b1", "offset_map": "memory" },
-    { "op": "compact", "into": "new_with_hash", "file_id": "00000000000000b2", "hash_id": "abcd", "offset_map": "memory" },
-    { "op": "compact", "into": "new_null_hash", "file_id": "00000000000000b3", "hash_id": null, "offset_map": "memory", "note": "null means the source's, as it's the same as saying nothing" },
+    { "op": "compact", "into": "new_with_hash", "file_id": "00000000000000b2", "hash_id": "abcd", "offset_map": "disk" },
+    { "op": "compact", "into": "new_null_hash", "file_id": "00000000000000b3", "hash_id": null, "offset_map": "disk", "note": "null means the source's, as it's the same as saying nothing. And it's the same source as the one before, so what that left in the offset map would be wrong here" },
 
     { "op": "create_database", "name": "empty_target", "file_id": "00000000000000c1", "hash_id": "wxyz" },
     { "op": "use", "name": "empty_target" },

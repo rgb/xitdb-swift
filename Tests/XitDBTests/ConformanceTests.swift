@@ -31,12 +31,12 @@ import Testing
     /// silently: a script that starts to wait, or stops, changes this test.
     @Test func everyScriptRunsOrWaitsForANamedMilestone() {
         let all = ConformanceFixture.all
-        #expect(all.count == 195)
-        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && $0.mustPass }.count == 79)
+        #expect(all.count == 206)
+        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && $0.mustPass }.count == 81)
         #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && !$0.mustPass }.count == 76)
-        #expect(all.filter { $0.waitsFor == "M7" && $0.mustPass }.count == 10)
+        #expect(all.filter { $0.waitsFor == "M7" && $0.mustPass }.count == 11)
         #expect(all.filter { $0.waitsFor == "M7" && !$0.mustPass }.count == 6)
-        #expect(all.filter { $0.waitsFor == "M8" && $0.mustPass }.count == 8)
+        #expect(all.filter { $0.waitsFor == "M8" && $0.mustPass }.count == 16)
         #expect(all.filter { $0.waitsFor == "M8" && !$0.mustPass }.count == 16)
 
         let waiting = all.filter { $0.waitsFor != nil }.map { "\($0.waitsFor ?? ""): \($0.name)" }.sorted()
@@ -51,6 +51,7 @@ import Testing
                 "M7: compact-disk-offsets",
                 "M7: compact-every-collection",
                 "M7: compact-existing-with-file-id",
+                "M7: compact-full-blocks",
                 "M7: compact-into-closed",
                 "M7: compact-new-without-file-id",
                 "M7: compact-partial-blocks",
@@ -68,12 +69,20 @@ import Testing
                 "M8: invalid-range-not-handled",
                 "M8: invalid-range-not-raised",
                 "M8: number-used-as-cursor",
+                "M8: replica-301",
+                "M8: replica-302",
+                "M8: replica-303",
+                "M8: replica-304",
+                "M8: replica-305",
+                "M8: replica-306",
                 "M8: replicate-bad-trailer",
+                "M8: replicate-earlier-commit",
                 "M8: replicate-failed-first-sync",
                 "M8: replicate-history",
                 "M8: replicate-interrupted",
                 "M8: replicate-other-file",
                 "M8: replicate-roots",
+                "M8: replicate-wrong-requests",
                 "M8: short-apply-not-handled",
                 "M8: start-not-a-number",
                 "M8: start-unbound",
@@ -92,7 +101,8 @@ import Testing
         let readOnly = all.filter { $0.features.contains("read_only") }.map(\.name).sorted()
         #expect(
             readOnly == [
-                "gen-8", "read-only", "read-only-at-end", "read-only-leftovers", "write-on-read-only-not-handled",
+                "gen-8", "read-only", "read-only-at-end", "read-only-leftovers", "replica-302", "replica-303",
+                "replica-306", "write-on-read-only-not-handled",
             ]
         )
     }
