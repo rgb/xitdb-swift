@@ -36,6 +36,18 @@ func sha1(_ text: String) -> KeyHash {
     KeyHash(Array(Insecure.SHA1.hash(data: Data(text.utf8))))
 }
 
+/// The UTF-8 bytes of a string: Zig's `"text"` literal as the bytes the
+/// collections take.
+func utf8(_ text: String) -> [UInt8] {
+    Array(text.utf8)
+}
+
+/// Zig's `hashInt(text)`: the SHA-1 of the text, as the twenty bytes the
+/// collections take.
+func hashInt(_ text: String) -> [UInt8] {
+    sha1(text).bytes
+}
+
 /// The bytes that a string of hex digits stands for.
 func hex(_ digits: String) -> [UInt8] {
     var bytes: [UInt8] = []
