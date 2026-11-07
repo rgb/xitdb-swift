@@ -5,8 +5,8 @@ import Testing
 /// What compaction does at the edges: a source nested as deep as a writer
 /// cared to go, which is valid and must not need a stack to match; damaged
 /// sources, each reported without a trap and without committing anything
-/// in the target; and a target whose failed compaction the next one
-/// truncates.
+/// in the target; and a target whose failed compaction is discarded at
+/// once, so that the next one writes into it as into a fresh target.
 @Suite struct CompactionEdgeTests {
     /// Every pair of storage kinds, source and target.
     static let pairs: [(StorageKind, StorageKind)] = StorageKind.allCases.flatMap { source in

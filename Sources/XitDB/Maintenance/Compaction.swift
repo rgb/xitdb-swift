@@ -44,8 +44,10 @@ extension Database {
     ///   and ``XitDBError/unexpectedTag`` for an array list whose index does
     ///   not hold what its size says. A compaction that fails leaves the
     ///   target as a transaction that did not commit: nothing of it is
-    ///   reachable, and the next transaction truncates it. Errors of the
-    ///   two storages and of the offset map are passed on.
+    ///   reachable, and what it wrote is discarded at once, as after any
+    ///   transaction that fails; should the storage refuse to cut it off
+    ///   then, the next transaction discards it. Errors of the two
+    ///   storages and of the offset map are passed on.
     public func compact<Map: OffsetMap>(into target: Database, offsetMap: inout Map) throws(XitDBError) {
         // cached offsets only apply to this compaction's target
         try offsetMap.clear()
