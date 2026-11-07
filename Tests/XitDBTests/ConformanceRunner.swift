@@ -711,13 +711,15 @@ final class ScriptRunner {
 
     private func perform(_ name: String, _ op: ScriptObject, topLevel: Bool) throws {
         let topLevelOps = [
-            "close", "reopen", "raw_append", "raw_write", "create_database", "use", "compact", "replica_state",
-            "replication_start", "committed_size", "read_committed", "apply_replicated",
+            "close", "reopen", "recover", "raw_append", "raw_write", "create_database", "use", "compact",
+            "replica_state", "replication_start", "committed_size", "read_committed", "apply_replicated",
         ]
         if topLevelOps.contains(name) && !topLevel {
             throw UnknownInScript("'\(name)' inside a callback")
         }
-        if database == nil && !["reopen", "raw_append", "raw_write", "create_database", "use"].contains(name) {
+        if database == nil
+            && !["reopen", "recover", "raw_append", "raw_write", "create_database", "use"].contains(name)
+        {
             throw ScriptFailure("the op '\(name)' while the database is closed")
         }
 
@@ -1201,6 +1203,21 @@ final class ScriptRunner {
                 database = try Database(opening: opened, hashSize: Int(size), random: random)
             } catch {
                 // A failed reopen leaves the database closed.
+                storage.close()
+                throw error
+            }
+
+        case "recover":
+            // The port's recovery: the database must be closed, and it is
+            // open afterwards. No commit ID: the call draws nothing.
+            try op.allow("op", "note", "expect_error")
+            if database != nil { throw ScriptFailure("recover while the database is open") }
+            let opened = try storage.openStorage(readOnly: false)
+            do {
+                database = try Database.recover(opened, random: random)
+            } catch {
+                // A failed recovery leaves the database closed, as a failed
+                // reopen does.
                 storage.close()
                 throw error
             }
