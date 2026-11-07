@@ -37,8 +37,8 @@ import Testing
     /// silently: a script that starts to wait, or stops, changes this test.
     @Test func everyScriptRunsOrWaitsForANamedMilestone() {
         let all = ConformanceFixture.all
-        #expect(all.count == 206)
-        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && $0.mustPass }.count == 108)
+        #expect(all.count == 208)
+        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && $0.mustPass }.count == 110)
         #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && !$0.mustPass }.count == 98)
 
         // nothing waits for a milestone any more

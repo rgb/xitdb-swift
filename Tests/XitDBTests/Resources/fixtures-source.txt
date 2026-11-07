@@ -2,8 +2,8 @@ The folder `fixtures` beside this file is a copy of the folder of the same name 
 conformance repository (../../../../conformance), taken from a commit with `git archive`.
 Do not edit it. To update it, copy it again from a later commit and change the line below.
 
-copied from conformance commit: e6326c1483c62109f9a548876c400ca4669ea7cb
-the manifest's conformance_commit: 1a6b8d33684aa9d63c17aa003377ff260c913eea
+copied from conformance commit: cf5945990253f221db0ed763abcd8d26cb65a946
+the manifest's conformance_commit: 9158b24ae3c4d98f378d2a4dd2675d3c38765226
 
 The folder `port-differs` beside it is a copy of `tests/port-differs` in the conformance repository, taken from
 the same commit. Each script there has a twin: `<name>.zig.json` says what the Zig original does and
