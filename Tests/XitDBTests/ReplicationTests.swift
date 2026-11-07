@@ -15,9 +15,10 @@ import Testing
 //
 // The comments inside the tests are Zig's. Zig's `clearStorage` of the source and the replica at the start of a
 // block is a new storage of each kind here, and reopening a database (`DB.init(replica_opts)` over the same file)
-// is a new `Database` over the same storage. Zig's `std.Io.Writer.Allocating` as the sink of `readCommitted` is a
-// `[UInt8]` here and its `std.Io.Reader.fixed` over the written bytes an `ArrayByteSource`; `std.Io.Writer.Discarding`
-// is `DiscardingSink` below. Zig's `Ctx.run` methods are the private methods `writeMoment` and `writeBatch` below,
+// is a new `Database` over the same storage. Zig's `std.Io.Writer.Allocating` as the sink of `readCommitted` is
+// `CollectingSink` here (the streaming path, as Zig's; the array convenience is the edge tests' and the conformance
+// runner's) and its `std.Io.Reader.fixed` over the written bytes an `ArrayByteSource`; `std.Io.Writer.Discarding` is
+// `DiscardingSink` below. Zig's `Ctx.run` methods are the private methods `writeMoment` and `writeBatch` below,
 // and its `error.Fail` is `Fail`. Zig's `history.appendContext(.{ .slot = ... }, Ctx{})` is
 // `history.appendContext(.slot(...)) { cursor in ... }`, and `map.cursor.writePath(Ctx, &.{ ..., .{ .ctx = Ctx{} } })`
 // is `map.cursor.writePath([..., .ctx]) { cursor in ... }`. Zig's `readBytes(&buffer)` into a fixed buffer is
@@ -58,9 +59,16 @@ import Testing
 
     // MARK: Zig's helpers
 
+    /// Zig's `std.Io.Writer.Allocating`: the committed bytes from `start` to `end`, through a sink.
+    private func readCommitted(_ database: Database, from start: UInt64, to end: UInt64) throws -> [UInt8] {
+        var sink = CollectingSink()
+        try database.readCommitted(from: start, to: end, into: &sink)
+        return sink.bytes
+    }
+
     /// test.zig 3917-3922: `readCommittedBytes`, the committed bytes from `start` to the committed size.
     private func readCommittedBytes(_ database: Database, from start: UInt64) throws -> [UInt8] {
-        try database.readCommitted(from: start, to: try database.committedSize())
+        try readCommitted(database, from: start, to: try database.committedSize())
     }
 
     /// test.zig 3924-3934: `replicate`.
@@ -69,7 +77,7 @@ import Testing
         // have yet (or all of them, if it isn't a replica of this source)
         let start = try source.replicationStart(try replica.replicaState())
         let end = try source.committedSize()
-        let bytes = try source.readCommitted(from: start, to: end)
+        let bytes = try readCommitted(source, from: start, to: end)
         var reader = ArrayByteSource(bytes)
         try replica.applyReplicated(at: start, from: &reader, count: end - start)
     }
@@ -275,7 +283,7 @@ import Testing
         do {
             let start = try replica.committedSize()
             let end = try other.committedSize()
-            let bytes = try other.readCommitted(from: start, to: end)
+            let bytes = try readCommitted(other, from: start, to: end)
             var reader = ArrayByteSource(bytes)
             #expect(throws: XitDBError.invalidDatabase) {
                 try replica.applyReplicated(at: start, from: &reader, count: end - start)
