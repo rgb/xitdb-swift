@@ -171,6 +171,21 @@ import Testing
         #expect(failed == ["get 24", "get -1", "append", "slice 20 5", "concat"])
     }
 
+    /// The root's counts add up past what a number holds: its first is the
+    /// largest number. An operation that writes the root again with that
+    /// count kept sums it and is reported: an append, a slice or a join
+    /// that keeps the first child. One that goes through the first child
+    /// writes the child's own count in its place, so it goes through. Every
+    /// rank falls in the first child by that count, and is reported by the
+    /// leaf's bound unless it is one the leaf has.
+    @Test(arguments: StorageKind.allCases)
+    func countsThatAddUpPastTheLargestNumber(kind: StorageKind) throws {
+        let subject = try Subject(kind)
+        let database = try subject.damaged(bigEndianBytes(UInt64.max), at: subject.rootPtr + 146)
+        let failed = try failing(database)
+        #expect(failed == ["get 24", "get -1", "append", "slice 20 5", "concat"])
+    }
+
     /// The root's first child points back at the root.
     @Test(arguments: StorageKind.allCases)
     func aBranchPointingAtItsAncestor(kind: StorageKind) throws {

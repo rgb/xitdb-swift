@@ -288,7 +288,7 @@ extension Database {
                 let branch = entries.node(.branch, from: 0, to: entries.count)
                 let ptr = try writeNodeVersion(branch, oldPtr: frame.position, frozenAt: frozenAt)
                 result = BTreeInsertResult(
-                    nodePtr: ptr, count: branch.subtreeCount, valuePosition: result.valuePosition, split: nil)
+                    nodePtr: ptr, count: try branch.subtreeCount(), valuePosition: result.valuePosition, split: nil)
             } else {
                 let leftCount = BTree.splitCount
                 let left = entries.node(.branch, from: 0, to: leftCount)
@@ -297,9 +297,9 @@ extension Database {
                 let rightPtr = try appendNode(right)
                 result = BTreeInsertResult(
                     nodePtr: leftPtr,
-                    count: left.subtreeCount,
+                    count: try left.subtreeCount(),
                     valuePosition: result.valuePosition,
-                    split: (rightPtr, right.subtreeCount)
+                    split: (rightPtr, try right.subtreeCount())
                 )
             }
         }
@@ -396,7 +396,7 @@ extension Database {
             }
             node.setChild(
                 Slot(value: try writeNodeVersion(child, oldPtr: childPtr, frozenAt: frozenAt), tag: .index), at: index)
-            node.setCount(child.subtreeCount, at: index)
+            node.setCount(try child.subtreeCount(), at: index)
             child = node
             childPtr = frame.position
         }
@@ -437,14 +437,15 @@ extension Database {
     private func bTreeAssemble(_ kind: BTreeNodeKind, _ entries: BTreeEntries) throws(XitDBError) -> BTreeJoinResult {
         if entries.count <= BTree.slotCount {
             let node = entries.node(kind, from: 0, to: entries.count)
-            return BTreeJoinResult(nodePtr: try appendNode(node), count: node.subtreeCount, split: nil)
+            return BTreeJoinResult(nodePtr: try appendNode(node), count: try node.subtreeCount(), split: nil)
         }
         let leftCount = entries.count / 2
         let left = entries.node(kind, from: 0, to: leftCount)
         let right = entries.node(kind, from: leftCount, to: entries.count)
         let leftPtr = try appendNode(left)
         let rightPtr = try appendNode(right)
-        return BTreeJoinResult(nodePtr: leftPtr, count: left.subtreeCount, split: (rightPtr, right.subtreeCount))
+        return BTreeJoinResult(
+            nodePtr: leftPtr, count: try left.subtreeCount(), split: (rightPtr, try right.subtreeCount()))
     }
 
     /// Merges two nodes of one height, `a` before `b`, into one or two

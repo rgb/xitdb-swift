@@ -171,11 +171,16 @@ struct BTreeNode: Sendable, TreeNodeBytes {
     }
 
     /// The number of elements in and beneath this node.
-    var subtreeCount: UInt64 {
+    ///
+    /// - Throws: `invalidBTreeNode` if a branch's counts, which came from
+    ///   the file, add up past what a number holds.
+    func subtreeCount() throws(XitDBError) -> UInt64 {
         if kind == .leaf { return UInt64(num) }
         var total: UInt64 = 0
         for index in 0..<Int(num) {
-            total += count(index)
+            let (sum, overflow) = total.addingReportingOverflow(count(index))
+            guard !overflow else { throw .invalidBTreeNode }
+            total = sum
         }
         return total
     }
@@ -353,11 +358,16 @@ struct SortedNode: Sendable, TreeNodeBytes {
     }
 
     /// The number of entries in and beneath this node.
-    var subtreeCount: UInt64 {
+    ///
+    /// - Throws: `invalidBTreeNode` if a branch's counts, which came from
+    ///   the file, add up past what a number holds.
+    func subtreeCount() throws(XitDBError) -> UInt64 {
         if kind == .leaf { return UInt64(num) }
         var total: UInt64 = 0
         for index in 0..<Int(num) {
-            total += count(index)
+            let (sum, overflow) = total.addingReportingOverflow(count(index))
+            guard !overflow else { throw .invalidBTreeNode }
+            total = sum
         }
         return total
     }

@@ -83,7 +83,7 @@ private func count(_ value: UInt8) -> [UInt8] {
         // slots of the bytes, read as one or the other
         #expect(array(node.children) == array(node.values))
         #expect(array(node.counts).allSatisfy { $0 == 0 })
-        #expect(node.subtreeCount == 2)
+        #expect(try node.subtreeCount() == 2)
         #expect(encoded(capacity: 146) { node.encode(into: &$0) } == bytes)
     }
 
@@ -101,20 +101,20 @@ private func count(_ value: UInt8) -> [UInt8] {
         #expect(node.counts[0] == 16)
         #expect(node.counts[1] == 3)
         #expect(array(node.values) == array(node.children))
-        #expect(node.subtreeCount == 19)
+        #expect(try node.subtreeCount() == 19)
         #expect(encoded(capacity: 274) { node.encode(into: &$0) } == bytes)
     }
 
-    @Test func subtreeCountUsesOnlyTheEntriesInUse() {
+    @Test func subtreeCountUsesOnlyTheEntriesInUse() throws {
         var branch = BTreeNode(kind: .branch, num: 2)
         branch.counts[0] = 5
         branch.counts[1] = 6
         branch.counts[2] = 100
-        #expect(branch.subtreeCount == 11)
+        #expect(try branch.subtreeCount() == 11)
 
         var leaf = BTreeNode(kind: .leaf, num: 16)
         leaf.counts[0] = 100
-        #expect(leaf.subtreeCount == 16)
+        #expect(try leaf.subtreeCount() == 16)
     }
 
     @Test func aFullNodeRoundTrips() throws {
@@ -221,7 +221,7 @@ private func count(_ value: UInt8) -> [UInt8] {
         #expect(node.entries[0] == Slot(value: 0x6100_0000_0000_0000, tag: .shortBytes))
         #expect(node.entries[1] == Slot(value: 0x40, tag: .sortedKvPair))
         #expect(array(node.entries)[2...].allSatisfy { $0.isEmpty })
-        #expect(node.subtreeCount == 2)
+        #expect(try node.subtreeCount() == 2)
         #expect(encoded(capacity: 146) { node.encode(into: &$0) } == bytes)
     }
 
@@ -243,7 +243,7 @@ private func count(_ value: UInt8) -> [UInt8] {
         #expect(node.counts[0] == 4)
         #expect(node.counts[1] == 9)
         #expect(array(node.entries) == array(node.children))
-        #expect(node.subtreeCount == 13)
+        #expect(try node.subtreeCount() == 13)
         #expect(encoded(capacity: 418) { node.encode(into: &$0) } == bytes)
     }
 
@@ -270,7 +270,7 @@ private func count(_ value: UInt8) -> [UInt8] {
         #expect(array(decodedBranch.children) == array(branch.children))
         #expect(array(decodedBranch.separators) == array(branch.separators))
         #expect(array(decodedBranch.counts) == array(branch.counts))
-        #expect(decodedBranch.subtreeCount == branch.subtreeCount)
+        #expect(try decodedBranch.subtreeCount() == (try branch.subtreeCount()))
     }
 
     @Test func headerIsValidatedInZigsOrder() {

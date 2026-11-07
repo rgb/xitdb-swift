@@ -220,6 +220,26 @@ import Testing
                 ]))
     }
 
+    /// The root's counts add up past what a number holds: its first is the
+    /// largest number. A put that writes the root again with that count
+    /// kept, one into the last child, sums it and is reported; a put into
+    /// the first child writes the child's own count in its place and goes
+    /// through, as does a remove, which counts down. Every rank falls in
+    /// the first child by that count, and is reported by the leaf's bound
+    /// unless it is one the leaf has.
+    @Test(arguments: StorageKind.allCases)
+    func countsThatAddUpPastTheLargestNumber(kind: StorageKind) throws {
+        let subject = try Subject(kind)
+        let database = try subject.damaged(bigEndianBytes(UInt64.max), at: subject.rootPtr + 290)
+        let failed = try failing(database)
+        #expect(
+            failed
+                == invalid([
+                    "put last", "put new last", "get index 24", "get index -1", "iterate from index 24",
+                    "iterate from index -1",
+                ]))
+    }
+
     /// The root's count for its first child is zero.
     @Test(arguments: StorageKind.allCases)
     func aCountOfZeroForAChildWithEntries(kind: StorageKind) throws {

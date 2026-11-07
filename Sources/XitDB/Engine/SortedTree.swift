@@ -423,7 +423,8 @@ extension Database {
                 let branch = entries.node(.branch, from: 0, to: entries.count)
                 let ptr = try writeNodeVersion(branch, oldPtr: frame.position, frozenAt: frozenAt)
                 result = SortedInsertResult(
-                    nodePtr: ptr, count: branch.subtreeCount, entry: result.entry, added: result.added, split: nil)
+                    nodePtr: ptr, count: try branch.subtreeCount(), entry: result.entry, added: result.added, split: nil
+                )
             } else {
                 // Overflow: two branches; the new sibling's separator is the
                 // one its first child had.
@@ -435,10 +436,10 @@ extension Database {
                 let rightPtr = try appendNode(right)
                 result = SortedInsertResult(
                     nodePtr: leftPtr,
-                    count: left.subtreeCount,
+                    count: try left.subtreeCount(),
                     entry: result.entry,
                     added: result.added,
-                    split: (rightPtr, right.subtreeCount, separator)
+                    split: (rightPtr, try right.subtreeCount(), separator)
                 )
             }
         }
