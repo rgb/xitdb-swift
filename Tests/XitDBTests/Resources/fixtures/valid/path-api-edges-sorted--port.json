@@ -1,0 +1,39 @@
+{
+  "format": "xitdb-script/1",
+  "description": "The corners of the path API that need sorted maps, with what the port does: nothing can follow a remove, and an op that fails having written something poisons the transaction.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f0000000000009",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [
+      "array_list_init",
+      "array_list_append",
+      { "hash_map_init": {} },
+      { "ctx": { "as": "m", "ops": [
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "s" } } }, { "sorted_map_init": {} }, { "sorted_map_get": { "value": "a" } }, { "write": { "uint": 1 } }] },
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "s" } } }, { "sorted_map_init": {} }, { "sorted_map_get_index": 0 }], "expect_error": "WriteNotAllowed",
+          "note": "sorted_map_get_index is the one getter that only works in a read path" },
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "s" } } }, { "sorted_map_init": {} }, { "sorted_map_remove": "a" }, { "ctx": { "as": "never", "ops": [{ "op": "fail" }] } }], "expect_error": "PathPartMustBeAtEnd",
+          "note": "a sorted remove has to end the path too, and it raises this before removing anything" },
+        { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "s" } } }], "as": "s" },
+        { "op": "count", "on": "s", "expect": 1 }
+      ] } }
+    ] },
+    { "op": "read_path_slot", "on": "root", "path": [{ "array_list_get": -1 }], "as": "last" },
+    { "op": "write_path", "on": "root", "path": [
+      "array_list_init",
+      "array_list_append",
+      { "write": { "slot": { "var": "last" } } },
+      { "hash_map_init": {} },
+      { "ctx": { "as": "m", "ops": [
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "s" } } }, { "sorted_map_init": {} }, { "sorted_map_get": { "key": "b" } }, { "write": { "uint": 1 } }], "expect_error": "CursorNotWriteable",
+          "note": "a sorted key can't be written, and the failed path has already inserted it, so this poisons the transaction" },
+        { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "s" } } }], "as": "s" },
+        { "op": "count", "on": "s", "expect": 2 },
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "after" } } }, { "write": { "uint": 2 } }], "expect_error": "PoisonedTransaction" }
+      ] } }
+    ], "expect_error": "PoisonedTransaction", "note": "so b isn't there, as this is rolled back" },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "sha1": "s" } } }], "as": "s" },
+    { "op": "count", "on": "s", "expect": 1 }
+  ]
+}

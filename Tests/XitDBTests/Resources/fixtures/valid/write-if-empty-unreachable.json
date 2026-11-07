@@ -1,0 +1,45 @@
+{
+  "format": "xitdb-script/1",
+  "description": "A key that's been removed, or a value that's been cleared, doesn't leave an empty slot behind wherever a cursor is pointing, so write_if_empty through that cursor holds back, whether it goes by its snapshot or by the slot as it is now. So this does the same on a Zig from before 185af01 and after it. The pair is unreachable from the map but not emptied, and neither is the block that a remove leaves behind. write-if-empty-emptied-slot has the slot that a remove does empty.",
+  "hash_size": 8,
+  "hash_id": null,
+  "file_id": "c0f000000000001d",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "hash_map_init": {} }, { "ctx": { "as": "m", "ops": [
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "00000000000000a1" } } }, { "write": { "uint": 1 } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "00000000000000a1" } } }], "as": "in_the_pair" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_remove": { "hex": "00000000000000a1" } }] },
+      { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "00000000000000a1" } } }], "expect_null": true },
+      { "op": "write_if_empty", "on": "in_the_pair", "data": { "uint": 9 }, "note": "the remove leaves the pair as it was, so its value slot still holds the value" },
+      { "op": "read_uint", "on": "in_the_pair", "expect": 1 },
+      { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "00000000000000a1" } } }], "expect_null": true },
+
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "00000000000000a2" } } }], "as": "empty_in_the_pair" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_remove": { "hex": "00000000000000a2" } }] },
+      { "op": "write_if_empty", "on": "empty_in_the_pair", "data": { "uint": 2 }, "note": "and one with nothing in it is written, where nothing can reach it from the map" },
+      { "op": "read_uint", "on": "empty_in_the_pair", "expect": 2 },
+      { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "00000000000000a2" } } }], "expect_null": true },
+
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "00000000000000a3" } } }, { "write": { "uint": 3 } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "00000000000000a3" } } }], "as": "cleared" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "00000000000000a3" } } }, { "write": { "slot": null } }] },
+      { "op": "write_if_empty", "on": "cleared", "data": { "uint": 9 }, "note": "a written none has full set, so it isn't empty, and neither is the snapshot" },
+      { "op": "read_path_slot", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "00000000000000a3" } } }], "expect": { "tag": "none", "full": true } },
+
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "0000000000000016" } } }, { "write": { "uint": 4 } }], "note": "these two share a slot in the map's first block, so they have a block of their own" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "0000000000000026" } } }, { "write": { "uint": 5 } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "kv_pair": { "hex": "0000000000000016" } } }], "as": "in_the_old_block" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_remove": { "hex": "0000000000000016" } }], "note": "one pair left, so its block goes, and the pair moves up without the block being written" },
+      { "op": "write_if_empty", "on": "in_the_old_block", "data": { "uint": 9 } },
+      { "op": "slot", "on": "in_the_old_block", "expect": { "tag": "kv_pair" } },
+      { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "0000000000000016" } } }], "expect_null": true },
+      { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "0000000000000026" } } }], "as": "moved_up" },
+      { "op": "read_uint", "on": "moved_up", "expect": 5 }
+    ] } }] },
+
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "hex": "00000000000000a1" } } }], "expect_null": true },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "hex": "0000000000000016" } } }], "expect_null": true },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "hex": "0000000000000026" } } }], "as": "still_there" },
+    { "op": "read_uint", "on": "still_there", "expect": 5 }
+  ]
+}

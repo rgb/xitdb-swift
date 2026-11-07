@@ -1,0 +1,29 @@
+{
+  "format": "xitdb-sidecar/1",
+  "file_id": "0000000000000001",
+  "initial_size": 62,
+  "file_size": 130,
+  "databases": {
+    "main": {"file_id": "0000000000000001", "file_size": 130, "trailers": [
+      {"position": 71, "commit_id": "27b65485c81bd586", "file_id": "0000000000000001"},
+      {"position": 105, "commit_id": "81999fb060019d34", "file_id": "0000000000000001"}
+    ]},
+    "replica": {"file_id": "0000000000000001", "file_size": 62, "trailers": []}
+  },
+  "ops": [
+    {"committed_size": 62, "commit_id": null},
+    {"committed_size": 96, "commit_id": "27b65485c81bd586"},
+    {"committed_size": 96, "commit_id": null},
+    {"db": "replica", "committed_size": 62, "commit_id": null},
+    {"db": "replica", "committed_size": 96, "commit_id": null},
+    {"db": "replica", "committed_size": null, "commit_id": null},
+    {"db": "replica", "committed_size": null, "commit_id": null},
+    {"db": "replica", "committed_size": null, "commit_id": null},
+    {"db": "replica", "committed_size": 62, "commit_id": null},
+    {"db": "replica", "committed_size": 62, "commit_id": null},
+    {"db": "replica", "committed_size": 62, "commit_id": null},
+    {"committed_size": 96, "commit_id": null},
+    {"committed_size": 96, "commit_id": null},
+    {"committed_size": 130, "commit_id": "81999fb060019d34"}
+  ]
+}

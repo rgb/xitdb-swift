@@ -34,8 +34,8 @@
       { "op": "read_uint", "on": "in_other", "expect": 2 },
       { "op": "iterator", "on": "other_root", "as": "it" },
       { "op": "next", "on": "it", "expect_null": false },
-      { "op": "db_freeze", "note": "this means the current database, which is the one with the transaction" },
-      { "op": "write", "on": "e", "data": { "uint": 6 } }
+      { "op": "write", "on": "e", "data": { "uint": 6 } },
+      { "op": "db_freeze", "note": "this means the current database, which is the one with the transaction" }
     ] } }] },
     { "op": "count", "on": "root", "expect": 2 },
 

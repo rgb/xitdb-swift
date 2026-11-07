@@ -1,0 +1,110 @@
+{
+  "format": "xitdb-script/1",
+  "description": "Corners of the path API that SCRIPT-FORMAT.md states and a second runner could get wrong. Each is shown to hold in Zig. This is path-api-edges with what the port does: write_if_empty goes by the slot as it is now (Zig from 185af01 on), nothing can follow a remove, and an op that fails having written something poisons the transaction.",
+  "hash_size": 20,
+  "hash_id": null,
+  "file_id": "0000000000000000",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [], "as": "still_root", "note": "an empty path at the root is not a transaction" },
+    { "op": "write_path", "on": "root", "path": ["array_list_init"], "as": "h" },
+    { "op": "write_path", "on": "h", "path": ["array_list_append", { "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "k" } } }, { "write": { "uint": 1 } }] },
+    { "op": "write_path", "on": "root", "path": [{ "ctx": { "as": "x", "ops": [] } }, { "write": { "uint": 1 } }], "expect_error": "PathPartMustBeAtEnd" },
+    { "op": "read_path", "on": "root", "path": [{ "write": { "uint": 1 } }], "expect_error": "WriteNotAllowed" },
+    { "op": "read_path", "on": "root", "path": [{ "ctx": { "as": "x", "ops": [] } }], "expect_error": "WriteNotAllowed" },
+    { "op": "read_path", "on": "root", "path": [{ "ctx": { "as": "x", "ops": [] } }, { "write": { "uint": 1 } }], "expect_error": "WriteNotAllowed",
+      "note": "in a read path, not being able to write comes before the ctx being in the wrong place" },
+    { "op": "read_path_slot", "on": "root", "path": ["array_list_append"], "expect_error": "WriteNotAllowed" },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": 5 }], "expect_null": true,
+      "note": "KeyNotFound is a null result in a read path, not an error" },
+    { "op": "db_freeze", "expect_error": "ExpectedTxStart" },
+    { "op": "freeze", "on": "root", "expect_error": "ExpectedTxStart" },
+    { "op": "write_if_empty", "on": "root", "data": { "uint": 1 }, "note": "the root isn't empty, so this doesn't write and doesn't commit" },
+    { "op": "read_path", "on": "root", "path": [], "expect_null": false },
+
+    { "op": "read_path_slot", "on": "h", "path": [{ "array_list_get": -1 }], "as": "last" },
+    { "op": "write_path", "on": "h", "path": [
+      "array_list_append",
+      { "write": { "slot": { "var": "last" } } },
+      { "hash_map_init": {} },
+      { "ctx": { "as": "m", "ops": [
+        { "op": "count", "on": "h", "expect": 1, "note": "a root cursor reads the last commit, so it doesn't see the moment being made" },
+        { "op": "write_path", "on": "h", "path": [], "as": "h_again", "note": "an empty path isn't a top-level write, even inside a transaction" },
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_remove": { "sha1": "k" } }, { "write": { "uint": 9 } }], "expect_error": "PathPartMustBeAtEnd",
+          "note": "a remove has to end the path, and it raises this before removing anything" },
+        { "op": "read_path_slot", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "k" } } }], "expect_null": false },
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_remove": { "sha1": "k" } }] },
+        { "op": "read_path_slot", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "k" } } }], "expect_null": true },
+
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "p" } } }, { "ctx": { "as": "x", "ops": [
+          { "op": "write", "on": "x", "data": { "uint": 5 } }
+        ] } }], "as": "res1" },
+        { "op": "slot", "on": "res1", "expect": { "tag": "uint", "value": 5 }, "note": "write updates the cursor, so this is what the callback leaves behind" },
+
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "q" } } }, { "ctx": { "as": "x", "ops": [
+          { "op": "write_path", "on": "x", "path": [{ "write": { "uint": 6 } }] }
+        ] } }], "as": "res2" },
+        { "op": "slot", "on": "res2", "expect": { "tag": "none", "full": false }, "note": "write_path doesn't update the cursor it was called on, so its snapshot is stale" },
+        { "op": "read_path_slot", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "q" } } }], "expect": { "tag": "uint", "value": 6 } },
+
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "r" } } }, { "ctx": { "as": "x", "ops": [
+          { "op": "write_path", "on": "x", "path": ["array_list_init"], "as": "x" }
+        ] } }], "as": "res3" },
+        { "op": "slot", "on": "res3", "expect": { "tag": "array_list" }, "note": "binding the callback's own name is like assigning to *cursor" },
+
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "stale" } } }], "as": "first" },
+        { "op": "write_path", "on": "first", "path": [], "as": "second", "note": "with an empty path, write_path makes a second cursor for the same slot" },
+        { "op": "write", "on": "second", "data": { "uint": 8 } },
+        { "op": "slot", "on": "first", "expect": { "tag": "none", "full": false }, "note": "the other name keeps the snapshot it had: cursors never alias" },
+        { "op": "slot", "on": "second", "expect": { "tag": "uint", "value": 8 } },
+        { "op": "read_uint", "on": "first", "expect_error": "UnexpectedTag", "note": "reads go through the snapshot" },
+        { "op": "write_path", "on": "first", "path": [], "as": "first", "note": "and a write_path starts from what the slot holds now" },
+        { "op": "read_uint", "on": "first", "expect": 8 },
+
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "wie" } } }], "as": "wie_a" },
+        { "op": "write_path", "on": "wie_a", "path": [], "as": "wie_b" },
+        { "op": "write", "on": "wie_b", "data": { "uint": 1 } },
+        { "op": "write_if_empty", "on": "wie_a", "data": { "uint": 2 }, "note": "write_if_empty goes by the slot as it is now, so it leaves a value that its snapshot can't see" },
+        { "op": "read_path_slot", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "wie" } } }], "expect": { "tag": "uint", "value": 1 } },
+
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "frozen" } } }, { "hash_map_init": {} }, { "ctx": { "as": "fz", "ops": [
+          { "op": "freeze", "on": "fz" }
+        ] } }], "as": "not_frozen", "note": "a freeze point doesn't leave a callback. this op has no read to show it, so the file does" },
+        { "op": "write_path", "on": "not_frozen", "path": [{ "hash_map_get": { "value": { "sha1": "a" } } }, { "write": { "uint": 1 } }], "note": "changes the map block in place" },
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "frozen" } } }], "as": "will_be_frozen" },
+        { "op": "freeze", "on": "will_be_frozen" },
+        { "op": "write_path", "on": "will_be_frozen", "path": [{ "hash_map_init": {} }], "as": "inherits", "note": "copies the map, and the result keeps the freeze point" },
+        { "op": "write_path", "on": "inherits", "path": [{ "hash_map_get": { "kv_pair": { "sha1": "a" } } }], "as": "pair", "note": "copies the entry" },
+        { "op": "read_key_value_pair", "on": "pair", "value_as": "pair_value" },
+        { "op": "write_path", "on": "pair_value", "path": [{ "write": { "uint": 2 } }], "note": "the pair's cursors keep the freeze point too. only the bytes can tell" }
+      ] } }
+    ] },
+    { "op": "read_path_slot", "on": "h", "path": [{ "array_list_get": -1 }], "as": "last" },
+    { "op": "write_path", "on": "h", "path": [
+      "array_list_append",
+      { "write": { "slot": { "var": "last" } } },
+      { "hash_map_init": {} },
+      { "ctx": { "as": "m", "ops": [
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "bound-before-failing" } } }, { "ctx": { "as": "bf", "ops": [
+          { "op": "write_path", "on": "bf", "path": [{ "write": { "uint": 3 } }], "as": "bound_inside" },
+          { "op": "fail" }
+        ] } }], "as": "unbound_result", "expect_error": "ScriptAbort",
+          "note": "the failed op binds nothing, but what its callback bound before failing stays bound" },
+        { "op": "read_uint", "on": "bound_inside", "expect": 3 },
+        { "op": "read_uint", "on": "bf", "expect_error": "UnexpectedTag", "note": "the callback's own name too, as it was when the callback started: its slot was empty" },
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "after-failing" } } }, { "write": { "uint": 4 } }], "expect_error": "PoisonedTransaction",
+          "note": "that op wrote something, so nothing more can be written" }
+      ] } }
+    ], "expect_error": "PoisonedTransaction", "note": "nor can it commit, so this is rolled back" },
+    { "op": "read_uint", "on": "bound_inside", "expect_error": "StaleCursor", "note": "and now what was bound in it can't be read" },
+    { "op": "read_only", "on": "root", "as": "root_read", "note": "a read-only root cursor is never stale either" },
+    { "op": "read_path", "on": "root", "path": [], "as": "root_snapshot", "note": "but read_path gives a cursor pinned to this commit, even with an empty path" },
+    { "op": "count", "on": "root_read", "expect": 2 },
+    { "op": "count", "on": "root_snapshot", "expect": 2 },
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "write": { "uint": 3 } }] },
+    { "op": "count", "on": "root_read", "expect": 3 },
+    { "op": "count", "on": "root_snapshot", "expect": 2 },
+    { "op": "writer", "on": "first", "steps": [{ "write": "x" }], "expect_error": "ExpectedTxStart", "note": "the transaction is over" },
+    { "op": "write_path", "on": "first", "path": [], "as": "first", "note": "an empty path needs no transaction" },
+    { "op": "read_uint", "on": "first", "expect": 8 }
+  ]
+}

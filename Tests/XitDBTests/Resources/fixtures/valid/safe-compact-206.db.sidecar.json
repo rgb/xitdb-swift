@@ -1,0 +1,57 @@
+{
+  "format": "xitdb-sidecar/1",
+  "file_id": "6bc265fe18354c64",
+  "initial_size": 62,
+  "file_size": 22054,
+  "databases": {
+    "main": {"file_id": "6bc265fe18354c64", "file_size": 22054, "trailers": [
+      {"position": 12485, "commit_id": "86392c3225caec13", "file_id": "6bc265fe18354c64"},
+      {"position": 13349, "commit_id": "c02f26c73cced8f1", "file_id": "6bc265fe18354c64"},
+      {"position": 13778, "commit_id": "4d030c415c6f7236", "file_id": "6bc265fe18354c64"},
+      {"position": 13972, "commit_id": "4bab47552790cb31", "file_id": "6bc265fe18354c64"},
+      {"position": 14900, "commit_id": "46403d5c437570c9", "file_id": "6bc265fe18354c64"},
+      {"position": 16840, "commit_id": "3c3801d944a3de07", "file_id": "6bc265fe18354c64"},
+      {"position": 17178, "commit_id": "58385dd8e7759dc7", "file_id": "6bc265fe18354c64"},
+      {"position": 19147, "commit_id": "60e2a48467a0e243", "file_id": "6bc265fe18354c64"},
+      {"position": 19667, "commit_id": "e517f9b839f0d802", "file_id": "6bc265fe18354c64"},
+      {"position": 21301, "commit_id": "50a7890e2a4d403c", "file_id": "6bc265fe18354c64"},
+      {"position": 22029, "commit_id": "27634211bb1e00c2", "file_id": "6bc265fe18354c64"}
+    ]},
+    "compacted": {"file_id": "00000000000000cc", "file_size": 5293, "trailers": [
+      {"position": 5268, "commit_id": "57c7ad4265a3a790", "file_id": "00000000000000cc"}
+    ]}
+  },
+  "ops": [
+    {"committed_size": 62, "commit_id": null},
+    {"committed_size": 12510, "commit_id": "86392c3225caec13"},
+    {"committed_size": 12510, "commit_id": null},
+    {"committed_size": 13374, "commit_id": "c02f26c73cced8f1"},
+    {"committed_size": 13374, "commit_id": null},
+    {"committed_size": 13374, "commit_id": null},
+    {"committed_size": 13374, "commit_id": null},
+    {"committed_size": 13803, "commit_id": "4d030c415c6f7236"},
+    {"committed_size": 13803, "commit_id": null},
+    {"committed_size": 13997, "commit_id": "4bab47552790cb31"},
+    {"committed_size": 13997, "commit_id": null},
+    {"committed_size": 14925, "commit_id": "46403d5c437570c9"},
+    {"committed_size": 14925, "commit_id": null},
+    {"committed_size": 16865, "commit_id": "3c3801d944a3de07"},
+    {"committed_size": 16865, "commit_id": null},
+    {"committed_size": 17203, "commit_id": "58385dd8e7759dc7"},
+    {"committed_size": 17203, "commit_id": null},
+    {"committed_size": 19172, "commit_id": "60e2a48467a0e243"},
+    {"committed_size": 19172, "commit_id": null},
+    {"committed_size": 19172, "commit_id": null},
+    {"committed_size": 19172, "commit_id": null},
+    {"committed_size": 19692, "commit_id": "e517f9b839f0d802"},
+    {"committed_size": 19692, "commit_id": null},
+    {"committed_size": 19692, "commit_id": null},
+    {"committed_size": null, "commit_id": null},
+    {"committed_size": 19692, "commit_id": null},
+    {"committed_size": 19692, "commit_id": null},
+    {"committed_size": 21326, "commit_id": "50a7890e2a4d403c"},
+    {"committed_size": 21326, "commit_id": null},
+    {"committed_size": 22054, "commit_id": "27634211bb1e00c2"},
+    {"db": "compacted", "committed_size": 5293, "commit_id": "57c7ad4265a3a790"}
+  ]
+}

@@ -1,0 +1,113 @@
+{
+  "format": "xitdb-script/1",
+  "description": "04-rollback with what the port does. An error caught inside a callback is different from Zig here: if the op that raised it had written something, the transaction is poisoned, so every later write in it and its commit raise PoisonedTransaction, and it's rolled back like one that failed. An op that failed before writing anything poisons nothing. What the port writes is what Zig writes with that transaction made to fail.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f0000000000004",
+  "ops": [
+    { "op": "read_path_slot", "on": "root", "path": [{ "array_list_get": -1 }], "as": "last", "expect_null": true },
+    { "op": "write_path", "on": "root", "path": [
+      "array_list_init",
+      "array_list_append",
+      { "write": { "slot": { "var": "last" } } },
+      { "hash_map_init": {} },
+      { "hash_map_get": { "value": { "sha1": "a" } } },
+      { "write": { "uint": 1 } }
+    ] },
+    { "op": "read_path_slot", "on": "root", "path": [{ "array_list_get": -1 }], "as": "last" },
+
+    { "op": "write_path", "on": "root", "path": [
+      "array_list_init",
+      "array_list_append",
+      { "write": { "slot": { "var": "last" } } },
+      { "hash_map_init": {} },
+      { "ctx": { "as": "m", "ops": [
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "a" } } }, { "write": { "uint": 100 } }] },
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "gone" } } }, { "write": { "bytes": "this is rolled back with the rest" } }] },
+        { "op": "fail" },
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "never" } } }, { "write": { "uint": 1 } }],
+          "note": "the callback returned at the fail, so this op doesn't run" }
+      ] } }
+    ], "expect_error": "ScriptAbort", "note": "the callback gives up partway, after writing a lot" },
+    { "op": "count", "on": "root", "expect": 1 },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "sha1": "a" } } }], "as": "c" },
+    { "op": "read_uint", "on": "c", "expect": 1 },
+    { "op": "read_path_slot", "on": "root", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "sha1": "gone" } } }], "expect_null": true },
+
+    { "op": "write_path", "on": "root", "path": [
+      "array_list_init",
+      "array_list_append",
+      { "write": { "slot": { "var": "last" } } },
+      { "hash_map_init": {} },
+      { "hash_map_remove": { "sha1": "absent" } }
+    ], "expect_error": "KeyNotFound", "note": "a path part fails, with no callback involved" },
+    { "op": "count", "on": "root", "expect": 1 },
+
+    { "op": "write_path", "on": "root", "path": [
+      "array_list_init",
+      "array_list_append",
+      { "write": { "slot": { "var": "last" } } },
+      { "hash_map_init": {} },
+      { "ctx": { "as": "m", "ops": [
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "gone" } } }, { "write": { "uint": 2 } }] },
+        { "op": "write_path", "on": "m", "path": ["array_list_append"],
+          "note": "m is a map, not a list. no expect_error, so the error ends the callback too" }
+      ] } }
+    ], "expect_error": "UnexpectedTag", "note": "an op in a callback fails, and nothing in the callback handles it" },
+    { "op": "count", "on": "root", "expect": 1 },
+
+    { "op": "write_path", "on": "root", "path": [
+      "array_list_init",
+      "array_list_append",
+      { "write": { "slot": { "var": "last" } } },
+      { "hash_map_init": {} },
+      { "ctx": { "as": "m", "ops": [
+        { "op": "write_path", "on": "root", "path": ["array_list_append"], "expect_error": "NestedTopLevelWrite", "note": "this wrote nothing, so it poisons nothing" },
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "before" } } }, { "write": { "uint": 9 } }] },
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "b" } } }, { "array_list_get": 0 }], "expect_error": "KeyNotFound",
+          "note": "the path made an empty entry for b before it failed, so this does" },
+        { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "kv_pair": { "sha1": "b" } } }], "expect_null": false, "note": "reads go on as they were" },
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "c" } } }, { "ctx": { "as": "never", "ops": [
+          { "op": "fail" }
+        ] } }], "expect_error": "PoisonedTransaction", "note": "every write from here on raises it, without running its callback" },
+        { "op": "write", "on": "m", "data": { "uint": 1 }, "expect_error": "PoisonedTransaction" }
+      ] } }
+    ], "expect_error": "PoisonedTransaction", "note": "and so does the commit, so this is rolled back" },
+    { "op": "count", "on": "root", "expect": 1 },
+
+    { "op": "write_path", "on": "root", "path": [
+      "array_list_init",
+      "array_list_append",
+      { "write": { "slot": { "var": "last" } } },
+      { "hash_map_init": {} },
+      { "ctx": { "as": "m", "ops": [
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "c" } } }, { "ctx": { "as": "inner", "ops": [
+          { "op": "write", "on": "inner", "data": { "uint": 3 } },
+          { "op": "fail" }
+        ] } }], "expect_error": "ScriptAbort", "note": "the same for a nested callback that gives up having written something, with nothing after it" }
+      ] } }
+    ], "expect_error": "PoisonedTransaction" },
+    { "op": "count", "on": "root", "expect": 1 },
+
+    { "op": "write_path", "on": "root", "path": [
+      "array_list_init",
+      "array_list_append",
+      { "write": { "slot": { "var": "last" } } },
+      { "hash_map_init": {} },
+      { "ctx": { "as": "m", "ops": [
+        { "op": "write_path", "on": "root", "path": ["array_list_append"], "expect_error": "NestedTopLevelWrite" },
+        { "op": "write_path", "on": "m", "path": ["array_list_append"], "expect_error": "UnexpectedTag", "note": "m is a map, so this wrote nothing either" },
+        { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "d" } } }, { "write": { "uint": 4 } }] }
+      ] } }
+    ], "note": "this one commits" },
+    { "op": "count", "on": "root", "expect": 2 },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": -1 }], "as": "m" },
+    { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "kv_pair": { "sha1": "b" } } }], "expect_null": true, "note": "nothing of the two that were rolled back is there" },
+    { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "c" } } }], "expect_null": true },
+    { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "before" } } }], "expect_null": true },
+    { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "d" } } }], "as": "c" },
+    { "op": "read_uint", "on": "c", "expect": 4 },
+    { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "a" } } }], "as": "c" },
+    { "op": "read_uint", "on": "c", "expect": 1 }
+  ]
+}
