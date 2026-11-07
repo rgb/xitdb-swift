@@ -27,12 +27,10 @@ import Testing
 // - 2506-2524, in "iterate over inner array_list" (commits f1550c2 and 7312ad8): a slot set to nothing reads
 //   as empty bytes into any buffer, and streams as nothing.
 //
-// Left out, with what it tests and the feature it waits for:
+// The fix branch's addition to `testSortedMap` (3650-3675 of its test.zig, commit 1486fbf: a short key of a
+// sorted set, whose cursor has no position, read with a reader) is ported in `SortedMapTests`.
 //
-// - 3650-3675 of the fix branch's test.zig, in `testSortedMap` (commit 1486fbf): a short key of a sorted set,
-//   whose cursor has no position, read with a reader. Sorted maps and sets (M6).
-//
-// Everything else in lines 1313 to 2774 is ported.
+// Everything in lines 1313 to 2774 is ported.
 //
 // Beyond what Zig asserts, the tests check the length of the storage at the points where a run of the Zig test
 // was made to print it (a copy of test.zig with prints added, run with Zig 0.17.1 against the lib.zig next to
