@@ -363,9 +363,10 @@ import Testing
         #expect(try #require(try map.getCursor(keys[20])).readUint() == 20)
     }
 
-    /// A storage that gives nothing from the second chunk of a long key on,
-    /// while its length still promises the whole record: the comparison
-    /// reports the end of the stream rather than reading on.
+    /// A storage that gives nothing for the second chunk of a long key, or
+    /// for its first read, while its length still promises the whole
+    /// record: the comparison reports the end of the stream rather than
+    /// reading on, or taking the length from an empty buffer.
     @Test(arguments: StorageKind.allCases)
     func aStorageThatEndsBeforeItsLength(kind: StorageKind) throws {
         let long = [UInt8](repeating: 0x61, count: 300)
@@ -390,6 +391,14 @@ import Testing
         // a key that differs within the first chunk is placed without the rest
         #expect(try map.rank([0x60]) == 0)
         #expect(try map.rank([0x62]) == 1)
+
+        // nothing at all for the first read, which holds the length
+        let silent = FaultInjectingStorage(subject.storage, faults: [.readNothing(keyPtr..<(keyPtr + 1))])
+        let unread = try Database(storage: silent, hashSize: 20, hashID: nil, fileID: nil, random: FixedRandom([9]))
+        let unreadMap = try SortedMap(
+            try #require(try HashMap(unread.rootCursor().readOnly()).getCursor(sha1("map").bytes)))
+        #expect(throws: XitDBError.endOfStream) { try unreadMap.getCursor(long) }
+        #expect(throws: XitDBError.endOfStream) { try unreadMap.rank([0x60]) }
     }
 
     /// A key record whose length fits the file but reaches past its end by

@@ -119,12 +119,13 @@ extension DatabaseReader {
                 return try storage.read(into: &span, at: position)
             }
             var read = try fill(at: keySlot.value)
+            // A storage may give fewer bytes than the length itself takes,
+            // at the end of the file or short of what its length promises;
+            // either way there is no record to compare.
+            guard read >= Int(ByteArrayFormat.lengthByteCount) else { throw .endOfStream }
             var remaining: UInt64 = chunk.span.bigEndian(at: 0)
             // A length that reaches past the file is a damaged record: it
-            // is reported before any of it is compared. So is a slot so
-            // close to the end that the length itself is cut, whose bytes
-            // are then whatever the buffer held: the record's start is past
-            // the end too.
+            // is reported before any of it is compared.
             var position = try keySlot.value.offset(by: ByteArrayFormat.lengthByteCount)
             let length = try storage.length()
             guard position <= length, remaining <= length - position else { throw .endOfStream }
