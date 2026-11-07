@@ -500,8 +500,11 @@ extension Cursor where Access == ReadWrite {
     /// changing it in place.
     ///
     /// Call it after pointing this slot at data that something else still
-    /// refers to. Other cursors keep writing in place; ``Database/freeze()``
-    /// does the same for all of them.
+    /// refers to, and before wrapping the cursor in a collection: a
+    /// collection keeps its own copy of the cursor, freeze point included,
+    /// so freezing the cursor after wrapping it changes nothing the
+    /// collection does. Other cursors keep writing in place;
+    /// ``Database/freeze()`` does the same for all of them.
     ///
     /// - Throws: ``XitDBError/expectedTxStart`` outside a transaction.
     public mutating func freeze() throws(XitDBError) {

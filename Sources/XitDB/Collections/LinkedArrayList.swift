@@ -23,9 +23,10 @@
 /// **Appending another list freezes the transaction.** The joined tree
 /// shares nodes with both lists, so after ``append(contentsOf:)-(Slot)``
 /// every write in the transaction copies what was written before it, as
-/// after ``Database/freeze()``. Collections made before the call, other
-/// than the list that made it, should be made again from their cursors
-/// afterwards.
+/// after ``Database/freeze()``, with the same part for the caller:
+/// collections made before the call, other than the list that made it,
+/// are made again afterwards, from the transaction's root cursor, before
+/// anything is written through them.
 public struct LinkedArrayList<Access: CursorAccess> {
     /// The cursor at the slot that holds the list.
     public let cursor: Cursor<Access>

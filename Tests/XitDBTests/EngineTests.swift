@@ -768,6 +768,39 @@ import Testing
         }
     }
 
+    /// A collection keeps its own copy of the cursor, freeze point
+    /// included: freezing the cursor after wrapping it changes nothing the
+    /// collection does, which goes on writing in place. Freeze first, then
+    /// wrap (D1).
+    @Test func freezingACursorAfterWrappingItHasNoEffect() throws {
+        let database = try makeDatabase()
+        try database.withTransaction { cursor in
+            var slot = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("list"))])
+            let list = try ArrayList(slot)
+            try list.append(.uint(1))
+            let header = try list.slot.value
+            let length = storage.bytes.count
+
+            try slot.freeze()
+            try list.append(.uint(2))
+            // in place: the slot still points at the header, which stays
+            // where it was, and nothing was appended to the storage
+            let position = try #require(slot.slotPointer.position)
+            #expect(try database.reader.slot(at: position) == Slot(value: header, tag: .arrayList))
+            #expect(storage.bytes.count == length)
+            #expect(try list.count == 2)
+
+            // a collection made from the frozen cursor copies the header
+            // and the root block, and writes to the copy
+            let frozen = try ArrayList(slot)
+            #expect(try frozen.slot.value != header)
+            #expect(storage.bytes.count == length + 16 + 144)
+            try frozen.append(.uint(3))
+            #expect(try frozen.count == 3)
+            #expect(try list.count == 2, "the list wrapped before the freeze is left as it was")
+        }
+    }
+
     /// The same for the database's freeze: what is made right after it
     /// belongs to the transaction.
     @Test func dataMadeRightAfterTheDatabaseIsFrozenIsNotCopied() throws {

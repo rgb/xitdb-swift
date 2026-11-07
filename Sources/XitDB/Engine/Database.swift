@@ -233,6 +233,17 @@ public final class Database {
     /// name the same data, and a change through one shows through the
     /// other. Freezing after the copy makes them independent.
     ///
+    /// The caller's part, as in Zig: finish any
+    /// ``Cursor/writeBytes(formatTag:_:)`` before freezing, since a byte
+    /// array grows only while it is the last thing written; and afterwards
+    /// make writable collections again, and take nested write cursors
+    /// again from the transaction's root cursor, before writing through
+    /// them. A collection or cursor made before the freeze still points
+    /// into data that is now frozen, and a write through it changes that
+    /// data in place, as if nothing had been frozen: it is a collection's
+    /// init that copies its header or first block into the transaction,
+    /// and the path from the root that copies the blocks on the way.
+    ///
     /// - Throws: ``XitDBError/expectedTxStart`` outside a transaction.
     public func freeze() throws(XitDBError) {
         guard transactionStart != nil else { throw .expectedTxStart }
