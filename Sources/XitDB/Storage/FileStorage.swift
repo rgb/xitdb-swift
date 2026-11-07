@@ -145,7 +145,9 @@ public final class FileStorage: WritableStorage {
     ///     suspended gets the app terminated, which is why none is taken
     ///     unless asked for.
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the file cannot be
-    ///   opened or the lock cannot be had at once.
+    ///   opened or the lock cannot be had at once. A path with a NUL byte in
+    ///   it is refused with `EINVAL`, rather than opening the file that the
+    ///   part before the NUL names.
     public init(
         path: String,
         access: FileAccess,

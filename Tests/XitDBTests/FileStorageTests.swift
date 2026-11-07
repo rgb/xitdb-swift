@@ -165,6 +165,37 @@ import Testing
         #expect(throws: XitDBError.storageFailure(errno: EFBIG)) { try writeBytes(storage, [1], at: .max) }
         #expect(try storage.length == 0)
     }
+
+    /// A C string ends at the first NUL, so a path with one in it would
+    /// open the file that the part before the NUL names: "test.db\0-new"
+    /// would open test.db. Both file storages refuse it with EINVAL.
+    @Test func aPathWithANULByteIsRefused() throws {
+        let directory = try TemporaryDirectory()
+        let truncated = directory.path()
+        let paths = [truncated + "\u{0}-new", truncated + "\u{0}", "\u{0}" + truncated]
+        let invalid = XitDBError.storageFailure(errno: EINVAL)
+        for path in paths {
+            for access in [FileAccess.readOnly, .readWrite, .create, .truncate] {
+                #expect(throws: invalid, "\(path.debugDescription), \(access)") {
+                    try FileStorage(path: path, access: access, lock: .exclusive)
+                }
+                #expect(throws: invalid, "\(path.debugDescription), \(access)") {
+                    try BufferedFileStorage(path: path, access: access)
+                }
+            }
+        }
+        // neither the file named before the NUL nor any other was made
+        #expect(!FileManager.default.fileExists(atPath: truncated))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.url.path) == [])
+
+        // with that file there, the path is still refused rather than opened
+        try writeBytes(try FileStorage(path: truncated, access: .create), [1, 2, 3], at: 0)
+        for path in paths {
+            #expect(throws: invalid) { try FileStorage(path: path, access: .readOnly) }
+            #expect(throws: invalid) { try BufferedFileStorage(path: path, access: .truncate) }
+        }
+        #expect(try directory.contents() == [1, 2, 3])
+    }
 }
 
 @Suite struct FileLockTests {

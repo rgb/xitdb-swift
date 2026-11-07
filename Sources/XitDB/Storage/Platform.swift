@@ -50,8 +50,12 @@ enum Platform {
     /// it once it holds whatever lock it was asked to take, so that a file
     /// locked by someone else is not destroyed by an opener that then fails.
     ///
-    /// - Throws: `storageFailure` with the error `open` reported.
+    /// - Throws: `storageFailure` with the error `open` reported, or with
+    ///   `EINVAL` for a path that contains a NUL byte: a C string ends at
+    ///   the first NUL, so `open` would be given the part before it and
+    ///   open some other file.
     static func openFile(_ path: String, access: FileAccess) throws(XitDBError) -> Int32 {
+        guard !path.utf8.contains(0) else { throw .storageFailure(errno: EINVAL) }
         let flags: Int32 =
             switch access {
             case .readOnly: O_RDONLY
