@@ -31,12 +31,7 @@ import Testing
 //   [2, 3, 4] where Zig expects [1, 2, 4] (3977), and in the second `list.append(.{ .uint = 3 })` fails with
 //   `invalidBTreeNode` where Zig expects it to succeed (4001). What the port does in those two moments is
 //   pinned by two tests of its own, below the ports of the blocks. The other two `Freeze` values of those
-//   blocks, and all three of the blocks after them, agree with Zig and are ported.
-// - 4082-4121, in "collections kept across a freeze": "a sorted map has a header over a tree too", a kept
-//   `SortedMap` whose header counts keys its tree does not have. Sorted maps (M6).
-// - 4200, 4204, 4218-4219, 4227-4228, 4236 and 4242, in "invalid b-tree nodes": the sorted map `map`, filled
-//   alongside the list, its root node's first count set to zero, and `map.remove("k00")` expected to fail with
-//   `InvalidBTreeNode`. Sorted maps (M6).
+//   blocks, and all four of the blocks after them, agree with Zig and are ported.
 //
 // Everything else in those lines is ported.
 
@@ -91,9 +86,21 @@ import Testing
     /// moments need the fix branch's concat (see the file's header).
     static let freezesWithTheOriginalsConcat: [Freeze] = [.database, .concatElsewhere]
 
+    /// The UTF-8 bytes of a string.
+    private func utf8(_ text: String) -> [UInt8] {
+        Array(text.utf8)
+    }
+
     /// Zig's `hashInt(text)`: the SHA-1 of the text, as the twenty bytes the collections take.
     private func hashInt(_ text: String) -> [UInt8] {
         sha1(text).bytes
+    }
+
+    /// Zig's `std.mem.print(&kbuf, "k{d:0>3}", .{i})`: the key for a number, its digits padded with zeros on
+    /// the left to `width`.
+    private func paddedKey(_ number: UInt64, width: Int) -> [UInt8] {
+        let digits = String(number)
+        return utf8("k" + String(repeating: "0", count: max(0, width - digits.count)) + digits)
     }
 
     /// A `HashInt` (a `u160`) given as a number, as Zig's `0x01`: its twenty big-endian bytes.
@@ -287,7 +294,41 @@ import Testing
         }
     }
 
-    // test.zig 4082-4121, "a sorted map has a header over a tree too", waits for sorted maps (M6).
+    /// test.zig 4082-4121: a sorted map has a header over a tree too.
+    @Test(arguments: storageKinds, freezesWithoutAList)
+    func aSortedMapHasAHeaderOverATreeToo(kind: StorageKind, freeze: Freeze) throws {
+        let history = try makeHistory(kind).history
+
+        try history.appendContext(.slot(nil)) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            let map = try SortedMap<ReadWrite>(try moment.putCursor(hashInt("map")))
+            for i in 0..<UInt64(40) {
+                try map.put(paddedKey(i, width: 3), .uint(i))
+            }
+
+            try freeze.run(cursor, moment, nil)
+            try map.put(utf8("k999"), .uint(999))
+            let mapAgain = try SortedMap<ReadWrite>(try moment.putCursor(hashInt("map")))
+            for i in 0..<UInt64(36) {
+                #expect(try mapAgain.remove(paddedKey(i, width: 3)))
+            }
+            #expect(try mapAgain.count() == 5)
+
+            // the kept map's header counts 41 keys, in a tree that has 5
+            #expect(try map.count() == 41)
+            #expect(throws: XitDBError.invalidBTreeNode) { try map.getIndexKeyValuePair(40) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try map.iteratorFromIndex(30) }
+
+            // after one more key from the kept map, the second header
+            // counts one key less than the tree has
+            try map.put(utf8("k998"), .uint(998))
+            for key in ["k036", "k037", "k038", "k039", "k998"] {
+                #expect(try mapAgain.remove(utf8(key)))
+            }
+            #expect(try mapAgain.count() == 0)
+            #expect(throws: XitDBError.invalidBTreeNode) { try mapAgain.remove(utf8("k999")) }
+        }
+    }
 
     /// test.zig 4123-4153: a counted hash map's count is copied with its root block when it is initialized
     /// again, and they share the blocks below.
@@ -339,9 +380,7 @@ import Testing
     }
 
     /// test.zig 4181-4247: "invalid b-tree nodes". Zig's comment: a node that doesn't have what its parent
-    /// expects of it is an error as well.
-    ///
-    /// Left out: the sorted map at 4200, 4204, 4218-4219, 4227-4228, 4236 and 4242 (M6).
+    /// expects of it is an error as well. Zig's `writeInt(u64, 0, .big)` is eight zero bytes.
     @Test(arguments: storageKinds)
     func invalidBTreeNodes(kind: StorageKind) throws {
         let (subject, history) = try makeHistory(kind)
@@ -350,8 +389,10 @@ import Testing
         try history.appendContext(.slot(nil)) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
             let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            let map = try SortedMap<ReadWrite>(try moment.putCursor(hashInt("map")))
             for i in 0..<(Self.slotCount + 1) {
                 try list.append(.uint(i))
+                try map.put(paddedKey(i, width: 2), .uint(i))
             }
             let shortList = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("short-list")))
             try shortList.append(.uint(0))
@@ -361,22 +402,27 @@ import Testing
         let committed = try HashMap<ReadOnly>(try #require(try history.getCursor(-1)))
         let listHeader = try #require(try committed.getSlot(hashInt("list"))).value
         let listRoot = bigEndian(try readBytes(subject.storage, at: listHeader + 8, count: 8))
+        let mapHeader = try #require(try committed.getSlot(hashInt("map"))).value
+        let mapRoot = bigEndian(try readBytes(subject.storage, at: mapHeader + 8, count: 8))
 
         // a node is its kind, its number of entries, and then its slots. change the
         // list's root to have no children, and the sorted map's root to count no
         // keys below its first child (the counts follow the children and separators).
         try writeBytes(subject.storage, [0], at: listRoot + 1)
+        try writeBytes(subject.storage, zeros(8), at: mapRoot + 2 + 2 * Self.slotCount * 9)
         try subject.storage.flush()
 
         try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
             let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
             let shortList = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("short-list")))
+            let map = try SortedMap<ReadWrite>(try moment.putCursor(hashInt("map")))
 
             #expect(throws: XitDBError.invalidBTreeNode) { try list.remove(0) }
             #expect(throws: XitDBError.invalidBTreeNode) { try list.slice(offset: 1, size: 2) }
             #expect(throws: XitDBError.invalidBTreeNode) { try list.concat(try shortList.slot()) }
             #expect(throws: XitDBError.invalidBTreeNode) { try shortList.concat(try list.slot()) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try map.remove(utf8("k00")) }
         }
     }
 
