@@ -90,7 +90,7 @@
 
     @Section(title: "A dropped connection") {
         @ContentAndMedia {
-            A sync that fails partway leaves the replica at its last commit, so the next one simply goes again.
+            A sync that fails partway leaves the replica at its last commit, so the next one goes again.
         }
 
         @Steps {

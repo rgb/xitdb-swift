@@ -117,4 +117,5 @@ limit if what it is told to hold is not under your control: see ``MemoryStorage/
 
 - ``XitDBError``
 - <doc:Transactions>
+- <doc:Storage>
 - <doc:DifferencesFromTheOriginal>

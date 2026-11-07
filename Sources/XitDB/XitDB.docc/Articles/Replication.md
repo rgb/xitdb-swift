@@ -108,7 +108,7 @@ no longer matches the source, and the next sync replaces it.
 ### When a sync fails
 
 If a sync at the replica's committed size is interrupted, the replica stays at its last commit. What was written past that is
-ignored, and the next sync or transaction discards it, so you just sync again:
+ignored, and the next sync or transaction discards it, so you sync again:
 
 ```swift
 let start = try source.replicationStart(for: try replica.replicaState)

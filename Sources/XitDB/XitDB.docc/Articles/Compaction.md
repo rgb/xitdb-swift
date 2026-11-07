@@ -173,6 +173,7 @@ has to deal with integers in `versions` that no longer lead anywhere. The old fi
 
 ## See Also
 
+- <doc:/tutorials/XitDB/KeepingAReplicaInStep>
 - ``OffsetMap``
 - ``MemoryOffsetMap``
 - <doc:MomentsAndHistory>

@@ -34,7 +34,7 @@ fills up or a commit syncs, up to ``BufferedFileStorage/bufferLimit`` at a time,
 the buffer only holds writes, so a storage that is only read has nothing to gain from it. These times are indicative: measured
 on 2026-11-07 on one machine, an Apple M4 with its internal SSD on APFS, with syncing off.
 
-``MemoryStorage`` keeps the bytes in memory. Syncing does nothing, and writing is as fast as it gets. The bytes are a complete
+``MemoryStorage`` keeps the bytes in memory. Syncing does nothing, so a commit costs only what it writes. The bytes are a complete
 database, so one can be a value to send. There is no decoding step on the other side:
 
 ```swift
@@ -187,7 +187,9 @@ which the protocol requires, since a database and its cursors share the one inst
 
 ## See Also
 
+- <doc:/tutorials/XitDB/YourFirstDatabase>
 - ``BufferedFileStorage``
 - ``FileStorage``
 - ``MemoryStorage``
 - <doc:Transactions>
+- <doc:Errors>

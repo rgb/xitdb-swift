@@ -16,7 +16,7 @@
     }
 
     @Chapter(name: "Building on it") {
-        Two things a database like this leaves to you, and how little code they take.
+        Two things a database like this leaves to you: an index, and a copy kept up to date.
 
         @Image(source: "replica.svg", alt: "A source and its replica, side by side. The replica holds the same bytes as the start of the source, and the bytes it lacks are copied across.")
 

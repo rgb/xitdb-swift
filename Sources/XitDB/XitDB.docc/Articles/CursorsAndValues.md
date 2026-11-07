@@ -204,7 +204,7 @@ _ = try list.appendCursor()
 // Three elements: a value, a slot set to nothing, a slot never written.
 ```
 
-That list has a ``ArrayList/count`` of 3. Its elements read as a `uint`, as a slot with the tag ``Slot/Tag/none``, and as
+That list has a ``ArrayList/count`` of 3. Its elements read as a ``Slot/Tag/uint``, as a slot with the tag ``Slot/Tag/none``, and as
 `nil`, and its iterator gives only the first two. A ``LinkedArrayList`` has no slots that were never written: an element
 it appends and nobody writes is set to nothing, so a lookup and its iterator both give it.
 
@@ -224,7 +224,7 @@ That map's count is 1, and it still has an entry for `"cleared"`, with nothing i
 ### Copying a slot
 
 ``WritableData/slot(_:)`` writes a slot as it is, without copying what it points at. Both slots then share it, which is
-what makes cloning cheap and how one moment starts from another. An empty slot is written as one set to nothing. A
+how one moment starts from another without copying what it holds. An empty slot is written as one set to nothing. A
 client cannot make a slot; every slot it writes is one a database gave it, and it must have come from the same database.
 
 It should also be a value. The slot of a cursor from a map's iterator is the entry's own: writing it elsewhere today makes

@@ -68,6 +68,36 @@ import XitDB
         #expect(try usernameToID.count == 6)
     }
 
+    /// The article says that a late page takes about as many reads as an early
+    /// one: the tree goes to a position without walking over what is before it.
+    @Test func whatAPageCosts() throws {
+        let storage = CountingStorage()
+        let database = try Database(creating: storage, hashSize: 32)
+        let index = try SortedMap<ReadWrite>(database.rootCursor)
+        try database.withTransaction { cursor in
+            let index = try SortedMap<ReadWrite>(cursor)
+            for number in 0..<10_000 as Range<UInt64> {
+                let key = withUnsafeBytes(of: number.bigEndian) { Array($0) }
+                try index.put(.uint(number), forKey: key)
+            }
+        }
+
+        func readsForAPage(at offset: Int) throws -> Int {
+            let before = storage.reads
+            var iterator = try index.iterator(fromIndex: offset)
+            for _ in 0..<10 {
+                _ = try iterator.next()!.readEntry()
+            }
+            return storage.reads - before
+        }
+
+        let first = try readsForAPage(at: 0)
+        let middle = try readsForAPage(at: 5_000)
+        let late = try readsForAPage(at: 9_990)
+        #expect(abs(first - late) <= 5)
+        #expect(abs(first - middle) <= 5)
+    }
+
     @Test func aPrefixSearch() throws {
         let (_, history) = try newDirectory()
         let moment = try HashMap<ReadOnly>(history.cursor(at: -1)!)

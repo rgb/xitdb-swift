@@ -102,28 +102,6 @@ import XitDB
 
     /// The numbers the article quotes: a join touches little, and a cut more.
     @Test func whatAJoinAndACutCost() throws {
-        final class CountingStorage: WritableStorage {
-            let inner = MemoryStorage()
-            var reads = 0
-
-            func read(into buffer: inout MutableSpan<UInt8>, range: Range<Int>, at offset: UInt64) throws(XitDBError)
-                -> Int
-            {
-                reads += 1
-                return try inner.read(into: &buffer, range: range, at: offset)
-            }
-
-            var length: UInt64 { get throws(XitDBError) { try inner.length } }
-
-            func write(_ bytes: Span<UInt8>, at offset: UInt64) throws(XitDBError) {
-                try inner.write(bytes, at: offset)
-            }
-
-            func truncate(to length: UInt64) throws(XitDBError) { try inner.truncate(to: length) }
-            func flush() throws(XitDBError) {}
-            func sync(_ point: SyncPoint) throws(XitDBError) {}
-        }
-
         let first = [UInt8](repeating: 1, count: 8)
         let second = [UInt8](repeating: 2, count: 8)
         let storage = CountingStorage()

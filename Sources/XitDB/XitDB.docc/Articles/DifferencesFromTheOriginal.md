@@ -100,3 +100,5 @@ that reads as Swift. If you are coming from the original's documentation:
 
 - <doc:Errors>
 - <doc:Storage>
+- <doc:Transactions>
+- <doc:CursorsAndValues>

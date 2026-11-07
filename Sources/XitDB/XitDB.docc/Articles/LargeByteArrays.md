@@ -147,6 +147,8 @@ To read a whole value into a buffer of your own without allocating, there is ``C
 
 ## See Also
 
+- <doc:CursorsAndValues>
+- <doc:Compaction>
 - ``ByteWriter``
 - ``ByteReader``
 - ``Bytes``

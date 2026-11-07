@@ -95,7 +95,8 @@ while names.count < pageSize, let cursor = try iterator.next() {
 ```
 
 That gives Carol White and Dan Brown. The tree's branches count what is beneath them, so finding a position takes
-logarithmic time and skips nothing by walking over it: page 500 is as cheap as page 1. ``SortedMap/count`` gives the total
+logarithmic time and skips nothing by walking over it: a page near the end of an index of 10,000 entries took about as many
+reads as the first. ``SortedMap/count`` gives the total
 for the page count, and it reads only a header.
 
 ### Seeking to a key
