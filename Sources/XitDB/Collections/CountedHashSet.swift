@@ -7,8 +7,9 @@
 /// same key to the set.
 ///
 /// A counted set keeps the number of its entries, which ``count`` reads
-/// without going through them. It costs eight bytes and one more write for
-/// each entry added or removed.
+/// without going through them. It costs eight bytes each time the set's
+/// first block is copied, which is once in every transaction that writes
+/// to it, and one more write for each entry added or removed.
 ///
 /// A set is a view of a slot. Making one that can only read checks that
 /// the slot holds a set of this kind, or nothing. Making one that can
@@ -282,6 +283,11 @@ extension CountedHashSet where Access == ReadWrite {
     /// A cursor at the key stored under a hash, for writing it. The set
     /// gets an entry for the hash if it has none.
     ///
+    /// Use it in a transaction. On a collection at the root the call is a
+    /// transaction of its own, committed by the time it returns, so a new
+    /// entry holds nothing and a write through the cursor throws
+    /// ``XitDBError/expectedTxStart``.
+    ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
     ///   size.
     /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not
@@ -298,6 +304,11 @@ extension CountedHashSet where Access == ReadWrite {
 
     /// A cursor at the key stored under a hash, for writing it. The set
     /// gets an entry for the hash if it has none.
+    ///
+    /// Use it in a transaction. On a collection at the root the call is a
+    /// transaction of its own, committed by the time it returns, so a new
+    /// entry holds nothing and a write through the cursor throws
+    /// ``XitDBError/expectedTxStart``.
     ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
     ///   size, in any sequence of bytes: an array, a CryptoKit digest, a

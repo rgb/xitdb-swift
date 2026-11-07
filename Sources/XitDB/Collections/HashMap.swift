@@ -328,6 +328,11 @@ extension HashMap where Access == ReadWrite {
     /// making a collection there. The map gets an entry for the hash if it
     /// has none.
     ///
+    /// Use it in a transaction. On a collection at the root the call is a
+    /// transaction of its own, committed by the time it returns, so a new
+    /// entry holds nothing and a write through the cursor throws
+    /// ``XitDBError/expectedTxStart``.
+    ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
     ///   size.
     /// - Throws: ``XitDBError/expectedTxStart`` if the map's cursor is not
@@ -345,6 +350,11 @@ extension HashMap where Access == ReadWrite {
     /// A cursor at the value stored under a hash, for writing it or for
     /// making a collection there. The map gets an entry for the hash if it
     /// has none.
+    ///
+    /// Use it in a transaction. On a collection at the root the call is a
+    /// transaction of its own, committed by the time it returns, so a new
+    /// entry holds nothing and a write through the cursor throws
+    /// ``XitDBError/expectedTxStart``.
     ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
     ///   size, in any sequence of bytes: an array, a CryptoKit digest, a
@@ -416,6 +426,11 @@ extension HashMap where Access == ReadWrite {
     /// A cursor at the key stored beside the value under a hash, for
     /// writing it. The map gets an entry for the hash if it has none.
     ///
+    /// Use it in a transaction. On a collection at the root the call is a
+    /// transaction of its own, committed by the time it returns, so a new
+    /// entry holds nothing and a write through the cursor throws
+    /// ``XitDBError/expectedTxStart``.
+    ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
     ///   size.
     /// - Throws: ``XitDBError/expectedTxStart`` if the map's cursor is not
@@ -432,6 +447,11 @@ extension HashMap where Access == ReadWrite {
 
     /// A cursor at the key stored beside the value under a hash, for
     /// writing it. The map gets an entry for the hash if it has none.
+    ///
+    /// Use it in a transaction. On a collection at the root the call is a
+    /// transaction of its own, committed by the time it returns, so a new
+    /// entry holds nothing and a write through the cursor throws
+    /// ``XitDBError/expectedTxStart``.
     ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
     ///   size, in any sequence of bytes: an array, a CryptoKit digest, a

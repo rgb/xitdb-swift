@@ -55,7 +55,8 @@ public struct ArrayList<Access: CursorAccess> {
     /// - Parameter index: The index of the first element to give. A negative
     ///   index counts from the end: `-1` is the last element. An index that
     ///   names no element gives an iterator of nothing.
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
+    /// - Throws: ``XitDBError/indexOutOfRange`` if `index` does not fit in
+    ///   an `Int64`, ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a list, or an error of the storage or of a damaged file.
     public func iterator(fromIndex index: some BinaryInteger) throws(XitDBError) -> CollectionIterator {
         let index = try listIndex(index)
@@ -173,6 +174,11 @@ extension ArrayList where Access == ReadWrite {
     /// A cursor at an element, for writing it or for making a collection
     /// there.
     ///
+    /// Use it in a transaction. On a list at the root the call is a
+    /// transaction of its own, committed by the time it returns, so the
+    /// element is as it was and a write through the cursor throws
+    /// ``XitDBError/expectedTxStart``.
+    ///
     /// - Parameter index: The element's index. A negative index counts from
     ///   the end: `-1` is the last element.
     /// - Throws: ``XitDBError/indexOutOfRange`` if there is no element at
@@ -203,6 +209,11 @@ extension ArrayList where Access == ReadWrite {
 
     /// Appends an element and gives a cursor at it, for writing it or for
     /// making a collection there.
+    ///
+    /// Use it in a transaction. On a list at the root the call is a
+    /// transaction of its own, committed by the time it returns, so the new
+    /// element holds nothing and a write through the cursor throws
+    /// ``XitDBError/expectedTxStart``.
     ///
     /// - Throws: ``XitDBError/expectedTxStart`` if the list's cursor is not
     ///   the root cursor and no transaction is in progress,

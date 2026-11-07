@@ -11,8 +11,9 @@
 /// value with `putKey`.
 ///
 /// A counted map keeps the number of its entries, which ``count`` reads
-/// without going through them. It costs eight bytes and one more write for
-/// each entry added or removed.
+/// without going through them. It costs eight bytes each time the map's
+/// first block is copied, which is once in every transaction that writes
+/// to it, and one more write for each entry added or removed.
 ///
 /// A map is a view of a slot. Making one that can only read checks that
 /// the slot holds a map of this kind, or nothing. Making one that can
@@ -345,6 +346,11 @@ extension CountedHashMap where Access == ReadWrite {
     /// making a collection there. The map gets an entry for the hash if it
     /// has none.
     ///
+    /// Use it in a transaction. On a collection at the root the call is a
+    /// transaction of its own, committed by the time it returns, so a new
+    /// entry holds nothing and a write through the cursor throws
+    /// ``XitDBError/expectedTxStart``.
+    ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
     ///   size.
     /// - Throws: ``XitDBError/expectedTxStart`` if the map's cursor is not
@@ -362,6 +368,11 @@ extension CountedHashMap where Access == ReadWrite {
     /// A cursor at the value stored under a hash, for writing it or for
     /// making a collection there. The map gets an entry for the hash if it
     /// has none.
+    ///
+    /// Use it in a transaction. On a collection at the root the call is a
+    /// transaction of its own, committed by the time it returns, so a new
+    /// entry holds nothing and a write through the cursor throws
+    /// ``XitDBError/expectedTxStart``.
     ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
     ///   size, in any sequence of bytes: an array, a CryptoKit digest, a
@@ -433,6 +444,11 @@ extension CountedHashMap where Access == ReadWrite {
     /// A cursor at the key stored beside the value under a hash, for
     /// writing it. The map gets an entry for the hash if it has none.
     ///
+    /// Use it in a transaction. On a collection at the root the call is a
+    /// transaction of its own, committed by the time it returns, so a new
+    /// entry holds nothing and a write through the cursor throws
+    /// ``XitDBError/expectedTxStart``.
+    ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
     ///   size.
     /// - Throws: ``XitDBError/expectedTxStart`` if the map's cursor is not
@@ -449,6 +465,11 @@ extension CountedHashMap where Access == ReadWrite {
 
     /// A cursor at the key stored beside the value under a hash, for
     /// writing it. The map gets an entry for the hash if it has none.
+    ///
+    /// Use it in a transaction. On a collection at the root the call is a
+    /// transaction of its own, committed by the time it returns, so a new
+    /// entry holds nothing and a write through the cursor throws
+    /// ``XitDBError/expectedTxStart``.
     ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
     ///   size, in any sequence of bytes: an array, a CryptoKit digest, a

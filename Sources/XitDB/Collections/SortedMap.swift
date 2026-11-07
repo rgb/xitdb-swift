@@ -8,8 +8,8 @@
 ///
 /// Underneath is a tree whose leaves hold up to sixteen entries in key
 /// order and whose branches carry a separator key and a count for each
-/// child. A key of up to eight bytes without a zero byte is stored in its
-/// entry's slot; a longer one is a byte record of its own.
+/// child. A key of up to eight bytes without a zero byte is stored in a
+/// slot of the entry's record; a longer one is a byte record of its own.
 ///
 /// A map is a view of a slot. Making one that can only read checks that
 /// the slot holds a sorted map or set, or nothing. Making one that can
@@ -63,7 +63,8 @@ public struct SortedMap<Access: CursorAccess> {
     /// - Parameter index: The position of the first entry to give. A
     ///   negative index counts from the end: `-1` is the last entry. An
     ///   index that names no entry gives an iterator of nothing.
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
+    /// - Throws: ``XitDBError/indexOutOfRange`` if `index` does not fit in
+    ///   an `Int64`, ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
@@ -345,6 +346,11 @@ extension SortedMap where Access == ReadWrite {
     /// making a collection there. The map gets an entry for the key if it
     /// has none.
     ///
+    /// Use it in a transaction. On a collection at the root the call is a
+    /// transaction of its own, committed by the time it returns, so a new
+    /// entry holds nothing and a write through the cursor throws
+    /// ``XitDBError/expectedTxStart``.
+    ///
     /// - Parameter key: The key's bytes.
     /// - Throws: ``XitDBError/expectedTxStart`` if the map's cursor is not
     ///   the root cursor and no transaction is in progress,
@@ -361,6 +367,11 @@ extension SortedMap where Access == ReadWrite {
     /// A cursor at the value stored under a key, for writing it or for
     /// making a collection there. The map gets an entry for the key if it
     /// has none.
+    ///
+    /// Use it in a transaction. On a collection at the root the call is a
+    /// transaction of its own, committed by the time it returns, so a new
+    /// entry holds nothing and a write through the cursor throws
+    /// ``XitDBError/expectedTxStart``.
     ///
     /// - Parameter key: The key's bytes, in any sequence of bytes: an array,
     ///   a slice, `Data`, a string's `utf8`. The `Span` overload takes bytes

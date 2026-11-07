@@ -63,7 +63,8 @@ public struct SortedSet<Access: CursorAccess> {
     /// - Parameter index: The position of the first entry to give. A
     ///   negative index counts from the end: `-1` is the last entry. An
     ///   index that names no entry gives an iterator of nothing.
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
+    /// - Throws: ``XitDBError/indexOutOfRange`` if `index` does not fit in
+    ///   an `Int64`, ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
     ///   the tree does not hold what its header or its branches say, or an
     ///   error of the storage or of a damaged file.
