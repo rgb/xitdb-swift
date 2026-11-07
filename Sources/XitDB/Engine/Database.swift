@@ -85,15 +85,25 @@ public final class Database {
     ///     `nil` to take whatever the database records. Give it when the
     ///     keys come from one algorithm, such as 20 for SHA-1, so that a
     ///     database hashed another way is refused at once.
+    /// Opening reads and checks the header and then the root header, in
+    /// that order, and writes nothing. A root header that cannot be
+    /// trusted, because its committed size is past the end of the storage,
+    /// smaller than a database can be, or not at a trailer whose checksum
+    /// verifies, is refused with the position of the last commit that does
+    /// verify; ``recover(_:)`` cuts the storage back to it. Nothing is
+    /// dropped by opening.
+    ///
     /// - Throws: ``XitDBError/invalidDatabase`` if the storage is empty or
-    ///   does not hold a database, or the database's last commit does not
-    ///   check out; ``XitDBError/invalidVersion`` if it was written in a
-    ///   version of the format this implementation does not read;
-    ///   ``XitDBError/invalidHashSize`` if `hashSize` was given and is not
-    ///   the database's; ``XitDBError/truncatedDatabase`` if the storage is
-    ///   shorter than the database says it is; ``XitDBError/endOfStream``
-    ///   if it is too short to hold a header; and
-    ///   ``XitDBError/storageFailure(errno:)`` if the storage fails.
+    ///   does not start with a database header, or if no trailer in it
+    ///   verifies, so that it holds no commit; ``XitDBError/invalidVersion``
+    ///   if it was written in a version of the format this implementation
+    ///   does not read; ``XitDBError/invalidHashSize`` if `hashSize` was
+    ///   given and is not the database's;
+    ///   ``XitDBError/untrustedRootHeader(lastVerified:)`` if the root
+    ///   header cannot be trusted and some trailer verifies;
+    ///   ``XitDBError/endOfStream`` if the storage is too short to hold its
+    ///   headers; and ``XitDBError/storageFailure(errno:)`` if the storage
+    ///   fails.
     public convenience init(opening storage: any WritableStorage, hashSize: Int? = nil) throws(XitDBError) {
         try self.init(opening: storage, hashSize: hashSize, random: RandomSource(SystemRandomNumberGenerator()))
     }
@@ -169,11 +179,7 @@ public final class Database {
     ///
     /// - Throws: What ``init(opening:hashSize:)`` throws.
     package init(opening storage: any WritableStorage, hashSize: Int?, random: RandomSource) throws(XitDBError) {
-        var buffer = InlineArray<20, UInt8>(repeating: 0)
-        var span = buffer.mutableSpan
-        let read = try storage.read(into: &span, at: 0)
-        if read == 0 { throw .invalidDatabase }
-        let header = try DatabaseHeader(decoding: buffer.span.extracting(0..<read))
+        let header = try Self.readHeader(of: storage)
         if let hashSize, Int(header.hashSize) != hashSize { throw .invalidHashSize }
 
         self.storage = storage
@@ -181,7 +187,7 @@ public final class Database {
         self.reader = DatabaseReader(storage: storage, identity: identity)
         self.transactionStart = nil
         self.random = random
-        _ = try reader.committedSize
+        try reader.verifyRootHeader()
     }
 
     /// Creates a database with a given source of randomness for its file ID

@@ -268,9 +268,12 @@ import Testing
     /// The root header is the one place a database is rewritten, and a write
     /// to it that is torn inside its committed size can leave a size that is
     /// neither the old one nor the new one. The file format has no defence
-    /// against that except that it is noticed: such a file does not open.
-    /// Zig is the same. This test pins what happens, so that a change to it
-    /// is deliberate.
+    /// against that except that it is noticed: such a file does not open,
+    /// and the error names the transaction's own trailer, which is whole at
+    /// the end of the file. Recovery commits it, and leaves exactly what the
+    /// transaction would have left. (Zig refuses the file and offers no
+    /// recovery.) The database that made the torn write keeps reporting
+    /// its root header as it is.
     @Test func aRootHeaderTornInsideItsSizeIsNoticed() throws {
         let golden = Self.golden
         let memory = MemoryStorage()
@@ -288,7 +291,13 @@ import Testing
         try #require(tornSize != oldSize && tornSize != newSize, "the two sizes must differ above their last byte")
 
         #expect(Array(memory.bytes[29..<37]) == bigEndianBytes(tornSize))
-        #expect(throws: XitDBError.self) { try Self.open(memory, FixedRandom()) }
-        #expect(throws: XitDBError.self) { try database.committedSize }
+        #expect(throws: XitDBError.untrustedRootHeader(lastVerified: newSize)) { try Self.open(memory, FixedRandom()) }
+        #expect(throws: tornSize > newSize ? XitDBError.truncatedDatabase : .invalidDatabase) {
+            try database.committedSize
+        }
+
+        let recovered = try Database.recover(memory, random: FixedRandom())
+        #expect(firstDifference(memory.bytes, golden.final) == nil)
+        try Self.expectTransaction(recovered)
     }
 }

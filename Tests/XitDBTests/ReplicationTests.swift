@@ -177,11 +177,13 @@ import Testing
 
         // `applyReplicated` must be given exactly the bytes up to a trailer.
         // a short append fails and is overwritten by the next one.
+        let endBeforeLastMoment: UInt64
         do {
             try history.append(.slot(try history.slot(at: -1))) { cursor in
                 try writeMoment(cursor, i: 300)
             }
             let start = try replica.committedSize
+            endBeforeLastMoment = start
             let end = try source.committedSize
             let bytes = try readCommittedBytes(source, from: start)
             #expect(throws: XitDBError.invalidDatabase) {
@@ -237,12 +239,14 @@ import Testing
             #expect(try compactedKey299.readUInt64() == 299)
         }
 
-        // a database whose trailer doesn't match its header is invalid
+        // a database whose trailer doesn't match its header cannot be
+        // trusted: the port names the commit before it, where Zig says the
+        // file is invalid (decision D19)
         do {
             let position = try replica.committedSize - 1
             let byte = try #require(try readBytes(replicaSubject.storage, at: position, count: 1).first)
             try writeBytes(replicaSubject.storage, [~byte], at: position)
-            #expect(throws: XitDBError.invalidDatabase) {
+            #expect(throws: XitDBError.untrustedRootHeader(lastVerified: endBeforeLastMoment)) {
                 _ = try Database(storage: replicaSubject.storage, hashSize: 20)
             }
         }

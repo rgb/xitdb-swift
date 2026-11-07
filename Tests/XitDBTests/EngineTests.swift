@@ -107,11 +107,12 @@ import Testing
         #expect(throws: XitDBError.endOfStream) {
             try Database(opening: MemoryStorage(bytes: Array(good.bytes[..<30])))
         }
-        // the last byte of the trailer is missing
-        #expect(throws: XitDBError.truncatedDatabase) {
+        // the last byte of the trailer is missing: the root header cannot
+        // be trusted, and no trailer verifies, so there is no commit at all
+        #expect(throws: XitDBError.invalidDatabase) {
             try Database(opening: MemoryStorage(bytes: Array(good.bytes.dropLast())))
         }
-        // a trailer that does not check out
+        // a trailer that does not check out: the same
         var corrupt = good.bytes
         corrupt[61] ^= 0x01
         #expect(throws: XitDBError.invalidDatabase) { try Database(opening: MemoryStorage(bytes: corrupt)) }

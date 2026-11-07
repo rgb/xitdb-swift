@@ -29,6 +29,10 @@ a ``HashMap`` of that moment's state, so that every earlier moment stays readabl
 Every value lives behind a ``Slot``, nine bytes that hold either a small value directly or the offset of a
 larger record. A slot's ``Slot/Tag`` says which. A file starts with a ``DatabaseHeader``.
 
+A database whose last commit is damaged does not open: ``Database/init(opening:hashSize:)`` fails with
+``XitDBError/untrustedRootHeader(lastVerified:)``, naming the last commit that verifies, and
+``Database/recover(_:)`` cuts the storage back to it, the one call that can lose a commit.
+
 A database only grows, since every transaction appends. ``Database/compact(into:offsetMap:)`` writes a new
 one that holds what the latest moment reaches and nothing else, every object once however many slots point
 at it. The copy remembers where things went in an ``OffsetMap``; ``MemoryOffsetMap`` keeps that in memory.
