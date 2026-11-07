@@ -32,10 +32,8 @@ import Testing
     @Test func everyScriptRunsOrWaitsForANamedMilestone() {
         let all = ConformanceFixture.all
         #expect(all.count == 195)
-        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && $0.mustPass }.count == 59)
-        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && !$0.mustPass }.count == 70)
-        #expect(all.filter { $0.waitsFor == "M6" && $0.mustPass }.count == 19)
-        #expect(all.filter { $0.waitsFor == "M6" && !$0.mustPass }.count == 1)
+        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && $0.mustPass }.count == 79)
+        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && !$0.mustPass }.count == 76)
         #expect(all.filter { $0.waitsFor == "M7" && $0.mustPass }.count == 10)
         #expect(all.filter { $0.waitsFor == "M7" && !$0.mustPass }.count == 6)
         #expect(all.filter { $0.waitsFor == "M8" && $0.mustPass }.count == 8)
@@ -44,26 +42,6 @@ import Testing
         let waiting = all.filter { $0.waitsFor != nil }.map { "\($0.waitsFor ?? ""): \($0.name)" }.sorted()
         #expect(
             waiting == [
-                "M6: deep-sorted",
-                "M6: every-construct-sorted",
-                "M6: gen-11",
-                "M6: gen-14",
-                "M6: gen-17",
-                "M6: gen-2",
-                "M6: gen-5",
-                "M6: gen-8",
-                "M6: iterator-tiers-sorted",
-                "M6: nested-sorted",
-                "M6: overwriting-committed-bytes-sorted",
-                "M6: path-api-edges-sorted",
-                "M6: reads-101",
-                "M6: reads-104",
-                "M6: reads-107",
-                "M6: reads-110",
-                "M6: reads-iterators-sorted",
-                "M6: reads-sorted-root",
-                "M6: reads-stream-sorted",
-                "M6: wrong-rank",
                 "M7: compact-201",
                 "M7: compact-202",
                 "M7: compact-203",
@@ -107,18 +85,8 @@ import Testing
             ]
         )
 
-        // scripts that need an op the runner does not have yet
-        let needing = all.filter { $0.waitsFor == nil && $0.needsOp != nil }.map(\.name).sorted()
-        #expect(
-            needing == [
-                "closed-database-made-current-again",
-                "create-database-main",
-                "create-database-twice",
-                "name-after-close-of-another-database",
-                "several-databases",
-                "use-unknown-database",
-            ]
-        )
+        // every op of the script format is in the runner
+        #expect(all.filter { $0.needsOp != nil }.isEmpty)
 
         // not applicable to the memory storage, which has no read-only mode
         let readOnly = all.filter { $0.features.contains("read_only") }.map(\.name).sorted()
@@ -140,11 +108,11 @@ import Testing
         ("stream-none", "finding 21: a slot set to nothing streams as nothing"),
         ("stream-short-overwritten", "finding 9: a short value streams from the cursor's own slot"),
         ("iterator-past-slice", "finding 26: an iterator stops at the size of a cut-down list"),
+        ("stream-short-no-position", "finding 9: a short key of a sorted set streams from the cursor's own slot"),
     ]
 
-    /// The scripts that need a collection of a later milestone: a cursor
-    /// without a position is the key of a sorted set.
-    static let waiting = ["stream-short-no-position": "M6"]
+    /// The scripts that need something of a later milestone.
+    static let waiting: [String: String] = [:]
 
     private func runs(_ script: String, on kind: ScriptStorageKind) throws -> Bool {
         let runner = ScriptRunner(storage: try ScriptStorage(kind), random: FixedRandom((1...64).map { UInt64($0) }))

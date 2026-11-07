@@ -457,26 +457,33 @@ import Testing
         #expect(try database.rootCursor().count() == 1)
     }
 
-    /// A transaction on a root that is a sorted map or set would have to
-    /// run that collection's init part first, to copy it into the
-    /// transaction. That part arrives with milestone M6. Until then such a
-    /// transaction is refused; going on without the init part would write
-    /// into committed data.
+    /// A transaction on a root that is a sorted map or set runs that
+    /// collection's init part first, which copies its header into the
+    /// transaction, so that earlier moments keep their tree. The root is
+    /// then the same kind it was, whichever of the two it is.
     @Test(arguments: [XitDB.Tag.sortedMap, .sortedSet])
-    func aTransactionOnARootOfACollectionNotBuiltYetIsRefused(tag: XitDB.Tag) throws {
+    func aTransactionOnARootThatIsASortedMapCopiesItsHeader(tag: XitDB.Tag) throws {
         let storage = MemoryStorage()
         let database = try makeDatabase(storage)
-        // a root that claims to be such a collection
-        var root = database.rootCursor()
-        try root.write(.slot(Slot(value: 37, tag: tag)))
-        let committed = storage.bytes
-        #expect(try database.rootCursor().slot().tag == tag)
+        _ = try database.rootCursor().writePath([
+            .sortedMapInit(set: tag == .sortedSet), .sortedMapGet(.value, SortedKey([1])), .write(.uint(1)),
+        ])
+        let before = try database.rootCursor().slot()
+        #expect(before.tag == tag)
+        #expect(try database.rootCursor().count() == 1)
 
-        #expect(throws: XitDBError.notImplemented) { try database.rootCursor().writePath([.write(.uint(1))]) }
-        #expect(throws: XitDBError.notImplemented) { try database.runContext { _ in } }
-        #expect(storage.bytes == committed)
-        // reading its count, which is in its header, works
-        _ = try database.rootCursor().count()
+        try database.runContext { cursor in
+            #expect(try cursor.slot().tag == tag)
+            #expect(try cursor.slot().value != before.value)
+            _ = try cursor.writePath([.sortedMapGet(.value, SortedKey([2])), .write(.uint(2))])
+        }
+        #expect(try database.rootCursor().count() == 2)
+        // the moment before still has its own header and one entry
+        #expect(try database.reader.bTreeHeader(at: before.value).size == 1)
+        // an init of the other kind is refused
+        #expect(throws: XitDBError.unexpectedTag) {
+            try database.rootCursor().writePath([.hashMapInit(), .write(.uint(1))])
+        }
     }
 
     /// A slot's position is computed from offsets in the file. In a sound

@@ -226,20 +226,66 @@ final class ScriptRunner {
         }
     }
 
-    let storage: ScriptStorage
-    let random: FixedRandom
-    private var names: [String: Value] = [:]
-    private var database: Database?
-    private var hashSize: UInt16 = 0
+    /// One of a script's databases: where it lives, and the open database
+    /// while it is open.
+    final class ScriptDatabase {
+        let storage: ScriptStorage
+        var database: Database?
 
-    init(storage: ScriptStorage, random: FixedRandom) {
-        self.storage = storage
-        self.random = random
+        init(storage: ScriptStorage) {
+            self.storage = storage
+        }
     }
 
-    /// The committed size, or `nil` while the database is closed.
-    func committedSize() throws -> UInt64? {
-        try database?.committedSize()
+    let random: FixedRandom
+    private var names: [String: Value] = [:]
+    private var hashSize: UInt16 = 0
+    private var scriptHashID: HashID?
+
+    /// The script's databases by name. `main` is there from the start.
+    private var databases: [String: ScriptDatabase]
+
+    /// The name of the current database: what `root` means, and what every
+    /// op without an `on` acts on.
+    private var current = "main"
+
+    init(storage: ScriptStorage, random: FixedRandom) {
+        self.random = random
+        databases = ["main": ScriptDatabase(storage: storage)]
+    }
+
+    /// The current database's place.
+    private var currentPlace: ScriptDatabase {
+        databases[current]!
+    }
+
+    /// The current database, or `nil` while it is closed.
+    private var database: Database? {
+        get { currentPlace.database }
+        set { currentPlace.database = newValue }
+    }
+
+    /// The current database's storage.
+    private var storage: ScriptStorage {
+        currentPlace.storage
+    }
+
+    /// The committed size of a database, the current one if no name is
+    /// given, or `nil` while it is closed.
+    func committedSize(of name: String? = nil) throws -> UInt64? {
+        guard let place = databases[name ?? current] else { throw ScriptFailure("no database called '\(name ?? "")'") }
+        return try place.database?.committedSize()
+    }
+
+    /// Everything in a database's storage as it is now.
+    func contents(of name: String) throws -> [UInt8] {
+        guard let place = databases[name] else { throw ScriptFailure("no database called '\(name)'") }
+        return try place.storage.contents()
+    }
+
+    /// The names of the script's databases.
+    var databaseNames: [String] {
+        databases.keys.sorted()
     }
 
     /// Creates the database a script asks for and returns the script's ops.
@@ -258,18 +304,22 @@ final class ScriptRunner {
             guard bytes.count == 4 else { throw UnknownInScript("hash_id is not four bytes") }
             hashID = HashID(bytes: [bytes[0], bytes[1], bytes[2], bytes[3]])
         }
-        let fileIDBytes = try hexBytes(try document.string("file_id"), "file_id")
-        guard fileIDBytes.count == 8 else { throw UnknownInScript("file_id is not eight bytes") }
-        let fileID = fileIDBytes.reduce(UInt64(0)) { $0 << 8 | UInt64($1) }
-
+        scriptHashID = hashID
         database = try Database(
             storage: try storage.openStorage(readOnly: false),
             hashSize: hashSize,
             hashID: hashID,
-            fileID: fileID,
+            fileID: try fileID(document.fields["file_id"]),
             random: random
         )
         return try document.array("ops")
+    }
+
+    private func fileID(_ value: Any?) throws -> UInt64 {
+        guard let digits = value as? String else { throw UnknownInScript("file_id is not a string") }
+        let fileIDBytes = try hexBytes(digits, "file_id")
+        guard fileIDBytes.count == 8 else { throw UnknownInScript("file_id is not eight bytes") }
+        return fileIDBytes.reduce(UInt64(0)) { $0 << 8 | UInt64($1) }
     }
 
     // MARK: Values
@@ -416,6 +466,25 @@ final class ScriptRunner {
                 parts.append(.linkedArrayListInsert(try ScriptObject.signed(payload, "linked_array_list_insert")))
             case "linked_array_list_remove":
                 parts.append(.linkedArrayListRemove(try ScriptObject.signed(payload, "linked_array_list_remove")))
+            case "sorted_map_init":
+                let options = try ScriptObject(payload, "sorted_map_init")
+                try options.allow("set")
+                parts.append(.sortedMapInit(set: try options.bool("set", default: false)))
+            case "sorted_map_get":
+                let get = try ScriptObject(payload, "sorted_map_get")
+                try get.allow("kv_pair", "key", "value")
+                guard get.fields.count == 1 else { throw UnknownInScript("sorted_map_get needs exactly one field") }
+                if get.has("kv_pair") {
+                    parts.append(.sortedMapGet(.kvPair, SortedKey(try bytes(get.fields["kv_pair"], "a key"))))
+                } else if get.has("key") {
+                    parts.append(.sortedMapGet(.key, SortedKey(try bytes(get.fields["key"], "a key"))))
+                } else {
+                    parts.append(.sortedMapGet(.value, SortedKey(try bytes(get.fields["value"], "a key"))))
+                }
+            case "sorted_map_get_index":
+                parts.append(.sortedMapGetIndex(try ScriptObject.signed(payload, "sorted_map_get_index")))
+            case "sorted_map_remove":
+                parts.append(.sortedMapRemove(SortedKey(try bytes(payload, "a key"))))
             case "hash_map_init":
                 let options = try ScriptObject(payload, "hash_map_init")
                 try options.allow("counted", "set")
@@ -594,15 +663,45 @@ final class ScriptRunner {
     }
 
     private func perform(_ name: String, _ op: ScriptObject, topLevel: Bool) throws {
-        let closedOps = ["close", "reopen", "raw_append", "raw_write"]
-        if closedOps.contains(name) && !topLevel {
+        let topLevelOps = ["close", "reopen", "raw_append", "raw_write", "create_database", "use"]
+        if topLevelOps.contains(name) && !topLevel {
             throw UnknownInScript("'\(name)' inside a callback")
         }
-        if database == nil && !["reopen", "raw_append", "raw_write"].contains(name) {
+        if database == nil && !["reopen", "raw_append", "raw_write", "create_database", "use"].contains(name) {
             throw ScriptFailure("the op '\(name)' while the database is closed")
         }
 
         switch name {
+        case "create_database":
+            try op.allow("op", "note", "name", "file_id", "hash_id")
+            let name = try op.string("name")
+            if databases[name] != nil { throw ScriptFailure("a database called '\(name)' exists already") }
+            let hashID: HashID?
+            if !op.has("hash_id") {
+                hashID = scriptHashID
+            } else if op.isNull("hash_id") {
+                hashID = nil
+            } else {
+                let bytes = try self.bytes(op.fields["hash_id"], "hash_id")
+                guard bytes.count == 4 else { throw UnknownInScript("hash_id is not four bytes") }
+                hashID = HashID(bytes: [bytes[0], bytes[1], bytes[2], bytes[3]])
+            }
+            let place = ScriptDatabase(storage: try ScriptStorage(storage.kind))
+            place.database = try Database(
+                storage: try place.storage.openStorage(readOnly: false),
+                hashSize: hashSize,
+                hashID: hashID,
+                fileID: try fileID(op.fields["file_id"]),
+                random: random
+            )
+            databases[name] = place
+
+        case "use":
+            try op.allow("op", "note", "name")
+            let name = try op.string("name")
+            guard databases[name] != nil else { throw ScriptFailure("no database called '\(name)'") }
+            current = name
+
         case "write_path":
             try op.allow("op", "note", "expect_error", "on", "path", "as")
             let cursor = try readWrite(try op.string("on"))
@@ -887,17 +986,16 @@ final class ScriptRunner {
 
         case "rank":
             try op.allow("op", "note", "expect_error", "on", "key", "expect")
-            _ = try bytes(op.fields["key"], "key")
-            // The rank of a key in a sorted map or set arrives with M6. On
-            // anything else the wrappers raise UnexpectedTag.
-            let tag = try read(try op.string("on")) {
-                try $0.slot().tag
+            let key = try bytes(op.fields["key"], "key")
+            // The rank of a `SortedMap(.read_only)` on the cursor, whose
+            // init checks the tag.
+            let result = try read(try op.string("on")) {
+                try SortedMap($0.readOnly()).rank(key)
             } readOnly: {
-                try $0.slot().tag
+                try SortedMap($0).rank(key)
             }
-            switch tag {
-            case .sortedMap, .sortedSet, .none: throw XitDBError.notImplemented
-            default: throw XitDBError.unexpectedTag
+            if op.has("expect"), try op.unsigned("expect") != result {
+                throw ScriptFailure("rank gave \(result)")
             }
 
         case "count":
@@ -953,17 +1051,16 @@ final class ScriptRunner {
         switch try cursor.slot().tag {
         case .none, .arrayList: return try cursor.iterator(fromArrayListIndex: index)
         case .linkedArrayList: return try cursor.iterator(fromLinkedArrayListIndex: index)
-        case .sortedMap, .sortedSet: throw XitDBError.notImplemented
+        case .sortedMap, .sortedSet: return try cursor.iterator(fromSortedMapIndex: index)
         default: throw XitDBError.unexpectedTag
         }
     }
 
-    /// An iterator over a sorted map or set from a key, which arrives with
-    /// M6. A slot with nothing in it gives an iterator of nothing now.
+    /// An iterator over a sorted map or set from a key:
+    /// `SortedMap.iteratorFrom` in Zig.
     private func iterator<Access>(of cursor: Cursor<Access>, fromKey key: [UInt8]) throws -> Cursor<Access>.Iter {
         switch try cursor.slot().tag {
-        case .none: return try cursor.iterator()
-        case .sortedMap, .sortedSet: throw XitDBError.notImplemented
+        case .none, .sortedMap, .sortedSet: return try cursor.iterator(fromSortedMapKey: SortedKey(key))
         default: throw XitDBError.unexpectedTag
         }
     }
@@ -1026,23 +1123,25 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
     let collections: [String]
     let features: [String]
 
+    /// The files the script's other databases must leave, by the names
+    /// the script gives them.
+    let otherDatabases: [String: String]
+
     var testDescription: String { name }
 
     /// The milestone that brings what this script still needs, or `nil` if
     /// it can run now.
     var waitsFor: String? {
-        // A script that needs several waits for the latest.
+        // A script that needs both waits for the later.
         if features.contains("replication") { return "M8" }
         if features.contains("compaction") { return "M7" }
-        if collections.contains("sorted_map") { return "M6" }
         return nil
     }
 
     /// An op the runner does not have yet, which keeps the script from
     /// running although nothing in the engine is missing.
     var needsOp: String? {
-        if features.contains("several_databases") { return "several_databases" }
-        return nil
+        nil
     }
 
     /// Every script in the copied fixtures, as the manifest lists them.
@@ -1067,7 +1166,8 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
                 database: entry["db"] as? String,
                 sidecar: entry["sidecar"] as? String,
                 collections: entry["collections"] as? [String] ?? [],
-                features: entry["features"] as? [String] ?? []
+                features: entry["features"] as? [String] ?? [],
+                otherDatabases: entry["other_databases"] as? [String: String] ?? [:]
             )
         }
     }()
@@ -1100,11 +1200,11 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
 
         let sidecarJSON = try JSONSerialization.jsonObject(with: Data(try fixtureFile(try #require(sidecar))))
         let sidecar = try ScriptObject(sidecarJSON, "the sidecar")
-        try sidecar.allow("format", "file_id", "initial_size", "file_size", "ops")
+        try sidecar.allow("format", "file_id", "initial_size", "file_size", "databases", "ops")
         guard try sidecar.string("format") == "xitdb-sidecar/1" else { throw UnknownInScript("unknown sidecar format") }
         let steps = try sidecar.array("ops").map { try ScriptObject($0, "a sidecar entry") }
         let commitIDs = try steps.compactMap { step -> UInt64? in
-            try step.allow("committed_size", "commit_id")
+            try step.allow("db", "committed_size", "commit_id")
             guard !step.isNull("commit_id") else { return nil }
             return hex(try step.string("commit_id")).reduce(UInt64(0)) { $0 << 8 | UInt64($1) }
         }
@@ -1122,10 +1222,13 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
             try runner.run(op, topLevel: true)
             let expected: UInt64? =
                 steps[index].isNull("committed_size") ? nil : try steps[index].unsigned("committed_size")
-            let actual = try runner.committedSize()
+            // An entry is about the database the op committed in, or the
+            // current one; `db` names it when it is not `main`.
+            let about = try steps[index].optionalString("db")
+            let actual = try runner.committedSize(of: about ?? "main")
             guard actual == expected else {
                 throw ScriptFailure(
-                    "after op \(index) the committed size is \(String(describing: actual)), and Zig's was \(String(describing: expected))"
+                    "after op \(index) the committed size of \(about ?? "main") is \(String(describing: actual)), and Zig's was \(String(describing: expected))"
                 )
             }
         }
@@ -1139,6 +1242,30 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
         }
         if let difference = firstDifference(file, try fixtureFile(try #require(database))) {
             throw ScriptFailure("the file differs from Zig's: \(difference)")
+        }
+
+        // The other databases of the script, each against its own file.
+        let others = Set(runner.databaseNames).subtracting(["main"])
+        guard others == Set(otherDatabases.keys) else {
+            throw ScriptFailure(
+                "the script made the databases \(others.sorted()), and the manifest lists \(otherDatabases.keys.sorted())"
+            )
+        }
+        let sizes = sidecar.has("databases") ? try ScriptObject(sidecar.fields["databases"], "databases") : nil
+        for (name, expectedFile) in otherDatabases {
+            let other = try runner.contents(of: name)
+            if let sizes {
+                let entry = try ScriptObject(sizes.fields[name], "a database entry")
+                try entry.allow("file_id", "file_size", "trailers")
+                guard UInt64(other.count) == (try entry.unsigned("file_size")) else {
+                    throw ScriptFailure(
+                        "the database \(name) has \(other.count) bytes, and Zig's has \(try entry.unsigned("file_size"))"
+                    )
+                }
+            }
+            if let difference = firstDifference(other, try fixtureFile(expectedFile)) {
+                throw ScriptFailure("the database \(name) differs from Zig's: \(difference)")
+            }
         }
     }
 }
