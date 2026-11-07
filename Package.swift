@@ -29,7 +29,10 @@ let package = Package(
     dependencies: [
         // Build-time only: the command plugin that builds the documentation. No
         // target uses it, so nothing from it is linked into the library and
-        // clients of the package do not fetch it.
+        // clients of the package do not fetch it (D15). Checked over the network
+        // on 2026-11-07: a client package depending on this one by path resolved
+        // and built with no Package.resolved, no checkout and no mention of the
+        // plugin in its workspace state.
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.5.0")
     ],
     targets: [
@@ -37,8 +40,9 @@ let package = Package(
             name: "XitDB",
             swiftSettings: languageSettings + [.strictMemorySafety()]
         ),
-        // The benchmark of spec/benchmarks.md. It is not a product: nothing
-        // outside this package builds it.
+        // The benchmark of spec/benchmarks.md. An executable target is an
+        // implicit product, so a client could build it; nothing outside this
+        // package is meant to, and it brings no dependency.
         .executableTarget(
             name: "XitDBBenchmark",
             dependencies: ["XitDB"],
