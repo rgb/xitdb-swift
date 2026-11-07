@@ -154,21 +154,19 @@ import Testing
             ])
     }
 
-    /// The root's first and last children are not nodes but numbers.
+    /// The root's last child is not a node but a number, which happens to
+    /// be where the first leaf is, so that taking it for a node would read a
+    /// sound leaf and go on. Whatever goes through the last child is
+    /// reported: the last element, an append, a slice whose right part is
+    /// that child alone, and joining another list onto the right spine.
     @Test(arguments: StorageKind.allCases)
     func aChildThatIsNotANode(kind: StorageKind) throws {
         let subject = try Subject(kind)
-        _ = try subject.damaged(slotBytes(Slot(value: 7, tag: .uint)), at: subject.rootPtr + 2)
-        let database = try subject.damaged(slotBytes(Slot(value: 7, tag: .uint)), at: subject.rootPtr + 2 + 3 * 9)
+        let firstLeaf = try subject.database.reader.bTreeNode(at: subject.rootPtr).children[0].value
+        let database = try subject.damaged(
+            slotBytes(Slot(value: firstLeaf, tag: .uint)), at: subject.rootPtr + 2 + 3 * 9)
         let failed = try failing(database)
-        // The walk of the iterator gives the two numbers as elements, as
-        // Zig's does; the other two leaves are still there. A slice that
-        // keeps the last leaf on its own goes through the damaged slot.
-        #expect(
-            failed == [
-                "get 0", "get -1", "put 0", "insert 0", "append", "remove 0", "slice 0 5", "slice 20 5",
-                "concat onto", "concat", "iterate from 0",
-            ])
+        #expect(failed == ["get -1", "append", "slice 20 5", "concat"])
     }
 
     /// The root's first child points back at the root.
