@@ -69,4 +69,8 @@ extension Tag {
         guard let tag = Tag(rawValue: rawValue) else { throw .invalidEnumTag }
         self = tag
     }
+
+    /// The largest raw value that is a tag: the tags are numbered without
+    /// a gap, so a byte is a tag's if and only if it is at most this.
+    static let largestRawValue: UInt8 = Tag.sortedKvPair.rawValue
 }

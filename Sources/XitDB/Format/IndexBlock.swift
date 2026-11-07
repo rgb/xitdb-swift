@@ -58,6 +58,16 @@ enum SlotGroup {
     /// - Throws: `endOfStream` if the bytes run out, or `invalidEnumTag` at
     ///   the first slot whose tag is unknown.
     static func validate(_ bytes: Span<UInt8>, at offset: Int) throws(XitDBError) {
+        if offset >= 0 && bytes.count - offset >= 144 {
+            // all sixteen are there: one check of the bounds, then the tag
+            // bytes, which a descent does at every node
+            for index in 0..<Int(Trie.slotsPerBlock) where bytes[offset + index * 9] & 0x7F > Tag.largestRawValue {
+                throw .invalidEnumTag
+            }
+            return
+        }
+        // the bytes run out somewhere: in order, so that a tag that is
+        // not one before the end is reported first, as Zig reports it
         for index in 0..<Int(Trie.slotsPerBlock) {
             let start = offset + index * 9
             try bytes.requireBytes(9, at: start)
