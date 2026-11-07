@@ -142,9 +142,7 @@ extension Database {
     public func readCommitted<Sink: ByteSink>(from start: UInt64, to end: UInt64, into sink: inout Sink)
         throws(XitDBError)
     {
-        let committedSize = try reader.committedSize
-        if start > end || end > committedSize { throw .invalidRange }
-        if start > 0 && start < RootHeader.endPosition { throw .invalidRange }
+        try checkRange(from: start, to: end)
         if start == 0 {
             let trailer = try reader.rootTrailer(endingAt: end)
             try stream(from: 0, to: RootHeader.position, into: &sink)
@@ -164,9 +162,7 @@ extension Database {
     ///
     /// - Throws: What ``readCommitted(from:to:into:)-(_,_,Sink)`` throws.
     public func readCommitted(from start: UInt64, to end: UInt64, into bytes: inout [UInt8]) throws(XitDBError) {
-        let committedSize = try reader.committedSize
-        if start > end || end > committedSize { throw .invalidRange }
-        if start > 0 && start < RootHeader.endPosition { throw .invalidRange }
+        try checkRange(from: start, to: end)
         let trailer = start == 0 ? try reader.rootTrailer(endingAt: end) : nil
 
         let first = bytes.count
@@ -181,6 +177,18 @@ extension Database {
             }
             span.copyBytes(from: header.span, count: 17, to: first + Int(RootHeader.position))
         }
+    }
+
+    /// The checks of `readCommitted`'s range, in Zig's order: a start past
+    /// the end is refused before the committed size is read, so that a
+    /// replica with no database behind it reports the range and not its
+    /// own state.
+    ///
+    /// - Throws: `invalidRange`, or what ``committedSize`` throws.
+    private func checkRange(from start: UInt64, to end: UInt64) throws(XitDBError) {
+        if start > end { throw .invalidRange }
+        if end > (try reader.committedSize) { throw .invalidRange }
+        if start > 0 && start < RootHeader.endPosition { throw .invalidRange }
     }
 
     /// The committed bytes from `start` up to `end`, in memory.

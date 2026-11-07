@@ -249,6 +249,11 @@ struct CollectingSink: ByteSink {
         // not even the header
         #expect(throws: XitDBError.endOfStream) { try replica.applyReplicated(at: 0, bytes: Array(whole[0..<10])) }
         #expect(throws: XitDBError.endOfStream) { try replica.committedSize }
+        // a start past the end is refused before the committed size is
+        // read, as Zig's `or` short-circuits, so the range is reported and
+        // not the state the failed sync left
+        #expect(throws: XitDBError.invalidRange) { try readCommitted(replica, from: 5, to: 3) }
+        #expect(throws: XitDBError.endOfStream) { try readCommitted(replica, from: 37, to: 40) }
         // a trailer that does not check
         var damaged = whole
         damaged[damaged.count - 1] ^= 0xFF
