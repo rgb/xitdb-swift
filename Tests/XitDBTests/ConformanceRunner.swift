@@ -757,9 +757,14 @@ final class ScriptRunner {
                 diskOffsets = try DiskOffsets(storage: try offsetsStorage.openStorage(readOnly: false))
             }
             if let place = databases[into] {
-                // an existing database keeps its own file ID and hash ID
-                if op.has("file_id") || op.has("hash_id") {
-                    throw ScriptFailure("compact into an existing database names an ID")
+                // an existing database keeps its own file ID and hash ID.
+                // Zig's runner refuses a file ID named for it, and passes a
+                // hash ID on to an init that ignores it for a database
+                // that exists, so one is accepted here and ignored too.
+                if op.has("file_id") { throw ScriptFailure("compact into an existing database names a file ID") }
+                if op.has("hash_id") && !op.isNull("hash_id") {
+                    let bytes = try self.bytes(op.fields["hash_id"], "hash_id")
+                    guard bytes.count == 4 else { throw UnknownInScript("hash_id is not four bytes") }
                 }
                 guard let target = place.database else { throw ScriptFailure("compact into a closed database") }
                 if !useDisk {
@@ -770,9 +775,11 @@ final class ScriptRunner {
             } else {
                 // a new one, which the engine opens inside the compaction,
                 // as Zig's does, and which goes on being a database of the
-                // script once the compaction succeeds: its hash ID is the
-                // one given, or the source's; a null one is the source's
-                // too, as Zig's `orelse` makes it
+                // script once the compaction succeeds; a compaction that
+                // fails leaves no database of that name, as Zig's runner
+                // deletes the file it made. Its hash ID is the one given,
+                // or the source's; a null one is the source's too, as
+                // Zig's `orelse` makes it
                 guard op.has("file_id") else { throw ScriptFailure("compact into a new database needs file_id") }
                 var hashID: HashID?
                 if op.has("hash_id") && !op.isNull("hash_id") {
