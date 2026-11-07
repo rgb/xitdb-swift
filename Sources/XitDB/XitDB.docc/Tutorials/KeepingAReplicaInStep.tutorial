@@ -1,0 +1,134 @@
+@Tutorial(time: 15) {
+    @Intro(title: "Keeping a replica in step") {
+        Copy a database to a replica, keep it up to date by sending only what it lacks, recover from a dropped connection,
+        and see what compacting the source does to it.
+
+        Committed bytes never change, so a replica needs only the bytes it does not have yet. This tutorial keeps both
+        databases in memory, so that you can compare their bytes. You should have done <doc:KeepingHistory>.
+    }
+
+    @Section(title: "A first sync") {
+        @ContentAndMedia {
+            A sync has four steps, and they go back and forth. Over a network, the two databases are on different machines,
+            and what goes between them is two integers one way and some bytes the other.
+        }
+
+        @Steps {
+            @Step {
+                A source, with one moment in it. The helper commits a new value, which the rest of the tutorial uses.
+
+                @Code(name: "main.swift", file: "replica-01.swift")
+            }
+
+            @Step {
+                A replica, which starts as any new database with the same hash size.
+
+                @Code(name: "main.swift", file: "replica-02.swift")
+            }
+
+            @Step {
+                On the replica: say what it has. The state is two integers, its committed size and the checksum of its last
+                commit. They are what goes over the wire.
+
+                @Code(name: "main.swift", file: "replica-03.swift")
+            }
+
+            @Step {
+                On the source: decide where to start. Every database has a random file ID, which is part of each checksum, so
+                the source can see that this replica is not a copy of it. The answer is 0, the whole file.
+
+                @Code(name: "main.swift", file: "replica-04.swift")
+            }
+
+            @Step {
+                On the source: read the bytes from there up to its committed size.
+
+                @Code(name: "main.swift", file: "replica-05.swift")
+            }
+
+            @Step {
+                On the replica: apply them. It is now the same database, with the source's file ID. It is the same bytes too,
+                which is the point: everything that reads the source can read this.
+
+                @Code(name: "main.swift", file: "replica-06.swift")
+            }
+        }
+    }
+
+    @Section(title: "Staying up to date") {
+        @ContentAndMedia {
+            Now the replica is a prefix of the source, so the same four steps send only what is new.
+        }
+
+        @Steps {
+            @Step {
+                Put the steps in one function.
+
+                @Code(name: "main.swift", file: "replica-07.swift")
+            }
+
+            @Step {
+                Commit on the source, and sync. Only the new transaction goes.
+
+                @Code(name: "main.swift", file: "replica-08.swift")
+            }
+
+            @Step {
+                Sync again. With nothing new, nothing goes.
+
+                @Code(name: "main.swift", file: "replica-09.swift")
+            }
+
+            @Step {
+                Read from the replica. It is an ordinary database, with the history in it. Only change it with
+                ``Database/applyReplicated(at:bytes:)``: if you write to it directly, it stops matching the source, and the next sync replaces it.
+
+                @Code(name: "main.swift", file: "replica-10.swift")
+            }
+        }
+    }
+
+    @Section(title: "A dropped connection") {
+        @ContentAndMedia {
+            A sync that fails partway leaves the replica at its last commit, so the next one simply goes again.
+        }
+
+        @Steps {
+            @Step {
+                Pretend the connection drops after half of the bytes. `applyReplicated` takes a ``ByteSource``, which is how
+                bytes can come straight off a connection without being held in memory. This one runs out early, and the call
+                throws. The replica's committed size has not changed.
+
+                @Code(name: "main.swift", file: "replica-11.swift")
+            }
+
+            @Step {
+                Sync again. What the failed sync left past the committed size is discarded, and the new bytes go in. The one
+                case to take care over is a sync from 0, which empties the replica first: <doc:Replication> says what to do.
+
+                @Code(name: "main.swift", file: "replica-12.swift")
+            }
+        }
+    }
+
+    @Section(title: "When the source is replaced") {
+        @ContentAndMedia {
+            Compacting makes a new file with a new file ID, so replicas of the old one cannot be extended from it.
+        }
+
+        @Steps {
+            @Step {
+                Compact the source into a new database.
+
+                @Code(name: "main.swift", file: "replica-13.swift")
+            }
+
+            @Step {
+                Ask where to start, and the answer is 0. The next sync replaces the replica with a full copy of the compacted
+                file, and nothing else about the sync changes.
+
+                @Code(name: "main.swift", file: "replica-14.swift")
+            }
+        }
+    }
+}

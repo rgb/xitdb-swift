@@ -49,7 +49,11 @@ and `.slot(nil)` writes a slot set to nothing, which ``HashMap`` then makes into
 
 Copying happens as the body changes things. Making the read-write ``HashMap`` copies the first block of the map
 it was given, and each `put` copies the blocks on the way to the entry it changes. Everything else stays shared
-with earlier moments, so a moment keeps what it does not change:
+with earlier moments:
+
+![A history of three moments, each a map. The first holds apples at 120 and pears at 300. The second shares the pears with the first and has a new price for apples. The third shares the new price and has no pears.](history.svg)
+
+So a moment keeps what it does not change:
 
 ```swift
 try history.append(.slot(try history.slot(at: -1))) { cursor in

@@ -108,6 +108,7 @@ import Testing
         #expect(shown.count > 0)
         #expect(shown.contains { $0.place.hasPrefix("README.md") })
         #expect(shown.contains { $0.place.contains(".docc/Articles/") })
+        #expect(shown.contains { $0.place.contains(".docc/Resources/") })
     }
 
     @Test func everyShownLineIsCompiled() throws {

@@ -36,8 +36,10 @@ swift test -c release "${strict[@]}"
 
 # Sources/XitDB may import the standard library, Synchronization and the platform C
 # library, and nothing else. The platform C library may be imported in one file only.
+# The documentation catalogue is not code of the library: the tutorials' step files in
+# it are what a client writes, and import what a client imports.
 step "Import check"
-find Sources/XitDB -name '*.swift' -exec awk '
+find Sources/XitDB -name '*.swift' -not -path '*.docc/*' -exec awk '
     {
         line = $0
         sub(/^[ \t]+/, "", line)

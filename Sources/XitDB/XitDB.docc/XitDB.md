@@ -37,8 +37,9 @@ To start, read <doc:MomentsAndHistory>, then <doc:Transactions>. After that, eac
 
 ### Essentials
 
-How a database works, in the order to read it.
+Start with the tutorials, or read how a database works, in this order.
 
+- <doc:/tutorials/XitDB>
 - <doc:MomentsAndHistory>
 - <doc:Transactions>
 - <doc:CursorsAndValues>
@@ -48,6 +49,7 @@ How a database works, in the order to read it.
 A database keeps its bytes in a storage. ``BufferedFileStorage`` is the one to use for a file, and
 ``MemoryStorage`` for a database that needs none.
 
+- <doc:Storage>
 - ``Database``
 - ``BufferedFileStorage``
 - ``MemoryStorage``
@@ -107,6 +109,7 @@ Values and keys held in the order of their bytes, for what has to be sorted or p
 
 A byte array is a value like any other, and can be written and read a part at a time.
 
+- <doc:LargeByteArrays>
 - ``Bytes``
 - ``FormatTag``
 - ``ByteWriter``
@@ -116,6 +119,7 @@ A byte array is a value like any other, and can be written and read a part at a 
 
 A new database holding only what the latest moment reaches, which is the way to get space back.
 
+- <doc:Compaction>
 - ``OffsetMap``
 - ``MemoryOffsetMap``
 
@@ -123,6 +127,7 @@ A new database holding only what the latest moment reaches, which is the way to 
 
 Bringing a copy up to date by sending it the bytes it lacks.
 
+- <doc:Replication>
 - ``ReplicaState``
 - ``ByteSink``
 - ``ByteSource``
@@ -133,6 +138,7 @@ Bringing a copy up to date by sending it the bytes it lacks.
 
 Everything the package throws, grouped by what caused it.
 
+- <doc:Errors>
 - ``XitDBError``
 
 ### Writing a storage
@@ -142,3 +148,9 @@ The protocols a storage of your own conforms to.
 - ``WritableStorage``
 - ``ReadableStorage``
 - ``SyncPoint``
+
+### The original
+
+What this package does differently from xitdb in Zig, and how its names map to the original's.
+
+- <doc:DifferencesFromTheOriginal>

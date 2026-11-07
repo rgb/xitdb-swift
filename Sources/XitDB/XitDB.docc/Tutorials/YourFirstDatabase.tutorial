@@ -1,0 +1,140 @@
+@Tutorial(time: 10) {
+    @Intro(title: "Your first database") {
+        Create a database in a file, write a moment to it, read it back, and open it again.
+
+        You need an executable package that depends on `XitDB`, as the README shows. The code goes in its `main.swift`.
+    }
+
+    @Section(title: "Create a database") {
+        @ContentAndMedia {
+            A database keeps its bytes in a storage, and for a database in a file that is a
+            ``BufferedFileStorage``. XitDB hashes nothing itself, so the first thing a program needs is a hash for its
+            keys.
+        }
+
+        @Steps {
+            @Step {
+                Import the library and CryptoKit, and write a helper that hashes a string with SHA-256. XitDB takes the
+                bytes of a hash from you, and only needs to know how many there are.
+
+                @Code(name: "main.swift", file: "first-database-01.swift")
+            }
+
+            @Step {
+                Open the file. ``FileAccess/create`` makes the file if it is not there. The access mode has no default:
+                a mistyped path should not quietly make an empty file.
+
+                @Code(name: "main.swift", file: "first-database-02.swift")
+            }
+
+            @Step {
+                Make the database. Creating and opening are different calls, and which one you want depends on whether
+                the file is new. A new one gets a hash size of 32 bytes, and a note in its header of which hash that is.
+
+                @Code(name: "main.swift", file: "first-database-03.swift")
+            }
+
+            @Step {
+                Make the root a list. This list is the history: it will have one element per transaction, and each
+                element is the whole state of the database at that point. On a new database this is a small transaction
+                of its own. On an existing one it writes nothing.
+
+                @Code(name: "main.swift", file: "first-database-04.swift")
+            }
+        }
+    }
+
+    @Section(title: "Write a moment") {
+        @ContentAndMedia {
+            An element of the history is a moment. Adding one is a transaction: everything in the body commits together
+            when the body returns.
+        }
+
+        @Steps {
+            @Step {
+                Append a moment. The value it starts from is the slot of the last moment, so the new one starts with
+                everything the last one had, without copying any of it. In this first transaction there is no last
+                moment, and it starts with nothing. The body makes the moment a map, and puts two values in it.
+
+                @Code(name: "main.swift", file: "first-database-05.swift")
+            }
+        }
+    }
+
+    @Section(title: "Read it back") {
+        @ContentAndMedia {
+            Reading needs no transaction. You go down from the root a level at a time, and every step gives you a
+            read-only cursor.
+        }
+
+        @Steps {
+            @Step {
+                Get the latest moment. An index of `-1` is the last element of a list. ``ArrayList/cursor(at:)`` gives `nil` for an
+                element that is not there; here it was just written, so the code unwraps it.
+
+                @Code(name: "main.swift", file: "first-database-06.swift")
+            }
+
+            @Step {
+                Read the values. A number reads as a number. A string is stored as its bytes, so it reads as bytes and
+                you turn them back into a string.
+
+                @Code(name: "main.swift", file: "first-database-07.swift")
+            }
+        }
+    }
+
+    @Section(title: "Open it again") {
+        @ContentAndMedia {
+            What was committed is in the file, whatever happens to your program afterwards.
+        }
+
+        @Steps {
+            @Step {
+                Print the number of moments, and run the program twice. The first run creates the file and prints 1. The
+                second run opens it, adds a moment to it, and prints 2. The moment from the first run is still there, as
+                element 0.
+
+                @Code(name: "main.swift", file: "first-database-08.swift")
+            }
+
+            @Step {
+                Now throw from a transaction's body. The error comes out of the call as you threw it, and the file is
+                back to what it was: the count has not changed, and the age of 99 is not in any moment.
+
+                @Code(name: "main.swift", file: "first-database-09.swift")
+            }
+        }
+    }
+
+    @Assessments {
+        @MultipleChoice {
+            What does the new element start from in `history.append(.slot(try history.slot(at: -1)))`?
+
+            @Choice(isCorrect: true) {
+                The last moment, sharing what it holds.
+
+                @Justification(reaction: "That's right.") {
+                    The slot is copied, and what it points at is not. The body then copies only what it changes.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                A full copy of the last moment.
+
+                @Justification(reaction: "Try again.") {
+                    Nothing it points at is copied. That would make every transaction as large as the database.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                An empty map, which the body fills in.
+
+                @Justification(reaction: "Try again.") {
+                    That is what happens in the first transaction only, when there is no last moment. Later moments
+                    keep what they do not change.
+                }
+            }
+        }
+    }
+}
