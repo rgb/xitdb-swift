@@ -12,7 +12,7 @@
 #endif
 
 /// A way of asking the operating system to put a file's data on the disk.
-enum SyncCall: Sendable, Equatable {
+package enum SyncCall: Sendable, Equatable {
     /// The data reaches the disk and the drive flushes its cache. On Apple
     /// platforms, `fcntl` with `F_FULLFSYNC`.
     case full

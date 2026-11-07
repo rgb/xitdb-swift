@@ -33,6 +33,8 @@ enum StorageKind: String {
 final class RunStorage {
     let kind: StorageKind
     let storage: any WritableStorage
+    /// The file under the storage, for `--count` to put its counters on.
+    let file: FileStorage?
     private let path: String?
 
     init(_ kind: StorageKind) throws {
@@ -40,15 +42,15 @@ final class RunStorage {
         switch kind {
         case .memory:
             path = nil
+            file = nil
             storage = MemoryStorage()
         case .bufferedFile, .file:
-            let file = FileManager.default.temporaryDirectory
+            let path = FileManager.default.temporaryDirectory
                 .appendingPathComponent("xitdb-benchmark-\(UUID().uuidString).db").path
-            path = file
-            storage =
-                kind == .file
-                ? try FileStorage(path: file, access: .truncate, durability: .none)
-                : try BufferedFileStorage(path: file, access: .truncate, durability: .none)
+            self.path = path
+            let file = try FileStorage(path: path, access: .truncate, durability: .none)
+            self.file = file
+            storage = kind == .file ? file : BufferedFileStorage(file)
         }
     }
 
@@ -564,6 +566,80 @@ func run(_ workload: Workload) throws {
     }
 }
 
+/// The system calls a file storage made: what `--count` reports per phase.
+final class IOCounts {
+    var preadCalls = 0
+    var preadBytes = 0
+    var pwriteCalls = 0
+    var pwriteBytes = 0
+    var fstatCalls = 0
+    var ftruncateCalls = 0
+
+    /// The file's own calls, kept from the first install so that a later
+    /// one counts once, not through the counters already there.
+    private var base: FileCalls?
+
+    func install(on file: FileStorage) {
+        let base = self.base ?? file.calls
+        self.base = base
+        file.calls.read = {
+            (descriptor: Int32, buffer: inout MutableSpan<UInt8>, range: Range<Int>, offset: UInt64)
+                throws(XitDBError) -> Int in
+            let read = try base.read(descriptor, &buffer, range, offset)
+            self.preadCalls += 1
+            self.preadBytes += read
+            return read
+        }
+        file.calls.write = { (descriptor: Int32, bytes: Span<UInt8>, offset: UInt64) throws(XitDBError) in
+            self.pwriteCalls += 1
+            self.pwriteBytes += bytes.count
+            try base.write(descriptor, bytes, offset)
+        }
+        file.calls.length = { (descriptor: Int32) throws(XitDBError) -> UInt64 in
+            self.fstatCalls += 1
+            return try base.length(descriptor)
+        }
+        file.calls.setLength = { (descriptor: Int32, length: UInt64) throws(XitDBError) in
+            self.ftruncateCalls += 1
+            try base.setLength(descriptor, length)
+        }
+    }
+
+    func report(_ workload: Workload, _ phase: String, _ kind: StorageKind) {
+        print(
+            "counts \(workload.name) \(phase) \(kind.rawValue): pread \(preadCalls) calls \(preadBytes) bytes, "
+                + "pwrite \(pwriteCalls) calls \(pwriteBytes) bytes, fstat \(fstatCalls), ftruncate \(ftruncateCalls)")
+        preadCalls = 0
+        preadBytes = 0
+        pwriteCalls = 0
+        pwriteBytes = 0
+        fstatCalls = 0
+        ftruncateCalls = 0
+    }
+}
+
+/// Runs one run of a workload on one kind of storage with the file's system
+/// calls counted, and prints the counts of each phase: calls and bytes of
+/// pread and pwrite, calls of fstat and ftruncate.
+func runCounting(_ workload: Workload, _ kind: StorageKind) throws {
+    let keys = Keys(workload.keyKind, count: workload.keyCount)
+    let storage = try RunStorage(kind)
+    guard let file = storage.file else { throw BenchmarkFailure(description: "a memory storage makes no calls") }
+    let counts = IOCounts()
+    let prepared = try workload.prepare(storage, keys)
+    counts.install(on: file)
+    let database = try workload.write(storage, keys, prepared)
+    counts.report(workload, "write", kind)
+    try workload.afterWrite(database, prepared)
+    counts.install(on: file)
+    try workload.read(database, keys, prepared)
+    counts.report(workload, "read", kind)
+    try workload.afterRead(database, prepared)
+    counts.install(on: file)
+    try workload.iterate(database, keys, prepared)
+    counts.report(workload, "iterate", kind)
+}
+
 /// Runs one phase of a workload until `seconds` have passed, and prints how
 /// often it ran and how long a run took on average. The write phase starts
 /// from a new, empty database each time, as it does when it is measured. The
@@ -598,6 +674,21 @@ func runRepeatedly(_ workload: Workload, _ kind: StorageKind, phase: String, sec
 }
 
 let arguments = Array(CommandLine.arguments.dropFirst())
+if arguments.first == "--count" {
+    guard arguments.count == 3, let workload = workloads.first(where: { $0.name == arguments[1] }),
+        let kind = StorageKind(rawValue: arguments[2])
+    else {
+        FileHandle.standardError.write(Data("usage: XitDBBenchmark --count <workload> <kind>\n".utf8))
+        exit(2)
+    }
+    do {
+        try runCounting(workload, kind)
+    } catch {
+        FileHandle.standardError.write(Data("XitDBBenchmark: \(error)\n".utf8))
+        exit(1)
+    }
+    exit(0)
+}
 if arguments.first == "--repeat" {
     guard
         arguments.count == 5,

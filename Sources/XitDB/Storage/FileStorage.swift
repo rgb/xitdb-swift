@@ -74,14 +74,25 @@ public enum FileLock: Sendable {
     case exclusive
 }
 
-/// The system calls a file storage makes that tests need to watch or to make
-/// fail.
-struct FileCalls {
+/// The system calls a file storage makes, which tests replace to watch
+/// them or to make them fail, and the benchmark replaces to count them.
+package struct FileCalls {
     /// Makes one sync call and returns zero or the error it reported.
-    var sync: (Int32, SyncCall) -> Int32 = Platform.syncFile
+    package var sync: (Int32, SyncCall) -> Int32 = Platform.syncFile
 
     /// Writes all of the bytes to the file at an offset.
-    var write: (Int32, Span<UInt8>, UInt64) throws(XitDBError) -> Void = Platform.writeFile
+    package var write: (Int32, Span<UInt8>, UInt64) throws(XitDBError) -> Void = Platform.writeFile
+
+    /// Reads into a part of a buffer from an offset, as many bytes as fit
+    /// there or are left.
+    package var read: (Int32, inout MutableSpan<UInt8>, Range<Int>, UInt64) throws(XitDBError) -> Int =
+        Platform.readFile
+
+    /// The file's length.
+    package var length: (Int32) throws(XitDBError) -> UInt64 = Platform.fileLength
+
+    /// Sets the file's length.
+    package var setLength: (Int32, UInt64) throws(XitDBError) -> Void = Platform.setFileLength
 }
 
 /// Owns an open file descriptor and closes it when the last reference goes.
@@ -117,10 +128,10 @@ public final class FileStorage: WritableStorage {
     /// How far the storage goes to put a commit on the disk.
     public let durability: Durability
 
-    /// The system calls the storage makes to sync and to write. Tests replace
-    /// them to see which sync calls a durability level makes, and to make a
-    /// write fail the way a full disk would.
-    var calls = FileCalls()
+    /// The system calls the storage makes. Tests replace them to see which
+    /// sync calls a durability level makes, and to make a write fail the way
+    /// a full disk would; the benchmark counts them.
+    package var calls = FileCalls()
 
     /// Opens a file as a storage.
     ///
@@ -174,7 +185,7 @@ public final class FileStorage: WritableStorage {
         range: Range<Int>,
         at offset: UInt64
     ) throws(XitDBError) -> Int {
-        try Platform.readFile(descriptor.rawValue, into: &buffer, range: range, at: offset)
+        try calls.read(descriptor.rawValue, &buffer, range, offset)
     }
 
     /// The length of the file.
@@ -183,7 +194,7 @@ public final class FileStorage: WritableStorage {
     ///   cannot be read.
     public var length: UInt64 {
         get throws(XitDBError) {
-            try Platform.fileLength(descriptor.rawValue)
+            try calls.length(descriptor.rawValue)
         }
     }
 
@@ -234,7 +245,7 @@ public final class FileStorage: WritableStorage {
     /// become part of the file.
     func resize(to length: UInt64) throws(XitDBError) {
         if isReadOnly { return }
-        try Platform.setFileLength(descriptor.rawValue, length)
+        try calls.setLength(descriptor.rawValue, length)
     }
 
     /// Does nothing: a file storage holds no bytes back.
