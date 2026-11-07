@@ -101,13 +101,13 @@ extension DatabaseReader {
     /// value is empty. Only a `kvPair` has a hash; the others report zeros.
     ///
     /// - Throws: `unexpectedTag` if the slot is not an entry.
-    func keyValuePair(_ entry: Slot) throws(XitDBError) -> (hash: KeyHash, pair: KeyValuePair) {
+    func keyValuePair(_ entry: Slot) throws(XitDBError) -> HashedPair {
         if KeyValuePair.isKeyOnlyEntry(entry) {
-            return (zeroHash(), KeyValuePair(keySlot: entry, valueSlot: Slot()))
+            return HashedPair(hash: zeroHash(), pair: KeyValuePair(keySlot: entry, valueSlot: Slot()))
         }
         switch entry.tag {
         case .kvPair: return try hashedPair(at: entry.value)
-        case .sortedKvPair: return (zeroHash(), try sortedPair(at: entry.value))
+        case .sortedKvPair: return HashedPair(hash: zeroHash(), pair: try sortedPair(at: entry.value))
         default: throw .unexpectedTag
         }
     }

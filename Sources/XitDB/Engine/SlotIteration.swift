@@ -30,7 +30,37 @@ struct SlotIterator {
     }
 
     private let reader: DatabaseReader
+
+    /// The block the walk is in, or a used-up one when the walk is over.
+    /// Kept apart from the stack so that the step from one slot to the next
+    /// touches no array: an array's element is copied out to be read and
+    /// checked for sharing to be changed, which was a third of the time of
+    /// iterating.
+    private var current = Level(position: 0, block: IndexBlock(), index: UInt8(Trie.slotsPerBlock))
+
+    /// The blocks above `current`, nearest last.
     private var stack: [Level] = []
+
+    /// The number of blocks on the way, `current` included. Zero when the
+    /// walk is over.
+    private var depth = 0
+
+    /// Enters a block below the current one.
+    private mutating func push(_ level: Level) {
+        if depth > 0 {
+            stack.append(current)
+        }
+        current = level
+        depth += 1
+    }
+
+    /// Leaves the current block for the one above it.
+    private mutating func pop() {
+        depth -= 1
+        if depth > 0 {
+            current = stack.removeLast()
+        }
+    }
 
     /// What stops the walk at the collection's size.
     enum Counting {
@@ -128,7 +158,7 @@ struct SlotIterator {
             throw .unexpectedTag
         }
         stack.reserveCapacity(min(maxDepth, 8))
-        stack.append(Level(position: rootPosition, block: try reader.indexBlock(at: rootPosition), index: 0))
+        push(Level(position: rootPosition, block: try reader.indexBlock(at: rootPosition), index: 0))
     }
 
     /// Starts a walk of an array list at one of its elements. A negative
@@ -167,7 +197,7 @@ struct SlotIterator {
         while true {
             let block = try reader.indexBlock(at: position)
             let index = Int(DatabaseReader.arrayListSlotIndex(key: key, shift: UInt8(shift)))
-            stack.append(Level(position: position, block: block, index: UInt8(index)))
+            push(Level(position: position, block: block, index: UInt8(index)))
             if shift == 0 { break }
             // Every block above the last holds a pointer to the next one for
             // any element the list has.
@@ -212,19 +242,19 @@ struct SlotIterator {
 
         var nodePtr = header.rootPtr
         var rem = rank
-        while stack.count <= BTree.maxHeight {
+        while depth <= BTree.maxHeight {
             let node = try reader.bTreeNode(at: nodePtr)
             let position = try nodePtr.offset(by: BTree.nodeHeaderByteCount)
             switch node.kind {
             case .leaf:
                 guard rem < UInt64(node.num) else { throw .invalidBTreeNode }
-                stack.append(Level(position: position, block: IndexBlock(slots: node.values), index: UInt8(rem)))
+                push(Level(position: position, block: IndexBlock(slots: node.values), index: UInt8(rem)))
                 return
             case .branch:
                 guard node.num > 0 else { throw .invalidBTreeNode }
                 let (index, next) = BTree.child(of: node, rank: rem, inclusive: false)
                 guard node.children[index].tag == .index else { throw .invalidBTreeNode }
-                stack.append(Level(position: position, block: IndexBlock(slots: node.children), index: UInt8(index)))
+                push(Level(position: position, block: IndexBlock(slots: node.children), index: UInt8(index)))
                 nodePtr = node.children[index].value
                 rem = next
             }
@@ -249,22 +279,19 @@ struct SlotIterator {
     ///   for an array list, that is deeper than it can be; `invalidEnumTag`
     ///   or `endOfStream` for a block that cannot be read.
     mutating func next() throws(XitDBError) -> SlotPointer? {
-        while !stack.isEmpty {
-            let top = stack.count - 1
-            let index = Int(stack[top].index)
+        while depth > 0 {
+            let index = Int(current.index)
             if index == Int(Trie.slotsPerBlock) {
                 // This block is done: go on in the one above it.
-                stack.removeLast()
-                if top > 0 {
-                    stack[top - 1].index += 1
-                }
+                pop()
+                current.index += 1
                 continue
             }
-            let slot = stack[top].block.slots[index]
+            let slot = current.block.slots[index]
             if slot.tag == .index {
-                if stack.count >= maxDepth { throw depthError }
+                if depth >= maxDepth { throw depthError }
                 let position = try slot.value.offset(by: nodeOffset)
-                stack.append(Level(position: position, block: try reader.indexBlock(at: position), index: 0))
+                push(Level(position: position, block: try reader.indexBlock(at: position), index: 0))
                 continue
             }
             // A slot that is not a block is an element, or an entry.
@@ -278,9 +305,9 @@ struct SlotIterator {
                 if left == 0 { return nil }
                 if !slot.isEmpty { remaining = .elements(left - 1) }
             }
-            stack[top].index += 1
+            current.index += 1
             if !slot.isEmpty {
-                let position = try stack[top].position.offset(by: Slot.byteCount * UInt64(index))
+                let position = try current.position.offset(by: Slot.byteCount * UInt64(index))
                 return SlotPointer(position: position, slot: slot)
             }
         }

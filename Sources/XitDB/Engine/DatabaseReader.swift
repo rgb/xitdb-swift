@@ -18,6 +18,14 @@ extension UInt64 {
 ///
 /// Code that only reads depends on this and not on ``Database``, so that the
 /// same code can later read a snapshot of committed data from any thread.
+/// A key-value pair with the hash it is stored under. (A struct and not a
+/// tuple, because a tuple of these needs its metadata looked up at run time
+/// each time one is destroyed, which showed in iterating over a map.)
+struct HashedPair {
+    var hash: KeyHash
+    var pair: KeyValuePair
+}
+
 struct DatabaseReader {
     let storage: any ReadableStorage
     let hashSize: UInt16
@@ -74,7 +82,7 @@ struct DatabaseReader {
     ///
     /// - Throws: `endOfStream` if the record is not all there, or
     ///   `invalidEnumTag` if one of its slots has an unknown tag.
-    func hashedPair(at position: UInt64) throws(XitDBError) -> (hash: KeyHash, pair: KeyValuePair) {
+    func hashedPair(at position: UInt64) throws(XitDBError) -> HashedPair {
         let size = Int(hashSize) + 18
         if size <= 82 {
             var buffer = InlineArray<82, UInt8>(repeating: 0)
@@ -92,12 +100,9 @@ struct DatabaseReader {
         return try Self.decodeHashedPair(buffer.span, hashSize: hashSize)
     }
 
-    private static func decodeHashedPair(
-        _ record: Span<UInt8>,
-        hashSize: UInt16
-    ) throws(XitDBError) -> (hash: KeyHash, pair: KeyValuePair) {
+    private static func decodeHashedPair(_ record: Span<UInt8>, hashSize: UInt16) throws(XitDBError) -> HashedPair {
         let pair = try KeyValuePair(decodingHashed: record, hashSize: hashSize)
-        return (KeyHash(record.extracting(0..<Int(hashSize))), pair)
+        return HashedPair(hash: KeyHash(record.extracting(0..<Int(hashSize))), pair: pair)
     }
 
     func sortedPair(at position: UInt64) throws(XitDBError) -> KeyValuePair {
