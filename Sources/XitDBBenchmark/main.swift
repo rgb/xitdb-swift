@@ -296,8 +296,11 @@ func sortedInsert(_ size: Int, kinds: [StorageKind]) -> Workload {
         let map = try SortedMap(try lastMoment(database))
         var iterator = try map.iterator()
         var count = 0
-        var previous: [UInt8] = []
+        // two buffers of sixteen bytes, the key just read and the one
+        // before it, swapped after each entry: nothing is allocated
         var buffer = [UInt8](repeating: 0, count: 16)
+        var previous = [UInt8](repeating: 0, count: 16)
+        var previousCount = 0
         while let entry = try iterator.next() {
             let pair = try entry.readKeyValuePair()
             let value = try pair.valueCursor.readUint()
@@ -306,19 +309,41 @@ func sortedInsert(_ size: Int, kinds: [StorageKind]) -> Workload {
             }
             var span = buffer.mutableSpan
             let read = try pair.keyCursor.readBytes(into: &span)
-            guard buffer[0..<read].elementsEqual(texts[Int(value)]) else {
+            guard sameBytes(buffer, read, texts[Int(value)], texts[Int(value)].count) else {
                 throw BenchmarkFailure(description: "the key of key-\(value) does not read back")
             }
             // strictly greater than the key before it: the first key is
             // greater than nothing
-            guard count == 0 || previous.lexicographicallyPrecedes(buffer[0..<read]) else {
+            guard count == 0 || precedes(previous, previousCount, buffer, read) else {
                 throw BenchmarkFailure(description: "key-\(value) is out of order")
             }
-            previous = Array(buffer[0..<read])
+            swap(&previous, &buffer)
+            previousCount = read
             count += 1
         }
         guard count == size else { throw BenchmarkFailure(description: "the iteration gave \(count) entries") }
     }
+}
+
+/// Whether the first `leftCount` bytes of `left` are the first `rightCount`
+/// of `right`.
+func sameBytes(_ left: [UInt8], _ leftCount: Int, _ right: [UInt8], _ rightCount: Int) -> Bool {
+    guard leftCount == rightCount else { return false }
+    for index in 0..<leftCount where left[index] != right[index] {
+        return false
+    }
+    return true
+}
+
+/// Whether the first `leftCount` bytes of `left` come before the first
+/// `rightCount` of `right`, bytewise, a shorter key first where it is a
+/// prefix: strictly less.
+func precedes(_ left: [UInt8], _ leftCount: Int, _ right: [UInt8], _ rightCount: Int) -> Bool {
+    let common = min(leftCount, rightCount)
+    for index in 0..<common where left[index] != right[index] {
+        return left[index] < right[index]
+    }
+    return leftCount < rightCount
 }
 
 let workloads: [Workload] = [

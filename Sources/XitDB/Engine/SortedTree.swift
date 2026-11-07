@@ -78,7 +78,7 @@ extension DatabaseReader {
 
     /// The slot of the entry at `rank` in a sorted map's tree.
     func sortedSlot(rootPtr: UInt64, rank: UInt64) throws(XitDBError) -> SlotPointer {
-        try slotByRank(rootPtr: rootPtr, rank: rank) { (position) throws(XitDBError) in try sortedNode(at: position) }
+        try slotByRank(rootPtr: rootPtr, rank: rank, in: SortedNode.self)
     }
 
     /// The pair an entry of a sorted leaf stands for: Zig's `readKvPair`.

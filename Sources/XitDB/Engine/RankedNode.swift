@@ -12,6 +12,16 @@ protocol RankedNode {
     /// The number of bytes the node takes in the file, by its kind.
     var byteCount: UInt64 { get }
 
+    /// Where a branch's sixteen counts start; its children start right
+    /// after the header in both trees.
+    static var countsOffset: Int { get }
+
+    /// Checks the bytes of a node of this kind as decoding the whole node
+    /// would, so that a reader taking one slot and the counts from the
+    /// bytes reports the same errors: a cut node and an unknown tag
+    /// anywhere in it.
+    static func validate(_ bytes: Span<UInt8>, kind: BTreeNodeKind) throws(XitDBError)
+
     /// The element or entry at `index` of a leaf.
     func leafSlot(at index: Int) -> Slot
 
@@ -21,20 +31,43 @@ protocol RankedNode {
 }
 
 extension BTreeNode: RankedNode {
+    static let countsOffset = 146
+
     func leafSlot(at index: Int) -> Slot {
         values[index]
+    }
+
+    static func validate(_ bytes: Span<UInt8>, kind: BTreeNodeKind) throws(XitDBError) {
+        try SlotGroup.validate(bytes, at: 2)
+        if kind == .branch {
+            try bytes.requireBytes(128, at: countsOffset)
+        }
     }
 }
 
 extension SortedNode: RankedNode {
+    static let countsOffset = 290
+
     func leafSlot(at index: Int) -> Slot {
         entries[index]
+    }
+
+    static func validate(_ bytes: Span<UInt8>, kind: BTreeNodeKind) throws(XitDBError) {
+        try SlotGroup.validate(bytes, at: 2)
+        if kind == .branch {
+            try SlotGroup.validate(bytes, at: 146)
+            try bytes.requireBytes(128, at: countsOffset)
+        }
     }
 }
 
 extension DatabaseReader {
-    /// The slot of the element at `rank` in the tree at `rootPtr`, read
-    /// with `read`: Zig's `descendByRank`, for both trees.
+    /// The slot of the element at `rank` in the tree at `rootPtr`, whose
+    /// nodes are of `Node`'s kind: Zig's `descendByRank`, for both trees.
+    ///
+    /// Each node is read once and checked whole, but only what the descent
+    /// needs is decoded: the counts up to the child the rank falls in, and
+    /// that child, or the one slot of the leaf.
     ///
     /// - Throws: `invalidBTreeNode` if the rank is beyond the leaf it leads
     ///   to, if a branch has no children or a child is not a node, or if the
@@ -43,24 +76,38 @@ extension DatabaseReader {
     func slotByRank<Node: RankedNode>(
         rootPtr: UInt64,
         rank: UInt64,
-        read: (UInt64) throws(XitDBError) -> Node
+        in node: Node.Type
     ) throws(XitDBError) -> SlotPointer {
+        var buffer = InlineArray<418, UInt8>(repeating: 0)
         var nodePtr = rootPtr
         var rem = rank
         for _ in 0...BTree.maxHeight {
-            let node = try read(nodePtr)
-            switch node.kind {
+            var span = buffer.mutableSpan
+            let read = try storage.read(into: &span, at: nodePtr)
+            let bytes = buffer.span.extracting(0..<read)
+            let header = try TreeNodeHeader.decode(bytes)
+            try Node.validate(bytes, kind: header.kind)
+            switch header.kind {
             case .leaf:
-                guard rem < UInt64(node.num) else { throw .invalidBTreeNode }
+                guard rem < UInt64(header.num) else { throw .invalidBTreeNode }
                 let index = Int(rem)
                 return SlotPointer(
-                    position: try BTree.slotPosition(nodePtr: nodePtr, index: index), slot: node.leafSlot(at: index))
+                    position: try BTree.slotPosition(nodePtr: nodePtr, index: index),
+                    slot: try Slot(decoding: bytes, at: 2 + index * 9)
+                )
             case .branch:
-                guard node.num > 0 else { throw .invalidBTreeNode }
-                let (index, next) = BTree.child(of: node, rank: rem, inclusive: false)
-                guard node.children[index].tag == .index else { throw .invalidBTreeNode }
-                nodePtr = node.children[index].value
-                rem = next
+                guard header.num > 0 else { throw .invalidBTreeNode }
+                // the child rule, over the counts as they are read
+                var index = 0
+                while index + 1 < Int(header.num) {
+                    let count: UInt64 = bytes.bigEndian(at: Node.countsOffset + index * 8)
+                    if rem < count { break }
+                    rem -= count
+                    index += 1
+                }
+                let child = try Slot(decoding: bytes, at: 2 + index * 9)
+                guard child.tag == .index else { throw .invalidBTreeNode }
+                nodePtr = child.value
             }
         }
         throw .invalidBTreeNode

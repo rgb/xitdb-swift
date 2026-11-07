@@ -113,7 +113,7 @@ extension DatabaseReader {
     }
 
     private func zeroHash() -> KeyHash {
-        KeyHash([UInt8](repeating: 0, count: Int(hashSize)))
+        KeyHash(zeros: Int(hashSize))
     }
 
     /// The number of elements in the collection a slot holds, or of bytes in

@@ -52,6 +52,19 @@ enum SlotGroup {
         return slots
     }
 
+    /// Checks sixteen slots that start at `offset` as ``decode(_:at:)``
+    /// does, for a reader that needs one of them and the same errors.
+    ///
+    /// - Throws: `endOfStream` if the bytes run out, or `invalidEnumTag` at
+    ///   the first slot whose tag is unknown.
+    static func validate(_ bytes: Span<UInt8>, at offset: Int) throws(XitDBError) {
+        for index in 0..<Int(Trie.slotsPerBlock) {
+            let start = offset + index * 9
+            try bytes.requireBytes(9, at: start)
+            _ = try Tag(validating: bytes[start] & 0x7F)
+        }
+    }
+
     /// Appends sixteen slots.
     static func encode(_ slots: InlineArray<16, Slot>, into output: inout OutputSpan<UInt8>) {
         for index in slots.indices {

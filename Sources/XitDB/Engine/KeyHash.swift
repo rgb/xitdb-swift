@@ -9,7 +9,9 @@ package struct KeyHash: Sendable {
     static let inlineCapacity = 64
 
     private var inline: InlineArray<64, UInt8>
-    private var overflow: [UInt8]
+    /// Only a hash longer than the inline capacity has one, so that copying
+    /// the common kind touches no reference count.
+    private var overflow: [UInt8]?
 
     /// The number of bytes in the hash.
     package let count: Int
@@ -18,16 +20,18 @@ package struct KeyHash: Sendable {
     package init(_ bytes: Span<UInt8>) {
         count = bytes.count
         inline = InlineArray(repeating: 0)
-        overflow = []
         if count <= Self.inlineCapacity {
+            overflow = nil
             for index in bytes.indices {
                 inline[index] = bytes[index]
             }
         } else {
-            overflow.reserveCapacity(count)
+            var copy: [UInt8] = []
+            copy.reserveCapacity(count)
             for index in bytes.indices {
-                overflow.append(bytes[index])
+                copy.append(bytes[index])
             }
+            overflow = copy
         }
     }
 
@@ -36,24 +40,32 @@ package struct KeyHash: Sendable {
         self.init(bytes.span)
     }
 
+    /// A hash of `count` zero bytes, which allocates nothing: what a pair
+    /// that has no hash, a sorted map's or a key-only entry, reports.
+    init(zeros count: Int) {
+        self.count = count
+        inline = InlineArray(repeating: 0)
+        overflow = count <= Self.inlineCapacity ? nil : [UInt8](repeating: 0, count: count)
+    }
+
     /// Calls `body` with the hash's bytes.
     func withBytes<Result, Failure: Error>(
         _ body: (Span<UInt8>) throws(Failure) -> Result
     ) throws(Failure) -> Result {
-        if count <= Self.inlineCapacity {
-            return try body(inline.span.extracting(0..<count))
+        if let overflow {
+            return try body(overflow.span)
         }
-        return try body(overflow.span)
+        return try body(inline.span.extracting(0..<count))
     }
 
     /// Copies the hash's bytes to the start of `target`.
     ///
     /// - Precondition: `target` holds at least `count` bytes.
     func copyBytes(into target: inout MutableSpan<UInt8>) {
-        if count <= Self.inlineCapacity {
-            target.copyBytes(from: inline.span, count: count)
-        } else {
+        if let overflow {
             target.copyBytes(from: overflow.span, count: count)
+        } else {
+            target.copyBytes(from: inline.span, count: count)
         }
     }
 

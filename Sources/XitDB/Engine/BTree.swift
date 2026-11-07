@@ -130,7 +130,7 @@ extension DatabaseReader {
 
     /// The slot of the element at `rank` in a linked array list's tree.
     func linkedArrayListSlot(rootPtr: UInt64, rank: UInt64) throws(XitDBError) -> SlotPointer {
-        try slotByRank(rootPtr: rootPtr, rank: rank) { (position) throws(XitDBError) in try bTreeNode(at: position) }
+        try slotByRank(rootPtr: rootPtr, rank: rank, in: BTreeNode.self)
     }
 
     /// The number of branch levels above the leaves of the tree at
