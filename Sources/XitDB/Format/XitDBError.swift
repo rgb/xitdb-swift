@@ -96,10 +96,6 @@ public enum XitDBError: Error, Sendable {
     /// cannot be finished.
     case unexpectedWriterPosition
 
-    /// The operation needs to know where a slot is stored, and the cursor
-    /// does not have that position.
-    case expectedSlotPosition
-
     /// A step that must be the last one in a path is followed by another.
     ///
     /// Only the package-level path API raises it; nothing public does.
@@ -124,6 +120,35 @@ public enum XitDBError: Error, Sendable {
     /// map or set whose count says it is empty holds the key being removed,
     /// or whose count cannot grow is being added to.
     case invalidCount
+
+    /// A cursor that cannot be used any more: for a write, one made before
+    /// the last freeze of this transaction (``Database/freeze()`` or
+    /// ``LinkedArrayList/append(contentsOf:)-(Slot)``) or in an earlier
+    /// transaction, since a write through it would change bytes that other
+    /// things refer to or that are committed; for a read, one made in a
+    /// transaction that did not commit, whose bytes are gone. A path that
+    /// begins with a collection's init part is still allowed through a cursor
+    /// from before a freeze in the same transaction: that is how a
+    /// transaction goes on after a freeze.
+    case staleCursor
+
+    /// A slot whose tag is `index`, `kvPair` or `sortedKvPair` was given to
+    /// write as a value. Those tags are the trees' own; such a slot in a
+    /// value builds a tree the engine cannot read.
+    case structuralSlot
+
+    /// A write in a transaction that an earlier operation poisoned: that
+    /// operation failed after it had written to the storage, so what it
+    /// left cannot be undone short of the whole transaction, and the
+    /// transaction can only roll back. Its commit fails with this too.
+    case poisonedTransaction
+
+    /// The root header of a database being opened cannot be trusted: its
+    /// size is past the end of the file, smaller than a database can be, or
+    /// does not end at a trailer whose checksum verifies. `lastVerified` is
+    /// the position after the last trailer that does verify, scanning back
+    /// from the end; ``Database/recover(_:)`` cuts the file there.
+    case untrustedRootHeader(lastVerified: UInt64)
 }
 
 extension XitDBError: Equatable {
@@ -136,7 +161,10 @@ extension XitDBError: Equatable {
             String(describing: leftError) == String(describing: rightError)
         case (.storageFailure(let leftErrno), .storageFailure(let rightErrno)):
             leftErrno == rightErrno
-        case (.callerError, _), (_, .callerError), (.storageFailure, _), (_, .storageFailure):
+        case (.untrustedRootHeader(let leftPosition), .untrustedRootHeader(let rightPosition)):
+            leftPosition == rightPosition
+        case (.callerError, _), (_, .callerError), (.storageFailure, _), (_, .storageFailure),
+            (.untrustedRootHeader, _), (_, .untrustedRootHeader):
             false
         default:
             // The cases without values: the same case is the same error.

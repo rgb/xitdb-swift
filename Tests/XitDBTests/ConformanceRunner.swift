@@ -622,6 +622,10 @@ final class ScriptRunner {
         case .invalidBTreeNode: "InvalidBTreeNode"
         case .invalidBTreeNodeKind: "InvalidBTreeNodeKind"
         case .invalidCount: "InvalidCount"
+        case .staleCursor: "StaleCursor"
+        case .structuralSlot: "StructuralSlot"
+        case .poisonedTransaction: "PoisonedTransaction"
+        case .untrustedRootHeader: "UntrustedRootHeader"
         case .invalidRange: "InvalidRange"
         case .invalidLength: "InvalidLength"
         case .targetNotEmpty: "TargetNotEmpty"
@@ -633,7 +637,6 @@ final class ScriptRunner {
         case .streamTooLong: "StreamTooLong"
         case .endOfStream: "EndOfStream"
         case .unexpectedWriterPosition: "UnexpectedWriterPosition"
-        case .expectedSlotPosition: "ExpectedSlotPosition"
         case .pathPartMustBeAtEnd: "PathPartMustBeAtEnd"
         case .notImplemented: "NotImplemented"
         // A failed write to the storage is what Zig's writer interface
