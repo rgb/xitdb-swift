@@ -7,23 +7,29 @@ import Testing
 /// by the conformance session, which this implementation must reproduce
 /// byte for byte.
 @Suite struct ConformanceTests {
-    /// The scripts that can run now, on each storage they apply to.
-    static let runnable: [(ConformanceFixture, ScriptStorageKind)] = ConformanceFixture.all
+    /// The scripts that can run now, on each storage they apply to. A
+    /// script that compacts runs twice more, with the offset map it does
+    /// not name in place of the one it does.
+    static let runnable: [(ConformanceFixture, ScriptStorageKind, otherOffsetMap: Bool)] = ConformanceFixture.all
         .filter { $0.waitsFor == nil && $0.needsOp == nil }
         .flatMap { fixture in
             ScriptStorageKind.allCases
                 // The memory storage has no read-only mode, in Zig or here.
                 .filter { !($0 == .memory && fixture.features.contains("read_only")) }
-                .map { (fixture, $0) }
+                .flatMap { kind in
+                    fixture.features.contains("compaction")
+                        ? [(fixture, kind, otherOffsetMap: false), (fixture, kind, otherOffsetMap: true)]
+                        : [(fixture, kind, otherOffsetMap: false)]
+                }
         }
 
     @Test(arguments: runnable)
-    func script(fixture: ConformanceFixture, kind: ScriptStorageKind) throws {
+    func script(fixture: ConformanceFixture, kind: ScriptStorageKind, otherOffsetMap: Bool) throws {
         // Callbacks nest up to 64 deep in the scripts, and each level is a
         // dozen frames of runner and engine. Swift Testing runs tests on
         // threads with half a megabyte of stack, which a debug build of that
         // does not fit in.
-        try onLargeStack { try fixture.run(on: kind) }
+        try onLargeStack { try fixture.run(on: kind, otherOffsetMap: otherOffsetMap) }
     }
 
     /// The manifest was read, and every script in it either runs or is
@@ -32,33 +38,14 @@ import Testing
     @Test func everyScriptRunsOrWaitsForANamedMilestone() {
         let all = ConformanceFixture.all
         #expect(all.count == 206)
-        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && $0.mustPass }.count == 81)
-        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && !$0.mustPass }.count == 76)
-        #expect(all.filter { $0.waitsFor == "M7" && $0.mustPass }.count == 11)
-        #expect(all.filter { $0.waitsFor == "M7" && !$0.mustPass }.count == 6)
+        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && $0.mustPass }.count == 92)
+        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && !$0.mustPass }.count == 82)
         #expect(all.filter { $0.waitsFor == "M8" && $0.mustPass }.count == 16)
         #expect(all.filter { $0.waitsFor == "M8" && !$0.mustPass }.count == 16)
 
         let waiting = all.filter { $0.waitsFor != nil }.map { "\($0.waitsFor ?? ""): \($0.name)" }.sorted()
         #expect(
             waiting == [
-                "M7: compact-201",
-                "M7: compact-202",
-                "M7: compact-203",
-                "M7: compact-204",
-                "M7: compact-205",
-                "M7: compact-206",
-                "M7: compact-disk-offsets",
-                "M7: compact-every-collection",
-                "M7: compact-existing-with-file-id",
-                "M7: compact-full-blocks",
-                "M7: compact-into-closed",
-                "M7: compact-new-without-file-id",
-                "M7: compact-partial-blocks",
-                "M7: compact-shared",
-                "M7: compact-while-closed",
-                "M7: target-not-empty-not-handled",
-                "M7: target-not-empty-not-raised",
                 "M8: bytes-not-bytes",
                 "M8: bytes-unbound",
                 "M8: compact-roots",

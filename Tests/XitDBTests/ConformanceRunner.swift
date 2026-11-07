@@ -249,6 +249,15 @@ final class ScriptRunner {
     /// op without an `on` acts on.
     private var current = "main"
 
+    /// The two offset maps a `compact` can use, each kept for the whole
+    /// script, so that a compaction has to forget the last one. The disk
+    /// one is made when a script first asks for it.
+    private var memoryOffsets = MemoryOffsetMap()
+    private var diskOffsetsStorage: ScriptStorage?
+    private var diskOffsets: DiskOffsets?
+    /// Whether each `compact` uses the offset map the script does not name.
+    var otherOffsetMap = false
+
     init(storage: ScriptStorage, random: FixedRandom) {
         self.random = random
         databases = ["main": ScriptDatabase(storage: storage)]
@@ -663,7 +672,7 @@ final class ScriptRunner {
     }
 
     private func perform(_ name: String, _ op: ScriptObject, topLevel: Bool) throws {
-        let topLevelOps = ["close", "reopen", "raw_append", "raw_write", "create_database", "use"]
+        let topLevelOps = ["close", "reopen", "raw_append", "raw_write", "create_database", "use", "compact"]
         if topLevelOps.contains(name) && !topLevel {
             throw UnknownInScript("'\(name)' inside a callback")
         }
@@ -701,6 +710,56 @@ final class ScriptRunner {
             let name = try op.string("name")
             guard databases[name] != nil else { throw ScriptFailure("no database called '\(name)'") }
             current = name
+
+        case "compact":
+            try op.allow("op", "note", "expect_error", "into", "file_id", "hash_id", "offset_map")
+            let source = try openDatabase("compact")
+            let into = try op.string("into")
+            let target: Database
+            if let place = databases[into] {
+                // an existing database keeps its own file ID and hash ID
+                if op.has("file_id") || op.has("hash_id") {
+                    throw ScriptFailure("compact into an existing database names an ID")
+                }
+                guard let existing = place.database else { throw ScriptFailure("compact into a closed database") }
+                target = existing
+            } else {
+                // a new one, which goes on being a database of the script:
+                // its hash ID is the one given, or the source's; a null
+                // one is the source's too, as Zig's `orelse` makes it
+                guard op.has("file_id") else { throw ScriptFailure("compact into a new database needs file_id") }
+                let hashID: HashID?
+                if op.has("hash_id") && !op.isNull("hash_id") {
+                    let bytes = try self.bytes(op.fields["hash_id"], "hash_id")
+                    guard bytes.count == 4 else { throw UnknownInScript("hash_id is not four bytes") }
+                    hashID = HashID(bytes: [bytes[0], bytes[1], bytes[2], bytes[3]])
+                } else {
+                    hashID = source.header.hashID
+                }
+                let place = ScriptDatabase(storage: try ScriptStorage(storage.kind))
+                target = try Database(
+                    storage: try place.storage.openStorage(readOnly: false),
+                    hashSize: hashSize,
+                    hashID: hashID,
+                    fileID: try fileID(op.fields["file_id"]),
+                    random: random
+                )
+                place.database = target
+                databases[into] = place
+            }
+            let named = try op.string("offset_map")
+            guard ["memory", "disk"].contains(named) else { throw UnknownInScript("unknown offset_map") }
+            let useDisk = (named == "disk") != otherOffsetMap
+            if !useDisk {
+                try source.compact(into: target, offsetMap: &memoryOffsets)
+            } else {
+                if diskOffsets == nil {
+                    let offsetsStorage = try ScriptStorage(storage.kind)
+                    diskOffsetsStorage = offsetsStorage
+                    diskOffsets = try DiskOffsets(storage: try offsetsStorage.openStorage(readOnly: false))
+                }
+                try diskOffsets!.use { map in try source.compact(into: target, offsetMap: &map) }
+            }
 
         case "write_path":
             try op.allow("op", "note", "expect_error", "on", "path", "as")
@@ -1132,9 +1191,7 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
     /// The milestone that brings what this script still needs, or `nil` if
     /// it can run now.
     var waitsFor: String? {
-        // A script that needs both waits for the later.
         if features.contains("replication") { return "M8" }
-        if features.contains("compaction") { return "M7" }
         return nil
     }
 
@@ -1178,7 +1235,11 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
     /// its committed size checked after every top-level op, and must leave
     /// the file Zig wrote. A script that must fail has to end in a
     /// `ScriptFailure`.
-    func run(on kind: ScriptStorageKind) throws {
+    /// Runs the script on a storage kind. With `otherOffsetMap`, every
+    /// `compact` uses the offset map the script does not name, which must
+    /// change nothing in what is written: the conformance `check.sh` holds
+    /// the scripts to that the same way.
+    func run(on kind: ScriptStorageKind, otherOffsetMap: Bool = false) throws {
         let script = try JSONSerialization.jsonObject(with: Data(try fixtureFile(script)))
 
         guard mustPass else {
@@ -1188,6 +1249,7 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
                 storage: try ScriptStorage(kind),
                 random: FixedRandom((1...64).map { UInt64($0) })
             )
+            runner.otherOffsetMap = otherOffsetMap
             do {
                 for op in try runner.start(script) {
                     try runner.run(op, topLevel: true)
@@ -1212,6 +1274,7 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
         let random = FixedRandom(commitIDs)
         let storage = try ScriptStorage(kind)
         let runner = ScriptRunner(storage: storage, random: random)
+        runner.otherOffsetMap = otherOffsetMap
         let ops = try runner.start(script)
         guard try runner.committedSize() == (try sidecar.unsigned("initial_size")) else {
             throw ScriptFailure("the new database's committed size is not the sidecar's")
