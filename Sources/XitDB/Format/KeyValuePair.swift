@@ -81,13 +81,17 @@ extension KeyValuePair {
     /// is at the start of the record.
     static func keyPosition(of entry: Slot, hashSize: UInt16) -> UInt64? {
         if isKeyOnlyEntry(entry) { return nil }
-        return entry.value + (entry.tag == .kvPair ? UInt64(hashSize) : 0)
+        // A position that does not fit is a damaged slot: there is no such
+        // position.
+        let (position, overflow) = entry.value.addingReportingOverflow(entry.tag == .kvPair ? UInt64(hashSize) : 0)
+        return overflow ? nil : position
     }
 
     /// Where the value slot of the pair that `entry` points at is stored:
     /// directly after the key slot. `nil` for a key-only entry.
     static func valuePosition(of entry: Slot, hashSize: UInt16) -> UInt64? {
         guard let keyPosition = keyPosition(of: entry, hashSize: hashSize) else { return nil }
-        return keyPosition + Slot.byteCount
+        let (position, overflow) = keyPosition.addingReportingOverflow(Slot.byteCount)
+        return overflow ? nil : position
     }
 }

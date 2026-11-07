@@ -15,12 +15,12 @@
 /// error instead of growing without end. (Zig's iterator has a stack of a
 /// fixed size and fails when it is full.)
 ///
-/// A linked array list's blocks are tree nodes, which start with two bytes
-/// of kind and count that the walk skips. Its walk ends after giving out as
-/// many elements as the list has: every element is a slot that holds
-/// something, since one that was never written is a placeholder set to
-/// nothing and marked full. The walk of a sorted map arrives with that
-/// collection.
+/// A linked array list's or a sorted map's blocks are tree nodes, which
+/// start with two bytes of kind and count that the walk skips. Their walks
+/// end after giving out as many elements as the collection has: every
+/// element is a slot that holds something, since an element of a linked
+/// array list that was never written is a placeholder set to nothing and
+/// marked full, and a sorted leaf's entries are packed at its start.
 struct SlotIterator {
     /// One block on the way down, and the slot in it that the walk is at.
     struct Level {
@@ -153,7 +153,15 @@ struct SlotIterator {
                 reader: reader, remaining: .none, maxDepth: Int(reader.hashSize) * 2, depthError: .keyOffsetExceeded)
             rootPosition = try slot.value.offset(by: IndexBlock.countByteCount)
         case .sortedMap, .sortedSet:
-            throw .notImplemented
+            let header = try reader.bTreeHeader(at: slot.value)
+            self.init(
+                reader: reader,
+                remaining: .elements(header.size),
+                maxDepth: BTree.maxHeight + 1,
+                depthError: .invalidBTreeNode,
+                nodeOffset: BTree.nodeHeaderByteCount
+            )
+            rootPosition = try header.rootPtr.offset(by: BTree.nodeHeaderByteCount)
         default:
             throw .unexpectedTag
         }
@@ -227,6 +235,96 @@ struct SlotIterator {
         default:
             throw .unexpectedTag
         }
+        try self.init(reader: reader, tree: slot, from: startIndex) { (position) throws(XitDBError) in
+            try reader.bTreeNode(at: position)
+        }
+    }
+
+    /// Starts a walk of a sorted map or set at one of its entries, by
+    /// descending the tree by rank: Zig's `sortedStackFromIndex`.
+    ///
+    /// - Throws: `unexpectedTag` if the slot holds something other than a
+    ///   sorted map or set; `invalidBTreeNode` as for a linked array list.
+    init(reader: DatabaseReader, sortedMap slot: Slot, from startIndex: Int64) throws(XitDBError) {
+        switch slot.tag {
+        case .none:
+            self.init(reader: reader)
+            return
+        case .sortedMap, .sortedSet:
+            break
+        default:
+            throw .unexpectedTag
+        }
+        try self.init(reader: reader, tree: slot, from: startIndex) { (position) throws(XitDBError) in
+            try reader.sortedNode(at: position)
+        }
+    }
+
+    /// Starts a walk of a sorted map or set at the first entry whose key is
+    /// not below `key`: Zig's `sortedStackFromKey`. A key beyond every
+    /// entry gives a walk of nothing, and so does an empty slot.
+    ///
+    /// - Throws: `unexpectedTag` if the slot holds something other than a
+    ///   sorted map or set; `invalidBTreeNode` if a branch has no children
+    ///   or a child is not a node, or the tree is deeper than a tree can
+    ///   be; and the errors of comparing keys.
+    init(reader: DatabaseReader, sortedMap slot: Slot, fromKey key: SortedKey) throws(XitDBError) {
+        switch slot.tag {
+        case .none:
+            self.init(reader: reader)
+            return
+        case .sortedMap, .sortedSet:
+            break
+        default:
+            throw .unexpectedTag
+        }
+        let header = try reader.bTreeHeader(at: slot.value)
+        self.init(
+            reader: reader,
+            remaining: .elements(header.size),
+            maxDepth: BTree.maxHeight + 1,
+            depthError: .invalidBTreeNode,
+            nodeOffset: BTree.nodeHeaderByteCount
+        )
+
+        // The keys below the start are the entries the walk does not give.
+        var before: UInt64 = 0
+        var nodePtr = header.rootPtr
+        try key.withBytes { (bytes: Span<UInt8>) throws(XitDBError) in
+            while depth <= BTree.maxHeight {
+                let node = try reader.sortedNode(at: nodePtr)
+                let position = try nodePtr.offset(by: BTree.nodeHeaderByteCount)
+                switch node.kind {
+                case .leaf:
+                    let search = try reader.sortedLeafSearch(node, key: bytes)
+                    before &+= UInt64(search.index)
+                    push(Level(position: position, block: IndexBlock(slots: node.entries), index: UInt8(search.index)))
+                    return
+                case .branch:
+                    guard node.num > 0 else { throw .invalidBTreeNode }
+                    let index = try reader.sortedBranchSearch(node, key: bytes)
+                    guard node.children[index].tag == .index else { throw .invalidBTreeNode }
+                    for below in 0..<index {
+                        before &+= node.counts[below]
+                    }
+                    push(Level(position: position, block: IndexBlock(slots: node.children), index: UInt8(index)))
+                    nodePtr = node.children[index].value
+                }
+            }
+            throw .invalidBTreeNode
+        }
+        remaining = .elements(before < header.size ? header.size - before : 0)
+    }
+
+    /// Starts a walk of a tree at the element at `startIndex`, read with
+    /// `read`, with one level per node on the way and each level's index
+    /// set to the child the way goes through.
+    private init<Node: RankedNode>(
+        reader: DatabaseReader,
+        tree slot: Slot,
+        from startIndex: Int64,
+        read: (UInt64) throws(XitDBError) -> Node
+    ) throws(XitDBError) {
         let header = try reader.bTreeHeader(at: slot.value)
         guard let rank = DatabaseReader.linkedArrayListRank(index: startIndex, size: header.size) else {
             self.init(reader: reader)
@@ -243,12 +341,16 @@ struct SlotIterator {
         var nodePtr = header.rootPtr
         var rem = rank
         while depth <= BTree.maxHeight {
-            let node = try reader.bTreeNode(at: nodePtr)
+            let node = try read(nodePtr)
             let position = try nodePtr.offset(by: BTree.nodeHeaderByteCount)
             switch node.kind {
             case .leaf:
                 guard rem < UInt64(node.num) else { throw .invalidBTreeNode }
-                push(Level(position: position, block: IndexBlock(slots: node.values), index: UInt8(rem)))
+                var block = IndexBlock()
+                for index in 0..<16 {
+                    block.slots[index] = node.leafSlot(at: index)
+                }
+                push(Level(position: position, block: block, index: UInt8(rem)))
                 return
             case .branch:
                 guard node.num > 0 else { throw .invalidBTreeNode }

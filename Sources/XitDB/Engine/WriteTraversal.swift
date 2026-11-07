@@ -59,6 +59,17 @@ extension Database {
                 pointer = try linkedArrayListInsert(pointer, index: listIndex, frozenAt: frozenAt)
             case .linkedArrayListRemove(let listIndex):
                 try linkedArrayListRemove(pointer, index: listIndex, frozenAt: frozenAt)
+            case .sortedMapInit(let set):
+                pointer = try sortedMapInit(pointer, set: set, frozenAt: frozenAt)
+            case .sortedMapGet(let kind, let key):
+                pointer = try sortedMapGet(pointer, kind: kind, key: key, frozenAt: frozenAt)
+            case .sortedMapGetIndex:
+                // An index names an entry only while nothing is written.
+                throw .writeNotAllowed
+            case .sortedMapRemove(let key):
+                // A remove ends the path, whatever follows it.
+                try sortedMapRemove(pointer, key: key, frozenAt: frozenAt)
+                return (pointer, false)
             case .write(let data):
                 pointer = try writeData(pointer, data)
             case .ctx:

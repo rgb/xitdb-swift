@@ -40,7 +40,7 @@ enum BTree {
     /// `inclusive` says what to do with a rank equal to the count of a
     /// child: an insert goes into that child, at its end; a read or a
     /// removal goes on to the next one.
-    static func child(of node: BTreeNode, rank: UInt64, inclusive: Bool) -> (index: Int, rank: UInt64) {
+    static func child(of node: some RankedNode, rank: UInt64, inclusive: Bool) -> (index: Int, rank: UInt64) {
         var index = 0
         var rem = rank
         while index + 1 < Int(node.num) {
@@ -128,33 +128,9 @@ extension DatabaseReader {
         return try BTreeNode(decoding: buffer.span.extracting(0..<read))
     }
 
-    /// The slot of the element at `rank` in the tree at `rootPtr`: Zig's
-    /// `descendByRank`.
-    ///
-    /// - Throws: `invalidBTreeNode` if the rank is beyond the leaf it leads
-    ///   to, if a branch has no children or a child is not a node, or if the
-    ///   tree is deeper than a tree can be; and the errors of reading a
-    ///   node.
+    /// The slot of the element at `rank` in a linked array list's tree.
     func linkedArrayListSlot(rootPtr: UInt64, rank: UInt64) throws(XitDBError) -> SlotPointer {
-        var nodePtr = rootPtr
-        var rem = rank
-        for _ in 0...BTree.maxHeight {
-            let node = try bTreeNode(at: nodePtr)
-            switch node.kind {
-            case .leaf:
-                guard rem < UInt64(node.num) else { throw .invalidBTreeNode }
-                let index = Int(rem)
-                return SlotPointer(
-                    position: try BTree.slotPosition(nodePtr: nodePtr, index: index), slot: node.values[index])
-            case .branch:
-                guard node.num > 0 else { throw .invalidBTreeNode }
-                let (index, next) = BTree.child(of: node, rank: rem, inclusive: false)
-                guard node.children[index].tag == .index else { throw .invalidBTreeNode }
-                nodePtr = node.children[index].value
-                rem = next
-            }
-        }
-        throw .invalidBTreeNode
+        try slotByRank(rootPtr: rootPtr, rank: rank) { (position) throws(XitDBError) in try bTreeNode(at: position) }
     }
 
     /// The number of branch levels above the leaves of the tree at

@@ -23,9 +23,13 @@ extension DatabaseReader {
                 pointer = try hashMapGet(pointer.slot, kind: kind, hash: hash)
             case .linkedArrayListGet(let listIndex):
                 pointer = try linkedArrayListGet(pointer.slot, index: listIndex)
+            case .sortedMapGet(let kind, let key):
+                pointer = try sortedMapGet(pointer.slot, kind: kind, key: key)
+            case .sortedMapGetIndex(let entryIndex):
+                pointer = try sortedMapGetIndex(pointer.slot, index: entryIndex)
             case .arrayListInit, .arrayListAppend, .arrayListSlice, .hashMapInit, .hashMapRemove, .write, .ctx,
                 .linkedArrayListInit, .linkedArrayListAppend, .linkedArrayListSlice, .linkedArrayListConcat,
-                .linkedArrayListInsert, .linkedArrayListRemove:
+                .linkedArrayListInsert, .linkedArrayListRemove, .sortedMapInit, .sortedMapRemove:
                 throw .writeNotAllowed
             }
             index += 1
@@ -105,6 +109,35 @@ extension DatabaseReader {
         let header = try bTreeHeader(at: slot.value)
         guard let rank = Self.linkedArrayListRank(index: index, size: header.size) else { throw .keyNotFound }
         return try linkedArrayListSlot(rootPtr: header.rootPtr, rank: rank)
+    }
+
+    // MARK: Sorted map
+
+    /// The header of a sorted map or set a slot holds.
+    ///
+    /// - Throws: `keyNotFound` for an empty slot, `unexpectedTag` for one
+    ///   that holds something else.
+    func sortedMapHeader(_ slot: Slot) throws(XitDBError) -> BTreeHeader {
+        switch slot.tag {
+        case .none: throw .keyNotFound
+        case .sortedMap, .sortedSet: return try bTreeHeader(at: slot.value)
+        default: throw .unexpectedTag
+        }
+    }
+
+    func sortedMapGet(_ slot: Slot, kind: HashMapSlotKind, key: SortedKey) throws(XitDBError) -> SlotPointer {
+        let header = try sortedMapHeader(slot)
+        let entry = try key.withBytes { (bytes: Span<UInt8>) throws(XitDBError) in
+            try sortedGet(rootPtr: header.rootPtr, key: bytes)
+        }
+        guard let entry else { throw .keyNotFound }
+        return try sortedTargetSlot(entry, kind)
+    }
+
+    func sortedMapGetIndex(_ slot: Slot, index: Int64) throws(XitDBError) -> SlotPointer {
+        let header = try sortedMapHeader(slot)
+        guard let rank = Self.linkedArrayListRank(index: index, size: header.size) else { throw .keyNotFound }
+        return try sortedSlot(rootPtr: header.rootPtr, rank: rank)
     }
 
     // MARK: Hash map

@@ -90,7 +90,7 @@ extension Database {
             // Every collection expects its init part to copy its header or
             // root block into the transaction before anything writes to it.
             // The root has no enclosing init part, so one is run here.
-            if let initPart = try PathPart.initPart(for: root.tag) {
+            if let initPart = PathPart.initPart(for: root.tag) {
                 let single: InlineArray<1, PathPart> = [initPart]
                 rootPointer = try runParts(single.span, at: rootPointer, frozenAt: frozenAt).pointer
             }

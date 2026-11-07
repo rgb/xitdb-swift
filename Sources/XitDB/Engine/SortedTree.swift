@@ -1,0 +1,520 @@
+// The count-augmented B+tree of a sorted map or set: Zig's `sorted*`
+// functions. Leaves hold entries in key order, branches hold their children
+// with a separator key and a count for each, and a key is found by binary
+// search at every level. It shares the linked array list's header, its
+// constants, its rule for reusing a node and its descent by rank.
+//
+// As for the linked array list, Zig's recursion is a loop with an explicit
+// stack, bounded by the greatest height a tree can have, and every rank,
+// index and count is checked against its node before it is used.
+
+/// Up to seventeen entries of a sorted node, with the separators and
+/// counts of a branch: what a put assembles new nodes from.
+struct SortedEntries {
+    var slots: InlineArray<17, Slot> = InlineArray(repeating: Slot())
+    var separators: InlineArray<17, Slot> = InlineArray(repeating: Slot())
+    var counts: InlineArray<17, UInt64> = InlineArray(repeating: 0)
+    var count = 0
+
+    /// Appends the entries of a node from `from` up to `to`.
+    mutating func append(_ node: SortedNode, from: Int, to: Int) {
+        for index in from..<to {
+            if node.kind == .leaf {
+                append(node.entries[index])
+            } else {
+                append(node.children[index], separator: node.separators[index], count: node.counts[index])
+            }
+        }
+    }
+
+    mutating func append(_ slot: Slot, separator: Slot = Slot(), count: UInt64 = 0) {
+        slots[self.count] = slot
+        separators[self.count] = separator
+        counts[self.count] = count
+        self.count += 1
+    }
+
+    /// A node of the given kind holding the entries from `from` up to `to`.
+    func node(_ kind: BTreeNodeKind, from: Int, to: Int) -> SortedNode {
+        var node = SortedNode(kind: kind, num: UInt8(to - from))
+        for index in from..<to {
+            if kind == .leaf {
+                node.entries[index - from] = slots[index]
+            } else {
+                node.children[index - from] = slots[index]
+                node.separators[index - from] = separators[index]
+                node.counts[index - from] = counts[index]
+            }
+        }
+        return node
+    }
+}
+
+/// What a put gives back: the node now at the root of the subtree, the
+/// elements beneath it, the entry to read or write, whether an entry was
+/// added (as opposed to found), and the right sibling with its separator
+/// if the node split.
+struct SortedInsertResult {
+    var nodePtr: UInt64
+    var count: UInt64
+    var entry: Slot
+    var added: Bool
+    var split: (nodePtr: UInt64, count: UInt64, separator: Slot)?
+}
+
+extension DatabaseReader {
+    /// Reads the sorted node at `position` in one call, which asks for a
+    /// branch's worth of bytes and may get fewer for a leaf near the end.
+    ///
+    /// - Throws: `invalidBTreeNodeKind` or `invalidBTreeNode` for a bad
+    ///   header, `invalidEnumTag` for an unknown slot tag, `endOfStream` if
+    ///   the file ends inside the node.
+    func sortedNode(at position: UInt64) throws(XitDBError) -> SortedNode {
+        var buffer = InlineArray<418, UInt8>(repeating: 0)
+        var span = buffer.mutableSpan
+        let read = try storage.read(into: &span, at: position)
+        return try SortedNode(decoding: buffer.span.extracting(0..<read))
+    }
+
+    /// The slot of the entry at `rank` in a sorted map's tree.
+    func sortedSlot(rootPtr: UInt64, rank: UInt64) throws(XitDBError) -> SlotPointer {
+        try slotByRank(rootPtr: rootPtr, rank: rank) { (position) throws(XitDBError) in try sortedNode(at: position) }
+    }
+
+    /// The pair an entry of a sorted leaf stands for: Zig's `readKvPair`.
+    /// A key-only entry is its own key slot, with an empty value.
+    func sortedEntryPair(_ entry: Slot) throws(XitDBError) -> KeyValuePair {
+        try keyValuePair(entry).pair
+    }
+
+    // MARK: Keys
+
+    /// Compares two keys as bytes: the first difference decides, and a key
+    /// that is a prefix of the other comes first.
+    static func order(_ stored: Span<UInt8>, _ target: Span<UInt8>) -> KeyOrder {
+        let common = min(stored.count, target.count)
+        for index in 0..<common where stored[index] != target[index] {
+            return stored[index] < target[index] ? .less : .greater
+        }
+        if stored.count == target.count { return .equal }
+        return stored.count < target.count ? .less : .greater
+    }
+
+    /// Compares the key stored at `keySlot` with `target`: Zig's
+    /// `compareKey`. A long key is streamed in chunks of 256 bytes, the
+    /// length and the first chunk read together, so that no key allocates.
+    ///
+    /// - Throws: `unexpectedTag` if the slot does not hold bytes, or
+    ///   `endOfStream` if the key's length reaches past the end of the file.
+    func compareKey(_ keySlot: Slot, to target: Span<UInt8>) throws(XitDBError) -> KeyOrder {
+        switch keySlot.tag {
+        case .shortBytes:
+            let bytes = ByteArrayFormat.valueBytes(of: keySlot)
+            let count = ByteArrayFormat.shortByteCount(of: keySlot)
+            return Self.order(bytes.span.extracting(0..<count), target)
+        case .bytes:
+            var chunk = InlineArray<256, UInt8>(repeating: 0)
+            func fill(at position: UInt64) throws(XitDBError) -> Int {
+                var span = chunk.mutableSpan
+                return try storage.read(into: &span, at: position)
+            }
+            var read = try fill(at: keySlot.value)
+            guard read >= Int(ByteArrayFormat.lengthByteCount) else { throw .endOfStream }
+            var remaining: UInt64 = chunk.span.bigEndian(at: 0)
+            // A length that reaches past the file is a damaged record: it
+            // is reported before any of it is compared.
+            var position = try keySlot.value.offset(by: ByteArrayFormat.lengthByteCount)
+            let length = try storage.length()
+            guard position <= length, remaining <= length - position else { throw .endOfStream }
+
+            var storedStart = Int(ByteArrayFormat.lengthByteCount)
+            var targetStart = 0
+            while true {
+                let available = read - storedStart
+                let n = Int(min(UInt64(available), remaining))
+                let targetCount = min(n, target.count - targetStart)
+                let order = Self.order(
+                    chunk.span.extracting(storedStart..<(storedStart + n)),
+                    target.extracting(targetStart..<(targetStart + targetCount))
+                )
+                if order != .equal { return order }
+                targetStart += n
+                remaining -= UInt64(n)
+                if remaining == 0 { return targetStart < target.count ? .less : .equal }
+                position = try position.offset(by: UInt64(available))
+                read = try fill(at: position)
+                guard read > 0 else { throw .endOfStream }
+                storedStart = 0
+            }
+        default:
+            throw .unexpectedTag
+        }
+    }
+
+    // MARK: Searching
+
+    /// The child of a branch whose subtree may hold `key`: the last whose
+    /// separator is at most the key, or the first. Zig's
+    /// `sortedBranchSearch`; `separators[0]` is never compared.
+    ///
+    /// - Precondition: The branch has at least one child.
+    func sortedBranchSearch(_ node: SortedNode, key: Span<UInt8>) throws(XitDBError) -> Int {
+        var low = 1
+        var high = Int(node.num)
+        while low < high {
+            let mid = (low + high) / 2
+            switch try compareKey(node.separators[mid], to: key) {
+            case .less, .equal: low = mid + 1
+            case .greater: high = mid
+            }
+        }
+        return low - 1
+    }
+
+    /// Where `key` is in a leaf, or where it would be put: the number of
+    /// entries below it either way. Zig's `sortedLeafSearch`.
+    func sortedLeafSearch(_ node: SortedNode, key: Span<UInt8>) throws(XitDBError) -> (index: Int, found: Bool) {
+        var low = 0
+        var high = Int(node.num)
+        while low < high {
+            let mid = (low + high) / 2
+            let pair = try sortedEntryPair(node.entries[mid])
+            switch try compareKey(pair.keySlot, to: key) {
+            case .equal: return (mid, true)
+            case .less: low = mid + 1
+            case .greater: high = mid
+            }
+        }
+        return (low, false)
+    }
+
+    /// The child a key's search leads to in a branch, checked.
+    ///
+    /// - Throws: `invalidBTreeNode` if the branch has no children or the
+    ///   child is not a node.
+    private func sortedChild(of node: SortedNode, key: Span<UInt8>) throws(XitDBError) -> (index: Int, position: UInt64)
+    {
+        guard node.num > 0 else { throw .invalidBTreeNode }
+        let index = try sortedBranchSearch(node, key: key)
+        guard node.children[index].tag == .index else { throw .invalidBTreeNode }
+        return (index, node.children[index].value)
+    }
+
+    /// The entry for `key` in the tree at `rootPtr`, or `nil`: Zig's
+    /// `sortedGet`.
+    func sortedGet(rootPtr: UInt64, key: Span<UInt8>) throws(XitDBError) -> Slot? {
+        var nodePtr = rootPtr
+        for _ in 0...BTree.maxHeight {
+            let node = try sortedNode(at: nodePtr)
+            switch node.kind {
+            case .leaf:
+                let search = try sortedLeafSearch(node, key: key)
+                return search.found ? node.entries[search.index] : nil
+            case .branch:
+                nodePtr = try sortedChild(of: node, key: key).position
+            }
+        }
+        throw .invalidBTreeNode
+    }
+
+    /// The number of keys below `key` in the tree at `rootPtr`, whether or
+    /// not it is there: Zig's `sortedRank`.
+    func sortedRank(rootPtr: UInt64, key: Span<UInt8>) throws(XitDBError) -> UInt64 {
+        var nodePtr = rootPtr
+        var rank: UInt64 = 0
+        for _ in 0...BTree.maxHeight {
+            let node = try sortedNode(at: nodePtr)
+            switch node.kind {
+            case .leaf:
+                let search = try sortedLeafSearch(node, key: key)
+                return rank &+ UInt64(search.index)
+            case .branch:
+                let (index, position) = try sortedChild(of: node, key: key)
+                for below in 0..<index {
+                    rank &+= node.counts[below]
+                }
+                nodePtr = position
+            }
+        }
+        throw .invalidBTreeNode
+    }
+
+    /// The slot a path arrives at for an entry: the entry itself, its key,
+    /// or its value. Only the value can be written through; a key stays
+    /// where it is, since moving it would leave the entry out of order.
+    /// Zig's `sortedTargetSlot`.
+    func sortedTargetSlot(_ entry: Slot, _ kind: HashMapSlotKind) throws(XitDBError) -> SlotPointer {
+        switch kind {
+        case .kvPair:
+            return SlotPointer(position: nil, slot: entry)
+        case .key:
+            return SlotPointer(position: nil, slot: try sortedEntryPair(entry).keySlot)
+        case .value:
+            return SlotPointer(
+                position: KeyValuePair.valuePosition(of: entry, hashSize: hashSize),
+                slot: try sortedEntryPair(entry).valueSlot
+            )
+        }
+    }
+}
+
+extension Database {
+    // MARK: Writing nodes and records
+
+    /// Writes a sorted node at `position`: 146 bytes for a leaf, 418 for a
+    /// branch.
+    func writeSortedNode(_ node: SortedNode, at position: UInt64) throws(XitDBError) {
+        var block = InlineArray<418, UInt8>(repeating: 0)
+        var bytes = block.mutableSpan
+        node.encode(into: &bytes)
+        try storage.write(block.span.extracting(0..<Int(node.byteCount)), at: position)
+    }
+
+    /// Appends a sorted node and returns where it is.
+    func appendSortedNode(_ node: SortedNode) throws(XitDBError) -> UInt64 {
+        let position = try storage.length()
+        try writeSortedNode(node, at: position)
+        return position
+    }
+
+    /// Writes a new version of a sorted node: in place of `oldPtr` if that
+    /// node belongs to this transaction, appended otherwise.
+    func sortedWriteNode(_ node: SortedNode, oldPtr: UInt64, frozenAt: UInt64) throws(XitDBError) -> UInt64 {
+        if bTreeReusable(oldPtr, frozenAt: frozenAt) {
+            try writeSortedNode(node, at: oldPtr)
+            return oldPtr
+        }
+        return try appendSortedNode(node)
+    }
+
+    /// Writes a key: in a slot when it has at most eight bytes and no zero
+    /// byte, as a byte record otherwise. Zig's `writeKey`.
+    func writeKey(_ key: Span<UInt8>) throws(XitDBError) -> Slot {
+        if ByteArrayFormat.isShort(key, hasFormatTag: false) {
+            return ByteArrayFormat.shortSlot(key, formatTag: nil)
+        }
+        let position = try storage.length()
+        try write(UInt64(key.count), at: position)
+        try storage.write(key, at: try position.offset(by: ByteArrayFormat.lengthByteCount))
+        return Slot(value: position, tag: .bytes)
+    }
+
+    /// Appends a pair record of `tag` for `pair` and returns the slot that
+    /// points at it: Zig's `writeKvPair`. A sorted pair has no hash; a
+    /// hashed one written here gets a hash of zeros, as in Zig.
+    func writeSortedPairRecord(_ tag: Tag, _ pair: KeyValuePair) throws(XitDBError) -> Slot {
+        let position = try storage.length()
+        switch tag {
+        case .sortedKvPair:
+            let bytes = InlineArray<18, UInt8> { (output: inout OutputSpan<UInt8>) in
+                pair.encodeSorted(into: &output)
+            }
+            try storage.write(bytes.span, at: position)
+        case .kvPair:
+            try write(pair, hash: KeyHash([UInt8](repeating: 0, count: Int(header.hashSize))), at: position)
+        default:
+            throw .unexpectedTag
+        }
+        return Slot(value: position, tag: tag)
+    }
+
+    /// Wraps a key slot in a new pair with an empty value, for the caller to
+    /// fill in: Zig's `writeSortedPair`.
+    func writeSortedPair(keySlot: Slot) throws(XitDBError) -> Slot {
+        try writeSortedPairRecord(.sortedKvPair, KeyValuePair(keySlot: keySlot, valueSlot: Slot()))
+    }
+
+    // MARK: Put
+
+    /// One node on the way down to a key, with the child the way goes
+    /// through.
+    private struct SortedFrame {
+        var position: UInt64
+        var node: SortedNode
+        var index: Int
+    }
+
+    /// Descends from `rootPtr` to the leaf that `key` falls in, keeping the
+    /// branches on the way.
+    ///
+    /// - Throws: `invalidBTreeNode` if a branch has no children, a child is
+    ///   not a node, or the tree is deeper than a tree can be.
+    private func sortedDescend(
+        from rootPtr: UInt64,
+        key: Span<UInt8>
+    ) throws(XitDBError) -> (branches: [SortedFrame], leafPtr: UInt64, leaf: SortedNode) {
+        var branches: [SortedFrame] = []
+        var nodePtr = rootPtr
+        while branches.count <= BTree.maxHeight {
+            let node = try reader.sortedNode(at: nodePtr)
+            if node.kind == .leaf {
+                return (branches, nodePtr, node)
+            }
+            guard node.num > 0 else { throw .invalidBTreeNode }
+            let index = try reader.sortedBranchSearch(node, key: key)
+            guard node.children[index].tag == .index else { throw .invalidBTreeNode }
+            branches.append(SortedFrame(position: nodePtr, node: node, index: index))
+            nodePtr = node.children[index].value
+        }
+        throw .invalidBTreeNode
+    }
+
+    /// Puts `key` into the tree at `rootPtr`, or finds it: Zig's
+    /// `sortedPut`. The caller writes the value of the entry in the result,
+    /// unless `keyOnly`: then a new key is stored as a key-only entry and
+    /// an existing one is left as it is.
+    ///
+    /// The nodes on the way are rewritten in place or copied, as the linked
+    /// list's are; when the key is found and nothing below changed, nothing
+    /// is written above the leaf.
+    func sortedPut(
+        rootPtr: UInt64,
+        key: Span<UInt8>,
+        keyOnly: Bool,
+        frozenAt: UInt64
+    ) throws(XitDBError) -> SortedInsertResult {
+        let (branches, leafPtr, leaf) = try sortedDescend(from: rootPtr, key: key)
+        let search = try reader.sortedLeafSearch(leaf, key: key)
+        var result: SortedInsertResult
+        if search.found {
+            var entry = leaf.entries[search.index]
+            if keyOnly {
+                result = SortedInsertResult(
+                    nodePtr: leafPtr, count: UInt64(leaf.num), entry: entry, added: false, split: nil)
+            } else {
+                // Replace: a key-only entry becomes a pair, and a pair from a
+                // past moment is copied, so that its value can be written.
+                if KeyValuePair.isKeyOnlyEntry(entry) {
+                    entry = try writeSortedPair(keySlot: entry)
+                } else if !bTreeReusable(entry.value, frozenAt: frozenAt) {
+                    entry = try writeSortedPairRecord(entry.tag, try reader.sortedEntryPair(entry))
+                }
+                var written = leaf
+                written.entries[search.index] = entry
+                let ptr = try sortedWriteNode(written, oldPtr: leafPtr, frozenAt: frozenAt)
+                result = SortedInsertResult(
+                    nodePtr: ptr, count: UInt64(leaf.num), entry: entry, added: false, split: nil)
+            }
+        } else {
+            // Insert a new entry where the search ended.
+            let keySlot = try writeKey(key)
+            let entry = keyOnly ? keySlot : try writeSortedPair(keySlot: keySlot)
+            var entries = SortedEntries()
+            entries.append(leaf, from: 0, to: search.index)
+            entries.append(entry)
+            entries.append(leaf, from: search.index, to: Int(leaf.num))
+            if entries.count <= BTree.slotCount {
+                let ptr = try sortedWriteNode(
+                    entries.node(.leaf, from: 0, to: entries.count), oldPtr: leafPtr, frozenAt: frozenAt)
+                result = SortedInsertResult(
+                    nodePtr: ptr, count: UInt64(entries.count), entry: entry, added: true, split: nil)
+            } else {
+                // Overflow: two leaves; the new sibling's separator is the
+                // key of its first entry.
+                let leftCount = BTree.splitCount
+                let separator = try reader.sortedEntryPair(entries.slots[leftCount]).keySlot
+                let leftPtr = try sortedWriteNode(
+                    entries.node(.leaf, from: 0, to: leftCount), oldPtr: leafPtr, frozenAt: frozenAt)
+                let rightPtr = try appendSortedNode(entries.node(.leaf, from: leftCount, to: entries.count))
+                result = SortedInsertResult(
+                    nodePtr: leftPtr,
+                    count: UInt64(leftCount),
+                    entry: entry,
+                    added: true,
+                    split: (rightPtr, UInt64(entries.count - leftCount), separator)
+                )
+            }
+        }
+
+        for frame in branches.reversed() {
+            // Nothing below changed: this branch, and all above it, stay.
+            if !result.added, result.nodePtr == frame.node.children[frame.index].value {
+                return SortedInsertResult(nodePtr: rootPtr, count: 0, entry: result.entry, added: false, split: nil)
+            }
+            var entries = SortedEntries()
+            entries.append(frame.node, from: 0, to: frame.index)
+            entries.append(
+                Slot(value: result.nodePtr, tag: .index), separator: frame.node.separators[frame.index],
+                count: result.count)
+            if let split = result.split {
+                entries.append(Slot(value: split.nodePtr, tag: .index), separator: split.separator, count: split.count)
+            }
+            entries.append(frame.node, from: frame.index + 1, to: Int(frame.node.num))
+            if entries.count <= BTree.slotCount {
+                let branch = entries.node(.branch, from: 0, to: entries.count)
+                let ptr = try sortedWriteNode(branch, oldPtr: frame.position, frozenAt: frozenAt)
+                result = SortedInsertResult(
+                    nodePtr: ptr, count: branch.subtreeCount, entry: result.entry, added: result.added, split: nil)
+            } else {
+                // Overflow: two branches; the new sibling's separator is the
+                // one its first child had.
+                let leftCount = BTree.splitCount
+                let left = entries.node(.branch, from: 0, to: leftCount)
+                let right = entries.node(.branch, from: leftCount, to: entries.count)
+                let separator = entries.separators[leftCount]
+                let leftPtr = try sortedWriteNode(left, oldPtr: frame.position, frozenAt: frozenAt)
+                let rightPtr = try appendSortedNode(right)
+                result = SortedInsertResult(
+                    nodePtr: leftPtr,
+                    count: left.subtreeCount,
+                    entry: result.entry,
+                    added: result.added,
+                    split: (rightPtr, right.subtreeCount, separator)
+                )
+            }
+        }
+        return result
+    }
+
+    /// The root for a put's result, a level taller if the old root split:
+    /// Zig's `sortedGrowRoot`.
+    func sortedGrowRoot(_ result: SortedInsertResult) throws(XitDBError) -> UInt64 {
+        guard let split = result.split else { return result.nodePtr }
+        var root = SortedNode(kind: .branch, num: 2)
+        root.children[0] = Slot(value: result.nodePtr, tag: .index)
+        root.children[1] = Slot(value: split.nodePtr, tag: .index)
+        // separators[0] is an unused sentinel
+        root.separators[1] = split.separator
+        root.counts[0] = result.count
+        root.counts[1] = split.count
+        return try appendSortedNode(root)
+    }
+
+    // MARK: Remove
+
+    /// Removes `key` from the tree at `rootPtr`, rewriting the nodes on the
+    /// way and counting down: Zig's `sortedRemove`. An emptied leaf stays
+    /// where it is: separators are stable lower bounds, so nothing needs
+    /// rebalancing, and every leaf keeps its depth.
+    ///
+    /// - Returns: The root as it is now, and whether the key was there.
+    /// - Throws: `invalidBTreeNode` if a branch's count for the child was
+    ///   already zero, and the errors of the descent.
+    func sortedRemove(rootPtr: UInt64, key: Span<UInt8>, frozenAt: UInt64) throws(XitDBError) -> (
+        rootPtr: UInt64, found: Bool
+    ) {
+        let (branches, leafPtr, leaf) = try sortedDescend(from: rootPtr, key: key)
+        let search = try reader.sortedLeafSearch(leaf, key: key)
+        guard search.found else { return (rootPtr, false) }
+
+        var written = SortedNode(kind: .leaf, num: leaf.num - 1)
+        for index in 0..<search.index {
+            written.entries[index] = leaf.entries[index]
+        }
+        for index in search.index..<(Int(leaf.num) - 1) {
+            written.entries[index] = leaf.entries[index + 1]
+        }
+        var childPtr = try sortedWriteNode(written, oldPtr: leafPtr, frozenAt: frozenAt)
+
+        for frame in branches.reversed() {
+            var branch = frame.node
+            branch.children[frame.index] = Slot(value: childPtr, tag: .index)
+            // A count that is already zero disagrees with the entry just
+            // found beneath it.
+            guard branch.counts[frame.index] > 0 else { throw .invalidBTreeNode }
+            branch.counts[frame.index] -= 1
+            childPtr = try sortedWriteNode(branch, oldPtr: frame.position, frozenAt: frozenAt)
+        }
+        return (childPtr, true)
+    }
+}

@@ -1,6 +1,7 @@
 extension Cursor {
     /// Goes through the elements of an array list or a linked array list,
-    /// or the entries of a hash map or set, in the order they are stored:
+    /// or the entries of a hash map or set, in the order they are stored,
+    /// or the entries of a sorted map or set in the order of their keys:
     /// Zig's `Cursor.Iter`.
     ///
     /// Call ``next()`` until it returns `nil`. The type is not a `Sequence`,
@@ -79,6 +80,28 @@ extension Cursor {
         let slot = try resolved().slot
         return Iter(
             slots: try SlotIterator(reader: database.reader, linkedArrayList: slot, from: index),
+            database: database,
+            frozenAt: frozenAt
+        )
+    }
+
+    /// An iterator over the sorted map or set the slot holds, starting at
+    /// one of its entries.
+    func iterator(fromSortedMapIndex index: Int64) throws(XitDBError) -> Iter {
+        let slot = try resolved().slot
+        return Iter(
+            slots: try SlotIterator(reader: database.reader, sortedMap: slot, from: index),
+            database: database,
+            frozenAt: frozenAt
+        )
+    }
+
+    /// An iterator over the sorted map or set the slot holds, starting at
+    /// the first entry whose key is not below `key`.
+    func iterator(fromSortedMapKey key: SortedKey) throws(XitDBError) -> Iter {
+        let slot = try resolved().slot
+        return Iter(
+            slots: try SlotIterator(reader: database.reader, sortedMap: slot, fromKey: key),
             database: database,
             frozenAt: frozenAt
         )

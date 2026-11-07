@@ -19,7 +19,7 @@ package enum HashMapSlotKind: Sendable {
 /// collection's init part changes the collection in place, in every moment
 /// that shares it. The collection types built on top always run it.
 ///
-/// The parts for sorted maps arrive with that collection.
+/// Every collection's parts are here.
 package enum PathPart: Sendable {
     /// Makes the slot an array list, or copies the list's header and root
     /// block into the transaction if it is one already.
@@ -79,6 +79,27 @@ package enum PathPart: Sendable {
     /// end. The path stays at the list.
     case linkedArrayListRemove(Int64)
 
+    /// Makes the slot a sorted map, or a sorted set, or copies the map's
+    /// header into the transaction if it is one already. A map becomes a
+    /// set and back by the tag asked for, as with hash maps.
+    case sortedMapInit(set: Bool = false)
+
+    /// Moves to the entry for a key: in a read path if it exists, in a write
+    /// path making it if not. Only the value can be written through; the
+    /// key and the entry come with no position, since moving a key would
+    /// leave the entry out of order. In a sorted set, asking for the key
+    /// of a new entry stores the key on its own; asking for its value or
+    /// the pair makes a pair.
+    case sortedMapGet(HashMapSlotKind, SortedKey)
+
+    /// Moves to the entry at an index, in a read path only. A negative
+    /// index counts from the end.
+    case sortedMapGetIndex(Int64)
+
+    /// Removes the entry for a key. This ends the path, as the hash map's
+    /// remove does. The emptied place in the leaf is left in the tree.
+    case sortedMapRemove(SortedKey)
+
     /// Writes a value to the slot.
     case write(WriteableData)
 
@@ -96,6 +117,8 @@ package enum PathPart: Sendable {
             .arrayList
         case .linkedArrayListInit:
             .linkedArrayList
+        case .sortedMapInit(let set):
+            set ? .sortedSet : .sortedMap
         case .hashMapInit(let counted, let set):
             if counted {
                 set ? .countedHashSet : .countedHashMap
@@ -109,11 +132,7 @@ package enum PathPart: Sendable {
 
     /// The init part for a collection tag, or `nil` for a tag that is not a
     /// collection's.
-    ///
-    /// - Throws: `notImplemented` for the collections whose parts do not
-    ///   exist yet. Going on without the init part would write into
-    ///   committed data.
-    static func initPart(for tag: Tag) throws(XitDBError) -> PathPart? {
+    static func initPart(for tag: Tag) -> PathPart? {
         switch tag {
         case .arrayList: .arrayListInit
         case .linkedArrayList: .linkedArrayListInit
@@ -121,7 +140,8 @@ package enum PathPart: Sendable {
         case .hashSet: .hashMapInit(counted: false, set: true)
         case .countedHashMap: .hashMapInit(counted: true, set: false)
         case .countedHashSet: .hashMapInit(counted: true, set: true)
-        case .sortedMap, .sortedSet: throw .notImplemented
+        case .sortedMap: .sortedMapInit(set: false)
+        case .sortedSet: .sortedMapInit(set: true)
         case .none, .index, .kvPair, .bytes, .shortBytes, .uint, .int, .float, .sortedKvPair: nil
         }
     }
