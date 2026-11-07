@@ -136,7 +136,7 @@ extension DatabaseReader {
                     // the whole key would have fitted: the file ended inside it
                     throw .endOfStream
                 }
-                let length = try storage.length()
+                let length = try storage.length
                 guard position <= length, remaining <= length - position else { throw .endOfStream }
             }
 
@@ -282,7 +282,7 @@ extension Database {
         if ByteArrayFormat.isShort(key, hasFormatTag: false) {
             return ByteArrayFormat.shortSlot(key, formatTag: nil)
         }
-        let position = try storage.length()
+        let position = try storage.length
         try write(UInt64(key.count), at: position)
         try storage.write(key, at: try position.offset(by: ByteArrayFormat.lengthByteCount))
         return Slot(value: position, tag: .bytes)
@@ -294,7 +294,7 @@ extension Database {
     /// the hash it was read with, as Zig's `decodeKvPair` and
     /// `encodeKvPair` keep it.
     func writeSortedPairRecord(_ tag: Tag, _ pair: HashedPair) throws(XitDBError) -> Slot {
-        let position = try storage.length()
+        let position = try storage.length
         switch tag {
         case .sortedKvPair:
             let bytes = InlineArray<18, UInt8> { (output: inout OutputSpan<UInt8>) in

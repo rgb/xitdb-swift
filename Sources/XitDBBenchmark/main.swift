@@ -557,7 +557,7 @@ func run(_ workload: Workload) throws {
             iterateTimes.append(try milliseconds { try workload.iterate(database, keys, prepared) })
             // the file as the phases leave it: reads change nothing, and
             // a replication's read phase is its second sync
-            let size = try storage.storage.length()
+            let size = try storage.storage.length
             if fileSize != 0 && size != fileSize {
                 throw BenchmarkFailure(description: "\(workload.name) left files of different sizes")
             }

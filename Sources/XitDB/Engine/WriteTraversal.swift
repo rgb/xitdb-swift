@@ -138,7 +138,7 @@ extension Database {
         case .none:
             // The slot was empty: make a new list, its root index block
             // directly after its header.
-            listStart = try storage.length()
+            listStart = try storage.length
             let blockPosition = try listStart.offset(by: ArrayListHeader.byteCount)
             try write(ArrayListHeader(size: 0, ptr: blockPosition), at: listStart)
             try writeEmptyIndexBlock(at: blockPosition)
@@ -149,7 +149,7 @@ extension Database {
             if try isOld(listStart, frozenAt: frozenAt) {
                 var header = try reader.arrayListHeader(at: listStart)
                 let block = try reader.indexBlockBytes(at: header.ptr)
-                listStart = try storage.length()
+                listStart = try storage.length
                 header.ptr = try listStart.offset(by: ArrayListHeader.byteCount)
                 try write(header, at: listStart)
                 try storage.write(block.span, at: header.ptr)
@@ -216,7 +216,7 @@ extension Database {
 
         if previousShift != nextShift {
             // The root block is full: a new root goes above it.
-            let rootPosition = try storage.length()
+            let rootPosition = try storage.length
             try writeEmptyIndexBlock(at: rootPosition)
             try write(Slot(value: indexPosition, tag: .index), at: rootPosition)
             indexPosition = rootPosition
@@ -253,7 +253,7 @@ extension Database {
             }
             switch slot.tag {
             case .none:
-                let blockPosition = try storage.length()
+                let blockPosition = try storage.length
                 try writeEmptyIndexBlock(at: blockPosition)
                 try write(Slot(value: blockPosition, tag: .index), at: slotPosition)
                 indexPosition = blockPosition
@@ -325,7 +325,7 @@ extension Database {
         case .none:
             // The slot was empty: make a new map. A counted map starts with
             // its count.
-            mapStart = try storage.length()
+            mapStart = try storage.length
             if counted {
                 try write(0 as UInt64, at: mapStart)
                 try writeEmptyIndexBlock(at: try mapStart.offset(by: IndexBlock.countByteCount))
@@ -343,12 +343,12 @@ extension Database {
                 if counted {
                     let count = try reader.uint64(at: mapStart)
                     let block = try reader.indexBlockBytes(at: try mapStart.offset(by: IndexBlock.countByteCount))
-                    mapStart = try storage.length()
+                    mapStart = try storage.length
                     try write(count, at: mapStart)
                     try storage.write(block.span, at: try mapStart.offset(by: IndexBlock.countByteCount))
                 } else {
                     let block = try reader.indexBlockBytes(at: mapStart)
-                    mapStart = try storage.length()
+                    mapStart = try storage.length
                     try storage.write(block.span, at: mapStart)
                 }
             }
@@ -443,7 +443,7 @@ extension Database {
                     if try isOld(slot.value, frozenAt: frozenAt) {
                         // The pair is older than this transaction: copy it,
                         // and point the slot at the copy.
-                        let pairPosition = try storage.length()
+                        let pairPosition = try storage.length
                         try write(existing.pair, hash: hash, at: pairPosition)
                         let copySlot = Slot(value: pairPosition, tag: .kvPair)
                         try write(copySlot, at: slotPosition)
@@ -491,7 +491,7 @@ extension Database {
         trieSlotPosition: UInt64,
         kind: HashMapSlotKind
     ) throws(XitDBError) -> SlotPointer {
-        let pairPosition = try storage.length()
+        let pairPosition = try storage.length
         let pair = KeyValuePair(keySlot: Slot(), valueSlot: Slot())
         try write(pair, hash: hash, at: pairPosition)
         let trieSlot = Slot(value: pairPosition, tag: .kvPair)
@@ -535,7 +535,7 @@ extension Database {
             if level + 1 >= levels { throw .keyOffsetExceeded }
             let existingIndex = try existingHash.index(atLevel: level + 1)
 
-            let blockPosition = try storage.length()
+            let blockPosition = try storage.length
             if blockCount == 0 { firstBlockPosition = blockPosition }
             blockCount += 1
             try writeEmptyIndexBlock(at: blockPosition)

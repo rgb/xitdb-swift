@@ -12,7 +12,7 @@ import Testing
 
     init() throws {
         directory = try TemporaryDirectory()
-        file = try FileStorage(path: directory.path(), durability: .full)
+        file = try FileStorage(path: directory.path(), access: .create, durability: .full)
         file.calls.sync = recorder.call
     }
 

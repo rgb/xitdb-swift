@@ -97,7 +97,7 @@ public final class Database {
         random: any RandomNumberGenerator
     ) throws(XitDBError) {
         var random = random
-        let isNew = try storage.length() == 0
+        let isNew = try storage.length == 0
         let header: DatabaseHeader
         if isNew {
             guard let hashSize else { throw .invalidHashSize }
@@ -164,7 +164,7 @@ public final class Database {
     /// - Throws: ``XitDBError/expectedTxStart`` outside a transaction.
     public func freeze() throws(XitDBError) {
         guard transactionStart != nil else { throw .expectedTxStart }
-        transactionStart = try storage.length()
+        transactionStart = try storage.length
     }
 
     // MARK: Commit and rollback
@@ -178,7 +178,7 @@ public final class Database {
     /// rewriting the root header to point at it. The caller syncs afterwards
     /// to make the header itself durable.
     func commitRoot(_ root: Slot, commitID: UInt64) throws(XitDBError) {
-        let trailerPosition = try storage.length()
+        let trailerPosition = try storage.length
         let trailer = RootTrailer(fileID: header.fileID, position: trailerPosition, root: root, commitID: commitID)
         let trailerBytes = InlineArray<25, UInt8> { (output: inout OutputSpan<UInt8>) in
             trailer.encode(into: &output)
@@ -190,7 +190,7 @@ public final class Database {
         // that points at data which never arrived.
         try storage.sync(.beforeRootHeader)
 
-        let rootHeader = RootHeader(root: root, fileSize: try storage.length())
+        let rootHeader = RootHeader(root: root, fileSize: try storage.length)
         let rootHeaderBytes = InlineArray<17, UInt8> { (output: inout OutputSpan<UInt8>) in
             rootHeader.encode(into: &output)
         }
@@ -209,8 +209,8 @@ public final class Database {
     /// that failed, or a process that died, left behind.
     func truncate() throws(XitDBError) {
         let committedSize = try reader.committedSize()
-        if try storage.length() > committedSize {
-            try storage.setLength(committedSize)
+        if try storage.length > committedSize {
+            try storage.truncate(to: committedSize)
         }
     }
 
@@ -231,7 +231,7 @@ public final class Database {
     func copyIndexBlockIfOld(_ position: UInt64, frozenAt: UInt64) throws(XitDBError) -> UInt64 {
         if !(try isOld(position, frozenAt: frozenAt)) { return position }
         let block = try reader.indexBlockBytes(at: position)
-        let copyPosition = try storage.length()
+        let copyPosition = try storage.length
         try storage.write(block.span, at: copyPosition)
         return copyPosition
     }

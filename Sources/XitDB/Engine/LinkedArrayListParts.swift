@@ -28,7 +28,7 @@ extension Database {
         case .none:
             // An empty tree: one empty leaf, then the header.
             let rootPtr = try bTreeNewRoot()
-            headerPtr = try storage.length()
+            headerPtr = try storage.length
             try write(BTreeHeader(size: 0, rootPtr: rootPtr), at: headerPtr)
         case .linkedArrayList:
             headerPtr = pointer.slot.value
@@ -38,7 +38,7 @@ extension Database {
             // operations; a node is copied when it is old.
             if try isOld(headerPtr, frozenAt: frozenAt) {
                 let header = try reader.bTreeHeader(at: headerPtr)
-                headerPtr = try storage.length()
+                headerPtr = try storage.length
                 try write(header, at: headerPtr)
             }
         default:
@@ -130,7 +130,7 @@ extension Database {
         // nodes themselves are therefore not frozen. That is reproduced
         // until parity; decision D18 changes it afterwards.)
         guard transactionStart != nil else { throw .expectedTxStart }
-        transactionStart = try storage.length()
+        transactionStart = try storage.length
         let newRootPtr = try bTreeJoin(headerA.rootPtr, headerB.rootPtr)
         try write(BTreeHeader(size: total, rootPtr: newRootPtr), at: pointer.slot.value)
     }

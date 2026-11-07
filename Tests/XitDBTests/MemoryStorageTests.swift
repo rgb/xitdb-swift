@@ -16,7 +16,7 @@ import Testing
         // keeps the capacity and what was in it.
         let storage = MemoryStorage(maxSize: 10000)
         try writeBytes(storage, [UInt8](repeating: 0xAA, count: 100), at: 0)
-        try storage.setLength(0)
+        try storage.truncate(to: 0)
 
         try writeBytes(storage, Array("Hello".utf8), at: 0)
         #expect(storage.bytes == Array("Hello".utf8))
@@ -27,29 +27,29 @@ import Testing
         #expect(try readBytes(storage, at: 5, count: 8) == bigEndianBytes(42))
 
         // reading past the end reads nothing (Zig: EndOfStream)
-        #expect(try readBytes(storage, at: try storage.length() + 1, count: 1) == [])
+        #expect(try readBytes(storage, at: try storage.length + 1, count: 1) == [])
 
         // a write past the end fills the gap with zeros
-        let size = try storage.length()
+        let size = try storage.length
         #expect(size == 13)
         try writeBytes(storage, Array("!".utf8), at: size + 3)
         #expect(Array(storage.bytes[13...]) == [0, 0, 0, 0x21])
 
-        try storage.setLength(0)
+        try storage.truncate(to: 0)
         try writeBytes(storage, [1, 2, 3, 4], at: 0)
 
         // invalid lengths must leave the contents alone
         for length in [5, UInt64.max] {
-            #expect(throws: XitDBError.invalidLength) { try storage.setLength(length) }
+            #expect(throws: XitDBError.invalidLength) { try storage.truncate(to: length) }
             #expect(storage.bytes == [1, 2, 3, 4])
         }
 
-        try storage.setLength(3)
+        try storage.truncate(to: 3)
         #expect(storage.bytes == [1, 2, 3])
-        try storage.setLength(3)
+        try storage.truncate(to: 3)
         #expect(storage.bytes == [1, 2, 3])
-        try storage.setLength(2)
-        #expect(try storage.length() == 2)
+        try storage.truncate(to: 2)
+        #expect(try storage.length == 2)
         #expect(storage.bytes == [1, 2])
         #expect(try readBytes(storage, at: 3, count: 1) == [])
         try writeBytes(storage, [9], at: 2)
@@ -58,7 +58,7 @@ import Testing
 
     @Test func startsFromExistingBytesAndGivesThemBack() throws {
         let storage = MemoryStorage(bytes: [1, 2, 3])
-        #expect(try storage.length() == 3)
+        #expect(try storage.length == 3)
         #expect(try readBytes(storage, at: 1, count: 10) == [2, 3])
         try writeBytes(storage, [4, 5], at: 3)
         #expect(storage.bytes == [1, 2, 3, 4, 5])

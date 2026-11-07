@@ -607,7 +607,7 @@ import Testing
             keySlot: Slot(value: 0x0102_0304_0506_0708, tag: .bytes, full: true),
             valueSlot: Slot(value: .max - 1, tag: .uint)
         )
-        let position = try storage.length()
+        let position = try storage.length
         try database.write(pair, hash: KeyHash(hashBytes), at: position)
 
         let expected = encoded(capacity: hashSize + 18) { pair.encodeHashed(hash: hashBytes.span, into: &$0) }
@@ -711,11 +711,11 @@ import Testing
             let kept = try map.readPath([.hashMapGet(.value, first)])
             #expect(try kept?.readUint() == 1)
 
-            let size = try database.storage.length()
+            let size = try database.storage.length
             _ = try map.writePath([.hashMapRemove(first)])
             let emptied = try database.reader.slot(at: rootBlock)
             #expect(emptied == Slot())
-            #expect(try database.storage.length() == size)
+            #expect(try database.storage.length == size)
         }
     }
 }

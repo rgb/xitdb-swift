@@ -12,7 +12,7 @@ import Testing
 
     init() throws {
         directory = try TemporaryDirectory()
-        storage = try BufferedFileStorage(path: directory.path(), durability: .none, bufferLimit: 16)
+        storage = try BufferedFileStorage(path: directory.path(), access: .create, durability: .none, bufferLimit: 16)
     }
 
     private func onDisk() throws -> [UInt8] {
@@ -31,7 +31,7 @@ import Testing
         #expect(storage.memory.count == 3)
         #expect(storage.fileLength == 0)
         #expect(try onDisk() == [])
-        #expect(try storage.length() == 3)
+        #expect(try storage.length == 3)
         #expect(try everything() == [1, 2, 3])
     }
 
@@ -62,7 +62,7 @@ import Testing
         #expect(storage.memoryPosition == 6)
         #expect(storage.memory.count == 2)
         #expect(storage.fileLength == 3)
-        #expect(try storage.length() == 8)
+        #expect(try storage.length == 8)
     }
 
     /// The window can start beyond the end of the file. The bytes between do
@@ -91,7 +91,7 @@ import Testing
     @Test func theGapBeforeAFirstWriteBeyondAnEmptyFileReadsAsZeros() throws {
         try writeBytes(storage, [9], at: 4)
         #expect(try onDisk() == [])
-        #expect(try storage.length() == 5)
+        #expect(try storage.length == 5)
         #expect(try everything() == [0, 0, 0, 0, 9])
     }
 
@@ -162,7 +162,7 @@ import Testing
         #expect(storage.memory.count == 0)
         #expect(storage.memoryPosition == 3)
         #expect(storage.fileLength == 43)
-        #expect(try storage.length() == 43)
+        #expect(try storage.length == 43)
         #expect(try everything() == [1, 2, 3] + large)
 
         // and so does one into an empty buffer
@@ -202,7 +202,7 @@ import Testing
         try writeBytes(storage, [], at: 50)
         #expect(storage.memoryPosition == 0)
         #expect(storage.memory.count == 2)
-        #expect(try storage.length() == 2)
+        #expect(try storage.length == 2)
     }
 
     // MARK: reads
@@ -221,7 +221,7 @@ import Testing
         #expect(try readBytes(storage, at: 3, count: 4) == [3, 4, 50, 51])
         #expect(try readBytes(storage, at: 8, count: 4) == [53, 54, 10, 11])
         #expect(try readBytes(storage, at: 12, count: 100) == Array(file[12...]))
-        #expect(try storage.length() == 20)
+        #expect(try storage.length == 20)
     }
 
     // MARK: setLength
@@ -231,12 +231,12 @@ import Testing
         try storage.flush()
         try writeBytes(storage, [5, 6, 7, 8], at: 4)
 
-        try storage.setLength(6)
+        try storage.truncate(to: 6)
         #expect(storage.memoryPosition == 4)
         #expect(storage.memory.count == 2)
         #expect(storage.fileLength == nil)
         #expect(try onDisk() == [1, 2, 3, 4, 0, 0])
-        #expect(try storage.length() == 6)
+        #expect(try storage.length == 6)
         #expect(try everything() == [1, 2, 3, 4, 5, 6])
         try storage.flush()
         #expect(try onDisk() == [1, 2, 3, 4, 5, 6])
@@ -247,12 +247,12 @@ import Testing
         try storage.flush()
         try writeBytes(storage, [5, 6, 7, 8], at: 4)
 
-        try storage.setLength(2)
+        try storage.truncate(to: 2)
         #expect(storage.memory.count == 0)
         // the empty window keeps its position, now beyond the end of the file
         #expect(storage.memoryPosition == 4)
         #expect(try onDisk() == [1, 2])
-        #expect(try storage.length() == 2)
+        #expect(try storage.length == 2)
         #expect(try everything() == [1, 2])
 
         // nothing is left to flush
@@ -264,10 +264,10 @@ import Testing
         try writeBytes(storage, [1, 2, 3, 4], at: 0)
         try storage.flush()
         try writeBytes(storage, [5, 6], at: 4)
-        try storage.setLength(4)
+        try storage.truncate(to: 4)
         #expect(storage.memory.count == 0)
         #expect(try onDisk() == [1, 2, 3, 4])
-        #expect(try storage.length() == 4)
+        #expect(try storage.length == 4)
     }
 
     @Test func truncationAfterTheWindowLeavesItAndCutsTheFile() throws {
@@ -277,14 +277,14 @@ import Testing
         try storage.flush()
         try writeBytes(storage, [50, 51, 52, 53, 54], at: 5)
 
-        try storage.setLength(15)
+        try storage.truncate(to: 15)
         #expect(storage.memoryPosition == 5)
         #expect(storage.memory.count == 5)
         #expect(try onDisk() == Array(file[..<15]))
-        #expect(try storage.length() == 15)
+        #expect(try storage.length == 15)
 
         // exactly at the end of the window
-        try storage.setLength(10)
+        try storage.truncate(to: 10)
         #expect(storage.memory.count == 5)
         #expect(try onDisk() == Array(file[..<10]))
         #expect(try everything() == [0, 1, 2, 3, 4, 50, 51, 52, 53, 54])
@@ -292,32 +292,32 @@ import Testing
 
     @Test func truncationToTheCurrentLengthChangesNothing() throws {
         try writeBytes(storage, [1, 2, 3], at: 0)
-        try storage.setLength(3)
+        try storage.truncate(to: 3)
         #expect(storage.memory.count == 3)
         #expect(try everything() == [1, 2, 3])
-        #expect(try storage.length() == 3)
+        #expect(try storage.length == 3)
     }
 
     @Test func truncationIntoTheGapBeforeTheWindowKeepsTheGap() throws {
         try writeBytes(storage, [1, 2, 3], at: 0)
         try writeBytes(storage, [7, 8], at: 9)
         #expect(try onDisk() == [1, 2, 3])
-        #expect(try storage.length() == 11)
+        #expect(try storage.length == 11)
 
         // the window goes, and the part of the gap that is kept becomes real
-        try storage.setLength(6)
+        try storage.truncate(to: 6)
         #expect(storage.memory.count == 0)
-        #expect(try storage.length() == 6)
+        #expect(try storage.length == 6)
         #expect(try onDisk() == [1, 2, 3, 0, 0, 0])
         #expect(try everything() == [1, 2, 3, 0, 0, 0])
     }
 
     @Test func aRollbackDoesNotWriteWhatItThrowsAway() throws {
         try writeBytes(storage, [1, 2, 3, 4, 5], at: 0)
-        try storage.setLength(0)
+        try storage.truncate(to: 0)
         #expect(try onDisk() == [])
         #expect(storage.memory.count == 0)
-        #expect(try storage.length() == 0)
+        #expect(try storage.length == 0)
         try storage.flush()
         #expect(try onDisk() == [])
     }
@@ -327,7 +327,7 @@ import Testing
         try storage.flush()
         try writeBytes(storage, [5, 6], at: 4)
         for length in [7, UInt64.max] {
-            #expect(throws: XitDBError.invalidLength) { try storage.setLength(length) }
+            #expect(throws: XitDBError.invalidLength) { try storage.truncate(to: length) }
             #expect(storage.memory.count == 2)
             #expect(storage.memoryPosition == 4)
             #expect(try onDisk() == [1, 2, 3, 4])
@@ -345,9 +345,9 @@ import Testing
         #expect(storage.fileLength == nil)
 
         // while it is not cached, a change made by someone else is seen
-        let other = try FileStorage(path: directory.path(), durability: .none)
+        let other = try FileStorage(path: directory.path(), access: .create, durability: .none)
         try writeBytes(other, [4, 5], at: 3)
-        #expect(try storage.length() == 5)
+        #expect(try storage.length == 5)
         #expect(try everything() == [1, 2, 3, 4, 5])
     }
 
@@ -365,7 +365,7 @@ import Testing
     /// A storage whose file can be made to refuse writes, as a full disk
     /// would.
     private func storageOverAFileThatCanFail() throws -> (FileStorage, BufferedFileStorage) {
-        let file = try FileStorage(path: directory.path("full.db"), durability: .none)
+        let file = try FileStorage(path: directory.path("full.db"), access: .create, durability: .none)
         return (file, BufferedFileStorage(file, bufferLimit: 16))
     }
 
@@ -388,7 +388,7 @@ import Testing
         #expect(buffered.memoryPosition == 3)
         #expect(try directory.contents("full.db") == [1, 2, 3])
         // the storage still reads as if the bytes were written
-        #expect(try buffered.length() == 5)
+        #expect(try buffered.length == 5)
         #expect(try readBytes(buffered, at: 0, count: 10) == [1, 2, 3, 4, 5])
 
         // once the file takes writes again, the same flush succeeds
@@ -408,9 +408,9 @@ import Testing
         #expect(throws: Self.diskFull) { try buffered.sync(.beforeRootHeader) }
 
         // discarding what could not be written does not write anything
-        try buffered.setLength(3)
+        try buffered.truncate(to: 3)
         #expect(buffered.memory.count == 0)
-        #expect(try buffered.length() == 3)
+        #expect(try buffered.length == 3)
         try buffered.flush()
         try buffered.sync(.afterRootHeader)
         #expect(try directory.contents("full.db") == [1, 2, 3])
@@ -443,12 +443,12 @@ import Testing
         Self.refuseWrites(file)
         #expect(throws: Self.diskFull) { try writeBytes(buffered, large, at: 40) }
         #expect(buffered.fileLength == nil)
-        #expect(try buffered.length() == 40)
+        #expect(try buffered.length == 40)
     }
 
     @Test func unflushedBytesAreLostWhenTheStorageGoesAway() throws {
         do {
-            let short = try BufferedFileStorage(path: directory.path("lost.db"), durability: .none)
+            let short = try BufferedFileStorage(path: directory.path("lost.db"), access: .create, durability: .none)
             try writeBytes(short, [1, 2, 3], at: 0)
             try short.flush()
             try writeBytes(short, [4, 5, 6], at: 3)
@@ -458,13 +458,13 @@ import Testing
 
     @Test func theDefaultLimitIsTwoMebibytes() throws {
         #expect(BufferedFileStorage.defaultBufferLimit == 2 * 1024 * 1024)
-        let standard = try BufferedFileStorage(path: directory.path("default.db"))
+        let standard = try BufferedFileStorage(path: directory.path("default.db"), access: .create)
         #expect(standard.bufferLimit == 2 * 1024 * 1024)
         #expect(storage.bufferLimit == 16)
     }
 
     @Test func wrapsAnExistingFileStorage() throws {
-        let file = try FileStorage(path: directory.path("wrapped.db"), durability: .none)
+        let file = try FileStorage(path: directory.path("wrapped.db"), access: .create, durability: .none)
         try writeBytes(file, [1, 2, 3], at: 0)
         let buffered = BufferedFileStorage(file, bufferLimit: 8)
         try writeBytes(buffered, [4, 5], at: 3)

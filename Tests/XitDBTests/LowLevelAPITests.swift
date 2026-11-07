@@ -376,7 +376,7 @@ import Testing
 
         // if error in ctx, db doesn't change
         do {
-            let sizeBefore = try subject.storage.length()
+            let sizeBefore = try subject.storage.length
 
             do {
                 _ = try rootCursor.writePath([
@@ -407,7 +407,7 @@ import Testing
             #expect(value == utf8("baz"))
 
             // verify that the db is properly truncated back to its original size after error
-            let sizeAfter = try subject.storage.length()
+            let sizeAfter = try subject.storage.length
             #expect(sizeBefore == sizeAfter)
             #expect(sizeAfter == 1212)  // as in a run of the Zig test
 
@@ -423,7 +423,7 @@ import Testing
             #expect(try history.getSlot(-1) == nil)
             try history.slice(countBefore)
             #expect(countBefore == 3)  // as in a run of the Zig test, with the length after it
-            #expect(try subject.storage.length() == 2376)
+            #expect(try subject.storage.length == 2376)
         }
 
         // write bar -> longstring
@@ -1086,7 +1086,7 @@ import Testing
         }
 
         // the length of the storage here in a run of the fix branch's Zig test, on every kind of storage
-        #expect(try subject.storage.length() == 14916)
+        #expect(try subject.storage.length == 14916)
     }
 
     /// test.zig 2179-2283: "append to top-level array_list many times, filling up the array_list until a root
@@ -1155,7 +1155,7 @@ import Testing
             }
             // Zig: the loop's `else` branch, taken when it ends without the break, returns `error.ExpectedFail`
             try #require(failed)
-            #expect(try subject.storage.length() == 14542)  // as in a run of the Zig test
+            #expect(try subject.storage.length == 14542)  // as in a run of the Zig test
 
             // try another append to make sure we still can.
             // if truncation destroyed the index block, this would fail.
@@ -1197,7 +1197,7 @@ import Testing
         )
 
         // the length of the storage here in a run of the Zig test, on every kind of storage
-        #expect(try subject.storage.length() == 15400)
+        #expect(try subject.storage.length == 15400)
     }
 
     /// test.zig 2285-2397: "append to inner array_list many times, filling up the array_list until a root
@@ -1320,7 +1320,7 @@ import Testing
         }
 
         // the length of the storage here in a run of the Zig test, on every kind of storage
-        #expect(try subject.storage.length() == 8294)
+        #expect(try subject.storage.length == 8294)
     }
 
     /// test.zig 2399-2473: "iterate over inner array_list", with the fix branch's reads of the slot set to
@@ -1425,7 +1425,7 @@ import Testing
         #expect(try listCursor.count() == 10)
 
         // the length of the storage here in a run of the Zig test, on every kind of storage
-        #expect(try subject.storage.length() == 3956)
+        #expect(try subject.storage.length == 3956)
     }
 
     /// test.zig 2475-2574: "iterate over inner hash_map".
@@ -1530,7 +1530,7 @@ import Testing
         }
 
         // the length of the storage here in a run of the Zig test, on every kind of storage
-        #expect(try subject.storage.length() == 6258)
+        #expect(try subject.storage.length == 6258)
     }
 
     // test.zig 2576-2599, the calls of `testSlice`, `testConcat` and `testInsertAndRemove`, are ported in
@@ -1628,7 +1628,7 @@ import Testing
         }
 
         // the length of the storage here in a run of the original's Zig test, on every kind of storage
-        #expect(try subject.storage.length() == 20706)
+        #expect(try subject.storage.length == 20706)
     }
 
     /// test.zig 2690-2718: "append items to linked_array_list without setting their value".
@@ -1662,7 +1662,7 @@ import Testing
         }
 
         // the length of the storage here in a run of the original's Zig test, on every kind of storage
-        #expect(try subject.storage.length() == 5758)
+        #expect(try subject.storage.length == 5758)
     }
 
     /// test.zig 2720-2745: "insert at beginning of linked_array_list many times".
@@ -1693,7 +1693,7 @@ import Testing
         }
 
         // the length of the storage here in a run of the original's Zig test, on every kind of storage
-        #expect(try subject.storage.length() == 1_127_690)
+        #expect(try subject.storage.length == 1_127_690)
     }
 
     /// test.zig 2747-2772: "insert at end of linked_array_list many times".
@@ -1724,6 +1724,6 @@ import Testing
         }
 
         // the length of the storage here in a run of the original's Zig test, on every kind of storage
-        #expect(try subject.storage.length() == 1_134_666)
+        #expect(try subject.storage.length == 1_134_666)
     }
 }

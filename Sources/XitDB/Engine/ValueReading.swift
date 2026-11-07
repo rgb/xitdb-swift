@@ -23,7 +23,7 @@ extension DatabaseReader {
             // system call.
             guard let count = Int(exactly: size) else { throw .endOfStream }
             if maxSize == nil {
-                let length = try storage.length()
+                let length = try storage.length
                 guard start <= length, size <= length - start else { throw .endOfStream }
             }
             var value = [UInt8](repeating: 0, count: count)

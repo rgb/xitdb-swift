@@ -15,7 +15,7 @@ import Testing
 // whose `run` method does the writing is `history.appendContext(.slot(...)) { cursor in ... }` here. Zig's
 // `clearStorage` of the source and the target at the start of a block is a new storage of each kind here. Zig's
 // `source.compact(target_db_kind, target_opts, offset_map)`, which opens the target over the target's options, is
-// `source.compact(into: targetStorage, offsetMap: &offsetMap)`. Zig's `source.core.length()` is the source
+// `source.compact(into: targetStorage, offsetMap: &offsetMap)`. Zig's `source.core.length` is the source
 // storage's `length()`. Zig's `DiskOffsets` (lines 2874 to 2891) is `DiskOffsetMap` in `DiskOffsetMap.swift`, and
 // its `Ctx.run` under `offsets_db.runContext` (lines 2911 to 2933) is `DiskOffsets.use`. Zig's allocator arguments
 // and `defer allocator.free` lines have no counterpart.
@@ -213,12 +213,12 @@ import Testing
             }
         }
 
-        let sourceSize = try sourceSubject.storage.length()
+        let sourceSize = try sourceSubject.storage.length
 
         // compact
         let compacted = try source.compact(into: targetSubject.storage, offsetMap: &offsetMap)
 
-        let targetSize = try targetSubject.storage.length()
+        let targetSize = try targetSubject.storage.length
 
         // target should be smaller than source (3 moments vs 1)
         #expect(targetSize < sourceSize)

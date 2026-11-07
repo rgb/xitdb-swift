@@ -39,14 +39,14 @@ import Testing
                 try b.append(.uint(UInt64(value)))
             }
             try a.concat(try b.slot())
-            #expect(try subject.storage.length() == 1485)
+            #expect(try subject.storage.length == 1485)
             #expect(try a.count() == 32)
 
             for removal in 0..<16 {
                 try a.remove(0)
                 // the joined nodes are this transaction's, so every removal
                 // rewrites them in place
-                #expect(try subject.storage.length() == 1485, "after removal \(removal)")
+                #expect(try subject.storage.length == 1485, "after removal \(removal)")
             }
             #expect(try a.count() == 16)
             let values = try (0..<16).map { try a.getCursor($0)?.readUint() }
@@ -60,15 +60,15 @@ import Testing
             // a list of one element, emptied: a new root is appended
             let c = try LinkedArrayList(try moment.putCursor(sha1("c").bytes))
             try c.append(.uint(7))
-            let before = try subject.storage.length()
+            let before = try subject.storage.length
             #expect(before == 1685)
             try c.remove(0)
-            #expect(try subject.storage.length() == 1831)
+            #expect(try subject.storage.length == 1831)
             #expect(try database.reader.bTreeHeader(at: try c.slot().value).rootPtr == 1685)
             #expect(try c.count() == 0)
             #expect(try c.getCursor(0) == nil)
         }
-        #expect(try subject.storage.length() == 1856)
+        #expect(try subject.storage.length == 1856)
     }
 
     /// A slice is checked against the size without overflowing, as in Zig:

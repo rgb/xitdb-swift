@@ -74,7 +74,7 @@ extension Database {
 
             // Discard what an unfinished transaction left, after a crash.
             try truncate()
-            scratchPosition = try storage.length()
+            scratchPosition = try storage.length
         } catch {
             throw lift(error)
         }

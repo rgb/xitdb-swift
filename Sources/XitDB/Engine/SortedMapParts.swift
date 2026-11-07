@@ -11,7 +11,7 @@ extension Database {
         case .none:
             // An empty tree: one empty leaf, then the header.
             let rootPtr = try appendNode(SortedNode(kind: .leaf, num: 0))
-            headerPtr = try storage.length()
+            headerPtr = try storage.length
             try write(BTreeHeader(size: 0, rootPtr: rootPtr), at: headerPtr)
         case .sortedMap, .sortedSet:
             headerPtr = pointer.slot.value
@@ -19,7 +19,7 @@ extension Database {
             // it.
             if try isOld(headerPtr, frozenAt: frozenAt) {
                 let header = try reader.bTreeHeader(at: headerPtr)
-                headerPtr = try storage.length()
+                headerPtr = try storage.length
                 try write(header, at: headerPtr)
             }
         default:

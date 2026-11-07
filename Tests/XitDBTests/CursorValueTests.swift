@@ -501,7 +501,8 @@ import Testing
     /// file.
     @Test func aRangedReadCrossesTheBufferedWindow() throws {
         let directory = try TemporaryDirectory()
-        let storage = try BufferedFileStorage(path: directory.path(), durability: .none, bufferLimit: 16)
+        let storage = try BufferedFileStorage(
+            path: directory.path(), access: .create, durability: .none, bufferLimit: 16)
         try writeBytes(storage, [1, 2, 3], at: 0)
         try writeBytes(storage, [7, 8], at: 6)
         #expect(try directory.contents() == [1, 2, 3])

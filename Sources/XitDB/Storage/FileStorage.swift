@@ -137,7 +137,7 @@ public final class FileStorage: WritableStorage {
     ///   opened or the lock cannot be had at once.
     public init(
         path: String,
-        access: FileAccess = .create,
+        access: FileAccess,
         durability: Durability = .full,
         lock: FileLock? = nil
     ) throws(XitDBError) {
@@ -181,8 +181,10 @@ public final class FileStorage: WritableStorage {
     ///
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the file's length
     ///   cannot be read.
-    public func length() throws(XitDBError) -> UInt64 {
-        try Platform.fileLength(descriptor.rawValue)
+    public var length: UInt64 {
+        get throws(XitDBError) {
+            try Platform.fileLength(descriptor.rawValue)
+        }
     }
 
     /// Writes `bytes` to the file at `offset`.
@@ -211,14 +213,15 @@ public final class FileStorage: WritableStorage {
 
     /// Cuts the file down to `length` bytes.
     ///
-    /// On a storage opened with ``FileAccess/readOnly`` this does nothing.
+    /// On a storage opened with ``FileAccess/readOnly`` a length within the
+    /// file leaves it as it is; a larger one is still ``XitDBError/invalidLength``.
     ///
     /// - Parameter length: The new length in bytes.
     /// - Throws: ``XitDBError/invalidLength`` if `length` is larger than the
     ///   file's length, or ``XitDBError/storageFailure(errno:)`` if the file
     ///   cannot be shortened.
-    public func setLength(_ length: UInt64) throws(XitDBError) {
-        guard length <= (try self.length()) else { throw .invalidLength }
+    public func truncate(to length: UInt64) throws(XitDBError) {
+        guard length <= (try self.length) else { throw .invalidLength }
         try resize(to: length)
     }
 
@@ -277,3 +280,6 @@ public final class FileStorage: WritableStorage {
         }
     }
 }
+
+@available(*, unavailable, message: "a file storage is used from one thread at a time")
+extension FileStorage: Sendable {}

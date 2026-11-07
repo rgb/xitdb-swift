@@ -7,16 +7,16 @@ import Testing
     @Test func createsWritesReopensAndReadsBack() throws {
         let directory = try TemporaryDirectory()
         do {
-            let storage = try FileStorage(path: directory.path())
-            #expect(try storage.length() == 0)
+            let storage = try FileStorage(path: directory.path(), access: .create)
+            #expect(try storage.length == 0)
             try writeBytes(storage, Array("Hello".utf8), at: 0)
             try writeBytes(storage, bigEndianBytes(42), at: 5)
-            #expect(try storage.length() == 13)
+            #expect(try storage.length == 13)
         }
         #expect(try directory.contents() == Array("Hello".utf8) + bigEndianBytes(42))
 
         let reopened = try FileStorage(path: directory.path(), access: .readWrite)
-        #expect(try reopened.length() == 13)
+        #expect(try reopened.length == 13)
         #expect(try readBytes(reopened, at: 0, count: 5) == Array("Hello".utf8))
         #expect(try readBytes(reopened, at: 5, count: 100) == bigEndianBytes(42))
         #expect(try readBytes(reopened, at: 13, count: 4) == [])
@@ -33,28 +33,28 @@ import Testing
 
         // create makes it, and leaves an existing file as it is
         try writeBytes(try FileStorage(path: path, access: .create), [1, 2, 3], at: 0)
-        #expect(try FileStorage(path: path, access: .create).length() == 3)
-        #expect(try FileStorage(path: path, access: .readWrite).length() == 3)
-        #expect(try FileStorage(path: path, access: .readOnly).length() == 3)
+        #expect(try FileStorage(path: path, access: .create).length == 3)
+        #expect(try FileStorage(path: path, access: .readWrite).length == 3)
+        #expect(try FileStorage(path: path, access: .readOnly).length == 3)
 
         // truncate empties it, and makes it when it is missing
-        #expect(try FileStorage(path: path, access: .truncate).length() == 0)
+        #expect(try FileStorage(path: path, access: .truncate).length == 0)
         #expect(try directory.contents() == [])
         let other = directory.path("other.db")
-        #expect(try FileStorage(path: other, access: .truncate).length() == 0)
+        #expect(try FileStorage(path: other, access: .truncate).length == 0)
         #expect(FileManager.default.fileExists(atPath: other))
     }
 
     @Test func theDefaultsAreCreateAndFullDurability() throws {
         let directory = try TemporaryDirectory()
-        let storage = try FileStorage(path: directory.path())
+        let storage = try FileStorage(path: directory.path(), access: .create)
         #expect(storage.durability == .full)
         if case .create = storage.access {} else { Issue.record("the default access is not create") }
     }
 
     @Test func aWritePastTheEndFillsTheGapWithZeros() throws {
         let directory = try TemporaryDirectory()
-        let storage = try FileStorage(path: directory.path())
+        let storage = try FileStorage(path: directory.path(), access: .create)
         try writeBytes(storage, [1, 2], at: 0)
         try writeBytes(storage, [9], at: 5)
         #expect(try directory.contents() == [1, 2, 0, 0, 0, 9])
@@ -62,26 +62,26 @@ import Testing
 
         // writing nothing does nothing, even beyond the end
         try writeBytes(storage, [], at: 100)
-        #expect(try storage.length() == 6)
+        #expect(try storage.length == 6)
     }
 
     @Test func setLengthShortensAndNeverLengthens() throws {
         let directory = try TemporaryDirectory()
-        let storage = try FileStorage(path: directory.path())
+        let storage = try FileStorage(path: directory.path(), access: .create)
         try writeBytes(storage, [1, 2, 3, 4], at: 0)
 
         for length in [5, UInt64.max] {
-            #expect(throws: XitDBError.invalidLength) { try storage.setLength(length) }
+            #expect(throws: XitDBError.invalidLength) { try storage.truncate(to: length) }
             #expect(try directory.contents() == [1, 2, 3, 4])
         }
 
-        try storage.setLength(4)
+        try storage.truncate(to: 4)
         #expect(try directory.contents() == [1, 2, 3, 4])
-        try storage.setLength(2)
+        try storage.truncate(to: 2)
         #expect(try directory.contents() == [1, 2])
         #expect(try readBytes(storage, at: 2, count: 1) == [])
-        try storage.setLength(0)
-        #expect(try storage.length() == 0)
+        try storage.truncate(to: 0)
+        #expect(try storage.length == 0)
     }
 
     /// Both file storages reject a write to a file opened for reading only,
@@ -90,7 +90,7 @@ import Testing
     @Test(arguments: [false, true])
     func aReadOnlyStorageRejectsWritesAndIgnoresTruncation(buffered: Bool) throws {
         let directory = try TemporaryDirectory()
-        try writeBytes(try FileStorage(path: directory.path()), [1, 2, 3, 4], at: 0)
+        try writeBytes(try FileStorage(path: directory.path(), access: .create), [1, 2, 3, 4], at: 0)
 
         let file = try FileStorage(path: directory.path(), access: .readOnly)
         let storage: any WritableStorage = buffered ? BufferedFileStorage(file, bufferLimit: 16) : file
@@ -102,19 +102,19 @@ import Testing
         #expect(throws: XitDBError.storageFailure(errno: EBADF)) { try writeBytes(storage, [9], at: 4) }
         #expect(throws: XitDBError.storageFailure(errno: EBADF)) { try writeBytes(storage, [9], at: 100) }
         // nothing was taken into a buffer
-        #expect(try storage.length() == 4)
+        #expect(try storage.length == 4)
         #expect(try readBytes(storage, at: 0, count: 10) == [1, 2, 3, 4])
         // writing nothing is still nothing
         try writeBytes(storage, [], at: 0)
 
         // a request to shorten is ignored, as in Zig
-        try storage.setLength(2)
-        try storage.setLength(0)
-        #expect(try storage.length() == 4)
+        try storage.truncate(to: 2)
+        try storage.truncate(to: 0)
+        #expect(try storage.length == 4)
         #expect(try directory.contents() == [1, 2, 3, 4])
 
         // a request to lengthen is invalid for every storage
-        #expect(throws: XitDBError.invalidLength) { try storage.setLength(5) }
+        #expect(throws: XitDBError.invalidLength) { try storage.truncate(to: 5) }
 
         // flushing and syncing a file that was not written are harmless
         try storage.flush()
@@ -126,7 +126,7 @@ import Testing
     /// or a file the user may only read could not be opened at all.
     @Test func aFileWithoutWritePermissionOpensReadOnly() throws {
         let directory = try TemporaryDirectory()
-        try writeBytes(try FileStorage(path: directory.path()), [1, 2, 3], at: 0)
+        try writeBytes(try FileStorage(path: directory.path(), access: .create), [1, 2, 3], at: 0)
         try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: directory.path())
 
         let storage = try FileStorage(path: directory.path(), access: .readOnly)
@@ -145,7 +145,7 @@ import Testing
 
     @Test func readsThatReachTheEndAreShort() throws {
         let directory = try TemporaryDirectory()
-        let storage = try FileStorage(path: directory.path())
+        let storage = try FileStorage(path: directory.path(), access: .create)
         try writeBytes(storage, (0..<200).map { UInt8($0) }, at: 0)
         #expect(try readBytes(storage, at: 190, count: 50) == (190..<200).map { UInt8($0) })
         #expect(try readBytes(storage, at: 200, count: 50) == [])
@@ -161,34 +161,34 @@ import Testing
 
     @Test func anOffsetTheSystemCannotExpressIsAStorageFailure() throws {
         let directory = try TemporaryDirectory()
-        let storage = try FileStorage(path: directory.path())
+        let storage = try FileStorage(path: directory.path(), access: .create)
         #expect(throws: XitDBError.storageFailure(errno: EFBIG)) { try writeBytes(storage, [1], at: .max) }
-        #expect(try storage.length() == 0)
+        #expect(try storage.length == 0)
     }
 }
 
 @Suite struct FileLockTests {
     @Test func aSecondExclusiveLockFailsAtOnce() throws {
         let directory = try TemporaryDirectory()
-        let holder = try FileStorage(path: directory.path(), lock: .exclusive)
+        let holder = try FileStorage(path: directory.path(), access: .create, lock: .exclusive)
         #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK)) {
-            try FileStorage(path: directory.path(), lock: .exclusive)
+            try FileStorage(path: directory.path(), access: .create, lock: .exclusive)
         }
         #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK)) {
             try FileStorage(path: directory.path(), access: .readOnly, lock: .shared)
         }
         #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK)) {
-            try BufferedFileStorage(path: directory.path(), lock: .exclusive)
+            try BufferedFileStorage(path: directory.path(), access: .create, lock: .exclusive)
         }
         try holder.flush()
     }
 
     @Test func sharedLocksCoexistAndKeepOutAnExclusiveOne() throws {
         let directory = try TemporaryDirectory()
-        let first = try FileStorage(path: directory.path(), lock: .shared)
+        let first = try FileStorage(path: directory.path(), access: .create, lock: .shared)
         let second = try FileStorage(path: directory.path(), access: .readOnly, lock: .shared)
         #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK)) {
-            try FileStorage(path: directory.path(), lock: .exclusive)
+            try FileStorage(path: directory.path(), access: .create, lock: .exclusive)
         }
         try first.flush()
         try second.flush()
@@ -197,14 +197,14 @@ import Testing
     @Test func noLockIsTakenUnlessAskedFor() throws {
         let directory = try TemporaryDirectory()
         // two storages that ask for no lock do not get in each other's way
-        let first = try FileStorage(path: directory.path())
-        let second = try FileStorage(path: directory.path())
+        let first = try FileStorage(path: directory.path(), access: .create)
+        let second = try FileStorage(path: directory.path(), access: .create)
         // and an exclusive lock can still be had, because they hold none
-        let locked = try FileStorage(path: directory.path(), lock: .exclusive)
+        let locked = try FileStorage(path: directory.path(), access: .create, lock: .exclusive)
         // locks are advisory: an opener that asks for none is not kept out
-        let unlocked = try FileStorage(path: directory.path())
+        let unlocked = try FileStorage(path: directory.path(), access: .create)
         try writeBytes(unlocked, [1], at: 0)
-        #expect(try locked.length() == 1)
+        #expect(try locked.length == 1)
         try first.flush()
         try second.flush()
     }
@@ -212,16 +212,16 @@ import Testing
     @Test func theLockIsReleasedWhenTheStorageGoesAway() throws {
         let directory = try TemporaryDirectory()
         do {
-            let holder = try FileStorage(path: directory.path(), lock: .exclusive)
+            let holder = try FileStorage(path: directory.path(), access: .create, lock: .exclusive)
             try holder.flush()
         }
-        let next = try FileStorage(path: directory.path(), lock: .exclusive)
+        let next = try FileStorage(path: directory.path(), access: .create, lock: .exclusive)
         try next.flush()
     }
 
     @Test func anOpenerThatFailsToGetTheLockDoesNotEmptyTheFile() throws {
         let directory = try TemporaryDirectory()
-        let holder = try FileStorage(path: directory.path(), lock: .exclusive)
+        let holder = try FileStorage(path: directory.path(), access: .create, lock: .exclusive)
         try writeBytes(holder, [1, 2, 3], at: 0)
         #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK)) {
             try FileStorage(path: directory.path(), access: .truncate, lock: .exclusive)
@@ -234,9 +234,9 @@ import Testing
 
     @Test func truncateEmptiesTheFileOnceTheLockIsHeld() throws {
         let directory = try TemporaryDirectory()
-        try writeBytes(try FileStorage(path: directory.path()), [1, 2, 3], at: 0)
+        try writeBytes(try FileStorage(path: directory.path(), access: .create), [1, 2, 3], at: 0)
         let storage = try FileStorage(path: directory.path(), access: .truncate, lock: .exclusive)
-        #expect(try storage.length() == 0)
+        #expect(try storage.length == 0)
         #expect(try directory.contents() == [])
     }
 }
@@ -263,7 +263,7 @@ final class SyncRecorder {
         _ durability: Durability,
         _ recorder: SyncRecorder
     ) throws -> FileStorage {
-        let storage = try FileStorage(path: directory.path(), durability: durability)
+        let storage = try FileStorage(path: directory.path(), access: .create, durability: durability)
         storage.calls.sync = recorder.call
         return storage
     }
@@ -399,7 +399,7 @@ final class SyncRecorder {
     @Test(arguments: [SyncCall.full, .barrier, .plain])
     func theSystemAcceptsEachCall(call: SyncCall) throws {
         let directory = try TemporaryDirectory()
-        let storage = try FileStorage(path: directory.path())
+        let storage = try FileStorage(path: directory.path(), access: .create)
         try writeBytes(storage, [1, 2, 3], at: 0)
         #expect(Platform.syncFile(storage.descriptor.rawValue, call) == 0)
     }
@@ -407,7 +407,7 @@ final class SyncRecorder {
     @Test(arguments: [Durability.none, .ordered, .full])
     func everyLevelSyncsARealFile(durability: Durability) throws {
         let directory = try TemporaryDirectory()
-        let storage = try FileStorage(path: directory.path(), durability: durability)
+        let storage = try FileStorage(path: directory.path(), access: .create, durability: durability)
         try writeBytes(storage, [1, 2, 3], at: 0)
         try storage.sync(.beforeRootHeader)
         try storage.sync(.afterRootHeader)

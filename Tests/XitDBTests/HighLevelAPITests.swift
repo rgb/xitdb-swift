@@ -525,11 +525,11 @@ import Testing
         // opening the db leaves trailing data alone, because it may
         // belong to another writer's unfinished transaction. the next
         // write transaction truncates it before allocating new data.
-        let sizeBefore = try subject.storage.length()
+        let sizeBefore = try subject.storage.length
 
         try writeBytes(subject.storage, utf8("this is trailing data from an unfinished transaction"), at: sizeBefore)
         try subject.storage.flush()
-        let sizeWithTail = try subject.storage.length()
+        let sizeWithTail = try subject.storage.length
 
         // no error is thrown if db file is opened in read-only mode
         switch kind {
@@ -545,12 +545,12 @@ import Testing
 
         let reopened = try Database(storage: subject.storage, hashSize: 20)
 
-        let sizeAfter = try subject.storage.length()
+        let sizeAfter = try subject.storage.length
 
         #expect(sizeWithTail == sizeAfter)
 
         _ = try ArrayList<ReadWrite>(reopened.rootCursor())
-        #expect(try subject.storage.length() == sizeBefore)
+        #expect(try subject.storage.length == sizeBefore)
 
         return reopened
     }

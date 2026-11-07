@@ -147,7 +147,7 @@ struct DatabaseReader {
     func rootHeader() throws(XitDBError) -> RootHeader {
         let fileSize = try uint64(at: RootHeader.fileSizePosition)
         if fileSize < RootHeader.minimumFileSize { throw .invalidDatabase }
-        if try storage.length() < fileSize { throw .truncatedDatabase }
+        if try storage.length < fileSize { throw .truncatedDatabase }
         // The committed bytes must end with a trailer.
         return RootHeader(root: try rootTrailer(endingAt: fileSize).root, fileSize: fileSize)
     }

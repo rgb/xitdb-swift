@@ -52,8 +52,10 @@ final class FaultInjectingStorage: WritableStorage {
         return try base.read(into: &buffer, range: range, at: offset)
     }
 
-    func length() throws(XitDBError) -> UInt64 {
-        try base.length()
+    var length: UInt64 {
+        get throws(XitDBError) {
+            try base.length
+        }
     }
 
     func write(_ bytes: Span<UInt8>, at offset: UInt64) throws(XitDBError) {
@@ -72,8 +74,8 @@ final class FaultInjectingStorage: WritableStorage {
         try base.write(bytes, at: offset)
     }
 
-    func setLength(_ length: UInt64) throws(XitDBError) {
-        try base.setLength(length)
+    func truncate(to length: UInt64) throws(XitDBError) {
+        try base.truncate(to: length)
     }
 
     func flush() throws(XitDBError) {
@@ -92,10 +94,10 @@ final class FaultInjectingStorage: WritableStorage {
         let memory = MemoryStorage()
         let storage = FaultInjectingStorage(memory)
         try writeBytes(storage, [1, 2, 3, 4], at: 0)
-        try storage.setLength(3)
+        try storage.truncate(to: 3)
         try storage.flush()
         try storage.sync(.beforeRootHeader)
-        #expect(try storage.length() == 3)
+        #expect(try storage.length == 3)
         #expect(try readBytes(storage, at: 1, count: 10) == [2, 3])
         #expect(memory.bytes == [1, 2, 3])
         #expect(storage.writeCount == 1)
@@ -127,7 +129,7 @@ final class FaultInjectingStorage: WritableStorage {
 
     @Test func aFailedSyncDoesNotReachTheStorageUnderneath() throws {
         let directory = try TemporaryDirectory()
-        let buffered = try BufferedFileStorage(path: directory.path(), durability: .none)
+        let buffered = try BufferedFileStorage(path: directory.path(), access: .create, durability: .none)
         let storage = FaultInjectingStorage(buffered, faults: [.failSync(2)])
         try writeBytes(storage, [1, 2, 3], at: 0)
 
@@ -151,7 +153,7 @@ final class FaultInjectingStorage: WritableStorage {
             try writeBytes(storage, [1, 2], at: 0)
             #expect(throws: FaultInjectingStorage.failure) { try writeBytes(storage, [3, 4], at: 2) }
             // roll back to before the failed write, as a database would
-            try storage.setLength(2)
+            try storage.truncate(to: 2)
             try storage.flush()
             #expect(try subject.stored() == [1, 2])
         }

@@ -11,6 +11,10 @@
 /// lands and grows as writes continue from there. It is flushed and started
 /// again when a write lands beyond its end or would grow it past
 /// ``bufferLimit``. A write before the window goes straight to the file.
+///
+/// The storage opens its file itself and is the only thing that writes
+/// through it: a file written by anything else while the window holds
+/// bytes would lose them or keep stale ones.
 public final class BufferedFileStorage: WritableStorage {
     private let file: FileStorage
 
@@ -22,7 +26,7 @@ public final class BufferedFileStorage: WritableStorage {
     /// window is empty, and can then be beyond the end of the file.
     private(set) var memoryPosition: UInt64 = 0
 
-    /// The file's length, cached so that `length()` need not ask the
+    /// The file's length, cached so that `length` need not ask the
     /// operating system each time. Another process may write to the file
     /// whenever this one is not, so it is only kept while this storage is
     /// writing, and it is dropped whenever the buffer is flushed.
@@ -34,14 +38,17 @@ public final class BufferedFileStorage: WritableStorage {
     /// The buffer limit used when none is given: 2 MiB.
     public static let defaultBufferLimit: UInt64 = 2 * 1024 * 1024
 
-    /// Puts a buffer in front of a file storage.
+    /// Puts a buffer in front of a file storage. Internal: the tests use it
+    /// to put their own calls on the file; a client opens the file through
+    /// ``init(path:access:durability:lock:bufferLimit:)``, so that nothing
+    /// else can write through it.
     ///
     /// - Parameters:
-    ///   - file: The storage to buffer. Nothing else should write through it
+    ///   - file: The storage to buffer. Nothing else may write through it
     ///     afterwards.
     ///   - bufferLimit: The most bytes to hold before flushing. A write
     ///     larger than this goes straight to the file.
-    public init(_ file: FileStorage, bufferLimit: UInt64 = BufferedFileStorage.defaultBufferLimit) {
+    init(_ file: FileStorage, bufferLimit: UInt64 = BufferedFileStorage.defaultBufferLimit) {
         self.file = file
         self.bufferLimit = bufferLimit
     }
@@ -59,7 +66,7 @@ public final class BufferedFileStorage: WritableStorage {
     ///   opened or the lock cannot be had at once.
     public convenience init(
         path: String,
-        access: FileAccess = .create,
+        access: FileAccess,
         durability: Durability = .full,
         lock: FileLock? = nil,
         bufferLimit: UInt64 = BufferedFileStorage.defaultBufferLimit
@@ -139,18 +146,20 @@ public final class BufferedFileStorage: WritableStorage {
     ///
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the file's length
     ///   cannot be read.
-    public func length() throws(XitDBError) -> UInt64 {
-        // `??` would lose the typed error.
-        let fileLength: UInt64
-        if let known = self.fileLength {
-            fileLength = known
-        } else {
-            fileLength = try file.length()
+    public var length: UInt64 {
+        get throws(XitDBError) {
+            // `??` would lose the typed error.
+            let fileLength: UInt64
+            if let known = self.fileLength {
+                fileLength = known
+            } else {
+                fileLength = try file.length
+            }
+            // A failed write or a rollback can leave an empty window positioned
+            // beyond the end of the file.
+            if memory.count == 0 { return fileLength }
+            return max(memoryPosition + UInt64(memory.count), fileLength)
         }
-        // A failed write or a rollback can leave an empty window positioned
-        // beyond the end of the file.
-        if memory.count == 0 { return fileLength }
-        return max(memoryPosition + UInt64(memory.count), fileLength)
     }
 
     /// Writes `bytes` at `offset`, into the buffer if they continue or fall
@@ -186,7 +195,7 @@ public final class BufferedFileStorage: WritableStorage {
         }
 
         if fileLength == nil {
-            fileLength = try file.length()
+            fileLength = try file.length
         }
 
         if offset >= memoryPosition && offset - memoryPosition + count <= bufferLimit {
@@ -210,20 +219,21 @@ public final class BufferedFileStorage: WritableStorage {
     /// because that write may be the one that failed, on a full disk for
     /// example.
     ///
-    /// On a storage opened with ``FileAccess/readOnly`` the file is left as
-    /// it is.
+    /// On a storage opened with ``FileAccess/readOnly`` a length within the
+    /// storage leaves the file as it is; a larger one is still
+    /// ``XitDBError/invalidLength``.
     ///
     /// - Parameter length: The new length in bytes.
     /// - Throws: ``XitDBError/invalidLength`` if `length` is larger than the
     ///   storage's length, or ``XitDBError/storageFailure(errno:)`` if the
     ///   file cannot be shortened.
-    public func setLength(_ length: UInt64) throws(XitDBError) {
-        guard length <= (try self.length()) else { throw .invalidLength }
+    public func truncate(to length: UInt64) throws(XitDBError) {
+        guard length <= (try self.length) else { throw .invalidLength }
         let bufferSize = UInt64(memory.count)
         if length <= memoryPosition {
             memory.removeAll()
         } else if length < memoryPosition + bufferSize {
-            try memory.setLength(length - memoryPosition)
+            try memory.truncate(to: length - memoryPosition)
         }
         fileLength = nil
         // This can lengthen the file: when the window started beyond the end
@@ -267,3 +277,6 @@ public final class BufferedFileStorage: WritableStorage {
         }
     }
 }
+
+@available(*, unavailable, message: "a buffered file storage is used from one thread at a time")
+extension BufferedFileStorage: Sendable {}

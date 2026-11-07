@@ -482,7 +482,7 @@ extension Cursor where Access == ReadWrite {
     /// - Throws: ``XitDBError/expectedTxStart`` outside a transaction.
     public mutating func freeze() throws(XitDBError) {
         guard database.transactionStart != nil else { throw .expectedTxStart }
-        frozenAt = try database.storage.length()
+        frozenAt = try database.storage.length
     }
 }
 

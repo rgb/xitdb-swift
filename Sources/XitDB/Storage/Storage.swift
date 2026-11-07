@@ -40,7 +40,7 @@ public protocol ReadableStorage {
     ///
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the storage
     ///   underneath fails.
-    func length() throws(XitDBError) -> UInt64
+    var length: UInt64 { get throws(XitDBError) }
 }
 
 extension ReadableStorage {
@@ -64,13 +64,13 @@ extension ReadableStorage {
 
 /// Somewhere a database's bytes can be read from and written to.
 ///
-/// A database owns its storage and is the only thing that writes to it. The
-/// methods are not `mutating`, so a conforming type has reference semantics:
-/// it is a class, or it keeps its state behind one.
+/// A database owns its storage and is the only thing that writes to it. A
+/// conforming type is a class: the methods are not `mutating`, and a database
+/// and its cursors share the one instance.
 ///
 /// XitDB provides three: ``MemoryStorage``, ``FileStorage`` and
 /// ``BufferedFileStorage``.
-public protocol WritableStorage: ReadableStorage {
+public protocol WritableStorage: AnyObject, ReadableStorage {
     /// Writes `bytes` at `offset`, replacing what is there and growing the
     /// storage if the bytes reach beyond its end.
     ///
@@ -92,9 +92,9 @@ public protocol WritableStorage: ReadableStorage {
     /// Cuts the storage down to `length` bytes, discarding everything after.
     ///
     /// A database uses this to drop what a failed transaction wrote. Bytes
-    /// that were written and not yet flushed are discarded without being
-    /// written first, so that dropping them cannot fail the way writing them
-    /// did.
+    /// past the new length that were written and not yet flushed are
+    /// discarded without being written first, so that dropping them cannot
+    /// fail the way writing them did; bytes before it stay as they are.
     ///
     /// A storage cannot be made longer this way; only writing does that.
     ///
@@ -104,7 +104,7 @@ public protocol WritableStorage: ReadableStorage {
     ///   current length, in which case nothing is changed, or
     ///   ``XitDBError/storageFailure(errno:)`` if the storage underneath
     ///   fails.
-    func setLength(_ length: UInt64) throws(XitDBError)
+    func truncate(to length: UInt64) throws(XitDBError)
 
     /// Hands every byte the storage is still holding in memory to whatever is
     /// underneath it.

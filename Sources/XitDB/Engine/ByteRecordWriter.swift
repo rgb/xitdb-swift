@@ -30,7 +30,7 @@ struct ByteRecordWriter: ~Copyable {
     init(database: Database, at pointer: SlotPointer) throws(XitDBError) {
         if pointer.position == RootHeader.position { throw .cursorNotWriteable }
         guard database.transactionStart != nil else { throw .expectedTxStart }
-        let recordPosition = try database.storage.length()
+        let recordPosition = try database.storage.length
         try database.write(0 as UInt64, at: recordPosition)
         let startPosition = try recordPosition.offset(by: ByteArrayFormat.lengthByteCount)
         self.database = database
@@ -53,7 +53,7 @@ struct ByteRecordWriter: ~Copyable {
         // Another record may now follow this byte array. Extending the array
         // would overwrite it.
         if newPosition > size {
-            let end = try database.storage.length()
+            let end = try database.storage.length
             if end != (try startPosition.offset(by: size)) { throw .unexpectedWriterPosition }
         }
 
@@ -84,7 +84,7 @@ struct ByteRecordWriter: ~Copyable {
         if let formatTag {
             // A byte array with a format tag is marked by its slot's flag.
             slot.full = true
-            let tagPosition = try database.storage.length()
+            let tagPosition = try database.storage.length
             if (try startPosition.offset(by: size)) != tagPosition { throw .unexpectedWriterPosition }
             try database.storage.write(formatTag.span, at: tagPosition)
         }

@@ -52,14 +52,14 @@ import Testing
                 // a truncation, sometimes to the current length
                 let newLength =
                     Int.random(in: 0..<4, using: &random) == 0 ? length : UInt64.random(in: 0...length, using: &random)
-                try storage.setLength(newLength)
+                try storage.truncate(to: newLength)
                 model.removeLast(model.count - Int(newLength))
             case 85..<93:
                 try storage.flush()
             default:
                 try storage.sync(Bool.random(using: &random) ? .beforeRootHeader : .afterRootHeader)
             }
-            #expect(try storage.length() == UInt64(model.count), "step \(step)")
+            #expect(try storage.length == UInt64(model.count), "step \(step)")
         }
 
         // everything, read back in one call and in small pieces

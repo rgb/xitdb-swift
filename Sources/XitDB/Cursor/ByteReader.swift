@@ -99,7 +99,7 @@ public struct ByteReader {
             // A size that the storage cannot hold comes from a damaged file.
             // It must not be allocated.
             let start = try startPosition.offset(by: position)
-            let length = try database.storage.length()
+            let length = try database.storage.length
             guard start <= length, remaining <= length - start else { throw .endOfStream }
         }
         guard let count = Int(exactly: remaining) else { throw .endOfStream }

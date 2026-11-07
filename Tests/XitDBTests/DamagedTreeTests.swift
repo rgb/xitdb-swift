@@ -230,7 +230,7 @@ import Testing
         let firstChild = root.children[0].value
         let lastChild = root.children[Int(root.num) - 1].value
         let lastBranch = try database.reader.bTreeNode(at: lastChild)
-        let sound = try readBytes(subject.storage, at: 0, count: Int(try subject.storage.length()))
+        let sound = try readBytes(subject.storage, at: 0, count: Int(try subject.storage.length))
 
         /// Whether a concat in one direction, on the file damaged by
         /// `damage`, is reported as `invalidBTreeNode`.

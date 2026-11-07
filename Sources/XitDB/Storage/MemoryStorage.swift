@@ -71,7 +71,7 @@ struct MemoryBuffer {
     ///
     /// - Throws: `invalidLength` if `length` is larger than the current
     ///   length. Nothing is changed then.
-    mutating func setLength(_ length: UInt64) throws(XitDBError) {
+    mutating func truncate(to length: UInt64) throws(XitDBError) {
         guard length <= UInt64(bytes.count) else { throw .invalidLength }
         bytes.removeLast(bytes.count - Int(length))
     }
@@ -160,8 +160,10 @@ public final class MemoryStorage: WritableStorage {
     }
 
     /// The number of bytes in the storage. This never throws.
-    public func length() throws(XitDBError) -> UInt64 {
-        UInt64(unsafe buffer.count)
+    public var length: UInt64 {
+        get throws(XitDBError) {
+            UInt64(unsafe buffer.count)
+        }
     }
 
     /// Writes `bytes` at `offset`, growing the storage if they reach beyond
@@ -182,8 +184,8 @@ public final class MemoryStorage: WritableStorage {
     /// - Throws: ``XitDBError/invalidLength`` if `length` is larger than the
     ///   current length. A memory storage does not grow this way, and nothing
     ///   is changed.
-    public func setLength(_ length: UInt64) throws(XitDBError) {
-        try unsafe buffer.setLength(length)
+    public func truncate(to length: UInt64) throws(XitDBError) {
+        try unsafe buffer.truncate(to: length)
     }
 
     /// Does nothing: there is nothing underneath a memory storage to flush
@@ -195,3 +197,6 @@ public final class MemoryStorage: WritableStorage {
     /// - Parameter point: Which of a commit's two syncs this is.
     public func sync(_ point: SyncPoint) throws(XitDBError) {}
 }
+
+@available(*, unavailable, message: "a memory storage is used from one thread at a time")
+extension MemoryStorage: Sendable {}

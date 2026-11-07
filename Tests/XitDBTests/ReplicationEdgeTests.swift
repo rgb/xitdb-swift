@@ -148,7 +148,7 @@ struct CollectingSink: ByteSink {
         for start in [UInt64(1), 37, 61, 63, committed, UInt64.max] {
             #expect(throws: XitDBError.invalidRange) { try replica.applyReplicated(at: start, bytes: tail) }
         }
-        #expect(try replicaSubject.storage.length() == 62)
+        #expect(try replicaSubject.storage.length == 62)
 
         // a count larger than the source gives: the bytes written stay past
         // the committed size, and the next sync writes over them
@@ -157,14 +157,14 @@ struct CollectingSink: ByteSink {
             try replica.applyReplicated(at: 62, from: &short, count: UInt64(tail.count))
         }
         #expect(try replica.committedSize() == 62)
-        #expect(try replicaSubject.storage.length() == 72)
+        #expect(try replicaSubject.storage.length == 72)
 
         // bytes that do not end with a trailer: the same
         #expect(throws: XitDBError.invalidDatabase) {
             try replica.applyReplicated(at: 62, bytes: Array(tail.dropLast()))
         }
         #expect(try replica.committedSize() == 62)
-        #expect(try replicaSubject.storage.length() == 62 + UInt64(tail.count - 1))
+        #expect(try replicaSubject.storage.length == 62 + UInt64(tail.count - 1))
 
         // a trailer whose checksum is for another file
         let (_, other) = try makeSource(kind, fileID: 9)
@@ -176,7 +176,7 @@ struct CollectingSink: ByteSink {
         // the failures left
         try replica.applyReplicated(at: 62, bytes: [])
         #expect(try replica.committedSize() == 62)
-        #expect(try replicaSubject.storage.length() == 62)
+        #expect(try replicaSubject.storage.length == 62)
 
         // the right bytes, after all that
         try replica.applyReplicated(at: 62, bytes: tail)
@@ -204,7 +204,7 @@ struct CollectingSink: ByteSink {
         var short = ArrayByteSource(Array(whole[0..<40]))
         #expect(throws: XitDBError.endOfStream) { try replica.applyReplicated(at: 0, from: &short, count: 62) }
         #expect(replica.header.fileID == 7)
-        #expect(try replicaSubject.storage.length() == 40)
+        #expect(try replicaSubject.storage.length == 40)
         #expect(throws: XitDBError.truncatedDatabase) { try replica.committedSize() }
 
         var overstating = OverstatingSource()
@@ -212,7 +212,7 @@ struct CollectingSink: ByteSink {
             try replica.applyReplicated(at: 0, from: &overstating, count: committed)
         }
         #expect(replica.header.fileID == 7)
-        #expect(try replicaSubject.storage.length() == 0)
+        #expect(try replicaSubject.storage.length == 0)
 
         var all = ArrayByteSource(whole)
         try replica.applyReplicated(at: 0, from: &all, count: committed)
@@ -298,7 +298,7 @@ struct CollectingSink: ByteSink {
         let (_, source) = try makeSource(.memory)
         let committed = try source.committedSize()
         let directory = try TemporaryDirectory()
-        let file = try FileStorage(path: directory.path(), durability: .full)
+        let file = try FileStorage(path: directory.path(), access: .create, durability: .full)
         let recorder = SyncRecorder()
         let events = EventRecorder()
         file.calls.sync = { descriptor, call in

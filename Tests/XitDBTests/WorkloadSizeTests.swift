@@ -45,7 +45,7 @@ import Testing
                 _ = try cursor.writePath([.hashMapGet(.value, key(index)), .write(.uint(UInt64(index)))])
             }
         }
-        #expect(try subject.storage.length() == workload.size)
+        #expect(try subject.storage.length == workload.size)
         #expect(try database.committedSize() == workload.size)
 
         let moment = try lastMoment(database)
@@ -63,7 +63,7 @@ import Testing
                 _ = try cursor.writePath([.arrayListAppend, .write(.uint(UInt64(index)))])
             }
         }
-        #expect(try subject.storage.length() == workload.size)
+        #expect(try subject.storage.length == workload.size)
 
         let moment = try lastMoment(database)
         #expect(try moment.count() == UInt64(workload.count))
@@ -86,7 +86,7 @@ import Testing
                 }
             }
         }
-        #expect(try subject.storage.length() == workload.size)
+        #expect(try subject.storage.length == workload.size)
 
         let moment = try lastMoment(database)
         for index in 0..<(workload.count * 10) {

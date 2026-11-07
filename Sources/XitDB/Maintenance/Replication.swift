@@ -249,7 +249,7 @@ extension Database {
     /// size, and refuses any other start.
     private func beginApplying(at start: UInt64) throws(XitDBError) {
         if start == 0 {
-            try storage.setLength(0)
+            try storage.truncate(to: 0)
         } else if start == (try reader.committedSize()) {
             // discard anything past the committed bytes, such as the remains
             // of an interrupted sync
@@ -308,7 +308,7 @@ extension Database {
     /// Points the root header at `root`, which must be in the trailer that
     /// ends the storage: Zig's `writeRootHeader`.
     private func writeRootHeader(_ root: Slot) throws(XitDBError) {
-        let rootHeader = RootHeader(root: root, fileSize: try storage.length())
+        let rootHeader = RootHeader(root: root, fileSize: try storage.length)
         let bytes = InlineArray<17, UInt8> { (output: inout OutputSpan<UInt8>) in rootHeader.encode(into: &output) }
         try storage.write(bytes.span, at: RootHeader.position)
     }

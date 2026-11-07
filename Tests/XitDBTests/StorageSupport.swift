@@ -90,17 +90,18 @@ struct StorageUnderTest {
             path = nil
         case .file:
             let directory = try TemporaryDirectory()
-            storage = try FileStorage(path: directory.path(), durability: .none)
+            storage = try FileStorage(path: directory.path(), access: .create, durability: .none)
             stored = { try directory.contents() }
             path = directory.path()
         case .bufferedFile:
             let directory = try TemporaryDirectory()
-            storage = try BufferedFileStorage(path: directory.path(), durability: .none)
+            storage = try BufferedFileStorage(path: directory.path(), access: .create, durability: .none)
             stored = { try directory.contents() }
             path = directory.path()
         case .bufferedFileSmallWindow:
             let directory = try TemporaryDirectory()
-            storage = try BufferedFileStorage(path: directory.path(), durability: .none, bufferLimit: 200)
+            storage = try BufferedFileStorage(
+                path: directory.path(), access: .create, durability: .none, bufferLimit: 200)
             stored = { try directory.contents() }
             path = directory.path()
         }

@@ -273,7 +273,7 @@ struct Compactor {
     /// Appends `count` zero bytes to the target and returns where they
     /// start: Zig's `reserveBlock`.
     private func reserve(_ count: Int) throws(XitDBError) -> UInt64 {
-        let offset = try target.length()
+        let offset = try target.length
         try target.write(zeros.span.extracting(0..<count), at: offset)
         return offset
     }
@@ -527,9 +527,9 @@ struct Compactor {
         // total size: u64 length + bytes + optional 2-byte format_tag
         let payload = try length.offset(by: slot.full ? ByteArrayFormat.formatTagByteCount : 0)
         var remaining = try payload.offset(by: ByteArrayFormat.lengthByteCount)
-        guard remaining <= (try source.storage.length()) - slot.value else { throw .endOfStream }
+        guard remaining <= (try source.storage.length) - slot.value else { throw .endOfStream }
 
-        let newOffset = try target.length()
+        let newOffset = try target.length
         var position = slot.value
         var targetPosition = newOffset
         var buffer = InlineArray<4096, UInt8>(repeating: 0)

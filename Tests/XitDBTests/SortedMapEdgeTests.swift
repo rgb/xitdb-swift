@@ -21,7 +21,7 @@ import Testing
         }
         let before = try #require(try database.rootCursor().readPathSlot([.hashMapGet(.value, sha1("set"))]))
         let treeBefore = try database.reader.bTreeHeader(at: before.value)
-        let lengthBefore = try subject.storage.length()
+        let lengthBefore = try subject.storage.length
 
         try database.runContext { cursor in
             let set = try SortedSet(try HashMap(cursor).putCursor(sha1("set").bytes))
@@ -34,14 +34,14 @@ import Testing
         #expect(after.value != before.value)
         #expect(treeAfter.rootPtr == treeBefore.rootPtr)
         #expect(treeAfter.size == 40)
-        let appended = try subject.storage.length() - lengthBefore
+        let appended = try subject.storage.length - lengthBefore
 
         // a transaction that only touches the set appends the same: the
         // hash map's blocks and the set's header, and no node
-        let lengthBetween = try subject.storage.length()
+        let lengthBetween = try subject.storage.length
         try database.runContext { cursor in
             _ = try SortedSet(try HashMap(cursor).putCursor(sha1("set").bytes))
         }
-        #expect(try subject.storage.length() - lengthBetween == appended)
+        #expect(try subject.storage.length - lengthBetween == appended)
     }
 }

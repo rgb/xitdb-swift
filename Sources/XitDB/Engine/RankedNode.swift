@@ -130,7 +130,7 @@ extension Database {
     /// Appends a node and returns where it is: Zig's `writeBTreeNode` and
     /// `writeSortedNode`.
     func appendNode(_ node: some RankedNode) throws(XitDBError) -> UInt64 {
-        let position = try storage.length()
+        let position = try storage.length
         try writeNode(node, at: position)
         return position
     }

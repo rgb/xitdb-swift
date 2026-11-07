@@ -30,14 +30,15 @@ import Testing
             storage = MemoryStorage(maxSize: 1 << 20)
         case .file:
             directory = try TemporaryDirectory()
-            storage = try FileStorage(path: try #require(directory).path(), durability: .none)
+            storage = try FileStorage(path: try #require(directory).path(), access: .create, durability: .none)
         case .bufferedFile:
             directory = try TemporaryDirectory()
-            storage = try BufferedFileStorage(path: try #require(directory).path(), durability: .none)
+            storage = try BufferedFileStorage(path: try #require(directory).path(), access: .create, durability: .none)
         case .bufferedFileSmallWindow:
             directory = try TemporaryDirectory()
             storage = try BufferedFileStorage(
                 path: try #require(directory).path(),
+                access: .create,
                 durability: .none,
                 bufferLimit: 200
             )
@@ -72,7 +73,7 @@ import Testing
             // writing nothing is nothing, wherever
             try writeBytes(storage, [], at: offset)
         }
-        #expect(try storage.length() == 4)
+        #expect(try storage.length == 4)
         #expect(try readBytes(storage, at: 0, count: 10) == [1, 2, 3, 4])
         try storage.flush()
         #expect(try readBytes(storage, at: 0, count: 10) == [1, 2, 3, 4])
@@ -99,7 +100,7 @@ import Testing
         } catch XitDBError.storageFailure {
             // the system refused
         }
-        try storage.setLength(4)
+        try storage.truncate(to: 4)
         #expect(try #require(directory).contents() == [1, 2, 3, 4])
     }
 
@@ -111,7 +112,7 @@ import Testing
         let (storage, directory) = try storage(kind)
         try storage.flush()
         try writeBytes(storage, [9], at: offset)
-        #expect(try storage.length() == offset + 1)
+        #expect(try storage.length == offset + 1)
         #expect(try readBytes(storage, at: offset, count: 5) == [9])
         // the gap before the window reads as zeros, however long it is
         #expect(try readBytes(storage, at: 2, count: 6) == [3, 4, 0, 0, 0, 0])
@@ -122,8 +123,8 @@ import Testing
         } catch XitDBError.storageFailure {
             // the system refused
         }
-        try storage.setLength(4)
-        #expect(try storage.length() == 4)
+        try storage.truncate(to: 4)
+        #expect(try storage.length == 4)
         try storage.flush()
         #expect(try #require(directory).contents() == [1, 2, 3, 4])
     }
@@ -132,9 +133,9 @@ import Testing
     func aHugeLengthIsInvalidAndChangesNothing(kind: StorageKind) throws {
         let (storage, directory) = try storage(kind)
         for length in Self.hugeOffsets + [5] {
-            #expect(throws: XitDBError.invalidLength, "length \(length)") { try storage.setLength(length) }
+            #expect(throws: XitDBError.invalidLength, "length \(length)") { try storage.truncate(to: length) }
         }
-        #expect(try storage.length() == 4)
+        #expect(try storage.length == 4)
         #expect(try readBytes(storage, at: 0, count: 10) == [1, 2, 3, 4])
         _ = directory
     }
@@ -147,7 +148,7 @@ import Testing
         for offset in offsets {
             #expect(throws: XitDBError.maxSizeExceeded) { try writeBytes(storage, [9, 9], at: offset) }
             #expect(try readBytes(storage, at: offset, count: 4) == [])
-            #expect(throws: XitDBError.invalidLength) { try storage.setLength(offset) }
+            #expect(throws: XitDBError.invalidLength) { try storage.truncate(to: offset) }
         }
         #expect(storage.bytes == [1, 2, 3, 4])
     }

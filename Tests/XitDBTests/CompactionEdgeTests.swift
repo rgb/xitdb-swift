@@ -49,7 +49,7 @@ import Testing
         let bottom = try #require(try target.rootCursor().readPath(down))
         #expect(try bottom.readUint() == 7)
         #expect(try target.rootCursor().count() == 1)
-        #expect(try target.committedSize() == (try targetSubject.storage.length()))
+        #expect(try target.committedSize() == (try targetSubject.storage.length))
     }
 
     /// A source with every kind of object a damage can be put in, as a
@@ -104,7 +104,7 @@ import Testing
             try subject.database.compact(into: target, offsetMap: &map)
         } catch {
             #expect(try target.rootCursor().slot().isEmpty)
-            #expect(try targetSubject.storage.length() == (try target.committedSize()))
+            #expect(try targetSubject.storage.length == (try target.committedSize()))
             return (error, target, targetSubject)
         }
         return (nil, target, targetSubject)
@@ -205,8 +205,8 @@ import Testing
         try sound.database.compact(into: target, offsetMap: &map)
         let fresh = try compacting(sound, into: kind)
         #expect(fresh.error == nil)
-        let bytesAfter = try readBytes(storage.storage, at: 0, count: Int(try storage.storage.length()))
-        let bytesFresh = try readBytes(fresh.storage.storage, at: 0, count: Int(try fresh.storage.storage.length()))
+        let bytesAfter = try readBytes(storage.storage, at: 0, count: Int(try storage.storage.length))
+        let bytesFresh = try readBytes(fresh.storage.storage, at: 0, count: Int(try fresh.storage.storage.length))
         #expect(bytesAfter == bytesFresh)
     }
 
@@ -240,7 +240,7 @@ import Testing
         // the separators are records in the target, not in the source
         let header = try target.reader.bTreeHeader(at: try copied.slot().value)
         let root = try target.reader.sortedNode(at: header.rootPtr)
-        let length = try targetSubject.storage.length()
+        let length = try targetSubject.storage.length
         for index in 1..<Int(root.num) {
             #expect(root.separators[index].tag == .bytes)
             #expect(root.separators[index].value < length)
@@ -263,10 +263,10 @@ import Testing
             try prepare(source)
             let targetSubject = try StorageUnderTest(kind)
             let target = try Database(storage: targetSubject.storage, hashSize: 20, fileID: 8)
-            let before = try readBytes(targetSubject.storage, at: 0, count: Int(try targetSubject.storage.length()))
+            let before = try readBytes(targetSubject.storage, at: 0, count: Int(try targetSubject.storage.length))
             var map = MemoryOffsetMap()
             try source.compact(into: target, offsetMap: &map)
-            let after = try readBytes(targetSubject.storage, at: 0, count: Int(try targetSubject.storage.length()))
+            let after = try readBytes(targetSubject.storage, at: 0, count: Int(try targetSubject.storage.length))
             #expect(after == before)
             #expect(try target.rootCursor().slot().isEmpty)
         }
@@ -289,10 +289,10 @@ import Testing
         try root.write(.slot(nil))
         let targetSubject = try StorageUnderTest(kind)
         let target = try Database(storage: targetSubject.storage, hashSize: 20, fileID: 8)
-        let lengthBefore = try targetSubject.storage.length()
+        let lengthBefore = try targetSubject.storage.length
         var map = MemoryOffsetMap()
         try source.compact(into: target, offsetMap: &map)
-        #expect(try targetSubject.storage.length() > lengthBefore)
+        #expect(try targetSubject.storage.length > lengthBefore)
         #expect(try target.rootCursor().slot() == Slot(value: 0, tag: .none, full: true))
     }
 
@@ -342,11 +342,11 @@ import Testing
     func aTargetThatIsNotEmptyIsRefused(kind: StorageKind) throws {
         let subject = try Subject(kind, makeDatabase: makeDatabase)
         var map = MemoryOffsetMap()
-        let lengthBefore = try subject.subject.storage.length()
+        let lengthBefore = try subject.subject.storage.length
         #expect(throws: XitDBError.targetNotEmpty) {
             try subject.database.compact(into: subject.database, offsetMap: &map)
         }
-        #expect(try subject.subject.storage.length() == lengthBefore)
+        #expect(try subject.subject.storage.length == lengthBefore)
         let other = try Subject(kind, makeDatabase: makeDatabase)
         #expect(throws: XitDBError.targetNotEmpty) {
             try subject.database.compact(into: other.database, offsetMap: &map)

@@ -372,7 +372,7 @@ import Testing
         let leaf = try subject.database.reader.sortedNode(at: firstLeaf)
         let entry = leaf.entries[4]
         #expect(entry.tag == .sortedKvPair)
-        let length = try subject.subject.storage.length()
+        let length = try subject.subject.storage.length
         // the pair record starts with its key slot
         let database = try subject.damaged(slotBytes(Slot(value: length - 4, tag: .bytes)), at: entry.value)
         let root = try HashMap(database.rootCursor().readOnly())
@@ -489,7 +489,7 @@ import Testing
         }
         // claim one byte more than the file has after the record's length,
         // and read without a transaction, which would append to the file
-        let length = try subject.storage.length()
+        let length = try subject.storage.length
         try writeBytes(subject.storage, bigEndianBytes(length - keyPtr - 8 + 1), at: keyPtr)
         let damaged = try Database(
             storage: subject.storage, hashSize: 20, hashID: nil, fileID: nil, random: FixedRandom([9]))
