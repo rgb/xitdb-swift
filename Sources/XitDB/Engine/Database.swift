@@ -16,12 +16,15 @@ public final class Database {
     /// Where the database's bytes are kept.
     let storage: any WritableStorage
 
-    /// The read side of the engine over this database's storage.
-    let reader: DatabaseReader
+    /// The read side of the engine over this database's storage. Replaced
+    /// with the header when a replication from zero makes this another
+    /// database.
+    private(set) var reader: DatabaseReader
 
     /// The header at the start of the database: its file ID, hash size and
-    /// hash ID, and the version of the file format.
-    public let header: DatabaseHeader
+    /// hash ID, and the version of the file format. A replication from
+    /// zero replaces it with the source's.
+    public private(set) var header: DatabaseHeader
 
     /// Where the transaction in progress started, or `nil` between
     /// transactions.
@@ -189,6 +192,14 @@ public final class Database {
         }
         try storage.write(rootHeaderBytes.span, at: RootHeader.position)
         commitCount &+= 1
+    }
+
+    /// Makes this object the database its storage now holds, after a
+    /// replication from zero replaced the bytes: the header and the reader
+    /// take the new file ID.
+    func become(_ newHeader: DatabaseHeader) {
+        header = newHeader
+        reader = DatabaseReader(storage: storage, hashSize: newHeader.hashSize, fileID: newHeader.fileID)
     }
 
     /// Discards whatever lies beyond the committed size: what a transaction
