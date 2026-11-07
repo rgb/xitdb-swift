@@ -1,14 +1,23 @@
 /// What the two trees' nodes have in common, which lets one descent by rank
-/// serve both: Zig's `descendByRank`, whose branches start with the
-/// children and end with the counts in both trees.
+/// and one way of writing nodes serve both: Zig's `descendByRank`, whose
+/// branches start with the children and end with the counts in both trees,
+/// and its `btreeWriteNode` and `sortedWriteNode`, which rewrite a node in
+/// place or append it by the same rule.
 protocol RankedNode {
     var kind: BTreeNodeKind { get }
     var num: UInt8 { get }
     var children: InlineArray<16, Slot> { get }
     var counts: InlineArray<16, UInt64> { get }
 
+    /// The number of bytes the node takes in the file, by its kind.
+    var byteCount: UInt64 { get }
+
     /// The element or entry at `index` of a leaf.
     func leafSlot(at index: Int) -> Slot
+
+    /// Writes the node's bytes at the start of `bytes`, which must hold
+    /// `byteCount` of them.
+    func encode(into bytes: inout MutableSpan<UInt8>)
 }
 
 extension BTreeNode: RankedNode {
@@ -55,5 +64,36 @@ extension DatabaseReader {
             }
         }
         throw .invalidBTreeNode
+    }
+}
+
+extension Database {
+    /// Writes a node at `position`: as many bytes as its kind takes, 146
+    /// for a leaf, 274 for a linked array list's branch and 418 for a
+    /// sorted map's.
+    func writeNode(_ node: some RankedNode, at position: UInt64) throws(XitDBError) {
+        var block = InlineArray<418, UInt8>(repeating: 0)
+        var bytes = block.mutableSpan
+        node.encode(into: &bytes)
+        try storage.write(block.span.extracting(0..<Int(node.byteCount)), at: position)
+    }
+
+    /// Appends a node and returns where it is: Zig's `writeBTreeNode` and
+    /// `writeSortedNode`.
+    func appendNode(_ node: some RankedNode) throws(XitDBError) -> UInt64 {
+        let position = try storage.length()
+        try writeNode(node, at: position)
+        return position
+    }
+
+    /// Writes a new version of a node: in place of `oldPtr` if that node
+    /// belongs to this transaction, appended otherwise. Returns where the
+    /// node is now. Zig's `btreeWriteNode` and `sortedWriteNode`.
+    func writeNodeVersion(_ node: some RankedNode, oldPtr: UInt64, frozenAt: UInt64) throws(XitDBError) -> UInt64 {
+        if bTreeReusable(oldPtr, frozenAt: frozenAt) {
+            try writeNode(node, at: oldPtr)
+            return oldPtr
+        }
+        return try appendNode(node)
     }
 }

@@ -10,7 +10,7 @@ extension Database {
         switch pointer.slot.tag {
         case .none:
             // An empty tree: one empty leaf, then the header.
-            let rootPtr = try appendSortedNode(SortedNode(kind: .leaf, num: 0))
+            let rootPtr = try appendNode(SortedNode(kind: .leaf, num: 0))
             headerPtr = try storage.length()
             try write(BTreeHeader(size: 0, rootPtr: rootPtr), at: headerPtr)
         case .sortedMap, .sortedSet:

@@ -155,21 +155,6 @@ extension DatabaseReader {
 extension Database {
     // MARK: Writing nodes
 
-    /// Writes a node at `position`: 146 bytes for a leaf, 274 for a branch.
-    func writeBTreeNode(_ node: BTreeNode, at position: UInt64) throws(XitDBError) {
-        var block = InlineArray<274, UInt8>(repeating: 0)
-        var bytes = block.mutableSpan
-        node.encode(into: &bytes)
-        try storage.write(block.span.extracting(0..<Int(node.byteCount)), at: position)
-    }
-
-    /// Appends a node and returns where it is: Zig's `writeBTreeNode`.
-    func appendBTreeNode(_ node: BTreeNode) throws(XitDBError) -> UInt64 {
-        let position = try storage.length()
-        try writeBTreeNode(node, at: position)
-        return position
-    }
-
     /// Whether the node at `position` may be rewritten in place: it was
     /// made in this transaction, after the writing cursor's freeze point,
     /// so nothing committed and nothing shared by a concat refers to it.
@@ -179,20 +164,9 @@ extension Database {
         return !old
     }
 
-    /// Writes a new version of a node: in place of `oldPtr` if that node
-    /// belongs to this transaction, appended otherwise. Returns where the
-    /// node is now.
-    func bTreeWriteNode(_ node: BTreeNode, oldPtr: UInt64, frozenAt: UInt64) throws(XitDBError) -> UInt64 {
-        if bTreeReusable(oldPtr, frozenAt: frozenAt) {
-            try writeBTreeNode(node, at: oldPtr)
-            return oldPtr
-        }
-        return try appendBTreeNode(node)
-    }
-
     /// An empty tree: one leaf with nothing in it.
     func bTreeNewRoot() throws(XitDBError) -> UInt64 {
-        try appendBTreeNode(BTreeNode(kind: .leaf, num: 0))
+        try appendNode(BTreeNode(kind: .leaf, num: 0))
     }
 
     /// A root for a result: the node itself, or a new branch over it and
@@ -204,7 +178,7 @@ extension Database {
         root.children[1] = Slot(value: split.nodePtr, tag: .index)
         root.counts[0] = result.count
         root.counts[1] = split.count
-        return try appendBTreeNode(root)
+        return try appendNode(root)
     }
 
     /// Reads the node at `position`, which a branch above it points at.
@@ -277,7 +251,7 @@ extension Database {
         entries.append(leaf, from: r, to: Int(leaf.num))
         var result: BTreeInsertResult
         if entries.count <= BTree.slotCount {
-            let ptr = try bTreeWriteNode(
+            let ptr = try writeNodeVersion(
                 entries.node(.leaf, from: 0, to: entries.count), oldPtr: leafPtr, frozenAt: frozenAt)
             result = BTreeInsertResult(
                 nodePtr: ptr,
@@ -288,9 +262,9 @@ extension Database {
         } else {
             // Overflow: two leaves, the left one in this node's place.
             let leftCount = BTree.splitCount
-            let leftPtr = try bTreeWriteNode(
+            let leftPtr = try writeNodeVersion(
                 entries.node(.leaf, from: 0, to: leftCount), oldPtr: leafPtr, frozenAt: frozenAt)
-            let rightPtr = try appendBTreeNode(entries.node(.leaf, from: leftCount, to: entries.count))
+            let rightPtr = try appendNode(entries.node(.leaf, from: leftCount, to: entries.count))
             result = BTreeInsertResult(
                 nodePtr: leftPtr,
                 count: UInt64(leftCount),
@@ -312,15 +286,15 @@ extension Database {
             entries.append(frame.node, from: frame.index + 1, to: Int(frame.node.num))
             if entries.count <= BTree.slotCount {
                 let branch = entries.node(.branch, from: 0, to: entries.count)
-                let ptr = try bTreeWriteNode(branch, oldPtr: frame.position, frozenAt: frozenAt)
+                let ptr = try writeNodeVersion(branch, oldPtr: frame.position, frozenAt: frozenAt)
                 result = BTreeInsertResult(
                     nodePtr: ptr, count: branch.subtreeCount, valuePosition: result.valuePosition, split: nil)
             } else {
                 let leftCount = BTree.splitCount
                 let left = entries.node(.branch, from: 0, to: leftCount)
                 let right = entries.node(.branch, from: leftCount, to: entries.count)
-                let leftPtr = try bTreeWriteNode(left, oldPtr: frame.position, frozenAt: frozenAt)
-                let rightPtr = try appendBTreeNode(right)
+                let leftPtr = try writeNodeVersion(left, oldPtr: frame.position, frozenAt: frozenAt)
+                let rightPtr = try appendNode(right)
                 result = BTreeInsertResult(
                     nodePtr: leftPtr,
                     count: left.subtreeCount,
@@ -354,7 +328,7 @@ extension Database {
     ) throws(XitDBError) -> (rootPtr: UInt64, valuePosition: UInt64, slot: Slot) {
         let (branches, leafPtr, leaf, leafRank) = try bTreeDescend(from: rootPtr, rank: rank, inclusive: false)
         guard leafRank < UInt64(leaf.num) else { throw .invalidBTreeNode }
-        let newLeafPtr = bTreeReusable(leafPtr, frozenAt: frozenAt) ? leafPtr : try appendBTreeNode(leaf)
+        let newLeafPtr = bTreeReusable(leafPtr, frozenAt: frozenAt) ? leafPtr : try appendNode(leaf)
         let valuePosition = try BTree.slotPosition(nodePtr: newLeafPtr, index: Int(leafRank))
         let slot = leaf.values[Int(leafRank)]
 
@@ -369,7 +343,7 @@ extension Database {
             var node = frame.node
             node.children[frame.index] = Slot(value: childPtr, tag: .index)
             oldChildPtr = frame.position
-            childPtr = try bTreeWriteNode(node, oldPtr: frame.position, frozenAt: frozenAt)
+            childPtr = try writeNodeVersion(node, oldPtr: frame.position, frozenAt: frozenAt)
         }
         return (childPtr, valuePosition, slot)
     }
@@ -421,7 +395,7 @@ extension Database {
                 }
             }
             node.children[index] = Slot(
-                value: try bTreeWriteNode(child, oldPtr: childPtr, frozenAt: frozenAt), tag: .index)
+                value: try writeNodeVersion(child, oldPtr: childPtr, frozenAt: frozenAt), tag: .index)
             node.counts[index] = child.subtreeCount
             child = node
             childPtr = frame.position
@@ -463,13 +437,13 @@ extension Database {
     private func bTreeAssemble(_ kind: BTreeNodeKind, _ entries: BTreeEntries) throws(XitDBError) -> BTreeJoinResult {
         if entries.count <= BTree.slotCount {
             let node = entries.node(kind, from: 0, to: entries.count)
-            return BTreeJoinResult(nodePtr: try appendBTreeNode(node), count: node.subtreeCount, split: nil)
+            return BTreeJoinResult(nodePtr: try appendNode(node), count: node.subtreeCount, split: nil)
         }
         let leftCount = entries.count / 2
         let left = entries.node(kind, from: 0, to: leftCount)
         let right = entries.node(kind, from: leftCount, to: entries.count)
-        let leftPtr = try appendBTreeNode(left)
-        let rightPtr = try appendBTreeNode(right)
+        let leftPtr = try appendNode(left)
+        let rightPtr = try appendNode(right)
         return BTreeJoinResult(nodePtr: leftPtr, count: left.subtreeCount, split: (rightPtr, right.subtreeCount))
     }
 
@@ -587,8 +561,8 @@ extension Database {
         let r = Int(leafRank)
         var entries = BTreeEntries()
         entries.append(leaf)
-        var left = try appendBTreeNode(entries.node(.leaf, from: 0, to: r))
-        var right = try appendBTreeNode(entries.node(.leaf, from: r, to: entries.count))
+        var left = try appendNode(entries.node(.leaf, from: 0, to: r))
+        var right = try appendNode(entries.node(.leaf, from: r, to: entries.count))
 
         for frame in branches.reversed() {
             let leftSub = try bTreeSubtree(frame.node, from: 0, to: frame.index)

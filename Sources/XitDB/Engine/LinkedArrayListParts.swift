@@ -146,7 +146,7 @@ extension Database {
             newRootPtr = try bTreeNewRoot()
         } else {
             var root = try bTreeRemove(rootPtr: header.rootPtr, rank: rank, frozenAt: frozenAt)
-            var rootPtr = try bTreeWriteNode(root, oldPtr: header.rootPtr, frozenAt: frozenAt)
+            var rootPtr = try writeNodeVersion(root, oldPtr: header.rootPtr, frozenAt: frozenAt)
             // A root left with one child is replaced by it.
             var levels = 0
             while root.kind == .branch, root.num == 1 {
