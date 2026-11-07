@@ -198,6 +198,69 @@ import Testing
     }
 }
 
+/// The number of this process's descriptors that refer to the file at
+/// `path`: every descriptor number the process may have, asked for its
+/// device and inode. Descriptors of other files, which other tests open and
+/// close at the same time, do not count.
+private func descriptorsOpen(on path: String) throws -> Int {
+    var target = stat()
+    try #require(stat(path, &target) == 0)
+    var count = 0
+    for descriptor in 0..<getdtablesize() {
+        var status = stat()
+        if fstat(descriptor, &status) == 0 && status.st_dev == target.st_dev && status.st_ino == target.st_ino {
+            count += 1
+        }
+    }
+    return count
+}
+
+@Suite struct FileDescriptorTests {
+    /// The descriptor is not inherited by a process this one starts: it is
+    /// opened with `O_CLOEXEC`.
+    @Test func theDescriptorIsClosedOnExec() throws {
+        let directory = try TemporaryDirectory()
+        for access in [FileAccess.create, .readOnly, .readWrite, .truncate] {
+            let storage = try FileStorage(path: directory.path(), access: access)
+            let flags = fcntl(storage.descriptor.rawValue, F_GETFD)
+            #expect(flags >= 0, "\(access)")
+            #expect(flags & FD_CLOEXEC != 0, "\(access)")
+        }
+    }
+
+    /// An init that fails after the file is open, because the lock cannot
+    /// be had, closes the descriptor it opened. The count of descriptors on
+    /// the file is shown to see a second opener first.
+    @Test func anInitThatFailsAfterOpeningClosesTheDescriptor() throws {
+        let directory = try TemporaryDirectory()
+        let path = directory.path()
+        let holder = try FileStorage(path: path, access: .create, lock: .exclusive)
+        try writeBytes(holder, [1, 2, 3], at: 0)
+        #expect(try descriptorsOpen(on: path) == 1)
+        do {
+            let second = try FileStorage(path: path, access: .readOnly)
+            #expect(try descriptorsOpen(on: path) == 2)
+            try second.flush()
+        }
+        #expect(try descriptorsOpen(on: path) == 1)
+
+        for access in [FileAccess.readOnly, .readWrite, .create, .truncate] {
+            let lock: FileLock = access == .readOnly ? .shared : .exclusive
+            #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK), "\(access)") {
+                try FileStorage(path: path, access: access, lock: lock)
+            }
+            #expect(try descriptorsOpen(on: path) == 1, "\(access)")
+            #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK), "\(access)") {
+                try BufferedFileStorage(path: path, access: access, lock: lock)
+            }
+            #expect(try descriptorsOpen(on: path) == 1, "\(access)")
+        }
+        // and the file was not emptied by the truncating opener
+        #expect(try directory.contents() == [1, 2, 3])
+        try holder.flush()
+    }
+}
+
 @Suite struct FileLockTests {
     @Test func aSecondExclusiveLockFailsAtOnce() throws {
         let directory = try TemporaryDirectory()
