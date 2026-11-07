@@ -63,7 +63,7 @@ struct CollectingSink: ByteSink {
         let subject = try StorageUnderTest(kind)
         let source = try makeDatabase(subject, fileID: fileID)
         for moment in 1...2 {
-            try ArrayList(source.rootCursor).appendContext(.slot(try ArrayList(source.rootCursor).getSlot(-1))) {
+            try ArrayList(source.rootCursor).append(.slot(try ArrayList(source.rootCursor).slot(at: -1))) {
                 cursor in
                 try HashMap(cursor).put(.uint(UInt64(moment)), forHash: sha1("moment").bytes)
             }

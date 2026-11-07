@@ -3,10 +3,11 @@
 ///
 /// Elements are addressed by position, as in an ``ArrayList``, and can also
 /// be inserted and removed at any position. Two lists are joined with
-/// ``concat(_:)`` and a part of one kept with ``slice(offset:size:)``, each
-/// in time that grows with the logarithm of the size, because the result
-/// shares what it can with the lists it came from. A negative index counts
-/// from the end: `-1` is the last element.
+/// ``append(contentsOf:)-(Slot)`` and a part of one kept with
+/// ``formSlice(offset:count:)``, each in time that grows with the logarithm
+/// of the size, because the result shares what it can with the lists it
+/// came from. A negative index counts from the end: `-1` is the last
+/// element.
 ///
 /// Underneath is a tree whose nodes hold up to sixteen elements or children
 /// and whose branches count the elements beneath each child.
@@ -20,10 +21,12 @@
 /// the root of the database is the exception: there, every write is a
 /// transaction of its own.
 ///
-/// **A concat freezes the transaction.** The joined tree shares nodes with
-/// both lists, so after a concat every write in the transaction copies what
-/// was written before it, as after ``Database/freeze()``. Collections made
-/// before the concat should be made again from their cursors afterwards.
+/// **Appending another list freezes the transaction.** The joined tree
+/// shares nodes with both lists, so after ``append(contentsOf:)-(Slot)``
+/// every write in the transaction copies what was written before it, as
+/// after ``Database/freeze()``. Collections made before the call, other
+/// than the list that made it, should be made again from their cursors
+/// afterwards.
 public struct LinkedArrayList<Access: CursorAccess> {
     /// The cursor at the slot that holds the list.
     public let cursor: Cursor<Access>
@@ -60,11 +63,11 @@ public struct LinkedArrayList<Access: CursorAccess> {
     /// An iterator over the list's elements from one of them on, in order.
     ///
     /// - Parameter index: The index of the first element to give. A negative
-    ///   index counts from the end. An index that names no element gives an
-    ///   iterator of nothing.
+    ///   index counts from the end: `-1` is the last element. An index that
+    ///   names no element gives an iterator of nothing.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a list, or an error of the storage or of a damaged file.
-    public func iteratorFrom(_ index: Int64) throws(XitDBError) -> CollectionIterator {
+    public func iterator(fromIndex index: Int64) throws(XitDBError) -> CollectionIterator {
         try cursor.iterator(fromLinkedArrayListIndex: index)
     }
 
@@ -72,12 +75,12 @@ public struct LinkedArrayList<Access: CursorAccess> {
     /// or it was never written.
     ///
     /// - Parameter index: The element's index. A negative index counts from
-    ///   the end.
+    ///   the end: `-1` is the last element.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a list, ``XitDBError/invalidBTreeNode`` if the list's
     ///   tree does not hold what its header says, or an error of the
     ///   storage or of a damaged file.
-    public func getCursor(_ index: Int64) throws(XitDBError) -> Cursor<ReadOnly>? {
+    public func cursor(at index: Int64) throws(XitDBError) -> Cursor<ReadOnly>? {
         let path: InlineArray<1, PathPart> = [.linkedArrayListGet(index)]
         return try cursor.readPath(path.span)
     }
@@ -86,12 +89,12 @@ public struct LinkedArrayList<Access: CursorAccess> {
     /// or it was never written.
     ///
     /// - Parameter index: The element's index. A negative index counts from
-    ///   the end.
+    ///   the end: `-1` is the last element.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a list, ``XitDBError/invalidBTreeNode`` if the list's
     ///   tree does not hold what its header says, or an error of the
     ///   storage or of a damaged file.
-    public func getSlot(_ index: Int64) throws(XitDBError) -> Slot? {
+    public func slot(at index: Int64) throws(XitDBError) -> Slot? {
         let path: InlineArray<1, PathPart> = [.linkedArrayListGet(index)]
         return try cursor.readPathSlot(path.span)
     }
@@ -157,9 +160,10 @@ extension LinkedArrayList where Access == ReadWrite {
     /// Writes an element.
     ///
     /// - Parameters:
-    ///   - index: The element's index. A negative index counts from the end.
-    ///   - data: The value.
-    /// - Throws: ``XitDBError/keyNotFound`` if there is no element at
+    ///   - value: The value.
+    ///   - index: The element's index. A negative index counts from the end:
+    ///     `-1` is the last element.
+    /// - Throws: ``XitDBError/indexOutOfRange`` if there is no element at
     ///   `index`, ``XitDBError/expectedTxStart`` if the list's cursor is not
     ///   the root cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
@@ -167,8 +171,8 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   list, ``XitDBError/invalidBTreeNode`` if the list's tree does not
     ///   hold what its header says, or an error of the storage or of a
     ///   damaged file.
-    public func put(_ index: Int64, _ data: WritableData) throws(XitDBError) {
-        let path: InlineArray<2, PathPart> = [.linkedArrayListGet(index), .write(data)]
+    public func put(_ value: WritableData, at index: Int64) throws(XitDBError) {
+        let path: InlineArray<2, PathPart> = [.linkedArrayListGet(index), .write(value)]
         _ = try cursor.writePath(path.span)
     }
 
@@ -176,8 +180,8 @@ extension LinkedArrayList where Access == ReadWrite {
     /// there.
     ///
     /// - Parameter index: The element's index. A negative index counts from
-    ///   the end.
-    /// - Throws: ``XitDBError/keyNotFound`` if there is no element at
+    ///   the end: `-1` is the last element.
+    /// - Throws: ``XitDBError/indexOutOfRange`` if there is no element at
     ///   `index`, ``XitDBError/expectedTxStart`` if the list's cursor is not
     ///   the root cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
@@ -185,14 +189,14 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   list, ``XitDBError/invalidBTreeNode`` if the list's tree does not
     ///   hold what its header says, or an error of the storage or of a
     ///   damaged file.
-    public func putCursor(_ index: Int64) throws(XitDBError) -> Cursor<ReadWrite> {
+    public func putCursor(at index: Int64) throws(XitDBError) -> Cursor<ReadWrite> {
         let path: InlineArray<1, PathPart> = [.linkedArrayListGet(index)]
         return try cursor.writePath(path.span)
     }
 
     /// Appends an element.
     ///
-    /// - Parameter data: The value.
+    /// - Parameter value: The value.
     /// - Throws: ``XitDBError/expectedTxStart`` if the list's cursor is not
     ///   the root cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
@@ -200,8 +204,8 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   list, ``XitDBError/invalidBTreeNode`` if the list's tree does not
     ///   hold what its header says, or an error of the storage or of a
     ///   damaged file.
-    public func append(_ data: WritableData) throws(XitDBError) {
-        let path: InlineArray<2, PathPart> = [.linkedArrayListAppend, .write(data)]
+    public func append(_ value: WritableData) throws(XitDBError) {
+        let path: InlineArray<2, PathPart> = [.linkedArrayListAppend, .write(value)]
         _ = try cursor.writePath(path.span)
     }
 
@@ -221,13 +225,17 @@ extension LinkedArrayList where Access == ReadWrite {
         return try cursor.writePath(path.span)
     }
 
-    /// Appends an element, writes it, and runs `body` with a cursor at it.
+    /// Appends an element, writes it, runs `body` with a cursor at it, and
+    /// gives what `body` returns.
     ///
     /// If `body` throws, the error is rethrown; what was appended is
     /// discarded only if this call started the transaction.
     ///
+    /// The result may be ignored: the call is often made for its writes
+    /// alone, with a body whose one expression happens to have a value.
+    ///
     /// - Parameters:
-    ///   - data: The value to write before `body` runs.
+    ///   - value: The value to write before `body` runs.
     ///   - body: Given a cursor at the new element.
     /// - Throws: What `body` throws, or ``XitDBError/expectedTxStart`` if
     ///   the list's cursor is not the root cursor and no transaction is in
@@ -236,19 +244,27 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   longer holds a list, ``XitDBError/invalidBTreeNode`` if the list's
     ///   tree does not hold what its header says, or an error of the
     ///   storage or of a damaged file.
-    public func appendContext(_ data: WritableData, _ body: (inout Cursor<ReadWrite>) throws -> Void) throws {
-        let path: InlineArray<3, PathPart> = [.linkedArrayListAppend, .write(data), .ctx]
-        _ = try cursor.writePath(path.span, body)
+    @discardableResult
+    public func append<Result>(_ value: WritableData, _ body: (inout Cursor<ReadWrite>) throws -> Result) throws
+        -> Result
+    {
+        let path: InlineArray<3, PathPart> = [.linkedArrayListAppend, .write(value), .ctx]
+        var result: Result?
+        _ = try cursor.writePath(path.span) { cursor in result = try body(&cursor) }
+        // A write path that ends in `.ctx` runs the body or throws.
+        guard let result else { preconditionFailure("the body was not run") }
+        return result
     }
 
-    /// Keeps `size` elements of the list from `offset` on, and drops the
+    /// Keeps `count` elements of the list from `offset` on, and drops the
     /// rest. The elements kept share their nodes with the list as it was.
     ///
     /// - Parameters:
-    ///   - offset: The index of the first element to keep.
-    ///   - size: The number of elements to keep.
-    /// - Throws: ``XitDBError/keyNotFound`` if the offset is beyond the
-    ///   list or fewer than `size` elements follow it,
+    ///   - offset: The index of the first element to keep, at most the
+    ///     number of elements the list has.
+    ///   - count: The number of elements to keep.
+    /// - Throws: ``XitDBError/indexOutOfRange`` if the offset is beyond the
+    ///   list or fewer than `count` elements follow it,
     ///   ``XitDBError/expectedTxStart`` if the list's cursor is not the root
     ///   cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
@@ -256,20 +272,43 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   list, ``XitDBError/invalidBTreeNode`` if the list's tree does not
     ///   hold what its header says, or an error of the storage or of a
     ///   damaged file.
-    public func slice(offset: UInt64, size: UInt64) throws(XitDBError) {
-        let path: InlineArray<1, PathPart> = [.linkedArrayListSlice(offset: offset, size: size)]
+    public func formSlice(offset: UInt64, count: UInt64) throws(XitDBError) {
+        let path: InlineArray<1, PathPart> = [.linkedArrayListSlice(offset: offset, size: count)]
         _ = try cursor.writePath(path.span)
     }
 
     /// Appends every element of another linked array list to this one. The
-    /// other list is unchanged, and the result shares nodes with both.
+    /// other list is unchanged, and the result shares nodes with both. This
+    /// list is refreshed by the call: it reads and writes the joined list.
     ///
     /// This freezes the transaction: every write after it copies what was
-    /// written before it, as after ``Database/freeze()``. Collections made
-    /// before the concat, this one included, should be made again from
-    /// their cursors.
+    /// written before it, as after ``Database/freeze()``. Other collections
+    /// made before the call should be made again from their cursors.
     ///
-    /// - Parameter list: The slot of the other list, from its ``slot()``.
+    /// - Parameter list: The other list, which may be one that can only
+    ///   read.
+    /// - Throws: ``XitDBError/unexpectedTag`` if `list` is not at the slot
+    ///   of a linked array list or this slot no longer holds one,
+    ///   ``XitDBError/expectedTxStart`` if the list's cursor is not the root
+    ///   cursor and no transaction is in progress,
+    ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
+    ///   is, ``XitDBError/invalidBTreeNode`` if either tree does not hold
+    ///   what its header says, or an error of the storage or of a damaged
+    ///   file.
+    public mutating func append(contentsOf list: LinkedArrayList<some CursorAccess>) throws(XitDBError) {
+        try append(contentsOf: try list.slot())
+    }
+
+    /// Appends every element of another linked array list to this one. The
+    /// other list is unchanged, and the result shares nodes with both. This
+    /// list is refreshed by the call: it reads and writes the joined list.
+    ///
+    /// This freezes the transaction: every write after it copies what was
+    /// written before it, as after ``Database/freeze()``. Other collections
+    /// made before the call should be made again from their cursors.
+    ///
+    /// - Parameter list: The slot of the other list, from its ``slot()``,
+    ///   in this database.
     /// - Throws: ``XitDBError/unexpectedTag`` if `list` is not the slot of
     ///   a linked array list or this slot no longer holds one,
     ///   ``XitDBError/expectedTxStart`` if the list's cursor is not the root
@@ -278,7 +317,7 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   is, ``XitDBError/invalidBTreeNode`` if either tree does not hold
     ///   what its header says, or an error of the storage or of a damaged
     ///   file.
-    public func concat(_ list: Slot) throws(XitDBError) {
+    public mutating func append(contentsOf list: Slot) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.linkedArrayListConcat(list)]
         _ = try cursor.writePath(path.span)
     }
@@ -286,11 +325,11 @@ extension LinkedArrayList where Access == ReadWrite {
     /// Inserts an element before the one at `index`.
     ///
     /// - Parameters:
+    ///   - value: The value.
     ///   - index: The index of the element to insert before, which must
     ///     name an element: to add at the end, use ``append(_:)``. A
-    ///     negative index counts from the end.
-    ///   - data: The value.
-    /// - Throws: ``XitDBError/keyNotFound`` if there is no element at
+    ///     negative index counts from the end: `-1` is the last element.
+    /// - Throws: ``XitDBError/indexOutOfRange`` if there is no element at
     ///   `index`, ``XitDBError/expectedTxStart`` if the list's cursor is not
     ///   the root cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
@@ -298,8 +337,8 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   list, ``XitDBError/invalidBTreeNode`` if the list's tree does not
     ///   hold what its header says, or an error of the storage or of a
     ///   damaged file.
-    public func insert(_ index: Int64, _ data: WritableData) throws(XitDBError) {
-        let path: InlineArray<2, PathPart> = [.linkedArrayListInsert(index), .write(data)]
+    public func insert(_ value: WritableData, at index: Int64) throws(XitDBError) {
+        let path: InlineArray<2, PathPart> = [.linkedArrayListInsert(index), .write(value)]
         _ = try cursor.writePath(path.span)
     }
 
@@ -308,8 +347,9 @@ extension LinkedArrayList where Access == ReadWrite {
     /// that is never written stays in the list as a slot set to nothing.
     ///
     /// - Parameter index: The index of the element to insert before, which
-    ///   must name an element. A negative index counts from the end.
-    /// - Throws: ``XitDBError/keyNotFound`` if there is no element at
+    ///   must name an element. A negative index counts from the end: `-1`
+    ///   is the last element.
+    /// - Throws: ``XitDBError/indexOutOfRange`` if there is no element at
     ///   `index`, ``XitDBError/expectedTxStart`` if the list's cursor is not
     ///   the root cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
@@ -317,7 +357,7 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   list, ``XitDBError/invalidBTreeNode`` if the list's tree does not
     ///   hold what its header says, or an error of the storage or of a
     ///   damaged file.
-    public func insertCursor(_ index: Int64) throws(XitDBError) -> Cursor<ReadWrite> {
+    public func insertCursor(at index: Int64) throws(XitDBError) -> Cursor<ReadWrite> {
         let path: InlineArray<1, PathPart> = [.linkedArrayListInsert(index)]
         return try cursor.writePath(path.span)
     }
@@ -325,8 +365,8 @@ extension LinkedArrayList where Access == ReadWrite {
     /// Removes the element at `index`.
     ///
     /// - Parameter index: The element's index. A negative index counts from
-    ///   the end.
-    /// - Throws: ``XitDBError/keyNotFound`` if there is no element at
+    ///   the end: `-1` is the last element.
+    /// - Throws: ``XitDBError/indexOutOfRange`` if there is no element at
     ///   `index`, ``XitDBError/expectedTxStart`` if the list's cursor is not
     ///   the root cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
@@ -334,7 +374,7 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   list, ``XitDBError/invalidBTreeNode`` if the list's tree does not
     ///   hold what its header says, or an error of the storage or of a
     ///   damaged file.
-    public func remove(_ index: Int64) throws(XitDBError) {
+    public func remove(at index: Int64) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.linkedArrayListRemove(index)]
         _ = try cursor.writePath(path.span)
     }

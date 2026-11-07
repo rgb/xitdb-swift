@@ -5,8 +5,9 @@ extension DatabaseReader {
     /// Follows `path` from `start` and returns the slot it arrives at.
     ///
     /// - Throws: `keyNotFound` if something on the way does not exist or the
-    ///   path arrives at an empty slot, `writeNotAllowed` at a part that
-    ///   writes, `unexpectedTag` at a part applied to the wrong kind of slot.
+    ///   path arrives at an empty slot, `indexOutOfRange` if an index names
+    ///   no element, `writeNotAllowed` at a part that writes,
+    ///   `unexpectedTag` at a part applied to the wrong kind of slot.
     func readSlotPointer(_ path: Span<PathPart>, at start: SlotPointer) throws(XitDBError) -> SlotPointer {
         var pointer = start
         var index = 0
@@ -63,7 +64,7 @@ extension DatabaseReader {
         default: throw .unexpectedTag
         }
         let header = try arrayListHeader(at: slot.value)
-        guard let key = Self.arrayListKey(index: index, size: header.size) else { throw .keyNotFound }
+        guard let key = Self.arrayListKey(index: index, size: header.size) else { throw .indexOutOfRange }
         let lastKey = header.size - 1
         let shift: UInt8 = lastKey < Trie.slotsPerBlock ? 0 : Trie.arrayListShift(lastIndex: lastKey)
         return try arrayListSlot(indexPosition: header.ptr, key: key, shift: shift)
@@ -107,7 +108,7 @@ extension DatabaseReader {
         default: throw .unexpectedTag
         }
         let header = try bTreeHeader(at: slot.value)
-        guard let rank = Self.linkedArrayListRank(index: index, size: header.size) else { throw .keyNotFound }
+        guard let rank = Self.linkedArrayListRank(index: index, size: header.size) else { throw .indexOutOfRange }
         return try linkedArrayListSlot(rootPtr: header.rootPtr, rank: rank)
     }
 
@@ -136,7 +137,7 @@ extension DatabaseReader {
 
     func sortedMapGetIndex(_ slot: Slot, index: Int64) throws(XitDBError) -> SlotPointer {
         let header = try sortedMapHeader(slot)
-        guard let rank = Self.linkedArrayListRank(index: index, size: header.size) else { throw .keyNotFound }
+        guard let rank = Self.linkedArrayListRank(index: index, size: header.size) else { throw .indexOutOfRange }
         return try sortedSlot(rootPtr: header.rootPtr, rank: rank)
     }
 

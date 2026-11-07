@@ -8,8 +8,8 @@ import Testing
 // and 3641-3670), so those tests take the storage kind as their argument; the u64 test runs on a memory
 // database only, as in Zig.
 //
-// The comments inside the tests are Zig's. Zig's `history.appendContext(.{ .slot = ... }, Ctx{})` with a `Ctx`
-// whose `run` method does the writing is `history.appendContext(.slot(...)) { cursor in ... }` here. Zig's
+// The comments inside the tests are Zig's. Zig's `history.append(.{ .slot = ... }, Ctx{})` with a `Ctx`
+// whose `run` method does the writing is `history.append(.slot(...)) { cursor in ... }` here. Zig's
 // allocator arguments and `defer allocator.free` lines have no counterpart, nor do the buffers it hands to
 // `cursor.reader` and `cursor.writer`.
 //
@@ -100,7 +100,7 @@ import Testing
         // transaction has completed. this method is where we can write
         // changes to the db. if any error happens in it, the transaction
         // will not complete and the db will be unaffected.
-        try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+        try history.append(.slot(try history.slot(at: -1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
 
             try moment.put(.bytes(utf8("foo")), forHash: hashInt("foo"))
@@ -133,12 +133,12 @@ import Testing
             let todos = try LinkedArrayList<ReadWrite>(todosCursor)
             try todos.append(.bytes(utf8("Pay the bills")))
             try todos.append(.bytes(utf8("Get an oil change")))
-            try todos.insert(1, .bytes(utf8("Wash the car")))
+            try todos.insert(.bytes(utf8("Wash the car")), at: 1)
 
             // make sure `insertCursor` works as well
-            let todoCursor = try todos.insertCursor(1)
+            let todoCursor = try todos.insertCursor(at: 1)
             _ = try HashMap<ReadWrite>(todoCursor)
-            try todos.remove(1)
+            try todos.remove(at: 1)
 
             let lettersCountedMapCursor = try moment.putCursor(forHash: hashInt("letters-counted-map"))
             let lettersCountedMap = try CountedHashMap<ReadWrite>(lettersCountedMapCursor)
@@ -178,7 +178,7 @@ import Testing
 
         // get the most recent copy of the database, like a moment
         // in time. the -1 index will return the last index in the list.
-        let momentCursor = try #require(try history.getCursor(-1))
+        let momentCursor = try #require(try history.cursor(at: -1))
         let moment = try HashMap<ReadOnly>(momentCursor)
 
         // we can read the value of "foo" from the map by getting
@@ -197,7 +197,7 @@ import Testing
         #expect(try fruits.count() == 3)
 
         // now we can get the first item from the fruits list and read it
-        let appleCursor = try #require(try fruits.getCursor(0))
+        let appleCursor = try #require(try fruits.cursor(at: 0))
         let appleValue = try appleCursor.readBytes(maxCount: maxReadBytes)
         #expect(appleValue == utf8("apple"))
 
@@ -205,7 +205,7 @@ import Testing
         let people = try ArrayList<ReadOnly>(peopleCursor)
         #expect(try people.count() == 2)
 
-        let aliceCursor = try #require(try people.getCursor(0))
+        let aliceCursor = try #require(try people.cursor(at: 0))
         let alice = try HashMap<ReadOnly>(aliceCursor)
         let aliceAgeCursor = try #require(try alice.cursor(forHash: hashInt("age")))
         #expect(try aliceAgeCursor.readUInt64() == 25)
@@ -214,7 +214,7 @@ import Testing
         let todos = try LinkedArrayList<ReadOnly>(todosCursor)
         #expect(try todos.count() == 3)
 
-        let todoCursor = try #require(try todos.getCursor(0))
+        let todoCursor = try #require(try todos.cursor(at: 0))
         let todoValue = try todoCursor.readBytes(maxCount: maxReadBytes)
         #expect(todoValue == utf8("Pay the bills"))
 
@@ -323,7 +323,7 @@ import Testing
     private func changesTheDataInANewTransaction(_ database: Database) throws {
         let history = try ArrayList<ReadWrite>(database.rootCursor)
 
-        try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+        try history.append(.slot(try history.slot(at: -1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
 
             #expect(try moment.remove(forHash: hashInt("bar")))
@@ -337,21 +337,21 @@ import Testing
 
             let fruitsCursor = try moment.putCursor(forHash: hashInt("fruits"))
             let fruits = try ArrayList<ReadWrite>(fruitsCursor)
-            try fruits.put(0, .bytes(utf8("lemon")))
-            try fruits.slice(2)
+            try fruits.put(.bytes(utf8("lemon")), at: 0)
+            try fruits.truncate(to: 2)
 
             let peopleCursor = try moment.putCursor(forHash: hashInt("people"))
             let people = try ArrayList<ReadWrite>(peopleCursor)
 
-            let aliceCursor = try people.putCursor(0)
+            let aliceCursor = try people.putCursor(at: 0)
             let alice = try HashMap<ReadWrite>(aliceCursor)
             try alice.put(.uint(26), forHash: hashInt("age"))
 
             let todosCursor = try moment.putCursor(forHash: hashInt("todos"))
-            let todos = try LinkedArrayList<ReadWrite>(todosCursor)
-            try todos.concat(try todosCursor.slot())
-            try todos.slice(offset: 1, size: 2)
-            try todos.remove(1)
+            var todos = try LinkedArrayList<ReadWrite>(todosCursor)
+            try todos.append(contentsOf: try todosCursor.slot())
+            try todos.formSlice(offset: 1, count: 2)
+            try todos.remove(at: 1)
 
             let lettersCountedMapCursor = try moment.putCursor(forHash: hashInt("letters-counted-map"))
             let lettersCountedMap = try CountedHashMap<ReadWrite>(lettersCountedMapCursor)
@@ -369,7 +369,7 @@ import Testing
             _ = try lettersCountedSet.remove(forHash: hashInt("c"))
         }
 
-        let momentCursor = try #require(try history.getCursor(-1))
+        let momentCursor = try #require(try history.cursor(at: -1))
         let moment = try HashMap<ReadOnly>(momentCursor)
 
         #expect(try moment.cursor(forHash: hashInt("bar")) == nil)
@@ -387,7 +387,7 @@ import Testing
         #expect(try fruitsKvCursor.key.slot().tag == .shortBytes)
         #expect(try fruitsKvCursor.value.slot().tag == .arrayList)
 
-        let lemonCursor = try #require(try fruits.getCursor(0))
+        let lemonCursor = try #require(try fruits.cursor(at: 0))
         let lemonValue = try lemonCursor.readBytes(maxCount: maxReadBytes)
         #expect(lemonValue == utf8("lemon"))
 
@@ -395,7 +395,7 @@ import Testing
         let people = try ArrayList<ReadOnly>(peopleCursor)
         #expect(try people.count() == 2)
 
-        let aliceCursor = try #require(try people.getCursor(0))
+        let aliceCursor = try #require(try people.cursor(at: 0))
         let alice = try HashMap<ReadOnly>(aliceCursor)
         let aliceAgeCursor = try #require(try alice.cursor(forHash: hashInt("age")))
         #expect(try aliceAgeCursor.readUInt64() == 26)
@@ -404,7 +404,7 @@ import Testing
         let todos = try LinkedArrayList<ReadOnly>(todosCursor)
         #expect(try todos.count() == 1)
 
-        let todoCursor = try #require(try todos.getCursor(0))
+        let todoCursor = try #require(try todos.cursor(at: 0))
         let todoValue = try todoCursor.readBytes(maxCount: maxReadBytes)
         #expect(todoValue == utf8("Wash the car"))
 
@@ -426,7 +426,7 @@ import Testing
     private func theOldDataHasNotChanged(_ database: Database) throws {
         let history = try ArrayList<ReadWrite>(database.rootCursor)
 
-        let momentCursor = try #require(try history.getCursor(0))
+        let momentCursor = try #require(try history.cursor(at: 0))
         let moment = try HashMap<ReadOnly>(momentCursor)
 
         let fooCursor = try #require(try moment.cursor(forHash: hashInt("foo")))
@@ -440,7 +440,7 @@ import Testing
         let fruits = try ArrayList<ReadOnly>(fruitsCursor)
         #expect(try fruits.count() == 3)
 
-        let appleCursor = try #require(try fruits.getCursor(0))
+        let appleCursor = try #require(try fruits.cursor(at: 0))
         let appleValue = try appleCursor.readBytes(maxCount: maxReadBytes)
         #expect(appleValue == utf8("apple"))
 
@@ -448,7 +448,7 @@ import Testing
         let people = try ArrayList<ReadOnly>(peopleCursor)
         #expect(try people.count() == 2)
 
-        let aliceCursor = try #require(try people.getCursor(0))
+        let aliceCursor = try #require(try people.cursor(at: 0))
         let alice = try HashMap<ReadOnly>(aliceCursor)
         let aliceAgeCursor = try #require(try alice.cursor(forHash: hashInt("age")))
         #expect(try aliceAgeCursor.readUInt64() == 25)
@@ -457,7 +457,7 @@ import Testing
         let todos = try LinkedArrayList<ReadOnly>(todosCursor)
         #expect(try todos.count() == 3)
 
-        let todoCursor = try #require(try todos.getCursor(0))
+        let todoCursor = try #require(try todos.cursor(at: 0))
         let todoValue = try todoCursor.readBytes(maxCount: maxReadBytes)
         #expect(todoValue == utf8("Pay the bills"))
     }
@@ -466,9 +466,9 @@ import Testing
     private func removesTheLastTransactionWithSlice(_ database: Database) throws {
         let history = try ArrayList<ReadWrite>(database.rootCursor)
 
-        try history.slice(1)
+        try history.truncate(to: 1)
 
-        let momentCursor = try #require(try history.getCursor(-1))
+        let momentCursor = try #require(try history.cursor(at: -1))
         let moment = try HashMap<ReadOnly>(momentCursor)
 
         let fooCursor = try #require(try moment.cursor(forHash: hashInt("foo")))
@@ -482,7 +482,7 @@ import Testing
         let fruits = try ArrayList<ReadOnly>(fruitsCursor)
         #expect(try fruits.count() == 3)
 
-        let appleCursor = try #require(try fruits.getCursor(0))
+        let appleCursor = try #require(try fruits.cursor(at: 0))
         let appleValue = try appleCursor.readBytes(maxCount: maxReadBytes)
         #expect(appleValue == utf8("apple"))
 
@@ -490,7 +490,7 @@ import Testing
         let people = try ArrayList<ReadOnly>(peopleCursor)
         #expect(try people.count() == 2)
 
-        let aliceCursor = try #require(try people.getCursor(0))
+        let aliceCursor = try #require(try people.cursor(at: 0))
         let alice = try HashMap<ReadOnly>(aliceCursor)
         let aliceAgeCursor = try #require(try alice.cursor(forHash: hashInt("age")))
         #expect(try aliceAgeCursor.readUInt64() == 25)
@@ -499,7 +499,7 @@ import Testing
         let todos = try LinkedArrayList<ReadOnly>(todosCursor)
         #expect(try todos.count() == 3)
 
-        let todoCursor = try #require(try todos.getCursor(0))
+        let todoCursor = try #require(try todos.cursor(at: 0))
         let todoValue = try todoCursor.readBytes(maxCount: maxReadBytes)
         #expect(todoValue == utf8("Pay the bills"))
     }
@@ -549,7 +549,7 @@ import Testing
     private func clones(_ database: Database) throws {
         let history = try ArrayList<ReadWrite>(database.rootCursor)
 
-        try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+        try history.append(.slot(try history.slot(at: -1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
 
             let fruitsCursor = try #require(try moment.cursor(forHash: hashInt("fruits")))
@@ -566,7 +566,7 @@ import Testing
             try food.append(.bytes(utf8("fish")))
         }
 
-        let momentCursor = try #require(try history.getCursor(-1))
+        let momentCursor = try #require(try history.cursor(at: -1))
         let moment = try HashMap<ReadOnly>(momentCursor)
 
         // the food list includes the fruits
@@ -586,7 +586,7 @@ import Testing
 
         let historyIndex = try history.count() - 1
 
-        try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+        try history.append(.slot(try history.slot(at: -1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
 
             let bigCitiesCursor = try moment.putCursor(forHash: hashInt("big-cities"))
@@ -604,7 +604,7 @@ import Testing
             try cities.append(.bytes(utf8("Louisville, KY")))
         }
 
-        let momentCursor = try #require(try history.getCursor(-1))
+        let momentCursor = try #require(try history.cursor(at: -1))
         let moment = try HashMap<ReadOnly>(momentCursor)
 
         // the cities list contains all four
@@ -618,7 +618,7 @@ import Testing
         #expect(try bigCities.count() == 4)
 
         // revert that change
-        try history.append(.slot(try history.getSlot(Int64(historyIndex))))
+        try history.append(.slot(try history.slot(at: Int64(historyIndex))))
     }
 
     /// The operations of the freeze-callback loop (test.zig 816).
@@ -660,7 +660,7 @@ import Testing
     private func preventsAccidentalMutationWithFreezing(_ database: Database) throws {
         let history = try ArrayList<ReadWrite>(database.rootCursor)
 
-        try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+        try history.append(.slot(try history.slot(at: -1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
 
             let bigCitiesCursor = try moment.putCursor(forHash: hashInt("big-cities"))
@@ -683,7 +683,7 @@ import Testing
             try cities.append(.bytes(utf8("Louisville, KY")))
         }
 
-        let momentCursor = try #require(try history.getCursor(-1))
+        let momentCursor = try #require(try history.cursor(at: -1))
         let moment = try HashMap<ReadOnly>(momentCursor)
 
         // the cities list contains all four
@@ -698,7 +698,7 @@ import Testing
 
         // callbacks must see complete headers before freezing their collections
         for op in [FreezeOp.append, .slice, .linkedGet] {
-            try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+            try history.append(.slot(try history.slot(at: -1))) { cursor in
                 var map = try HashMap<ReadWrite>(cursor)
                 try map.put(.slot(nil), forHash: hashInt("freeze-callback"))
                 var list = try FreezeList(op, try map.putCursor(forHash: hashInt("freeze-callback")))
@@ -753,7 +753,7 @@ import Testing
             User(id: "user000000000006", username: "eve", name: "Eve Adams"),
         ]
 
-        try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+        try history.append(.slot(try history.slot(at: -1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
 
             // the primary store: a HashMap from user id to the user's fields
@@ -775,7 +775,7 @@ import Testing
             }
         }
 
-        let momentCursor = try #require(try history.getCursor(-1))
+        let momentCursor = try #require(try history.cursor(at: -1))
         let moment = try HashMap<ReadOnly>(momentCursor)
 
         let idToUserCursor = try #require(try moment.cursor(forHash: hashInt("id->user")))
@@ -885,7 +885,7 @@ import Testing
         }
 
         let history = try ArrayList<ReadOnly>(database.rootCursor.readOnly)
-        let moment = try HashMap<ReadOnly>(try #require(try history.getCursor(-1)))
+        let moment = try HashMap<ReadOnly>(try #require(try history.cursor(at: -1)))
         let list = try ArrayList<ReadOnly>(try #require(try moment.cursor(forHash: hashInt("list"))))
         let linked = try LinkedArrayList<ReadOnly>(try #require(try moment.cursor(forHash: hashInt("linked"))))
 
@@ -896,7 +896,7 @@ import Testing
         for start in starts {
             let resolved: UInt64 = start < 0 ? UInt64(count + start) : UInt64(start)
             do {
-                var iter = try list.iteratorFrom(start)
+                var iter = try list.iterator(fromIndex: start)
                 var expected = resolved
                 while let c = try iter.next() {
                     #expect(try c.readUInt64() == expected)
@@ -905,7 +905,7 @@ import Testing
                 #expect(expected == UInt64(count))
             }
             do {
-                var iter = try linked.iteratorFrom(start)
+                var iter = try linked.iterator(fromIndex: start)
                 var expected = resolved
                 while let c = try iter.next() {
                     #expect(try c.readUInt64() == expected)
@@ -918,7 +918,7 @@ import Testing
         // iteratorFrom(0) matches a plain iterator()
         do {
             var a = try list.iterator()
-            var b = try list.iteratorFrom(0)
+            var b = try list.iterator(fromIndex: 0)
             while let ca = try a.next() {
                 let cb = try #require(try b.next())
                 #expect(try ca.readUInt64() == (try cb.readUInt64()))
@@ -929,10 +929,10 @@ import Testing
 
         // a start out of range (past the end, or more negative than -COUNT) yields nothing
         for start in [count, count + 1, count + 1000, -count - 1, -count - 1000] {
-            var li = try list.iteratorFrom(start)
+            var li = try list.iterator(fromIndex: start)
             let first = try li.next()
             #expect(first == nil)
-            var ki = try linked.iteratorFrom(start)
+            var ki = try linked.iterator(fromIndex: start)
             let firstLinked = try ki.next()
             #expect(firstLinked == nil)
         }

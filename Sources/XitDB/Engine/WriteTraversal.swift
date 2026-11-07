@@ -173,7 +173,7 @@ extension Database {
         default: throw .unexpectedTag
         }
         let header = try reader.arrayListHeader(at: pointer.slot.value)
-        guard let key = DatabaseReader.arrayListKey(index: index, size: header.size) else { throw .keyNotFound }
+        guard let key = DatabaseReader.arrayListKey(index: index, size: header.size) else { throw .indexOutOfRange }
         let lastKey = header.size - 1
         let shift: UInt8 = lastKey < Trie.slotsPerBlock ? 0 : Trie.arrayListShift(lastIndex: lastKey)
         return try arrayListSlot(indexPosition: header.ptr, key: key, shift: shift, frozenAt: frozenAt)
@@ -275,7 +275,7 @@ extension Database {
         size: UInt64,
         frozenAt: UInt64
     ) throws(XitDBError) -> ArrayListHeader {
-        if size > header.size { throw .keyNotFound }
+        if size > header.size { throw .indexOutOfRange }
 
         let previousShift: UInt8 =
             header.size < Trie.slotsPerBlock + 1 ? 0 : Trie.arrayListShift(lastIndex: header.size - 1)

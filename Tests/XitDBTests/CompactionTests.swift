@@ -11,8 +11,8 @@ import Testing
 // kind as arguments and run for every pair of the kinds the storages under test come in; each pair has an offsets
 // map of its own, reused across the blocks of the run, since the pairs run in parallel.
 //
-// The comments inside the tests are Zig's. Zig's `history.appendContext(.{ .slot = ... }, Ctx{})` with a `Ctx`
-// whose `run` method does the writing is `history.appendContext(.slot(...)) { cursor in ... }` here. Zig's
+// The comments inside the tests are Zig's. Zig's `history.append(.{ .slot = ... }, Ctx{})` with a `Ctx`
+// whose `run` method does the writing is `history.append(.slot(...)) { cursor in ... }` here. Zig's
 // `clearStorage` of the source and the target at the start of a block is a new storage of each kind here. Zig's
 // `source.compact(target_db_kind, target_opts, offset_map)`, which opens the target over the target's options, is
 // `source.compact(into: targetStorage, offsetMap: &offsetMap)`. Zig's `source.core.length` is the source
@@ -112,7 +112,7 @@ import Testing
         // moment 1
         do {
             let history = try ArrayList<ReadWrite>(source.rootCursor)
-            try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+            try history.append(.slot(try history.slot(at: -1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
                 try moment.put(.bytes(utf8("value1")), forHash: hashInt("key1"))
                 try moment.put(.uint(100), forHash: hashInt("key2"))
@@ -122,7 +122,7 @@ import Testing
         // moment 2
         do {
             let history = try ArrayList<ReadWrite>(source.rootCursor)
-            try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+            try history.append(.slot(try history.slot(at: -1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
                 try moment.put(.bytes(utf8("updated_value1")), forHash: hashInt("key1"))
                 try moment.put(.uint(200), forHash: hashInt("key2"))
@@ -186,7 +186,7 @@ import Testing
         // moment 3
         do {
             let history = try ArrayList<ReadWrite>(source.rootCursor)
-            try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+            try history.append(.slot(try history.slot(at: -1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
                 try moment.put(.bytes(utf8("final_value")), forHash: hashInt("key1"))
 
@@ -219,7 +219,7 @@ import Testing
         #expect(try history.count() == 1)
 
         // verify all data from latest moment is correct
-        let momentCursor = try #require(try history.getCursor(0))
+        let momentCursor = try #require(try history.cursor(at: 0))
         let moment = try HashMap<ReadOnly>(momentCursor)
 
         // self-references and mutual references point back to the same compacted
@@ -229,7 +229,7 @@ import Testing
 
         let cyclicListCursor = try #require(try moment.cursor(forHash: hashInt("cyclic-list")))
         let cyclicList = try ArrayList<ReadOnly>(cyclicListCursor)
-        let cyclicListFirst = try #require(try cyclicList.getSlot(0))
+        let cyclicListFirst = try #require(try cyclicList.slot(at: 0))
         #expect(try cyclicListFirst == cyclicListCursor.slot())
 
         let mapACursor = try #require(try moment.cursor(forHash: hashInt("map-a")))
@@ -270,18 +270,18 @@ import Testing
         let fruitsCursor = try #require(try moment.cursor(forHash: hashInt("fruits")))
         let fruits = try ArrayList<ReadOnly>(fruitsCursor)
         #expect(try fruits.count() == 3)
-        let appleCursor = try #require(try fruits.getCursor(0))
+        let appleCursor = try #require(try fruits.cursor(at: 0))
         #expect(try appleCursor.readBytes(maxCount: 1024) == utf8("apple"))
-        let cherryCursor = try #require(try fruits.getCursor(2))
+        let cherryCursor = try #require(try fruits.cursor(at: 2))
         #expect(try cherryCursor.readBytes(maxCount: 1024) == utf8("cherry"))
 
         // LinkedArrayList
         let todosCursor = try #require(try moment.cursor(forHash: hashInt("todos")))
         let todos = try LinkedArrayList<ReadOnly>(todosCursor)
         #expect(try todos.count() == 3)
-        let task1Cursor = try #require(try todos.getCursor(0))
+        let task1Cursor = try #require(try todos.cursor(at: 0))
         #expect(try task1Cursor.readBytes(maxCount: 1024) == utf8("task1"))
-        let task3Cursor = try #require(try todos.getCursor(2))
+        let task3Cursor = try #require(try todos.cursor(at: 2))
         #expect(try task3Cursor.readBytes(maxCount: 1024) == utf8("task3"))
 
         // CountedHashMap
@@ -341,7 +341,7 @@ import Testing
         // moment 1: create many keys
         do {
             let history = try ArrayList<ReadWrite>(source.rootCursor)
-            try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+            try history.append(.slot(try history.slot(at: -1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
                 for i in 0..<20 {
                     try moment.put(.uint(UInt64(i)), forHash: hashInt("shared_key_\(i)"))
@@ -352,7 +352,7 @@ import Testing
         // moments 2-5: change only one key each time
         for round in 0..<4 {
             let history = try ArrayList<ReadWrite>(source.rootCursor)
-            try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+            try history.append(.slot(try history.slot(at: -1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
                 try moment.put(.uint(UInt64(round) + 100), forHash: hashInt("changing_key"))
             }
@@ -363,7 +363,7 @@ import Testing
         let history = try ArrayList<ReadOnly>(compacted.rootCursor.readOnly)
         #expect(try history.count() == 1)
 
-        let momentCursor = try #require(try history.getCursor(0))
+        let momentCursor = try #require(try history.cursor(at: 0))
         let moment = try HashMap<ReadOnly>(momentCursor)
 
         // verify shared keys are intact
@@ -395,7 +395,7 @@ import Testing
         // write some data
         do {
             let history = try ArrayList<ReadWrite>(source.rootCursor)
-            try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+            try history.append(.slot(try history.slot(at: -1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
                 try moment.put(.bytes(utf8("persistent_value")), forHash: hashInt("persist"))
                 try moment.put(.uint(999), forHash: hashInt("number"))
@@ -411,7 +411,7 @@ import Testing
         let history = try ArrayList<ReadOnly>(reopened.rootCursor.readOnly)
         #expect(try history.count() == 1)
 
-        let momentCursor = try #require(try history.getCursor(0))
+        let momentCursor = try #require(try history.cursor(at: 0))
         let moment = try HashMap<ReadOnly>(momentCursor)
         let persistCursor = try #require(try moment.cursor(forHash: hashInt("persist")))
         #expect(try persistCursor.readBytes(maxCount: 1024) == utf8("persistent_value"))
@@ -433,7 +433,7 @@ import Testing
         // write initial data
         do {
             let history = try ArrayList<ReadWrite>(source.rootCursor)
-            try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+            try history.append(.slot(try history.slot(at: -1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
                 try moment.put(.bytes(utf8("original_data")), forHash: hashInt("original"))
             }
@@ -445,7 +445,7 @@ import Testing
         // add new moment to compacted DB
         do {
             let history = try ArrayList<ReadWrite>(compacted.rootCursor)
-            try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+            try history.append(.slot(try history.slot(at: -1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
                 try moment.put(.bytes(utf8("new_data")), forHash: hashInt("new_key"))
             }
@@ -456,13 +456,13 @@ import Testing
         #expect(try history.count() == 2)
 
         // moment 0 (compacted original)
-        let m0Cursor = try #require(try history.getCursor(0))
+        let m0Cursor = try #require(try history.cursor(at: 0))
         let m0 = try HashMap<ReadOnly>(m0Cursor)
         let originalCursor = try #require(try m0.cursor(forHash: hashInt("original")))
         #expect(try originalCursor.readBytes(maxCount: 1024) == utf8("original_data"))
 
         // moment 1 (new data added after compact)
-        let m1Cursor = try #require(try history.getCursor(1))
+        let m1Cursor = try #require(try history.cursor(at: 1))
         let m1 = try HashMap<ReadOnly>(m1Cursor)
         let newCursor = try #require(try m1.cursor(forHash: hashInt("new_key")))
         #expect(try newCursor.readBytes(maxCount: 1024) == utf8("new_data"))

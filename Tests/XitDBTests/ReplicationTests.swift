@@ -19,8 +19,8 @@ import Testing
 // `CollectingSink` here (the streaming path, as Zig's; the array convenience is the edge tests' and the conformance
 // runner's) and its `std.Io.Reader.fixed` over the written bytes an `ArrayByteSource`; `std.Io.Writer.Discarding` is
 // `DiscardingSink` below. Zig's `Ctx.run` methods are the private methods `writeMoment` and `writeBatch` below,
-// and its `error.Fail` is `Fail`. Zig's `history.appendContext(.{ .slot = ... }, Ctx{})` is
-// `history.appendContext(.slot(...)) { cursor in ... }`, and `map.cursor.writePath(Ctx, &.{ ..., .{ .ctx = Ctx{} } })`
+// and its `error.Fail` is `Fail`. Zig's `history.append(.{ .slot = ... }, Ctx{})` is
+// `history.append(.slot(...)) { cursor in ... }`, and `map.cursor.writePath(Ctx, &.{ ..., .{ .ctx = Ctx{} } })`
 // is `map.cursor.writePath([..., .ctx]) { cursor in ... }`. Zig's `readBytes(&buffer)` into a fixed buffer is
 // `readBytes(maxCount:)` with the buffer's size. Zig's `xitdb.VERSION` is `DatabaseHeader.currentVersion`, and
 // `@bitSizeOf(xitdb.DatabaseHeader) / 8` is `DatabaseHeader.byteCount`. Zig's `takeInt(u8)` through the core's
@@ -168,16 +168,16 @@ import Testing
         for i in 0..<300 {
             if i == 200 {
                 // roll back the history
-                try history.slice(150)
+                try history.truncate(to: 150)
             } else if i % 50 == 25 {
                 // a failed transaction
                 #expect(throws: Fail.self) {
-                    try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+                    try history.append(.slot(try history.slot(at: -1))) { cursor in
                         try writeMoment(cursor, i: i, fail: true)
                     }
                 }
             } else {
-                try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+                try history.append(.slot(try history.slot(at: -1))) { cursor in
                     try writeMoment(cursor, i: i)
                 }
             }
@@ -188,7 +188,7 @@ import Testing
         // `applyReplicated` must be given exactly the bytes up to a trailer.
         // a short append fails and is overwritten by the next one.
         do {
-            try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+            try history.append(.slot(try history.slot(at: -1))) { cursor in
                 try writeMoment(cursor, i: 300)
             }
             let start = try replica.committedSize
@@ -215,7 +215,7 @@ import Testing
         let sourceHistory = try ArrayList<ReadOnly>(source.rootCursor.readOnly)
         let replicaHistory = try ArrayList<ReadOnly>(replica.rootCursor.readOnly)
         #expect(try sourceHistory.count() == replicaHistory.count())
-        let momentCursor = try #require(try replicaHistory.getCursor(-1))
+        let momentCursor = try #require(try replicaHistory.cursor(at: -1))
         let moment = try HashMap<ReadOnly>(momentCursor)
         let key299 = try #require(try moment.cursor(forHash: hashInt("key-299")))
         #expect(try key299.readUInt64() == 299)
@@ -235,13 +235,13 @@ import Testing
 
             // and it can keep receiving transactions
             let targetHistory = try ArrayList<ReadWrite>(target.rootCursor)
-            try targetHistory.append(.slot(try targetHistory.getSlot(-1)))
+            try targetHistory.append(.slot(try targetHistory.slot(at: -1)))
             try replicate(target, compactedReplica)
             try expectSameCommittedBytes(target, compactedReplica)
 
             let compactedHistory = try ArrayList<ReadOnly>(compactedReplica.rootCursor.readOnly)
             #expect(try compactedHistory.count() == 2)
-            let compactedMomentCursor = try #require(try compactedHistory.getCursor(-1))
+            let compactedMomentCursor = try #require(try compactedHistory.cursor(at: -1))
             let compactedMoment = try HashMap<ReadOnly>(compactedMomentCursor)
             let compactedKey299 = try #require(try compactedMoment.cursor(forHash: hashInt("key-299")))
             #expect(try compactedKey299.readUInt64() == 299)
@@ -441,7 +441,7 @@ import Testing
             let listCursor = try #require(try inner.cursor(forHash: hashInt("list")))
             let list = try ArrayList<ReadOnly>(listCursor)
             #expect(try list.count() == 2)
-            let last = try #require(try list.getCursor(-1))
+            let last = try #require(try list.cursor(at: -1))
             #expect(try last.readUInt64() == 2)
         }
 
@@ -575,12 +575,12 @@ import Testing
         let list = try LinkedArrayList<ReadWrite>(db.rootCursor)
         try list.append(.uint(1))
         try list.append(.uint(3))
-        try list.insert(1, .uint(2))
+        try list.insert(.uint(2), at: 1)
         #expect(try list.count() == 3)
-        let second = try #require(try list.getCursor(1))
+        let second = try #require(try list.cursor(at: 1))
         #expect(try second.readUInt64() == 2)
-        try list.remove(0)
-        let first = try #require(try list.getCursor(0))
+        try list.remove(at: 0)
+        let first = try #require(try list.cursor(at: 0))
         #expect(try first.readUInt64() == 2)
 
         let size = try db.committedSize

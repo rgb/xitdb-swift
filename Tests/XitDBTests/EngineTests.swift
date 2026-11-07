@@ -852,7 +852,7 @@ import Testing
             }
             _ = try list.writePath([.arrayListSlice(size: 3)])
             #expect(try list.count() == 3)
-            #expect(throws: XitDBError.keyNotFound) { try list.writePath([.arrayListSlice(size: 4)]) }
+            #expect(throws: XitDBError.indexOutOfRange) { try list.writePath([.arrayListSlice(size: 4)]) }
             #expect(try list.count() == 3)
             _ = try list.writePath([.arrayListSlice(size: 0)])
             #expect(try list.count() == 0)

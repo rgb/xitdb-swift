@@ -351,7 +351,7 @@ import Testing
     private func theMapPersistsInTheCommittedMoment(_ database: Database) throws {
         // the map persists in the committed moment
         let history = try ArrayList<ReadOnly>(database.rootCursor.readOnly)
-        let moment = try #require(try history.getCursor(-1))
+        let moment = try #require(try history.cursor(at: -1))
         let mapCursor = try #require(
             try moment.readPath([
                 .hashMapGet(.value, sha1("map"))
@@ -389,7 +389,7 @@ import Testing
             let history = try ArrayList<ReadOnly>(database.rootCursor.readOnly)
 
             // moment 0 (original) is unchanged: k0001 still present with value 1
-            let m0 = try #require(try history.getCursor(0))
+            let m0 = try #require(try history.cursor(at: 0))
             let map0 = try SortedMap<ReadOnly>(
                 try #require(
                     try m0.readPath([
@@ -401,7 +401,7 @@ import Testing
             #expect(try #require(try map0.getCursor(utf8("k0001"))).readUInt64() == 1)
 
             // moment 1 reflects the mutation: k0001 re-added with value 7
-            let m1 = try #require(try history.getCursor(1))
+            let m1 = try #require(try history.cursor(at: 1))
             let map1 = try SortedMap<ReadOnly>(
                 try #require(
                     try m1.readPath([

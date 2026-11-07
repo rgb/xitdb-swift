@@ -23,7 +23,7 @@ import Testing
     }
 
     private func moment(_ index: Int64) throws -> HashMap<ReadOnly> {
-        try HashMap<ReadOnly>(try #require(try history().getCursor(index)))
+        try HashMap<ReadOnly>(try #require(try history().cursor(at: index)))
     }
 
     private func value(_ map: HashMap<ReadOnly>, _ key: String) throws -> Cursor<ReadOnly> {
@@ -72,21 +72,21 @@ import Testing
         let history = try ArrayList<ReadOnly>(database.rootCursor.readOnly)
         #expect(try history.slot() == Slot(value: 4847, tag: .arrayList))
         #expect(try history.count() == 2)
-        #expect(try history.getCursor(2) == nil)
-        #expect(try history.getCursor(-3) == nil)
-        #expect(try history.getSlot(2) == nil)
+        #expect(try history.cursor(at: 2) == nil)
+        #expect(try history.cursor(at: -3) == nil)
+        #expect(try history.slot(at: 2) == nil)
         // the last moment by a negative index
-        #expect(try #require(try history.getCursor(-1)).slot() == (try #require(try history.getCursor(1)).slot()))
-        #expect(try #require(try history.getCursor(-2)).slot() == (try #require(try history.getCursor(0)).slot()))
-        #expect(try history.getSlot(-1) == (try history.getSlot(1)))
+        #expect(try #require(try history.cursor(at: -1)).slot() == (try #require(try history.cursor(at: 1)).slot()))
+        #expect(try #require(try history.cursor(at: -2)).slot() == (try #require(try history.cursor(at: 0)).slot()))
+        #expect(try history.slot(at: -1) == (try history.slot(at: 1)))
 
         // the iterator gives the two moments in order, and from the second on, only that one
         var iter = try history.iterator()
-        #expect(try #require(try iter.next()).slot() == (try history.getSlot(0)))
-        #expect(try #require(try iter.next()).slot() == (try history.getSlot(1)))
+        #expect(try #require(try iter.next()).slot() == (try history.slot(at: 0)))
+        #expect(try #require(try iter.next()).slot() == (try history.slot(at: 1)))
         #expect(try iter.next() == nil)
-        var fromLast = try history.iteratorFrom(-1)
-        #expect(try #require(try fromLast.next()).slot() == (try history.getSlot(1)))
+        var fromLast = try history.iterator(fromIndex: -1)
+        #expect(try #require(try fromLast.next()).slot() == (try history.slot(at: 1)))
         #expect(try fromLast.next() == nil)
 
         // the root holds a list, not a map
@@ -94,7 +94,7 @@ import Testing
     }
 
     @Test func theFirstMoment() throws {
-        let momentCursor = try #require(try history().getCursor(0))
+        let momentCursor = try #require(try history().cursor(at: 0))
         #expect(try momentCursor.slot().tag == .hashMap)
         let moment = try HashMap<ReadOnly>(momentCursor)
         // a map that keeps no count is not a counted one, and a hash set
@@ -121,25 +121,25 @@ import Testing
 
         let fruits = try ArrayList<ReadOnly>(try value(moment, "fruits"))
         #expect(try fruits.count() == 3)
-        let names = try (0..<3).map { try text(try #require(try fruits.getCursor($0))) }
+        let names = try (0..<3).map { try text(try #require(try fruits.cursor(at: $0))) }
         #expect(names == ["apple", "pear", "grape"])
-        #expect(try fruits.getCursor(3) == nil)
-        #expect(try fruits.getSlot(3) == nil)
+        #expect(try fruits.cursor(at: 3) == nil)
+        #expect(try fruits.slot(at: 3) == nil)
         #expect(try texts(fruits) == ["apple", "pear", "grape"])
-        var fromPear = try fruits.iteratorFrom(1)
+        var fromPear = try fruits.iterator(fromIndex: 1)
         #expect(try text(try #require(try fromPear.next())) == "pear")
         #expect(try text(try #require(try fromPear.next())) == "grape")
         #expect(try fromPear.next() == nil)
-        var fromLast = try fruits.iteratorFrom(-1)
+        var fromLast = try fruits.iterator(fromIndex: -1)
         #expect(try text(try #require(try fromLast.next())) == "grape")
         #expect(try fromLast.next() == nil)
 
         let people = try ArrayList<ReadOnly>(try value(moment, "people"))
         #expect(try people.count() == 2)
-        let alice = try HashMap<ReadOnly>(try #require(try people.getCursor(0)))
+        let alice = try HashMap<ReadOnly>(try #require(try people.cursor(at: 0)))
         #expect(try text(try value(alice, "name")) == "Alice")
         #expect(try value(alice, "age").readUInt64() == 25)
-        let bob = try HashMap<ReadOnly>(try #require(try people.getCursor(1)))
+        let bob = try HashMap<ReadOnly>(try #require(try people.cursor(at: 1)))
         #expect(try text(try value(bob, "name")) == "Bob")
         #expect(try value(bob, "age").readUInt64() == 42)
         // each person's keys were stored with their text
@@ -171,23 +171,23 @@ import Testing
         #expect(try todosCursor.slot().tag == .linkedArrayList)
         let todos = try LinkedArrayList<ReadOnly>(todosCursor)
         #expect(try todos.count() == 3)
-        let todoTexts = try (0..<3).map { try text(try #require(try todos.getCursor($0))) }
+        let todoTexts = try (0..<3).map { try text(try #require(try todos.cursor(at: $0))) }
         #expect(todoTexts == ["Pay the bills", "Wash the car", "Get an oil change"])
-        #expect(try todos.getCursor(3) == nil)
-        #expect(try todos.getSlot(3) == nil)
-        #expect(try todos.getCursor(-4) == nil)
-        #expect(try text(try #require(try todos.getCursor(-1))) == "Get an oil change")
-        #expect(try todos.getSlot(-1) == (try todos.getSlot(2)))
+        #expect(try todos.cursor(at: 3) == nil)
+        #expect(try todos.slot(at: 3) == nil)
+        #expect(try todos.cursor(at: -4) == nil)
+        #expect(try text(try #require(try todos.cursor(at: -1))) == "Get an oil change")
+        #expect(try todos.slot(at: -1) == (try todos.slot(at: 2)))
         // each is longer than eight bytes, so none is in its slot
         for index in Int64(0)..<3 {
-            #expect(try #require(try todos.getSlot(index)).tag == .bytes)
+            #expect(try #require(try todos.slot(at: index)).tag == .bytes)
         }
         #expect(try texts(todos) == ["Pay the bills", "Wash the car", "Get an oil change"])
-        var fromWash = try todos.iteratorFrom(1)
+        var fromWash = try todos.iterator(fromIndex: 1)
         #expect(try texts(&fromWash) == ["Wash the car", "Get an oil change"])
-        var fromLastTodo = try todos.iteratorFrom(-1)
+        var fromLastTodo = try todos.iterator(fromIndex: -1)
         #expect(try texts(&fromLastTodo) == ["Get an oil change"])
-        var fromBeyond = try todos.iteratorFrom(3)
+        var fromBeyond = try todos.iterator(fromIndex: 3)
         #expect(try fromBeyond.next() == nil)
         // the other list kind refuses it, and it refuses the other kinds
         #expect(throws: XitDBError.unexpectedTag) { try ArrayList<ReadOnly>(todosCursor) }
@@ -303,9 +303,9 @@ import Testing
         #expect(try fruitsKey.slot().tag == .shortBytes)
         let fruits = try ArrayList<ReadOnly>(try value(moment, "fruits"))
         #expect(try fruits.count() == 2)
-        let names = try (0..<2).map { try text(try #require(try fruits.getCursor($0))) }
+        let names = try (0..<2).map { try text(try #require(try fruits.cursor(at: $0))) }
         #expect(names == ["lemon", "pear"])
-        #expect(try fruits.getCursor(2) == nil)
+        #expect(try fruits.cursor(at: 2) == nil)
         #expect(try texts(fruits) == ["lemon", "pear"])
         let pair = try #require(try moment.entry(forHash: hash("fruits")))
         #expect(try pair.key.slot().tag == .shortBytes)
@@ -315,26 +315,26 @@ import Testing
 
         let people = try ArrayList<ReadOnly>(try value(moment, "people"))
         #expect(try people.count() == 2)
-        let alice = try HashMap<ReadOnly>(try #require(try people.getCursor(0)))
+        let alice = try HashMap<ReadOnly>(try #require(try people.cursor(at: 0)))
         #expect(try value(alice, "age").readUInt64() == 26)
         #expect(try text(try value(alice, "name")) == "Alice")
-        let bob = try HashMap<ReadOnly>(try #require(try people.getCursor(1)))
+        let bob = try HashMap<ReadOnly>(try #require(try people.cursor(at: 1)))
         #expect(try value(bob, "age").readUInt64() == 42)
 
         // todos was concatenated with itself, cut down to its second and
         // third elements, and had the second of those removed
         let todos = try LinkedArrayList<ReadOnly>(try value(moment, "todos"))
         #expect(try todos.count() == 1)
-        #expect(try text(try #require(try todos.getCursor(0))) == "Wash the car")
-        #expect(try text(try #require(try todos.getCursor(-1))) == "Wash the car")
-        #expect(try todos.getCursor(1) == nil)
-        #expect(try todos.getCursor(-2) == nil)
+        #expect(try text(try #require(try todos.cursor(at: 0))) == "Wash the car")
+        #expect(try text(try #require(try todos.cursor(at: -1))) == "Wash the car")
+        #expect(try todos.cursor(at: 1) == nil)
+        #expect(try todos.cursor(at: -2) == nil)
         #expect(try texts(todos) == ["Wash the car"])
-        var fromLastTodo = try todos.iteratorFrom(-1)
+        var fromLastTodo = try todos.iterator(fromIndex: -1)
         #expect(try texts(&fromLastTodo) == ["Wash the car"])
         // the element's bytes are shared with the first moment
         let firstTodos = try LinkedArrayList<ReadOnly>(try value(try self.moment(0), "todos"))
-        #expect(try todos.getSlot(0) == (try firstTodos.getSlot(1)))
+        #expect(try todos.slot(at: 0) == (try firstTodos.slot(at: 1)))
 
         let countedMap = try CountedHashMap<ReadOnly>(try value(moment, "letters-counted-map"))
         #expect(try countedMap.count() == 1)
@@ -365,7 +365,7 @@ import Testing
         #expect(try text(try value(first, "bar")) == "bar")
         #expect(try ArrayList<ReadOnly>(try value(first, "fruits")).count() == 3)
         let alice = try HashMap<ReadOnly>(
-            try #require(try ArrayList<ReadOnly>(try value(first, "people")).getCursor(0)))
+            try #require(try ArrayList<ReadOnly>(try value(first, "people")).cursor(at: 0)))
         #expect(try value(alice, "age").readUInt64() == 25)
         #expect(try first.keyCursor(forHash: hash("fruits")) == nil)
         #expect(try first.keySlot(forHash: hash("fruits")) == nil)
@@ -377,7 +377,7 @@ import Testing
         let storage = MemoryStorage(bytes: try FixtureTests.load())
         let database = try Database(storage: storage, hashSize: 20)
         let history = try ArrayList<ReadWrite>(database.rootCursor)
-        try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+        try history.append(.slot(try history.slot(at: -1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
             try moment.put(.bytes(Array("changed".utf8)), forHash: hash("foo"))
         }
@@ -386,9 +386,9 @@ import Testing
 
         let reopened = try Database(storage: storage, hashSize: 20)
         let reopenedHistory = try ArrayList<ReadOnly>(reopened.rootCursor.readOnly)
-        let third = try HashMap<ReadOnly>(try #require(try reopenedHistory.getCursor(2)))
+        let third = try HashMap<ReadOnly>(try #require(try reopenedHistory.cursor(at: 2)))
         #expect(try text(try value(third, "foo")) == "changed")
-        let second = try HashMap<ReadOnly>(try #require(try reopenedHistory.getCursor(1)))
+        let second = try HashMap<ReadOnly>(try #require(try reopenedHistory.cursor(at: 1)))
         #expect(try text(try value(second, "foo")) == "foo")
         #expect(try ArrayList<ReadOnly>(try value(third, "fruits")).count() == 2)
     }

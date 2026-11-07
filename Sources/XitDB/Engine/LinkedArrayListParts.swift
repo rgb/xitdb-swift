@@ -59,7 +59,7 @@ extension Database {
         let headerPtr = pointer.slot.value
         let header = try reader.bTreeHeader(at: headerPtr)
         guard let rank = DatabaseReader.linkedArrayListRank(index: index, size: header.size) else {
-            throw .keyNotFound
+            throw .indexOutOfRange
         }
         // Copy the way down to the slot, so that the write is kept.
         let found = try bTreeGetForWrite(rootPtr: header.rootPtr, rank: rank, frozenAt: frozenAt)
@@ -79,7 +79,7 @@ extension Database {
     {
         let header = try linkedArrayListHeader(pointer)
         guard let rank = DatabaseReader.linkedArrayListRank(index: index, size: header.size) else {
-            throw .keyNotFound
+            throw .indexOutOfRange
         }
         return try linkedArrayListInsert(pointer, header: header, rank: rank, frozenAt: frozenAt)
     }
@@ -107,7 +107,7 @@ extension Database {
         let header = try linkedArrayListHeader(pointer)
         // Checked without overflow: the offset and the size together could
         // wrap.
-        if offset > header.size || size > header.size - offset { throw .keyNotFound }
+        if offset > header.size || size > header.size - offset { throw .indexOutOfRange }
 
         // Drop the elements before the offset, then keep `size` of the rest.
         let afterOffset = try bTreeSplit(rootPtr: header.rootPtr, rank: offset)
@@ -138,7 +138,7 @@ extension Database {
     func linkedArrayListRemove(_ pointer: SlotPointer, index: Int64, frozenAt: UInt64) throws(XitDBError) {
         let header = try linkedArrayListHeader(pointer)
         guard let rank = DatabaseReader.linkedArrayListRank(index: index, size: header.size) else {
-            throw .keyNotFound
+            throw .indexOutOfRange
         }
 
         let newRootPtr: UInt64

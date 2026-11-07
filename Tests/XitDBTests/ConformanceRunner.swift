@@ -605,6 +605,9 @@ final class ScriptRunner {
         switch error {
         case .unexpectedTag: "UnexpectedTag"
         case .keyNotFound: "KeyNotFound"
+        // Zig has one error for a key that is not there and an index that
+        // names no element; the scripts expect its name for both.
+        case .indexOutOfRange: "KeyNotFound"
         case .writeNotAllowed: "WriteNotAllowed"
         case .cursorNotWritable: "CursorNotWriteable"
         case .expectedTxStart: "ExpectedTxStart"

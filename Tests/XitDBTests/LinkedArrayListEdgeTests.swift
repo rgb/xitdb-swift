@@ -30,7 +30,7 @@ import Testing
         )
         _ = try database.rootCursor.writePath([.arrayListInit, .arrayListAppend, .hashMapInit(), .ctx]) { cursor in
             let moment = try HashMap(cursor)
-            let a = try LinkedArrayList(try moment.putCursor(forHash: sha1("a").bytes))
+            var a = try LinkedArrayList(try moment.putCursor(forHash: sha1("a").bytes))
             for value in 0..<16 {
                 try a.append(.uint(UInt64(value)))
             }
@@ -38,18 +38,18 @@ import Testing
             for value in 16..<32 {
                 try b.append(.uint(UInt64(value)))
             }
-            try a.concat(try b.slot())
+            try a.append(contentsOf: try b.slot())
             #expect(try subject.storage.length == 1485)
             #expect(try a.count() == 32)
 
             for removal in 0..<16 {
-                try a.remove(0)
+                try a.remove(at: 0)
                 // the joined nodes are this transaction's, so every removal
                 // rewrites them in place
                 #expect(try subject.storage.length == 1485, "after removal \(removal)")
             }
             #expect(try a.count() == 16)
-            let values = try (0..<16).map { try a.getCursor($0)?.readUInt64() }
+            let values = try (0..<16).map { try a.cursor(at: $0)?.readUInt64() }
             #expect(values == (16..<32).map { UInt64($0) })
             // the root is now the surviving leaf itself
             let header = try database.reader.bTreeHeader(at: try a.slot().value)
@@ -62,11 +62,11 @@ import Testing
             try c.append(.uint(7))
             let before = try subject.storage.length
             #expect(before == 1685)
-            try c.remove(0)
+            try c.remove(at: 0)
             #expect(try subject.storage.length == 1831)
             #expect(try database.reader.bTreeHeader(at: try c.slot().value).rootPtr == 1685)
             #expect(try c.count() == 0)
-            #expect(try c.getCursor(0) == nil)
+            #expect(try c.cursor(at: 0) == nil)
         }
         #expect(try subject.storage.length == 1856)
     }
@@ -82,16 +82,16 @@ import Testing
             for value in 0..<40 {
                 try list.append(.uint(UInt64(value)))
             }
-            #expect(throws: XitDBError.keyNotFound) { try list.slice(offset: 30, size: 15) }
-            #expect(throws: XitDBError.keyNotFound) { try list.slice(offset: 41, size: 0) }
-            #expect(throws: XitDBError.keyNotFound) { try list.slice(offset: 1, size: 40) }
-            #expect(throws: XitDBError.keyNotFound) { try list.slice(offset: .max, size: 1) }
-            #expect(throws: XitDBError.keyNotFound) { try list.slice(offset: 1, size: .max) }
+            #expect(throws: XitDBError.indexOutOfRange) { try list.formSlice(offset: 30, count: 15) }
+            #expect(throws: XitDBError.indexOutOfRange) { try list.formSlice(offset: 41, count: 0) }
+            #expect(throws: XitDBError.indexOutOfRange) { try list.formSlice(offset: 1, count: 40) }
+            #expect(throws: XitDBError.indexOutOfRange) { try list.formSlice(offset: .max, count: 1) }
+            #expect(throws: XitDBError.indexOutOfRange) { try list.formSlice(offset: 1, count: .max) }
             #expect(try list.count() == 40)
-            try list.slice(offset: 30, size: 10)
+            try list.formSlice(offset: 30, count: 10)
             #expect(try list.count() == 10)
-            #expect(try list.getCursor(0)?.readUInt64() == 30)
-            try list.slice(offset: 10, size: 0)
+            #expect(try list.cursor(at: 0)?.readUInt64() == 30)
+            try list.formSlice(offset: 10, count: 0)
             #expect(try list.count() == 0)
         }
     }
@@ -111,22 +111,22 @@ import Testing
                 try list.append(.uint(UInt64(value)))
             }
             let writes = storage.writeCount
-            try list.put(3, .uint(99))
+            try list.put(.uint(99), at: 3)
             #expect(storage.writeCount == writes + 1)
-            try list.put(39, .uint(98))
+            try list.put(.uint(98), at: 39)
             #expect(storage.writeCount == writes + 2)
         }
         try database.withTransaction { cursor in
             let list = try LinkedArrayList(try HashMap(cursor).putCursor(forHash: sha1("list").bytes))
             let writes = storage.writeCount
-            try list.put(3, .uint(97))
+            try list.put(.uint(97), at: 3)
             // the leaf, the branch, the header, the slot
             #expect(storage.writeCount == writes + 4)
             // and the next write into the same leaf is in this transaction
-            try list.put(4, .uint(96))
+            try list.put(.uint(96), at: 4)
             #expect(storage.writeCount == writes + 5)
-            #expect(try list.getCursor(3)?.readUInt64() == 97)
-            #expect(try list.getCursor(4)?.readUInt64() == 96)
+            #expect(try list.cursor(at: 3)?.readUInt64() == 97)
+            #expect(try list.cursor(at: 4)?.readUInt64() == 96)
         }
     }
 }

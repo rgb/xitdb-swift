@@ -68,11 +68,11 @@ import Testing
         // a view of nothing gives nothing
         var elements = try ArrayList(none).iterator()
         #expect(try elements.next() == nil)
-        var fromIndex = try ArrayList(none).iteratorFrom(0)
+        var fromIndex = try ArrayList(none).iterator(fromIndex: 0)
         #expect(try fromIndex.next() == nil)
         var entries = try HashMap(none).iterator()
         #expect(try entries.next() == nil)
-        #expect(try ArrayList(none).getSlot(0) == nil)
+        #expect(try ArrayList(none).slot(at: 0) == nil)
         #expect(try HashMap(none).entry(forHash: key("x")) == nil)
         #expect(try HashMap(none).keySlot(forHash: key("x")) == nil)
         #expect(try CountedHashSet(none).slot(forHash: key("x")) == nil)
@@ -314,39 +314,78 @@ import Testing
         #expect(throws: XitDBError.unexpectedTag) { try SortedMap<ReadOnly>(database.rootCursor) }
     }
 
+    /// A linked array list appends another list given as a list of either
+    /// access or as its slot, and `append(_:_:)` gives the body's value.
+    @Test func aListAppendsAnotherListAndGivesTheBodysValue() throws {
+        let database = try makeDatabase()
+        try database.withTransaction { cursor in
+            let map = try HashMap(cursor)
+            var list = try LinkedArrayList(try map.putCursor(forHash: key("list")))
+            let other = try LinkedArrayList(try map.putCursor(forHash: key("other")))
+            for value in 0..<3 {
+                try list.append(.uint(UInt64(value)))
+            }
+            for value in 3..<6 {
+                try other.append(.uint(UInt64(value)))
+            }
+            try list.append(contentsOf: other)
+            #expect(try list.count() == 6)
+            try list.append(contentsOf: other.readOnly)
+            #expect(try list.count() == 9)
+            try list.append(contentsOf: try other.slot())
+            #expect(try list.count() == 12)
+            let values = try (0..<12).map { try list.cursor(at: $0)?.readUInt64() }
+            #expect(values == [0, 1, 2, 3, 4, 5, 3, 4, 5, 3, 4, 5])
+            #expect(try other.count() == 3, "the other list is unchanged")
+            #expect(throws: XitDBError.unexpectedTag) { try list.append(contentsOf: try map.slot()) }
+
+            let appended = try list.append(.uint(40)) { element in
+                try element.write(.uint(41))
+                return try element.readUInt64()
+            }
+            #expect(appended == 41)
+            #expect(try list.cursor(at: -1)?.readUInt64() == 41)
+            try list.append(.uint(50)) { element in
+                let value = try element.readUInt64()
+                #expect(value == 50)
+            }
+            #expect(try list.count() == 14)
+        }
+    }
+
     /// The list's own edges: a missing index, slicing, and iterating from
     /// an index that names nothing.
     @Test func aListsEdges() throws {
         let database = try makeDatabase()
         try database.withTransaction { cursor in
             let list = try ArrayList(cursor)
-            #expect(throws: XitDBError.keyNotFound) { try list.put(0, .uint(1)) }
-            #expect(throws: XitDBError.keyNotFound) { try list.putCursor(-1) }
+            #expect(throws: XitDBError.indexOutOfRange) { try list.put(.uint(1), at: 0) }
+            #expect(throws: XitDBError.indexOutOfRange) { try list.putCursor(at: -1) }
             try list.append(.uint(10))
             try list.append(.uint(20))
             #expect(try list.appendCursor().slot().isEmpty)
             #expect(try list.count() == 3)
-            try list.put(-1, .uint(30))
-            try list.put(0, .uint(11))
-            #expect(try list.getCursor(0)?.readUInt64() == 11)
-            #expect(try list.getCursor(-1)?.readUInt64() == 30)
-            #expect(try list.getSlot(3) == nil)
-            #expect(try list.getSlot(-4) == nil)
-            #expect(throws: XitDBError.keyNotFound) { try list.slice(4) }
-            try list.slice(2)
+            try list.put(.uint(30), at: -1)
+            try list.put(.uint(11), at: 0)
+            #expect(try list.cursor(at: 0)?.readUInt64() == 11)
+            #expect(try list.cursor(at: -1)?.readUInt64() == 30)
+            #expect(try list.slot(at: 3) == nil)
+            #expect(try list.slot(at: -4) == nil)
+            #expect(throws: XitDBError.indexOutOfRange) { try list.truncate(to: 4) }
+            try list.truncate(to: 2)
             #expect(try list.count() == 2)
-            var fromIndex = try list.iteratorFrom(1)
+            var fromIndex = try list.iterator(fromIndex: 1)
             #expect(try fromIndex.next()?.readUInt64() == 20)
             #expect(try fromIndex.next() == nil)
             for empty in [Int64(2), 3, -3, .max, .min] {
-                var iterator = try list.iteratorFrom(empty)
+                var iterator = try list.iterator(fromIndex: empty)
                 #expect(try iterator.next() == nil, "from \(empty)")
             }
-            try list.appendContext(.uint(40)) { element in
+            try list.append(.uint(40)) { element in
                 #expect(try element.readUInt64() == 40)
                 try element.write(.uint(41))
             }
-            #expect(try list.getCursor(2)?.readUInt64() == 41)
+            #expect(try list.cursor(at: 2)?.readUInt64() == 41)
         }
     }
 

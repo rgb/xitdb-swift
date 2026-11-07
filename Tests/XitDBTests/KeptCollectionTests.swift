@@ -14,7 +14,7 @@ import Testing
 // buffered-file storages, so that the errors come at the same calls on each.
 //
 // The comments inside the tests are Zig's. Zig's `Ctx` structs with a `run` method are the trailing closures
-// of `appendContext` here; `cursor.db.freeze()` is `cursor.database.freeze()`, `list.?` is `#require(list)`,
+// of `append(_:_:)` here; `cursor.db.freeze()` is `cursor.database.freeze()`, `list.?` is `#require(list)`,
 // and `expectError(error.X, call)` is `#expect(throws: XitDBError.x) { call }`. Zig's `error.InvalidCount`,
 // for a counted hash map whose count disagrees with its entries, is `invalidDatabase` in the port, which has no
 // `InvalidCount`. Where Zig damages bytes of the file through `db.core.writeBytes()`, the bytes are written to the
@@ -67,11 +67,13 @@ import Testing
         /// test.zig 3938-3945: `Freeze.run`.
         func run(_ cursor: Cursor<ReadWrite>, _ moment: HashMap<ReadWrite>, _ list: LinkedArrayList<ReadWrite>?) throws
         {
-            let other = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: sha1("other").bytes))
+            var other = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: sha1("other").bytes))
             switch self {
             case .database: try cursor.database.freeze()
-            case .concat: try #require(list).concat(try other.slot())
-            case .concatElsewhere: try other.concat(try other.slot())
+            case .concat:
+                var list = try #require(list)
+                try list.append(contentsOf: try other.slot())
+            case .concatElsewhere: try other.append(contentsOf: try other.slot())
             }
         }
     }
@@ -112,7 +114,7 @@ import Testing
     private func expectUints<Access>(_ list: LinkedArrayList<Access>, _ expected: [UInt64]) throws {
         #expect(UInt64(expected.count) == (try list.count()))
         for (i, value) in expected.enumerated() {
-            #expect(value == (try #require(try list.getCursor(Int64(i))).readUInt64()))
+            #expect(value == (try #require(try list.cursor(at: Int64(i))).readUInt64()))
         }
     }
 
@@ -131,7 +133,7 @@ import Testing
     func aListInitializedAgainIsACopyOfTheOneBeforeTheFreeze(kind: StorageKind, freeze: Freeze) throws {
         let history = try makeHistory(kind).history
 
-        try history.appendContext(.slot(nil)) { cursor in
+        try history.append(.slot(nil)) { cursor in
             var moment = try HashMap<ReadWrite>(cursor)
             var list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try list.append(.uint(1))
@@ -142,7 +144,7 @@ import Testing
             moment = try HashMap<ReadWrite>(cursor)
             list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try list.append(.uint(3))
-            try list.remove(0)
+            try list.remove(at: 0)
             try expectUints(list, [2, 3])
 
             var cloneCursor = try moment.putCursor(forHash: hashInt("clone"))
@@ -162,7 +164,7 @@ import Testing
     func aListInitializedAgainAfterTheOriginalsConcatSharesTheJoinedNodes(kind: StorageKind) throws {
         let history = try makeHistory(kind).history
 
-        try history.appendContext(.slot(nil)) { cursor in
+        try history.append(.slot(nil)) { cursor in
             var moment = try HashMap<ReadWrite>(cursor)
             var list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try list.append(.uint(1))
@@ -173,7 +175,7 @@ import Testing
             moment = try HashMap<ReadWrite>(cursor)
             list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try list.append(.uint(3))
-            try list.remove(0)
+            try list.remove(at: 0)
             try expectUints(list, [2, 3])
 
             var cloneCursor = try moment.putCursor(forHash: hashInt("clone"))
@@ -194,7 +196,7 @@ import Testing
     func aKeptListWritesThroughTheEntryItWasMadeWith(kind: StorageKind, freeze: Freeze) throws {
         let history = try makeHistory(kind).history
 
-        try history.appendContext(.slot(nil)) { cursor in
+        try history.append(.slot(nil)) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
             let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try list.append(.uint(1))
@@ -202,7 +204,7 @@ import Testing
 
             try freeze.run(cursor, moment, list)
             let listAgain = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
-            try listAgain.remove(0)
+            try listAgain.remove(at: 0)
             try list.append(.uint(3))
             try expectUints(list, [1, 2, 3])
             try expectUints(listAgain, [2])
@@ -217,7 +219,7 @@ import Testing
     func aKeptListAfterTheOriginalsConcatDisagreesWithItsTree(kind: StorageKind) throws {
         let history = try makeHistory(kind).history
 
-        try history.appendContext(.slot(nil)) { cursor in
+        try history.append(.slot(nil)) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
             let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try list.append(.uint(1))
@@ -225,7 +227,7 @@ import Testing
 
             try Freeze.concat.run(cursor, moment, list)
             let listAgain = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
-            try listAgain.remove(0)
+            try listAgain.remove(at: 0)
             #expect(throws: XitDBError.invalidBTreeNode) { try list.append(.uint(3)) }
             try expectUints(listAgain, [2])
         }
@@ -238,7 +240,7 @@ import Testing
     func aKeptListThatWroteBeforeTheSecondInitDisagreesWithItsTree(kind: StorageKind, freeze: Freeze) throws {
         let history = try makeHistory(kind).history
 
-        try history.appendContext(.slot(nil)) { cursor in
+        try history.append(.slot(nil)) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
             let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try list.append(.uint(1))
@@ -249,19 +251,19 @@ import Testing
             try list.append(.uint(4))
             try expectUints(list, [1, 2, 3, 4])
             let listAgain = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
-            try listAgain.remove(0)
-            try listAgain.remove(0)
+            try listAgain.remove(at: 0)
+            try listAgain.remove(at: 0)
             try expectUints(listAgain, [3, 4])
 
             #expect(try list.count() == 4)
-            #expect(try #require(try list.getCursor(0)).readUInt64() == 3)
-            #expect(throws: XitDBError.invalidBTreeNode) { try list.getCursor(2) }
+            #expect(try #require(try list.cursor(at: 0)).readUInt64() == 3)
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.cursor(at: 2) }
             #expect(throws: XitDBError.invalidBTreeNode) { try list.append(.uint(5)) }
-            #expect(throws: XitDBError.invalidBTreeNode) { try list.insert(3, .uint(5)) }
-            #expect(throws: XitDBError.invalidBTreeNode) { try list.put(3, .uint(5)) }
-            #expect(throws: XitDBError.invalidBTreeNode) { try list.remove(3) }
-            #expect(throws: XitDBError.invalidBTreeNode) { try list.slice(offset: 0, size: 4) }
-            #expect(throws: XitDBError.invalidBTreeNode) { try list.iteratorFrom(3) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.insert(.uint(5), at: 3) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.put(.uint(5), at: 3) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.remove(at: 3) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.formSlice(offset: 0, count: 4) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.iterator(fromIndex: 3) }
             try expectUints(listAgain, [3, 4])
         }
     }
@@ -273,7 +275,7 @@ import Testing
     func aCloneFromBeforeTheFreezeSharesTheKeptListsHeader(kind: StorageKind, freeze: Freeze) throws {
         let history = try makeHistory(kind).history
 
-        try history.appendContext(.slot(nil)) { cursor in
+        try history.append(.slot(nil)) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
             let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try list.append(.uint(1))
@@ -288,7 +290,7 @@ import Testing
             var lateCursor = try moment.putCursor(forHash: hashInt("late"))
             try lateCursor.write(.slot(try list.slot()))
             let late = try LinkedArrayList<ReadWrite>(lateCursor)
-            try late.remove(0)
+            try late.remove(at: 0)
             try expectUints(late, [2])
             #expect(throws: XitDBError.invalidBTreeNode) { try list.append(.uint(3)) }
         }
@@ -299,7 +301,7 @@ import Testing
     func aSortedMapHasAHeaderOverATreeToo(kind: StorageKind, freeze: Freeze) throws {
         let history = try makeHistory(kind).history
 
-        try history.appendContext(.slot(nil)) { cursor in
+        try history.append(.slot(nil)) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
             let map = try SortedMap<ReadWrite>(try moment.putCursor(forHash: hashInt("map")))
             for i in 0..<UInt64(40) {
@@ -336,7 +338,7 @@ import Testing
     func aCountedHashMapsCountIsCopiedWithItsRootBlock(kind: StorageKind, freeze: Freeze) throws {
         let history = try makeHistory(kind).history
 
-        try history.appendContext(.slot(nil)) { cursor in
+        try history.append(.slot(nil)) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
             let counted = try CountedHashMap<ReadWrite>(try moment.putCursor(forHash: hashInt("counted")))
             // these hashes end with the same four bits, so they are in a block below the root
@@ -364,7 +366,7 @@ import Testing
     func anArrayListHasNoTreeItsHeaderCouldDisagreeWith(kind: StorageKind, freeze: Freeze) throws {
         let history = try makeHistory(kind).history
 
-        try history.appendContext(.slot(nil)) { cursor in
+        try history.append(.slot(nil)) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
             let array = try ArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("array")))
             for i in 0..<20 {
@@ -374,8 +376,8 @@ import Testing
             try freeze.run(cursor, moment, nil)
             try array.append(.uint(20))
             let arrayAgain = try ArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("array")))
-            try arrayAgain.put(20, .uint(99))
-            #expect(try #require(try array.getCursor(20)).readUInt64() == 99)
+            try arrayAgain.put(.uint(99), at: 20)
+            #expect(try #require(try array.cursor(at: 20)).readUInt64() == 99)
         }
     }
 
@@ -386,7 +388,7 @@ import Testing
         let (subject, history) = try makeHistory(kind)
 
         // a list and a sorted map with enough entries for their root to be a branch
-        try history.appendContext(.slot(nil)) { cursor in
+        try history.append(.slot(nil)) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
             let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             let map = try SortedMap<ReadWrite>(try moment.putCursor(forHash: hashInt("map")))
@@ -399,7 +401,7 @@ import Testing
         }
 
         // a header is the size followed by the position of the root node
-        let committed = try HashMap<ReadOnly>(try #require(try history.getCursor(-1)))
+        let committed = try HashMap<ReadOnly>(try #require(try history.cursor(at: -1)))
         let listHeader = try #require(try committed.slot(forHash: hashInt("list"))).value
         let listRoot = bigEndian(try readBytes(subject.storage, at: listHeader + 8, count: 8))
         let mapHeader = try #require(try committed.slot(forHash: hashInt("map"))).value
@@ -412,16 +414,16 @@ import Testing
         try writeBytes(subject.storage, zeros(8), at: mapRoot + 2 + 2 * Self.slotCount * 9)
         try subject.storage.flush()
 
-        try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+        try history.append(.slot(try history.slot(at: -1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
-            let shortList = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("short-list")))
+            var list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
+            var shortList = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("short-list")))
             let map = try SortedMap<ReadWrite>(try moment.putCursor(forHash: hashInt("map")))
 
-            #expect(throws: XitDBError.invalidBTreeNode) { try list.remove(0) }
-            #expect(throws: XitDBError.invalidBTreeNode) { try list.slice(offset: 1, size: 2) }
-            #expect(throws: XitDBError.invalidBTreeNode) { try list.concat(try shortList.slot()) }
-            #expect(throws: XitDBError.invalidBTreeNode) { try shortList.concat(try list.slot()) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.remove(at: 0) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.formSlice(offset: 1, count: 2) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.append(contentsOf: try shortList.slot()) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try shortList.append(contentsOf: try list.slot()) }
             #expect(throws: XitDBError.invalidBTreeNode) { try map.remove(utf8("k00")) }
         }
     }

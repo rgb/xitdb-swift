@@ -62,7 +62,7 @@ import Testing
         init(_ kind: StorageKind, makeDatabase: (StorageUnderTest) throws -> Database) throws {
             subject = try StorageUnderTest(kind)
             database = try makeDatabase(subject)
-            try ArrayList(database.rootCursor).appendContext(.slot(nil)) { cursor in
+            try ArrayList(database.rootCursor).append(.slot(nil)) { cursor in
                 let map = try HashMap(cursor)
                 try map.put(.bytes(Array("a value long enough for a record".utf8)), forHash: sha1("bytes").bytes)
                 let list = try ArrayList(try map.putCursor(forHash: sha1("list").bytes))

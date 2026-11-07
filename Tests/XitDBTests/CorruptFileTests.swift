@@ -130,10 +130,10 @@ import Testing
                     tolerating { try stream(value) }
                     tolerating { try drain(try value.iterator()) }
                     tolerating { try drain(try value.iterator(fromArrayListIndex: 3)) }
-                    tolerating { try drain(try ArrayList(value).iteratorFrom(-1)) }
-                    tolerating { try drain(try LinkedArrayList(value).iteratorFrom(17)) }
+                    tolerating { try drain(try ArrayList(value).iterator(fromIndex: -1)) }
+                    tolerating { try drain(try LinkedArrayList(value).iterator(fromIndex: 17)) }
                     for element in [Int64(0), 19, -21] {
-                        tolerating { _ = try LinkedArrayList(value).getCursor(element)?.readUInt64() }
+                        tolerating { _ = try LinkedArrayList(value).cursor(at: element)?.readUInt64() }
                     }
                     tolerating {
                         var entries = try CountedHashMap(value).iterator()
@@ -208,12 +208,12 @@ import Testing
                     let map = try HashMap(try cursor.writePath([.arrayListGet(0)]))
                     var linked = try LinkedArrayList(try map.putCursor(forHash: sha1("linked").bytes))
                     self.tolerating { try linked.append(.uint(20)) }
-                    self.tolerating { try linked.put(3, .uint(30)) }
-                    self.tolerating { try linked.insert(16, .uint(160)) }
-                    self.tolerating { try linked.remove(0) }
-                    self.tolerating { try linked.slice(offset: 2, size: 5) }
+                    self.tolerating { try linked.put(.uint(30), at: 3) }
+                    self.tolerating { try linked.insert(.uint(160), at: 16) }
+                    self.tolerating { try linked.remove(at: 0) }
+                    self.tolerating { try linked.formSlice(offset: 2, count: 5) }
                     self.tolerating { linked = try LinkedArrayList(try map.putCursor(forHash: sha1("linked").bytes)) }
-                    self.tolerating { try linked.concat(try linked.slot()) }
+                    self.tolerating { try linked.append(contentsOf: try linked.slot()) }
                     self.tolerating { try self.drain(try linked.iterator()) }
                 }
             }

@@ -66,13 +66,14 @@ public struct Cursor<Access: CursorAccess> {
     /// Follows a path from this cursor without writing.
     ///
     /// - Returns: A cursor at the slot the path arrives at, or `nil` if
-    ///   something on the way does not exist or that slot is empty.
+    ///   something on the way does not exist, an index names no element,
+    ///   or that slot is empty.
     package func readPath(_ path: Span<PathPart>) throws(XitDBError) -> Cursor<ReadOnly>? {
         do throws(XitDBError) {
             let pointer = try database.reader.readSlotPointer(path, at: try resolved())
             return Cursor<ReadOnly>(slotPointer: pointer, database: database)
         } catch {
-            guard error == .keyNotFound else { throw error }
+            guard error == .keyNotFound || error == .indexOutOfRange else { throw error }
             return nil
         }
     }
@@ -83,13 +84,14 @@ public struct Cursor<Access: CursorAccess> {
     }
 
     /// Follows a path from this cursor without writing, and returns the slot
-    /// it arrives at, or `nil` if there is none or it is empty.
+    /// it arrives at, or `nil` if there is none, an index names no element,
+    /// or it is empty.
     package func readPathSlot(_ path: Span<PathPart>) throws(XitDBError) -> Slot? {
         do throws(XitDBError) {
             let pointer = try database.reader.readSlotPointer(path, at: try resolved())
             return pointer.slot.isEmpty ? nil : pointer.slot
         } catch {
-            guard error == .keyNotFound else { throw error }
+            guard error == .keyNotFound || error == .indexOutOfRange else { throw error }
             return nil
         }
     }

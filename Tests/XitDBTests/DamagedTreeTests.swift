@@ -51,62 +51,62 @@ import Testing
     /// Runs every operation of the list, each in a transaction of its own
     /// that is rolled back afterwards, so that each meets the same damage,
     /// and returns which of them raised `invalidBTreeNode`. An index beyond
-    /// the header's size is `keyNotFound`, which is not damage.
+    /// the header's size is `indexOutOfRange`, which is not damage.
     private func failing(_ database: Database) throws -> Set<String> {
         var failed: Set<String> = []
         func attempt(
-            _ name: String, _ body: (LinkedArrayList<ReadWrite>, LinkedArrayList<ReadWrite>) throws -> Void
+            _ name: String, _ body: (inout LinkedArrayList<ReadWrite>, inout LinkedArrayList<ReadWrite>) throws -> Void
         ) {
             do {
                 try database.withTransaction { cursor in
                     let map = try HashMap(cursor)
-                    let list = try LinkedArrayList(try map.putCursor(forHash: sha1("list").bytes))
-                    let short = try LinkedArrayList(try map.putCursor(forHash: sha1("short").bytes))
-                    try body(list, short)
+                    var list = try LinkedArrayList(try map.putCursor(forHash: sha1("list").bytes))
+                    var short = try LinkedArrayList(try map.putCursor(forHash: sha1("short").bytes))
+                    try body(&list, &short)
                     throw Rollback()
                 }
             } catch is Rollback {
                 // the operation went through
             } catch let error as XitDBError where error == .invalidBTreeNode {
                 failed.insert(name)
-            } catch let error as XitDBError where error == .keyNotFound {
+            } catch let error as XitDBError where error == .indexOutOfRange {
                 // an index beyond what the header says: not damage
             } catch {
                 Issue.record("\(name) raised \(error)")
             }
         }
-        attempt("get 0") { list, _ in _ = try list.getCursor(0) }
-        attempt("get 24") { list, _ in _ = try list.getCursor(24) }
-        attempt("get -1") { list, _ in _ = try list.getCursor(-1) }
-        attempt("get 50") { list, _ in _ = try list.getCursor(50) }
-        attempt("put 0") { list, _ in try list.put(0, .uint(1)) }
-        attempt("put 50") { list, _ in try list.put(50, .uint(1)) }
-        attempt("insert 0") { list, _ in try list.insert(0, .uint(1)) }
-        attempt("insert 50") { list, _ in try list.insert(50, .uint(1)) }
+        attempt("get 0") { list, _ in _ = try list.cursor(at: 0) }
+        attempt("get 24") { list, _ in _ = try list.cursor(at: 24) }
+        attempt("get -1") { list, _ in _ = try list.cursor(at: -1) }
+        attempt("get 50") { list, _ in _ = try list.cursor(at: 50) }
+        attempt("put 0") { list, _ in try list.put(.uint(1), at: 0) }
+        attempt("put 50") { list, _ in try list.put(.uint(1), at: 50) }
+        attempt("insert 0") { list, _ in try list.insert(.uint(1), at: 0) }
+        attempt("insert 50") { list, _ in try list.insert(.uint(1), at: 50) }
         attempt("append") { list, _ in try list.append(.uint(1)) }
-        attempt("remove 0") { list, _ in try list.remove(0) }
-        attempt("remove 50") { list, _ in try list.remove(50) }
-        attempt("slice 0 5") { list, _ in try list.slice(offset: 0, size: 5) }
-        attempt("slice 45 2") { list, _ in try list.slice(offset: 45, size: 2) }
-        attempt("slice 20 5") { list, _ in try list.slice(offset: 20, size: 5) }
-        attempt("concat onto") { list, short in try short.concat(try list.slot()) }
-        attempt("concat") { list, short in try list.concat(try short.slot()) }
+        attempt("remove 0") { list, _ in try list.remove(at: 0) }
+        attempt("remove 50") { list, _ in try list.remove(at: 50) }
+        attempt("slice 0 5") { list, _ in try list.formSlice(offset: 0, count: 5) }
+        attempt("slice 45 2") { list, _ in try list.formSlice(offset: 45, count: 2) }
+        attempt("slice 20 5") { list, _ in try list.formSlice(offset: 20, count: 5) }
+        attempt("concat onto") { list, short in try short.append(contentsOf: try list.slot()) }
+        attempt("concat") { list, short in try list.append(contentsOf: try short.slot()) }
         attempt("iterate") { list, _ in
             var iterator = try list.iterator()
             while try iterator.next() != nil {}
         }
         attempt("iterate from 0") { list, _ in
-            var iterator = try list.iteratorFrom(0)
+            var iterator = try list.iterator(fromIndex: 0)
             while try iterator.next() != nil {}
         }
         attempt("iterate from 50") { list, _ in
-            var iterator = try list.iteratorFrom(50)
+            var iterator = try list.iterator(fromIndex: 50)
             while try iterator.next() != nil {}
         }
         return failed
     }
 
-    /// A sound list raises nothing but `keyNotFound` for the indexes that
+    /// A sound list raises nothing but `indexOutOfRange` for the indexes that
     /// do not exist, which `failing` does not count.
     @Test(arguments: StorageKind.allCases)
     func theSoundListRaisesNothing(kind: StorageKind) throws {
@@ -115,8 +115,8 @@ import Testing
         try subject.database.withTransaction { cursor in
             let list = try LinkedArrayList(try HashMap(cursor).putCursor(forHash: sha1("list").bytes))
             #expect(try list.count() == 40)
-            #expect(throws: XitDBError.keyNotFound) { try list.put(50, .uint(1)) }
-            #expect(throws: XitDBError.keyNotFound) { try list.slice(offset: 45, size: 2) }
+            #expect(throws: XitDBError.indexOutOfRange) { try list.put(.uint(1), at: 50) }
+            #expect(throws: XitDBError.indexOutOfRange) { try list.formSlice(offset: 45, count: 2) }
             var iterator = try list.iterator()
             while let element = try iterator.next() {
                 #expect(try element.readUInt64() == UInt64(count))
@@ -242,13 +242,13 @@ import Testing
             var reported = false
             try damaged.withTransaction { cursor in
                 let map = try HashMap(cursor)
-                let list = try LinkedArrayList(try map.putCursor(forHash: sha1("list").bytes))
-                let short = try LinkedArrayList(try map.putCursor(forHash: sha1("short").bytes))
+                var list = try LinkedArrayList(try map.putCursor(forHash: sha1("list").bytes))
+                var short = try LinkedArrayList(try map.putCursor(forHash: sha1("short").bytes))
                 do {
                     if listOnto {
-                        try short.concat(try list.slot())
+                        try short.append(contentsOf: try list.slot())
                     } else {
-                        try list.concat(try short.slot())
+                        try list.append(contentsOf: try short.slot())
                     }
                 } catch XitDBError.invalidBTreeNode {
                     reported = true
