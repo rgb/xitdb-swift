@@ -34,6 +34,13 @@ step "Release build and tests"
 swift build -c release "${strict[@]}"
 swift test -c release "${strict[@]}"
 
+# The benchmark, built above as the release build's second product, runs every
+# workload on every kind at a hundredth of its size: that it runs is the check, not
+# its numbers. It prints one line per phase; a workload that fails exits non-zero.
+step "Benchmark smoke run"
+.build/release/XitDBBenchmark --divide 100 > /dev/null
+echo "ok"
+
 # R5: Sources/XitDB may import the standard library, Synchronization and the platform C
 # library, and nothing else. The platform C library is imported in exactly one file,
 # behind `#if canImport` for Darwin, Glibc, Musl and Android.

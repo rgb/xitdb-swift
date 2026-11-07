@@ -523,19 +523,33 @@ func precedes(_ left: [UInt8], _ leftCount: Int, _ right: [UInt8], _ rightCount:
     return leftCount < rightCount
 }
 
+/// `--divide <d>` divides every size by `d`, as the Zig benchmark's does, to
+/// check quickly that every workload runs: the gate's smoke run. The sizes
+/// then say nothing, and the file sizes no longer match the spec's.
+let divide: Int = {
+    let arguments = CommandLine.arguments
+    guard let index = arguments.firstIndex(of: "--divide"), index + 1 < arguments.count,
+        let value = Int(arguments[index + 1]), value > 0
+    else { return 1 }
+    return value
+}()
+
+/// A workload's size under `--divide`, never below one.
+func sized(_ size: Int) -> Int { max(size / divide, 1) }
+
 let workloads: [Workload] = [
-    mapInsert(100_000, kinds: [.memory, .bufferedFile]),
-    mapInsert(10_000, kinds: [.file]),
-    listAppend(1_000_000, kinds: [.memory, .bufferedFile]),
-    mapTransactions(2_000, kinds: [.memory, .bufferedFile]),
-    linkedAppend(100_000, kinds: [.memory, .bufferedFile]),
-    linkedAppend(10_000, kinds: [.file]),
-    sortedInsert(100_000, kinds: [.memory, .bufferedFile]),
-    sortedInsert(10_000, kinds: [.file]),
-    mapCompact(2_000, kinds: [.memory, .bufferedFile]),
-    mapCompact(200, kinds: [.file]),
-    replicate(2_000, kinds: [.memory, .bufferedFile]),
-    replicate(200, kinds: [.file]),
+    mapInsert(sized(100_000), kinds: [.memory, .bufferedFile]),
+    mapInsert(sized(10_000), kinds: [.file]),
+    listAppend(sized(1_000_000), kinds: [.memory, .bufferedFile]),
+    mapTransactions(sized(2_000), kinds: [.memory, .bufferedFile]),
+    linkedAppend(sized(100_000), kinds: [.memory, .bufferedFile]),
+    linkedAppend(sized(10_000), kinds: [.file]),
+    sortedInsert(sized(100_000), kinds: [.memory, .bufferedFile]),
+    sortedInsert(sized(10_000), kinds: [.file]),
+    mapCompact(sized(2_000), kinds: [.memory, .bufferedFile]),
+    mapCompact(sized(200), kinds: [.file]),
+    replicate(sized(2_000), kinds: [.memory, .bufferedFile]),
+    replicate(sized(200), kinds: [.file]),
 ]
 
 func median(_ values: [Double]) -> Double {
@@ -692,7 +706,13 @@ func runRepeatedly(_ workload: Workload, _ kind: StorageKind, phase: String, sec
     print(line)
 }
 
-let arguments = Array(CommandLine.arguments.dropFirst())
+let arguments: [String] = {
+    var arguments = Array(CommandLine.arguments.dropFirst())
+    if let index = arguments.firstIndex(of: "--divide"), index + 1 < arguments.count {
+        arguments.removeSubrange(index...(index + 1))
+    }
+    return arguments
+}()
 if arguments.first == "--count" {
     guard arguments.count == 3, let workload = workloads.first(where: { $0.name == arguments[1] }),
         let kind = StorageKind(rawValue: arguments[2])

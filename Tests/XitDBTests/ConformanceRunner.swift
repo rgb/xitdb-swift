@@ -40,24 +40,16 @@ struct UnknownInScript: Error, CustomStringConvertible {
 struct ScriptAbort: Error {}
 
 /// The kinds of storage a script can run on.
-enum ScriptStorageKind: String, CaseIterable, CustomTestStringConvertible {
-    case memory
-    case file
-    case bufferedFile
-
-    var testDescription: String { rawValue }
-}
-
 /// Where a script's database lives, across closing and reopening it. The raw
 /// ops of a script write here directly, past the engine.
 final class ScriptStorage {
-    let kind: ScriptStorageKind
+    let kind: StorageKind
     private let directory: TemporaryDirectory?
     private var memoryBytes: [UInt8] = []
     private var memory: MemoryStorage?
     private var open: (any WritableStorage)?
 
-    init(_ kind: ScriptStorageKind) throws {
+    init(_ kind: StorageKind) throws {
         self.kind = kind
         directory = kind == .memory ? nil : try TemporaryDirectory()
     }
@@ -78,6 +70,12 @@ final class ScriptStorage {
         case .bufferedFile:
             let path = try #require(directory).path()
             storage = try BufferedFileStorage(path: path, access: readOnly ? .readOnly : .create, durability: .none)
+        case .bufferedFileSmallWindow:
+            // a window most of a script's writes restart or go around, as
+            // the storage tests use it
+            let path = try #require(directory).path()
+            storage = try BufferedFileStorage(
+                path: path, access: readOnly ? .readOnly : .create, durability: .none, bufferLimit: 200)
         }
         open = storage
         return storage
@@ -102,7 +100,7 @@ final class ScriptStorage {
                 memoryBytes.append(contentsOf: [UInt8](repeating: 0, count: end - memoryBytes.count))
             }
             memoryBytes.replaceSubrange(Int(offset)..<end, with: bytes)
-        case .file, .bufferedFile:
+        case .file, .bufferedFile, .bufferedFileSmallWindow:
             let file = try FileStorage(path: try #require(directory).path(), access: .create, durability: .none)
             try file.write(bytes.span, at: offset)
         }
@@ -118,7 +116,7 @@ final class ScriptStorage {
         try open?.flush()
         switch kind {
         case .memory: return memory?.bytes ?? memoryBytes
-        case .file, .bufferedFile: return try #require(directory).contents()
+        case .file, .bufferedFile, .bufferedFileSmallWindow: return try #require(directory).contents()
         }
     }
 }
@@ -1304,18 +1302,6 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
 
     var testDescription: String { name }
 
-    /// The milestone that brings what this script still needs, or `nil` if
-    /// it can run now.
-    var waitsFor: String? {
-        nil
-    }
-
-    /// An op the runner does not have yet, which keeps the script from
-    /// running although nothing in the engine is missing.
-    var needsOp: String? {
-        nil
-    }
-
     /// Every script in the copied fixtures, as the manifest lists them.
     static let all: [ConformanceFixture] = {
         guard
@@ -1368,7 +1354,7 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
     /// With `otherOffsetMap`, every `compact` uses the offset map the
     /// script does not name, which must change nothing in what is written:
     /// the conformance `check.sh` holds the scripts to that the same way.
-    func run(on kind: ScriptStorageKind, otherOffsetMap: Bool = false) throws {
+    func run(on kind: StorageKind, otherOffsetMap: Bool = false) throws {
         let script = try JSONSerialization.jsonObject(with: Data(try fixtureFile(script)))
 
         guard mustPass else {
