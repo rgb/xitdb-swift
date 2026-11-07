@@ -303,12 +303,12 @@ struct SlotIterator {
                 case .branch:
                     guard node.num > 0 else { throw .invalidBTreeNode }
                     let index = try reader.sortedBranchSearch(node, key: bytes)
-                    guard node.children[index].tag == .index else { throw .invalidBTreeNode }
+                    guard node.child(index).tag == .index else { throw .invalidBTreeNode }
                     for below in 0..<index {
-                        before &+= node.counts[below]
+                        before &+= node.count(below)
                     }
                     push(Level(position: position, block: IndexBlock(slots: node.children), index: UInt8(index)))
-                    nodePtr = node.children[index].value
+                    nodePtr = node.child(index).value
                 }
             }
             throw .invalidBTreeNode
@@ -355,9 +355,9 @@ struct SlotIterator {
             case .branch:
                 guard node.num > 0 else { throw .invalidBTreeNode }
                 let (index, next) = BTree.child(of: node, rank: rem, inclusive: false)
-                guard node.children[index].tag == .index else { throw .invalidBTreeNode }
+                guard node.child(index).tag == .index else { throw .invalidBTreeNode }
                 push(Level(position: position, block: IndexBlock(slots: node.children), index: UInt8(index)))
-                nodePtr = node.children[index].value
+                nodePtr = node.child(index).value
                 rem = next
             }
         }

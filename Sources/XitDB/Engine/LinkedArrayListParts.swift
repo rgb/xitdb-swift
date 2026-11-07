@@ -150,8 +150,8 @@ extension Database {
             // A root left with one child is replaced by it.
             var levels = 0
             while root.kind == .branch, root.num == 1 {
-                guard root.children[0].tag == .index, levels < BTree.maxHeight else { throw .invalidBTreeNode }
-                rootPtr = root.children[0].value
+                guard root.child(0).tag == .index, levels < BTree.maxHeight else { throw .invalidBTreeNode }
+                rootPtr = root.child(0).value
                 root = try reader.bTreeNode(at: rootPtr)
                 levels += 1
             }

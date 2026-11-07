@@ -79,7 +79,9 @@ private func count(_ value: UInt8) -> [UInt8] {
         #expect(node.values[0] == Slot(value: 7, tag: .uint))
         #expect(node.values[1] == Slot(value: 9, tag: .uint))
         #expect(array(node.values)[2...].allSatisfy { $0.isEmpty })
-        #expect(array(node.children).allSatisfy { $0.isEmpty })
+        // a leaf's values and a branch's children are the same sixteen
+        // slots of the bytes, read as one or the other
+        #expect(array(node.children) == array(node.values))
         #expect(array(node.counts).allSatisfy { $0 == 0 })
         #expect(node.subtreeCount == 2)
         #expect(encoded(capacity: 146) { node.encode(into: &$0) } == bytes)
@@ -98,7 +100,7 @@ private func count(_ value: UInt8) -> [UInt8] {
         #expect(node.children[1] == Slot(value: 200, tag: .index))
         #expect(node.counts[0] == 16)
         #expect(node.counts[1] == 3)
-        #expect(array(node.values).allSatisfy { $0.isEmpty })
+        #expect(array(node.values) == array(node.children))
         #expect(node.subtreeCount == 19)
         #expect(encoded(capacity: 274) { node.encode(into: &$0) } == bytes)
     }
@@ -240,7 +242,7 @@ private func count(_ value: UInt8) -> [UInt8] {
         #expect(node.separators[1] == Slot(value: 0x6D00_0000_0000_0000, tag: .shortBytes))
         #expect(node.counts[0] == 4)
         #expect(node.counts[1] == 9)
-        #expect(array(node.entries).allSatisfy { $0.isEmpty })
+        #expect(array(node.entries) == array(node.children))
         #expect(node.subtreeCount == 13)
         #expect(encoded(capacity: 418) { node.encode(into: &$0) } == bytes)
     }

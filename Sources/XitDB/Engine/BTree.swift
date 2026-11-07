@@ -44,7 +44,7 @@ enum BTree {
         var index = 0
         var rem = rank
         while index + 1 < Int(node.num) {
-            let count = node.counts[index]
+            let count = node.count(index)
             if inclusive ? rem <= count : rem < count { break }
             rem -= count
             index += 1
@@ -63,14 +63,14 @@ struct BTreeEntries {
     /// Appends the first `num` entries of a node.
     mutating func append(_ node: BTreeNode) {
         for index in 0..<Int(node.num) {
-            append(node.kind == .leaf ? node.values[index] : node.children[index], count: node.counts[index])
+            append(node.kind == .leaf ? node.value(index) : node.child(index), count: node.count(index))
         }
     }
 
     /// Appends the entries of a node from `from` up to `to`.
     mutating func append(_ node: BTreeNode, from: Int, to: Int) {
         for index in from..<to {
-            append(node.kind == .leaf ? node.values[index] : node.children[index], count: node.counts[index])
+            append(node.kind == .leaf ? node.value(index) : node.child(index), count: node.count(index))
         }
     }
 
@@ -85,10 +85,10 @@ struct BTreeEntries {
         var node = BTreeNode(kind: kind, num: UInt8(to - from))
         for index in from..<to {
             if kind == .leaf {
-                node.values[index - from] = slots[index]
+                node.setValue(slots[index], at: index - from)
             } else {
-                node.children[index - from] = slots[index]
-                node.counts[index - from] = counts[index]
+                node.setChild(slots[index], at: index - from)
+                node.setCount(counts[index], at: index - from)
             }
         }
         return node
@@ -144,8 +144,8 @@ extension DatabaseReader {
         while height <= BTree.maxHeight {
             let node = try bTreeNode(at: nodePtr)
             if node.kind == .leaf { return height }
-            guard node.num > 0, node.children[0].tag == .index else { throw .invalidBTreeNode }
-            nodePtr = node.children[0].value
+            guard node.num > 0, node.child(0).tag == .index else { throw .invalidBTreeNode }
+            nodePtr = node.child(0).value
             height += 1
         }
         throw .invalidBTreeNode
@@ -174,10 +174,10 @@ extension Database {
     func bTreeMakeRoot(_ result: BTreeJoinResult) throws(XitDBError) -> UInt64 {
         guard let split = result.split else { return result.nodePtr }
         var root = BTreeNode(kind: .branch, num: 2)
-        root.children[0] = Slot(value: result.nodePtr, tag: .index)
-        root.children[1] = Slot(value: split.nodePtr, tag: .index)
-        root.counts[0] = result.count
-        root.counts[1] = split.count
+        root.setChild(Slot(value: result.nodePtr, tag: .index), at: 0)
+        root.setChild(Slot(value: split.nodePtr, tag: .index), at: 1)
+        root.setCount(result.count, at: 0)
+        root.setCount(split.count, at: 1)
         return try appendNode(root)
     }
 
@@ -222,9 +222,9 @@ extension Database {
             }
             guard node.num > 0 else { throw .invalidBTreeNode }
             let (index, next) = BTree.child(of: node, rank: rem, inclusive: inclusive)
-            guard node.children[index].tag == .index else { throw .invalidBTreeNode }
+            guard node.child(index).tag == .index else { throw .invalidBTreeNode }
             branches.append(Frame(position: nodePtr, node: node, index: index))
-            nodePtr = node.children[index].value
+            nodePtr = node.child(index).value
             rem = next
         }
         throw .invalidBTreeNode
@@ -330,7 +330,7 @@ extension Database {
         guard leafRank < UInt64(leaf.num) else { throw .invalidBTreeNode }
         let newLeafPtr = bTreeReusable(leafPtr, frozenAt: frozenAt) ? leafPtr : try appendNode(leaf)
         let valuePosition = try BTree.slotPosition(nodePtr: newLeafPtr, index: Int(leafRank))
-        let slot = leaf.values[Int(leafRank)]
+        let slot = leaf.value(Int(leafRank))
 
         var childPtr = newLeafPtr
         var oldChildPtr = leafPtr
@@ -341,7 +341,7 @@ extension Database {
                 return (rootPtr, valuePosition, slot)
             }
             var node = frame.node
-            node.children[frame.index] = Slot(value: childPtr, tag: .index)
+            node.setChild(Slot(value: childPtr, tag: .index), at: frame.index)
             oldChildPtr = frame.position
             childPtr = try writeNodeVersion(node, oldPtr: frame.position, frozenAt: frozenAt)
         }
@@ -365,10 +365,10 @@ extension Database {
         var (branches, leafPtr, child, leafRank) = try bTreeDescend(from: rootPtr, rank: rank, inclusive: false)
         guard leafRank < UInt64(child.num) else { throw .invalidBTreeNode }
         for index in Int(leafRank)..<(Int(child.num) - 1) {
-            child.values[index] = child.values[index + 1]
+            child.setValue(child.value(index + 1), at: index)
         }
         child.num -= 1
-        child.values[Int(child.num)] = Slot()
+        child.setValue(Slot(), at: Int(child.num))
 
         var childPtr = leafPtr
         while let frame = branches.popLast() {
@@ -384,7 +384,7 @@ extension Database {
                 // The pair is this child and its right neighbour, or its
                 // left one if it is the last.
                 let first = index + 1 < Int(node.num) ? index : index - 1
-                let neighbourSlot = node.children[first == index ? index + 1 : first]
+                let neighbourSlot = node.child(first == index ? index + 1 : first)
                 let neighbour = try bTreeChild(neighbourSlot).node
                 if Int(child.num) + Int(neighbour.num) <= BTree.slotCount {
                     child =
@@ -394,9 +394,9 @@ extension Database {
                     index = first
                 }
             }
-            node.children[index] = Slot(
-                value: try writeNodeVersion(child, oldPtr: childPtr, frozenAt: frozenAt), tag: .index)
-            node.counts[index] = child.subtreeCount
+            node.setChild(
+                Slot(value: try writeNodeVersion(child, oldPtr: childPtr, frozenAt: frozenAt), tag: .index), at: index)
+            node.setCount(child.subtreeCount, at: index)
             child = node
             childPtr = frame.position
         }
@@ -406,12 +406,12 @@ extension Database {
     /// Takes the child at `index` out of a branch, closing the gap.
     private static func bTreeDropChild(_ branch: inout BTreeNode, at index: Int) {
         for i in index..<(Int(branch.num) - 1) {
-            branch.children[i] = branch.children[i + 1]
-            branch.counts[i] = branch.counts[i + 1]
+            branch.setChild(branch.child(i + 1), at: i)
+            branch.setCount(branch.count(i + 1), at: i)
         }
         branch.num -= 1
-        branch.children[Int(branch.num)] = Slot()
-        branch.counts[Int(branch.num)] = 0
+        branch.setChild(Slot(), at: Int(branch.num))
+        branch.setCount(0, at: Int(branch.num))
     }
 
     /// Two nodes of one kind whose entries fit in one node, `a` before `b`.
@@ -419,10 +419,10 @@ extension Database {
         var node = a
         for index in 0..<Int(b.num) {
             if a.kind == .leaf {
-                node.values[Int(a.num) + index] = b.values[index]
+                node.setValue(b.value(index), at: Int(a.num) + index)
             } else {
-                node.children[Int(a.num) + index] = b.children[index]
-                node.counts[Int(a.num) + index] = b.counts[index]
+                node.setChild(b.child(index), at: Int(a.num) + index)
+                node.setCount(b.count(index), at: Int(a.num) + index)
             }
         }
         node.num = a.num + b.num
@@ -476,7 +476,7 @@ extension Database {
             let node = try reader.bTreeNode(at: nodePtr)
             guard node.num > 0 else { throw .invalidBTreeNode }
             spine.append(node)
-            let next = node.children[right ? Int(node.num) - 1 : 0]
+            let next = node.child(right ? Int(node.num) - 1 : 0)
             guard next.tag == .index else { throw .invalidBTreeNode }
             nodePtr = next.value
             height -= 1
@@ -487,7 +487,7 @@ extension Database {
         spine.append(node)
 
         // The merge at the bottom.
-        let end = try bTreeChild(node.children[right ? Int(node.num) - 1 : 0]).node
+        let end = try bTreeChild(node.child(right ? Int(node.num) - 1 : 0)).node
         let other = try reader.bTreeNode(at: shorterPtr)
         var sub = right ? try bTreeMergeNodes(end, other) : try bTreeMergeNodes(other, end)
 
@@ -539,8 +539,8 @@ extension Database {
     private func bTreeSubtree(_ node: BTreeNode, from: Int, to: Int) throws(XitDBError) -> UInt64 {
         if to == from { return try bTreeNewRoot() }
         if to - from == 1 {
-            guard node.children[from].tag == .index else { throw .invalidBTreeNode }
-            return node.children[from].value
+            guard node.child(from).tag == .index else { throw .invalidBTreeNode }
+            return node.child(from).value
         }
         var entries = BTreeEntries()
         entries.append(node, from: from, to: to)

@@ -20,9 +20,9 @@ struct SortedEntries {
     mutating func append(_ node: SortedNode, from: Int, to: Int) {
         for index in from..<to {
             if node.kind == .leaf {
-                append(node.entries[index])
+                append(node.entry(index))
             } else {
-                append(node.children[index], separator: node.separators[index], count: node.counts[index])
+                append(node.child(index), separator: node.separator(index), count: node.count(index))
             }
         }
     }
@@ -39,11 +39,11 @@ struct SortedEntries {
         var node = SortedNode(kind: kind, num: UInt8(to - from))
         for index in from..<to {
             if kind == .leaf {
-                node.entries[index - from] = slots[index]
+                node.setEntry(slots[index], at: index - from)
             } else {
-                node.children[index - from] = slots[index]
-                node.separators[index - from] = separators[index]
-                node.counts[index - from] = counts[index]
+                node.setChild(slots[index], at: index - from)
+                node.setSeparator(separators[index], at: index - from)
+                node.setCount(counts[index], at: index - from)
             }
         }
         return node
@@ -168,7 +168,7 @@ extension DatabaseReader {
         var high = Int(node.num)
         while low < high {
             let mid = (low + high) / 2
-            switch try compareKey(node.separators[mid], to: key) {
+            switch try compareKey(node.separator(mid), to: key) {
             case .less, .equal: low = mid + 1
             case .greater: high = mid
             }
@@ -183,7 +183,7 @@ extension DatabaseReader {
         var high = Int(node.num)
         while low < high {
             let mid = (low + high) / 2
-            let pair = try sortedEntryPair(node.entries[mid])
+            let pair = try sortedEntryPair(node.entry(mid))
             switch try compareKey(pair.keySlot, to: key) {
             case .equal: return (mid, true)
             case .less: low = mid + 1
@@ -201,8 +201,8 @@ extension DatabaseReader {
     {
         guard node.num > 0 else { throw .invalidBTreeNode }
         let index = try sortedBranchSearch(node, key: key)
-        guard node.children[index].tag == .index else { throw .invalidBTreeNode }
-        return (index, node.children[index].value)
+        guard node.child(index).tag == .index else { throw .invalidBTreeNode }
+        return (index, node.child(index).value)
     }
 
     /// The entry for `key` in the tree at `rootPtr`, or `nil`: Zig's
@@ -214,7 +214,7 @@ extension DatabaseReader {
             switch node.kind {
             case .leaf:
                 let search = try sortedLeafSearch(node, key: key)
-                return search.found ? node.entries[search.index] : nil
+                return search.found ? node.entry(search.index) : nil
             case .branch:
                 nodePtr = try sortedChild(of: node, key: key).position
             }
@@ -236,7 +236,7 @@ extension DatabaseReader {
             case .branch:
                 let (index, position) = try sortedChild(of: node, key: key)
                 for below in 0..<index {
-                    rank &+= node.counts[below]
+                    rank &+= node.count(below)
                 }
                 nodePtr = position
             }
@@ -331,9 +331,9 @@ extension Database {
             }
             guard node.num > 0 else { throw .invalidBTreeNode }
             let index = try reader.sortedBranchSearch(node, key: key)
-            guard node.children[index].tag == .index else { throw .invalidBTreeNode }
+            guard node.child(index).tag == .index else { throw .invalidBTreeNode }
             branches.append(SortedFrame(position: nodePtr, node: node, index: index))
-            nodePtr = node.children[index].value
+            nodePtr = node.child(index).value
         }
         throw .invalidBTreeNode
     }
@@ -356,7 +356,7 @@ extension Database {
         let search = try reader.sortedLeafSearch(leaf, key: key)
         var result: SortedInsertResult
         if search.found {
-            var entry = leaf.entries[search.index]
+            var entry = leaf.entry(search.index)
             if keyOnly {
                 result = SortedInsertResult(
                     nodePtr: leafPtr, count: UInt64(leaf.num), entry: entry, added: false, split: nil)
@@ -369,7 +369,7 @@ extension Database {
                     entry = try writeSortedPairRecord(entry.tag, try reader.sortedEntryPair(entry))
                 }
                 var written = leaf
-                written.entries[search.index] = entry
+                written.setEntry(entry, at: search.index)
                 let ptr = try writeNodeVersion(written, oldPtr: leafPtr, frozenAt: frozenAt)
                 result = SortedInsertResult(
                     nodePtr: ptr, count: UInt64(leaf.num), entry: entry, added: false, split: nil)
@@ -407,13 +407,13 @@ extension Database {
 
         for frame in branches.reversed() {
             // Nothing below changed: this branch, and all above it, stay.
-            if !result.added, result.nodePtr == frame.node.children[frame.index].value {
+            if !result.added, result.nodePtr == frame.node.child(frame.index).value {
                 return SortedInsertResult(nodePtr: rootPtr, count: 0, entry: result.entry, added: false, split: nil)
             }
             var entries = SortedEntries()
             entries.append(frame.node, from: 0, to: frame.index)
             entries.append(
-                Slot(value: result.nodePtr, tag: .index), separator: frame.node.separators[frame.index],
+                Slot(value: result.nodePtr, tag: .index), separator: frame.node.separator(frame.index),
                 count: result.count)
             if let split = result.split {
                 entries.append(Slot(value: split.nodePtr, tag: .index), separator: split.separator, count: split.count)
@@ -450,12 +450,12 @@ extension Database {
     func sortedGrowRoot(_ result: SortedInsertResult) throws(XitDBError) -> UInt64 {
         guard let split = result.split else { return result.nodePtr }
         var root = SortedNode(kind: .branch, num: 2)
-        root.children[0] = Slot(value: result.nodePtr, tag: .index)
-        root.children[1] = Slot(value: split.nodePtr, tag: .index)
+        root.setChild(Slot(value: result.nodePtr, tag: .index), at: 0)
+        root.setChild(Slot(value: split.nodePtr, tag: .index), at: 1)
         // separators[0] is an unused sentinel
-        root.separators[1] = split.separator
-        root.counts[0] = result.count
-        root.counts[1] = split.count
+        root.setSeparator(split.separator, at: 1)
+        root.setCount(result.count, at: 0)
+        root.setCount(split.count, at: 1)
         return try appendNode(root)
     }
 
@@ -478,20 +478,20 @@ extension Database {
 
         var written = SortedNode(kind: .leaf, num: leaf.num - 1)
         for index in 0..<search.index {
-            written.entries[index] = leaf.entries[index]
+            written.setEntry(leaf.entry(index), at: index)
         }
         for index in search.index..<(Int(leaf.num) - 1) {
-            written.entries[index] = leaf.entries[index + 1]
+            written.setEntry(leaf.entry(index + 1), at: index)
         }
         var childPtr = try writeNodeVersion(written, oldPtr: leafPtr, frozenAt: frozenAt)
 
         for frame in branches.reversed() {
             var branch = frame.node
-            branch.children[frame.index] = Slot(value: childPtr, tag: .index)
+            branch.setChild(Slot(value: childPtr, tag: .index), at: frame.index)
             // A count that is already zero disagrees with the entry just
             // found beneath it.
-            guard branch.counts[frame.index] > 0 else { throw .invalidBTreeNode }
-            branch.counts[frame.index] -= 1
+            guard branch.count(frame.index) > 0 else { throw .invalidBTreeNode }
+            branch.setCount(branch.count(frame.index) - 1, at: frame.index)
             childPtr = try writeNodeVersion(branch, oldPtr: frame.position, frozenAt: frozenAt)
         }
         return (childPtr, true)

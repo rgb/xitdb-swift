@@ -6,8 +6,14 @@
 protocol RankedNode {
     var kind: BTreeNodeKind { get }
     var num: UInt8 { get }
+    /// All sixteen children of a branch, for a walk that keeps the block.
     var children: InlineArray<16, Slot> { get }
-    var counts: InlineArray<16, UInt64> { get }
+
+    /// The child at `index` of a branch.
+    func child(_ index: Int) -> Slot
+
+    /// The number of elements beneath the child at `index` of a branch.
+    func count(_ index: Int) -> UInt64
 
     /// The number of bytes the node takes in the file, by its kind.
     var byteCount: UInt64 { get }
@@ -31,10 +37,8 @@ protocol RankedNode {
 }
 
 extension BTreeNode: RankedNode {
-    static let countsOffset = 146
-
     func leafSlot(at index: Int) -> Slot {
-        values[index]
+        value(index)
     }
 
     static func validate(_ bytes: Span<UInt8>, kind: BTreeNodeKind) throws(XitDBError) {
@@ -46,10 +50,8 @@ extension BTreeNode: RankedNode {
 }
 
 extension SortedNode: RankedNode {
-    static let countsOffset = 290
-
     func leafSlot(at index: Int) -> Slot {
-        entries[index]
+        entry(index)
     }
 
     static func validate(_ bytes: Span<UInt8>, kind: BTreeNodeKind) throws(XitDBError) {
