@@ -108,10 +108,6 @@ import Testing
 /// The shared fixture `test.db`, written by another implementation with
 /// SHA-1 keys, read through the engine: every moment of it. It holds the two
 /// transactions of the Zig test "high level api" (test.zig lines 221 to 500).
-///
-/// The elements of the `todos` linked array list are not read here: that
-/// needs the linked array list's parts, which arrive with milestone M5. Its
-/// count, which is in its header, is read.
 @Suite struct FixtureDatabaseTests {
     let database: Database
 
@@ -178,9 +174,20 @@ import Testing
             }
         }
 
+        // todos was appended to twice, had "Wash the car" inserted at 1, and
+        // then a map inserted at 1 and removed again
         let todos = try value(moment, "todos")
         #expect(try todos.slot().tag == .linkedArrayList)
         #expect(try todos.count() == 3)
+        let todoTexts = try (0..<3).map { try text(try #require(try todos.readPath([.linkedArrayListGet($0)]))) }
+        #expect(todoTexts == ["Pay the bills", "Wash the car", "Get an oil change"])
+        #expect(try todos.readPath([.linkedArrayListGet(3)]) == nil)
+        #expect(try todos.readPath([.linkedArrayListGet(-4)]) == nil)
+        #expect(try text(try #require(try todos.readPath([.linkedArrayListGet(-1)]))) == "Get an oil change")
+        // each is longer than eight bytes, so none is in its slot
+        for index in Int64(0)..<3 {
+            #expect(try #require(try todos.readPathSlot([.linkedArrayListGet(index)])).tag == .bytes)
+        }
 
         let countedMap = try value(moment, "letters-counted-map")
         #expect(try countedMap.slot().tag == .countedHashMap)
@@ -246,7 +253,19 @@ import Testing
         let bob = try #require(try people.readPath([.arrayListGet(1)]))
         #expect(try value(bob, "age").readUint() == 42)
 
-        #expect(try value(moment, "todos").count() == 1)
+        // todos was concatenated with itself, cut down to its second and
+        // third elements, and had the second of those removed
+        let todos = try value(moment, "todos")
+        #expect(try todos.slot().tag == .linkedArrayList)
+        #expect(try todos.count() == 1)
+        #expect(try text(try #require(try todos.readPath([.linkedArrayListGet(0)]))) == "Wash the car")
+        #expect(try text(try #require(try todos.readPath([.linkedArrayListGet(-1)]))) == "Wash the car")
+        #expect(try todos.readPath([.linkedArrayListGet(1)]) == nil)
+        #expect(try todos.readPath([.linkedArrayListGet(-2)]) == nil)
+        // the element's bytes are shared with the first moment
+        let firstTodos = try value(try self.moment(0), "todos")
+        #expect(
+            try todos.readPathSlot([.linkedArrayListGet(0)]) == (try firstTodos.readPathSlot([.linkedArrayListGet(1)])))
 
         let countedMap = try value(moment, "letters-counted-map")
         #expect(try countedMap.count() == 1)
@@ -302,10 +321,9 @@ import Testing
 }
 
 /// Port of the Zig test "not using arraylist at the top level" (test.zig
-/// lines 69 to 109), the hash map half. Zig uses the `HashMap` wrapper, each
-/// of whose methods is one path call; the path calls are written out here.
-///
-/// The linked array list half (lines 98 to 108) waits for milestone M5.
+/// lines 69 to 109). In the hash map half Zig uses the `HashMap` wrapper,
+/// each of whose methods is one path call; the path calls are written out
+/// here. The linked array list half uses the collection, as Zig does.
 @Suite struct NotUsingAnArrayListAtTheTopLevelTests {
     @Test func aHashMapAtTheRoot() throws {
         let storage = MemoryStorage(maxSize: 50000)
@@ -330,6 +348,16 @@ import Testing
             try #require(try root.readPath([.hashMapGet(.value, sha1("foo"))])).readBytesAlloc() == Array("foo".utf8))
         #expect(
             try #require(try root.readPath([.hashMapGet(.value, sha1("bar"))])).readBytesAlloc() == Array("bar".utf8))
+    }
+
+    /// test.zig 98-108: the linked array list half.
+    @Test func aLinkedArrayListAtTheRoot() throws {
+        let storage = MemoryStorage(maxSize: 50000)
+        let database = try Database(storage: storage, hashSize: 20)
+
+        let list = try LinkedArrayList<ReadWrite>(database.rootCursor())
+        try list.append(.uint(1))
+        #expect(try list.count() == 1)
     }
 }
 

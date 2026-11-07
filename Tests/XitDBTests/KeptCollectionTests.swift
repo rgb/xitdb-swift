@@ -1,0 +1,333 @@
+import Testing
+
+@testable import XitDB
+
+// A port of the tests "collections kept across a freeze" and "invalid b-tree nodes" that the fix branch of the
+// Zig original (`xitdb-fixes`) added in commit a395cf0; the line numbers are those of that branch's test.zig at
+// that commit (lines 3912 to 4247). Both pin that a collection whose header disagrees with its tree gets
+// `InvalidBTreeNode`, which the Swift port has from the start.
+//
+// Zig runs each test on one memory database, appending a moment to its history for every block and every
+// `Freeze` value. Here each block is a test, and each of its moments a test case, with the storage kind and the
+// `Freeze` value as the arguments: the blocks do not read what the ones before them wrote, each starting from
+// `.{ .slot = null }`, so every test case makes a database of its own. The tests run on the memory, file and
+// buffered-file storages, so that the errors come at the same calls on each.
+//
+// The comments inside the tests are Zig's. Zig's `Ctx` structs with a `run` method are the trailing closures
+// of `appendContext` here; `cursor.db.freeze()` is `cursor.database.freeze()`, `list.?` is `#require(list)`,
+// and `expectError(error.X, call)` is `#expect(throws: XitDBError.x) { call }`. Zig's `error.InvalidCount`,
+// for a counted hash map whose count disagrees with its entries, is `invalidDatabase` in the port, which has no
+// `InvalidCount`. Where Zig damages bytes of the file through `db.core.writer()`, the bytes are written to the
+// storage directly. Zig's allocator and `buffer` lines have no counterpart.
+//
+// Left out, with what each part tests and the feature it waits for:
+//
+// - The `.concat` value of the first two blocks of "collections kept across a freeze" (3981-3983 and 4006-4008,
+//   for that value of `Freeze`). Those two moments need the fix branch's concat, which freezes the transaction
+//   after its join (commit b12b8bd, before a395cf0), so that the joined nodes are copied before they are changed.
+//   The port keeps the original's concat, which freezes before the join, until parity (decision D18;
+//   `LinkedArrayListParts.swift`). With the original's concat, a list initialized again after `list.concat`
+//   shares the joined nodes with the kept list and changes them in place: in the first block the clone reads
+//   [2, 3, 4] where Zig expects [1, 2, 4] (3977), and in the second `list.append(.{ .uint = 3 })` fails with
+//   `invalidBTreeNode` where Zig expects it to succeed (4001). The other two `Freeze` values of those blocks,
+//   and all three of the blocks after them, agree with Zig and are ported.
+// - 4082-4121, in "collections kept across a freeze": "a sorted map has a header over a tree too", a kept
+//   `SortedMap` whose header counts keys its tree does not have. Sorted maps (M6).
+// - 4200, 4204, 4218-4219, 4227-4228, 4236 and 4242, in "invalid b-tree nodes": the sorted map `map`, filled
+//   alongside the list, its root node's first count set to zero, and `map.remove("k00")` expected to fail with
+//   `InvalidBTreeNode`. Sorted maps (M6).
+//
+// Everything else in those lines is ported.
+
+/// Zig's "collections kept across a freeze" (test.zig 3919-4179) and "invalid b-tree nodes" (4181-4247).
+///
+/// Zig's comment on the first: a freeze makes everything the transaction wrote so far immutable. that includes
+/// the header of every collection and the entry that points at it, which is why collections must be initialized
+/// again after `Database.freeze`, and after a concat, which freezes too. a collection that is kept instead
+/// still writes through its old header and its old entry. this is what that does: its writes are lost or
+/// shared, and when its header ends up disagreeing with its tree, it gets an error.
+@Suite struct KeptCollectionTests {
+    /// The storage kinds the tests run on.
+    static let storageKinds: [StorageKind] = [.memory, .file, .bufferedFile]
+
+    /// Zig's `xitdb.SLOT_COUNT`.
+    private static let slotCount: UInt64 = Trie.slotsPerBlock
+
+    /// Zig's `Freeze` (test.zig 3932-3946): `Database.freeze`, a concat of `list`, or a concat of another
+    /// list.
+    enum Freeze: CaseIterable, Sendable, CustomTestStringConvertible {
+        case database
+        case concat
+        case concatElsewhere
+
+        var testDescription: String {
+            switch self {
+            case .database: "database"
+            case .concat: "concat"
+            case .concatElsewhere: "concat_elsewhere"
+            }
+        }
+
+        /// test.zig 3938-3945: `Freeze.run`.
+        func run(_ cursor: Cursor<ReadWrite>, _ moment: HashMap<ReadWrite>, _ list: LinkedArrayList<ReadWrite>?) throws
+        {
+            let other = try LinkedArrayList<ReadWrite>(try moment.putCursor(sha1("other").bytes))
+            switch self {
+            case .database: try cursor.database.freeze()
+            case .concat: try #require(list).concat(try other.slot())
+            case .concatElsewhere: try other.concat(try other.slot())
+            }
+        }
+    }
+
+    /// `std.enums.values(Freeze)`: the `Freeze` values the blocks with a list run for.
+    static let allFreezes: [Freeze] = Freeze.allCases
+
+    /// `[_]Freeze{ .database, .concat_elsewhere }`: the values the blocks without a list run for.
+    static let freezesWithoutAList: [Freeze] = [.database, .concatElsewhere]
+
+    /// The values the first two blocks run for here: `std.enums.values(Freeze)` without `.concat`, whose
+    /// moments need the fix branch's concat (see the file's header).
+    static let freezesWithTheOriginalsConcat: [Freeze] = [.database, .concatElsewhere]
+
+    /// Zig's `hashInt(text)`: the SHA-1 of the text, as the twenty bytes the collections take.
+    private func hashInt(_ text: String) -> [UInt8] {
+        sha1(text).bytes
+    }
+
+    /// A `HashInt` (a `u160`) given as a number, as Zig's `0x01`: its twenty big-endian bytes.
+    private func hashNumber(_ value: UInt8) -> [UInt8] {
+        zeros(19) + [value]
+    }
+
+    /// test.zig 3912-3917: `expectUints`.
+    private func expectUints<Access>(_ list: LinkedArrayList<Access>, _ expected: [UInt64]) throws {
+        #expect(UInt64(expected.count) == (try list.count()))
+        for (i, value) in expected.enumerated() {
+            #expect(value == (try #require(try list.getCursor(Int64(i))).readUint()))
+        }
+    }
+
+    /// A database on a new storage, and its history.
+    private func makeHistory(_ kind: StorageKind) throws -> (subject: StorageUnderTest, history: ArrayList<ReadWrite>) {
+        let subject = try StorageUnderTest(kind)
+        let database = try Database(storage: subject.storage, hashSize: 20)
+        return (subject, try ArrayList<ReadWrite>(database.rootCursor()))
+    }
+
+    /// test.zig 3953-3984: a list that is initialized again is a copy of the one before the freeze, and a slot
+    /// read before the freeze keeps what it had.
+    ///
+    /// Left out: the `.concat` moment (see the file's header).
+    @Test(arguments: storageKinds, freezesWithTheOriginalsConcat)
+    func aListInitializedAgainIsACopyOfTheOneBeforeTheFreeze(kind: StorageKind, freeze: Freeze) throws {
+        let history = try makeHistory(kind).history
+
+        try history.appendContext(.slot(nil)) { cursor in
+            var moment = try HashMap<ReadWrite>(cursor)
+            var list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            try list.append(.uint(1))
+            try list.append(.uint(2))
+            let slotBefore = try list.slot()
+
+            try freeze.run(cursor, moment, list)
+            moment = try HashMap<ReadWrite>(cursor)
+            list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            try list.append(.uint(3))
+            try list.remove(0)
+            try expectUints(list, [2, 3])
+
+            var cloneCursor = try moment.putCursor(hashInt("clone"))
+            try cloneCursor.write(.slot(slotBefore))
+            let clone = try LinkedArrayList<ReadWrite>(cloneCursor)
+            try clone.append(.uint(4))
+            try expectUints(clone, [1, 2, 4])
+            try expectUints(list, [2, 3])
+        }
+    }
+
+    /// test.zig 3986-4009: a kept list writes through the entry it was made with. once the map has a new entry
+    /// for the list, it doesn't see what the kept list writes.
+    ///
+    /// Left out: the `.concat` moment (see the file's header).
+    @Test(arguments: storageKinds, freezesWithTheOriginalsConcat)
+    func aKeptListWritesThroughTheEntryItWasMadeWith(kind: StorageKind, freeze: Freeze) throws {
+        let history = try makeHistory(kind).history
+
+        try history.appendContext(.slot(nil)) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            try list.append(.uint(1))
+            try list.append(.uint(2))
+
+            try freeze.run(cursor, moment, list)
+            let listAgain = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            try listAgain.remove(0)
+            try list.append(.uint(3))
+            try expectUints(list, [1, 2, 3])
+            try expectUints(listAgain, [2])
+        }
+    }
+
+    /// test.zig 4011-4048: if the kept list writes before the list is initialized again, the second header is
+    /// a copy of the first, over a node that both can change in place. the kept list's header then counts
+    /// entries that the node doesn't have.
+    @Test(arguments: storageKinds, allFreezes)
+    func aKeptListThatWroteBeforeTheSecondInitDisagreesWithItsTree(kind: StorageKind, freeze: Freeze) throws {
+        let history = try makeHistory(kind).history
+
+        try history.appendContext(.slot(nil)) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            try list.append(.uint(1))
+            try list.append(.uint(2))
+            try list.append(.uint(3))
+
+            try freeze.run(cursor, moment, list)
+            try list.append(.uint(4))
+            try expectUints(list, [1, 2, 3, 4])
+            let listAgain = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            try listAgain.remove(0)
+            try listAgain.remove(0)
+            try expectUints(listAgain, [3, 4])
+
+            #expect(try list.count() == 4)
+            #expect(try #require(try list.getCursor(0)).readUint() == 3)
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.getCursor(2) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.append(.uint(5)) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.insert(3, .uint(5)) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.put(3, .uint(5)) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.remove(3) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.slice(offset: 0, size: 4) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.iteratorFrom(3) }
+            try expectUints(listAgain, [3, 4])
+        }
+    }
+
+    /// test.zig 4050-4080: a clone from before the freeze shares the kept list's header, so it changes with the
+    /// kept list. a clone from after the kept list's write gets a copy of the header, over the node that the
+    /// kept list can change in place.
+    @Test(arguments: storageKinds, allFreezes)
+    func aCloneFromBeforeTheFreezeSharesTheKeptListsHeader(kind: StorageKind, freeze: Freeze) throws {
+        let history = try makeHistory(kind).history
+
+        try history.appendContext(.slot(nil)) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            try list.append(.uint(1))
+            var earlyCursor = try moment.putCursor(hashInt("early"))
+            try earlyCursor.write(.slot(try list.slot()))
+
+            try freeze.run(cursor, moment, list)
+            try list.append(.uint(2))
+            let early = try LinkedArrayList<ReadOnly>(try #require(try moment.getCursor(hashInt("early"))))
+            try expectUints(early, [1, 2])
+
+            var lateCursor = try moment.putCursor(hashInt("late"))
+            try lateCursor.write(.slot(try list.slot()))
+            let late = try LinkedArrayList<ReadWrite>(lateCursor)
+            try late.remove(0)
+            try expectUints(late, [2])
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.append(.uint(3)) }
+        }
+    }
+
+    // test.zig 4082-4121, "a sorted map has a header over a tree too", waits for sorted maps (M6).
+
+    /// test.zig 4123-4153: a counted hash map's count is copied with its root block when it is initialized
+    /// again, and they share the blocks below.
+    @Test(arguments: storageKinds, freezesWithoutAList)
+    func aCountedHashMapsCountIsCopiedWithItsRootBlock(kind: StorageKind, freeze: Freeze) throws {
+        let history = try makeHistory(kind).history
+
+        try history.appendContext(.slot(nil)) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            let counted = try CountedHashMap<ReadWrite>(try moment.putCursor(hashInt("counted")))
+            // these hashes end with the same four bits, so they are in a block below the root
+            try counted.put(hashNumber(0x01), .uint(1))
+            try counted.put(hashNumber(0x11), .uint(2))
+
+            try freeze.run(cursor, moment, nil)
+            try counted.put(hashNumber(0x21), .uint(3))
+            let countedAgain = try CountedHashMap<ReadWrite>(try moment.putCursor(hashInt("counted")))
+            try counted.put(hashNumber(0x31), .uint(4))
+
+            // the second count is 3, in a map that has 4 keys
+            #expect(try countedAgain.count() == 3)
+            for hash in [UInt8(0x01), 0x11, 0x21] {
+                #expect(try countedAgain.remove(hashNumber(hash)))
+            }
+            #expect(try countedAgain.count() == 0)
+            #expect(throws: XitDBError.invalidDatabase) { try countedAgain.remove(hashNumber(0x31)) }
+        }
+    }
+
+    /// test.zig 4155-4178: an array list has no tree that its header could disagree with. a kept one shares
+    /// what it wrote after the freeze with the one that is initialized again.
+    @Test(arguments: storageKinds, freezesWithoutAList)
+    func anArrayListHasNoTreeItsHeaderCouldDisagreeWith(kind: StorageKind, freeze: Freeze) throws {
+        let history = try makeHistory(kind).history
+
+        try history.appendContext(.slot(nil)) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            let array = try ArrayList<ReadWrite>(try moment.putCursor(hashInt("array")))
+            for i in 0..<20 {
+                try array.append(.uint(UInt64(i)))
+            }
+
+            try freeze.run(cursor, moment, nil)
+            try array.append(.uint(20))
+            let arrayAgain = try ArrayList<ReadWrite>(try moment.putCursor(hashInt("array")))
+            try arrayAgain.put(20, .uint(99))
+            #expect(try #require(try array.getCursor(20)).readUint() == 99)
+        }
+    }
+
+    /// test.zig 4181-4247: "invalid b-tree nodes". Zig's comment: a node that doesn't have what its parent
+    /// expects of it is an error as well.
+    ///
+    /// Left out: the sorted map at 4200, 4204, 4218-4219, 4227-4228, 4236 and 4242 (M6).
+    @Test(arguments: storageKinds)
+    func invalidBTreeNodes(kind: StorageKind) throws {
+        let (subject, history) = try makeHistory(kind)
+
+        // a list and a sorted map with enough entries for their root to be a branch
+        try history.appendContext(.slot(nil)) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            for i in 0..<(Self.slotCount + 1) {
+                try list.append(.uint(i))
+            }
+            let shortList = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("short-list")))
+            try shortList.append(.uint(0))
+        }
+
+        // a header is the size followed by the position of the root node
+        let committed = try HashMap<ReadOnly>(try #require(try history.getCursor(-1)))
+        let listHeader = try #require(try committed.getSlot(hashInt("list"))).value
+        let listRoot = bigEndian(try readBytes(subject.storage, at: listHeader + 8, count: 8))
+
+        // a node is its kind, its number of entries, and then its slots. change the
+        // list's root to have no children, and the sorted map's root to count no
+        // keys below its first child (the counts follow the children and separators).
+        try writeBytes(subject.storage, [0], at: listRoot + 1)
+        try subject.storage.flush()
+
+        try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            let shortList = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("short-list")))
+
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.remove(0) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.slice(offset: 1, size: 2) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try list.concat(try shortList.slot()) }
+            #expect(throws: XitDBError.invalidBTreeNode) { try shortList.concat(try list.slot()) }
+        }
+    }
+
+    /// Zig's `takeInt(u64, .big)`: the number that eight big-endian bytes hold.
+    private func bigEndian(_ bytes: [UInt8]) -> UInt64 {
+        precondition(bytes.count == 8)
+        return bytes.reduce(0) { $0 << 8 | UInt64($1) }
+    }
+}

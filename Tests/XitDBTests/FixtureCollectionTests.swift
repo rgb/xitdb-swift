@@ -6,10 +6,6 @@ import Testing
 /// same values that `FixtureDatabaseTests` reads through the path API, with
 /// the maps, lists and sets, their iterators, `readKeyValuePair` and the
 /// byte reader.
-///
-/// The elements of the `todos` linked array list are not read here: that
-/// needs the linked array list, which arrives with milestone M5. Its count,
-/// which is in its header, is read through its cursor.
 @Suite struct FixtureCollectionTests {
     let database: Database
 
@@ -38,14 +34,25 @@ import Testing
         String(decoding: try cursor.readBytesAlloc(maxSize: 1024), as: UTF8.self)
     }
 
-    /// The texts of a list's elements, through its iterator.
-    private func texts(_ list: ArrayList<ReadOnly>) throws -> [String] {
+    /// The texts of the elements an iterator gives.
+    private func texts(_ iter: inout Cursor<ReadOnly>.Iter) throws -> [String] {
         var names: [String] = []
-        var iter = try list.iterator()
         while let element = try iter.next() {
             names.append(try text(element))
         }
         return names
+    }
+
+    /// The texts of a list's elements, through its iterator.
+    private func texts(_ list: ArrayList<ReadOnly>) throws -> [String] {
+        var iter = try list.iterator()
+        return try texts(&iter)
+    }
+
+    /// The texts of a linked list's elements, through its iterator.
+    private func texts(_ list: LinkedArrayList<ReadOnly>) throws -> [String] {
+        var iter = try list.iterator()
+        return try texts(&iter)
     }
 
     /// The hashes of a map's or set's entries, through its iterator.
@@ -158,11 +165,34 @@ import Testing
             #expect(try #require(found["age"]).readUint() == (try value(person, "age").readUint()))
         }
 
-        let todos = try value(moment, "todos")
-        #expect(try todos.slot().tag == .linkedArrayList)
+        // todos was appended to twice, had "Wash the car" inserted at 1, and
+        // then a map inserted at 1 and removed again
+        let todosCursor = try value(moment, "todos")
+        #expect(try todosCursor.slot().tag == .linkedArrayList)
+        let todos = try LinkedArrayList<ReadOnly>(todosCursor)
         #expect(try todos.count() == 3)
-        // the list kinds the port has refuse it
-        #expect(throws: XitDBError.unexpectedTag) { try ArrayList<ReadOnly>(todos) }
+        let todoTexts = try (0..<3).map { try text(try #require(try todos.getCursor($0))) }
+        #expect(todoTexts == ["Pay the bills", "Wash the car", "Get an oil change"])
+        #expect(try todos.getCursor(3) == nil)
+        #expect(try todos.getSlot(3) == nil)
+        #expect(try todos.getCursor(-4) == nil)
+        #expect(try text(try #require(try todos.getCursor(-1))) == "Get an oil change")
+        #expect(try todos.getSlot(-1) == (try todos.getSlot(2)))
+        // each is longer than eight bytes, so none is in its slot
+        for index in Int64(0)..<3 {
+            #expect(try #require(try todos.getSlot(index)).tag == .bytes)
+        }
+        #expect(try texts(todos) == ["Pay the bills", "Wash the car", "Get an oil change"])
+        var fromWash = try todos.iteratorFrom(1)
+        #expect(try texts(&fromWash) == ["Wash the car", "Get an oil change"])
+        var fromLastTodo = try todos.iteratorFrom(-1)
+        #expect(try texts(&fromLastTodo) == ["Get an oil change"])
+        var fromBeyond = try todos.iteratorFrom(3)
+        #expect(try fromBeyond.next() == nil)
+        // the other list kind refuses it, and it refuses the other kinds
+        #expect(throws: XitDBError.unexpectedTag) { try ArrayList<ReadOnly>(todosCursor) }
+        #expect(throws: XitDBError.unexpectedTag) { try LinkedArrayList<ReadOnly>(try value(moment, "fruits")) }
+        #expect(throws: XitDBError.unexpectedTag) { try LinkedArrayList<ReadOnly>(momentCursor) }
 
         let countedMap = try CountedHashMap<ReadOnly>(try value(moment, "letters-counted-map"))
         #expect(try countedMap.slot().tag == .countedHashMap)
@@ -291,7 +321,20 @@ import Testing
         let bob = try HashMap<ReadOnly>(try #require(try people.getCursor(1)))
         #expect(try value(bob, "age").readUint() == 42)
 
-        #expect(try value(moment, "todos").count() == 1)
+        // todos was concatenated with itself, cut down to its second and
+        // third elements, and had the second of those removed
+        let todos = try LinkedArrayList<ReadOnly>(try value(moment, "todos"))
+        #expect(try todos.count() == 1)
+        #expect(try text(try #require(try todos.getCursor(0))) == "Wash the car")
+        #expect(try text(try #require(try todos.getCursor(-1))) == "Wash the car")
+        #expect(try todos.getCursor(1) == nil)
+        #expect(try todos.getCursor(-2) == nil)
+        #expect(try texts(todos) == ["Wash the car"])
+        var fromLastTodo = try todos.iteratorFrom(-1)
+        #expect(try texts(&fromLastTodo) == ["Wash the car"])
+        // the element's bytes are shared with the first moment
+        let firstTodos = try LinkedArrayList<ReadOnly>(try value(try self.moment(0), "todos"))
+        #expect(try todos.getSlot(0) == (try firstTodos.getSlot(1)))
 
         let countedMap = try CountedHashMap<ReadOnly>(try value(moment, "letters-counted-map"))
         #expect(try countedMap.count() == 1)

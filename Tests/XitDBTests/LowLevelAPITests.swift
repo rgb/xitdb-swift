@@ -6,6 +6,9 @@ import Testing
 // goes today. Zig runs it once for each of the memory, file and buffered-file databases (test.zig 38-67), so
 // every test here takes the storage kind as its argument.
 //
+// Lines 2576-2599 call `testSlice`, `testConcat` and `testInsertAndRemove` (test.zig 958-1312) for several
+// sizes and offsets. Those are ported in `LinkedArrayListTests`, with each call as a test case of its own.
+//
 // The tests are in the order of the Zig function, one for each of its top-level blocks, and each one says which
 // lines it ports. The comments inside them are Zig's. Where Zig clears the storage and makes a database, a test
 // makes a new storage and a database in it. Zig's allocator arguments and `defer allocator.free` lines have no
@@ -24,25 +27,21 @@ import Testing
 // - 2506-2524, in "iterate over inner array_list" (commits f1550c2 and 7312ad8): a slot set to nothing reads
 //   as empty bytes into any buffer, and streams as nothing.
 //
-// Left out, with what each part tests and the feature it waits for:
+// Left out, with what it tests and the feature it waits for:
 //
 // - 3650-3675 of the fix branch's test.zig, in `testSortedMap` (commit 1486fbf): a short key of a sorted set,
 //   whose cursor has no position, read with a reader. Sorted maps and sets (M6).
-// - 2576-2599: `testSlice`, `testConcat` and `testInsertAndRemove` (test.zig 958-1312), which slice,
-//   concatenate, insert into and remove from linked array lists. Linked array lists (M5).
-// - 2601-2688, "concat linked_array_list multiple times": concatenates a linked array list with itself sixteen
-//   times and appends to the result. Linked array lists (M5).
-// - 2690-2718, "append items to linked_array_list without setting their value". Linked array lists (M5).
-// - 2720-2745, "insert at beginning of linked_array_list many times". Linked array lists (M5).
-// - 2747-2772, "insert at end of linked_array_list many times". Linked array lists (M5).
 //
 // Everything else in lines 1313 to 2774 is ported.
 //
 // Beyond what Zig asserts, the tests check the length of the storage at the points where a run of the Zig test
-// was made to print it (a copy of the fix branch's test.zig with prints added, run with Zig 0.17.1 against that
-// branch's lib.zig; the fix branch's extra transaction in "array_list of hash_maps" moves the numbers after it):
-// the lengths are the same on Zig's three kinds of database. They pin how much a transaction appends, which
-// the values read back do not show: an engine that copied more than Zig does would still read back right.
+// was made to print it (a copy of test.zig with prints added, run with Zig 0.17.1 against the lib.zig next to
+// it): the lengths are the same on Zig's three kinds of database. They pin how much a transaction appends, which
+// the values read back do not show: an engine that copied more than Zig does would still read back right. The
+// numbers in the tests up to "iterate over inner hash_map" come from the fix branch (`xitdb-fixes`); the fix
+// branch's extra transaction in "array_list of hash_maps" moves the numbers after it, so that block's are not
+// the original's. The numbers in the four linked array list tests at the end come from the original repository
+// (`xitdb`, at commit 6b93af1), whose concat the port reproduces.
 
 /// Zig's "low level api" test: the path API used directly.
 @Suite struct LowLevelAPITests {
@@ -1536,5 +1535,197 @@ import Testing
         #expect(try subject.storage.length() == 6258)
     }
 
-    // test.zig 2576-2772 is left out as a whole: every block in it is about linked array lists (M5).
+    // test.zig 2576-2599, the calls of `testSlice`, `testConcat` and `testInsertAndRemove`, are ported in
+    // `LinkedArrayListTests`.
+
+    /// test.zig 2601-2688: "concat linked_array_list multiple times".
+    @Test(arguments: storageKinds)
+    func concatsALinkedArrayListMultipleTimes(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let database = try Database(storage: subject.storage, hashSize: 20)
+        let rootCursor = database.rootCursor()
+
+        _ = try rootCursor.writePath([
+            .arrayListInit,
+            .arrayListAppend,
+            .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+            .hashMapInit(),
+            .ctx,
+        ]) { (cursor: inout Cursor<ReadWrite>) in
+            var values: [UInt64] = []
+
+            // create list
+            for i in 0..<UInt64(slotCount + 1) {
+                let n = i * 2
+                values.append(n)
+                _ = try cursor.writePath([
+                    .hashMapGet(.value, sha1("even")),
+                    .linkedArrayListInit,
+                    .linkedArrayListAppend,
+                    .write(.uint(n)),
+                ])
+            }
+
+            // get list slot
+            let evenListCursor = try #require(
+                try cursor.readPath([
+                    .hashMapGet(.value, sha1("even"))
+                ])
+            )
+            #expect(UInt64(slotCount + 1) == (try evenListCursor.count()))
+
+            // iterate over list
+            let innerCursor = try #require(
+                try cursor.readPath([
+                    .hashMapGet(.value, sha1("even"))
+                ])
+            )
+            var iter = try innerCursor.iterator()
+            var i: UInt64 = 0
+            while try iter.next() != nil {
+                i += 1
+            }
+            #expect(UInt64(slotCount + 1) == i)
+
+            // concat the list with itself multiple times.
+            // since each list has 17 items, each concat
+            // will create a gap, causing a root overflow
+            // before a normal array list would've.
+            var comboListCursor = try cursor.writePath([
+                .hashMapGet(.value, sha1("combo")),
+                .write(.slot(evenListCursor.slotPointer.slot)),
+                .linkedArrayListInit,
+            ])
+            for _ in 0..<16 {
+                comboListCursor = try comboListCursor.writePath([
+                    .linkedArrayListConcat(evenListCursor.slotPointer.slot)
+                ])
+            }
+
+            // append to the new list
+            _ = try cursor.writePath([
+                .hashMapGet(.value, sha1("combo")),
+                .linkedArrayListAppend,
+                .write(.uint(3)),
+            ])
+
+            // read the new value from the list
+            #expect(
+                try #require(
+                    try cursor.readPath([
+                        .hashMapGet(.value, sha1("combo")),
+                        .linkedArrayListGet(-1),
+                    ])
+                ).slotPointer.slot.value == 3
+            )
+
+            // append more to the new list
+            for _ in 0..<500 {
+                _ = try cursor.writePath([
+                    .hashMapGet(.value, sha1("combo")),
+                    .linkedArrayListAppend,
+                    .write(.uint(1)),
+                ])
+            }
+        }
+
+        // the length of the storage here in a run of the original's Zig test, on every kind of storage
+        #expect(try subject.storage.length() == 20706)
+    }
+
+    /// test.zig 2690-2718: "append items to linked_array_list without setting their value".
+    @Test(arguments: storageKinds)
+    func appendsItemsToALinkedArrayListWithoutSettingTheirValue(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let database = try Database(storage: subject.storage, hashSize: 20)
+        let rootCursor = database.rootCursor()
+
+        // appending without setting any value should work
+        for _ in 0..<8 {
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .linkedArrayListInit,
+                .linkedArrayListAppend,
+            ])
+        }
+
+        // explicitly writing a null slot should also work
+        for _ in 0..<8 {
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .linkedArrayListInit,
+                .linkedArrayListAppend,
+                .write(.slot(nil)),
+            ])
+        }
+
+        // the length of the storage here in a run of the original's Zig test, on every kind of storage
+        #expect(try subject.storage.length() == 5758)
+    }
+
+    /// test.zig 2720-2745: "insert at beginning of linked_array_list many times".
+    @Test(arguments: storageKinds)
+    func insertsAtTheBeginningOfALinkedArrayListManyTimes(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let database = try Database(storage: subject.storage, hashSize: 20)
+        let rootCursor = database.rootCursor()
+
+        _ = try rootCursor.writePath([
+            .arrayListInit,
+            .arrayListAppend,
+            .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+            .linkedArrayListInit,
+            .linkedArrayListAppend,
+            .write(.uint(42)),
+        ])
+
+        for i in 0..<UInt64(1_000) {
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .linkedArrayListInit,
+                .linkedArrayListInsert(0),
+                .write(.uint(i)),
+            ])
+        }
+
+        // the length of the storage here in a run of the original's Zig test, on every kind of storage
+        #expect(try subject.storage.length() == 1_127_690)
+    }
+
+    /// test.zig 2747-2772: "insert at end of linked_array_list many times".
+    @Test(arguments: storageKinds)
+    func insertsAtTheEndOfALinkedArrayListManyTimes(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let database = try Database(storage: subject.storage, hashSize: 20)
+        let rootCursor = database.rootCursor()
+
+        _ = try rootCursor.writePath([
+            .arrayListInit,
+            .arrayListAppend,
+            .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+            .linkedArrayListInit,
+            .linkedArrayListAppend,
+            .write(.uint(42)),
+        ])
+
+        for i in 0..<UInt64(1_000) {
+            _ = try rootCursor.writePath([
+                .arrayListInit,
+                .arrayListAppend,
+                .write(.slot(try rootCursor.readPathSlot([.arrayListGet(-1)]))),
+                .linkedArrayListInit,
+                .linkedArrayListInsert(Int64(i)),
+                .write(.uint(i)),
+            ])
+        }
+
+        // the length of the storage here in a run of the original's Zig test, on every kind of storage
+        #expect(try subject.storage.length() == 1_134_666)
+    }
 }

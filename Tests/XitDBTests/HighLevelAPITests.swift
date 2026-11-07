@@ -3,10 +3,10 @@ import Testing
 @testable import XitDB
 
 // A port of `testHighLevelApi` from the Zig original (`src/test.zig`, lines 216 to 957), of "hash map with u64
-// hashes" (lines 2936 to 2954) and of the array-list half of `testIteratorFrom` (lines 3641 to 3755), through
-// the public collections. Zig runs the first and the last once for each of the memory, file and buffered-file
-// databases (test.zig 7-36 and 3641-3670), so those tests take the storage kind as their argument; the u64 test
-// runs on a memory database only, as in Zig.
+// hashes" (lines 2936 to 2954) and of `testIteratorFrom` (lines 3641 to 3755), through the public collections.
+// Zig runs the first and the last once for each of the memory, file and buffered-file databases (test.zig 7-36
+// and 3641-3670), so those tests take the storage kind as their argument; the u64 test runs on a memory
+// database only, as in Zig.
 //
 // The comments inside the tests are Zig's. Zig's `history.appendContext(.{ .slot = ... }, Ctx{})` with a `Ctx`
 // whose `run` method does the writing is `history.appendContext(.slot(...)) { cursor in ... }` here. Zig's
@@ -16,22 +16,10 @@ import Testing
 // Leaving a part out changes the file the test writes, so nothing here compares bytes or lengths with a run of
 // the Zig test; what remains is every assertion Zig makes on what is kept.
 //
-// Left out, with what each part tests and the feature it waits for:
+// Left out, with what it tests and the feature it waits for:
 //
-// - 262-271, in the first transaction: the `todos` linked array list, appended to, inserted into, given a map
-//   with `insertCursor`, and removed from. Linked array lists (M5).
-// - 346-353, 593-600 and 638-645: reading `todos` in the first moment, after the second transaction and after
-//   the slice: it has three elements and the first is "Pay the bills". Linked array lists (M5).
-// - 480-484, in the second transaction: `todos` concatenated with itself, sliced and removed from. Linked array
-//   lists (M5).
-// - 537-544: reading `todos` in the second moment: it has one element, "Wash the car". Linked array lists (M5).
-// - 816, 823, 832 and 843, in the freeze-callback loop: its `.linked_get` case, which writes the first element
-//   of a linked array list through a path and checks the list from the callback. Linked array lists (M5). The
-//   `.append` and `.slice` cases are ported.
 // - 853-955: the secondary index, a `SortedMap` from username to user ID paged through with
 //   `iteratorFromIndex` and searched by prefix with `iteratorFrom`. Sorted maps (M6).
-// - 3692-3695, 3709, 3726-3734 and 3752-3753, in `testIteratorFrom`: the `linked` list, filled with two hundred
-//   numbers and iterated from each start alongside the array list. Linked array lists (M5).
 //
 // Everything else in those lines is ported.
 //
@@ -113,8 +101,6 @@ import Testing
     }
 
     /// test.zig 221-449: the first transaction, and reading the moment it makes.
-    ///
-    /// Left out: `todos` at 262-271 and 346-353.
     private func writesTheFirstTransaction(_ database: Database) throws {
         // to get the benefits of immutability, the top-level data structure
         // must be an ArrayList, so each transaction is stored as an item in it
@@ -155,7 +141,16 @@ import Testing
             try bob.putKey(hashInt("age"), .bytes(utf8("age")))
             try bob.put(hashInt("age"), .uint(42))
 
-            // 262-271 left out: the `todos` linked array list (M5)
+            let todosCursor = try moment.putCursor(hashInt("todos"))
+            let todos = try LinkedArrayList<ReadWrite>(todosCursor)
+            try todos.append(.bytes(utf8("Pay the bills")))
+            try todos.append(.bytes(utf8("Get an oil change")))
+            try todos.insert(1, .bytes(utf8("Wash the car")))
+
+            // make sure `insertCursor` works as well
+            let todoCursor = try todos.insertCursor(1)
+            _ = try HashMap<ReadWrite>(todoCursor)
+            try todos.remove(1)
 
             let lettersCountedMapCursor = try moment.putCursor(hashInt("letters-counted-map"))
             let lettersCountedMap = try CountedHashMap<ReadWrite>(lettersCountedMapCursor)
@@ -230,7 +225,13 @@ import Testing
         let aliceAgeCursor = try #require(try alice.getCursor(hashInt("age")))
         #expect(try aliceAgeCursor.readUint() == 25)
 
-        // 346-353 left out: reading `todos` (M5)
+        let todosCursor = try #require(try moment.getCursor(hashInt("todos")))
+        let todos = try LinkedArrayList<ReadOnly>(todosCursor)
+        #expect(try todos.count() == 3)
+
+        let todoCursor = try #require(try todos.getCursor(0))
+        let todoValue = try todoCursor.readBytesAlloc(maxSize: maxReadBytes)
+        #expect(todoValue == utf8("Pay the bills"))
 
         var fruitsIter = try fruits.iterator()
         while let fruitCursor = try fruitsIter.next() {
@@ -334,8 +335,6 @@ import Testing
     }
 
     /// test.zig 451-558: "make a new transaction and change the data".
-    ///
-    /// Left out: `todos` at 480-484 and 537-544.
     private func changesTheDataInANewTransaction(_ database: Database) throws {
         let history = try ArrayList<ReadWrite>(database.rootCursor())
 
@@ -363,7 +362,11 @@ import Testing
             let alice = try HashMap<ReadWrite>(aliceCursor)
             try alice.put(hashInt("age"), .uint(26))
 
-            // 480-484 left out: `todos` concatenated, sliced and removed from (M5)
+            let todosCursor = try moment.putCursor(hashInt("todos"))
+            let todos = try LinkedArrayList<ReadWrite>(todosCursor)
+            try todos.concat(try todosCursor.slot())
+            try todos.slice(offset: 1, size: 2)
+            try todos.remove(1)
 
             let lettersCountedMapCursor = try moment.putCursor(hashInt("letters-counted-map"))
             let lettersCountedMap = try CountedHashMap<ReadWrite>(lettersCountedMapCursor)
@@ -412,7 +415,13 @@ import Testing
         let aliceAgeCursor = try #require(try alice.getCursor(hashInt("age")))
         #expect(try aliceAgeCursor.readUint() == 26)
 
-        // 537-544 left out: reading `todos` (M5)
+        let todosCursor = try #require(try moment.getCursor(hashInt("todos")))
+        let todos = try LinkedArrayList<ReadOnly>(todosCursor)
+        #expect(try todos.count() == 1)
+
+        let todoCursor = try #require(try todos.getCursor(0))
+        let todoValue = try todoCursor.readBytesAlloc(maxSize: maxReadBytes)
+        #expect(todoValue == utf8("Wash the car"))
 
         let lettersCountedMapCursor = try #require(try moment.getCursor(hashInt("letters-counted-map")))
         let lettersCountedMap = try CountedHashMap<ReadOnly>(lettersCountedMapCursor)
@@ -429,8 +438,6 @@ import Testing
     }
 
     /// test.zig 560-601: "the old data hasn't changed".
-    ///
-    /// Left out: `todos` at 593-600.
     private func theOldDataHasNotChanged(_ database: Database) throws {
         let history = try ArrayList<ReadWrite>(database.rootCursor())
 
@@ -461,12 +468,16 @@ import Testing
         let aliceAgeCursor = try #require(try alice.getCursor(hashInt("age")))
         #expect(try aliceAgeCursor.readUint() == 25)
 
-        // 593-600 left out: reading `todos` (M5)
+        let todosCursor = try #require(try moment.getCursor(hashInt("todos")))
+        let todos = try LinkedArrayList<ReadOnly>(todosCursor)
+        #expect(try todos.count() == 3)
+
+        let todoCursor = try #require(try todos.getCursor(0))
+        let todoValue = try todoCursor.readBytesAlloc(maxSize: maxReadBytes)
+        #expect(todoValue == utf8("Pay the bills"))
     }
 
     /// test.zig 603-646: "remove the last transaction with `slice`".
-    ///
-    /// Left out: `todos` at 638-645.
     private func removesTheLastTransactionWithSlice(_ database: Database) throws {
         let history = try ArrayList<ReadWrite>(database.rootCursor())
 
@@ -499,7 +510,13 @@ import Testing
         let aliceAgeCursor = try #require(try alice.getCursor(hashInt("age")))
         #expect(try aliceAgeCursor.readUint() == 25)
 
-        // 638-645 left out: reading `todos` (M5)
+        let todosCursor = try #require(try moment.getCursor(hashInt("todos")))
+        let todos = try LinkedArrayList<ReadOnly>(todosCursor)
+        #expect(try todos.count() == 3)
+
+        let todoCursor = try #require(try todos.getCursor(0))
+        let todoValue = try todoCursor.readBytesAlloc(maxSize: maxReadBytes)
+        #expect(todoValue == utf8("Pay the bills"))
     }
 
     /// test.zig 648-688: "opening the db leaves trailing data alone". Zig writes the trailing data through the
@@ -619,15 +636,42 @@ import Testing
         try history.append(.slot(try history.getSlot(Int64(historyIndex))))
     }
 
-    /// The operations of the freeze-callback loop (test.zig 816) that are ported; `.linked_get` is left out.
+    /// The operations of the freeze-callback loop (test.zig 816).
     private enum FreezeOp {
         case append
         case slice
+        case linkedGet
+    }
+
+    /// Zig's `List` in the freeze-callback loop (test.zig 832): `DB.LinkedArrayList(.read_write)` for
+    /// `.linked_get`, `DB.ArrayList(.read_write)` for the other operations.
+    private enum FreezeList {
+        case array(ArrayList<ReadWrite>)
+        case linked(LinkedArrayList<ReadWrite>)
+
+        /// Zig's `List.init(cursor)`.
+        init(_ op: FreezeOp, _ cursor: Cursor<ReadWrite>) throws {
+            self =
+                op == .linkedGet
+                ? .linked(try LinkedArrayList<ReadWrite>(cursor)) : .array(try ArrayList<ReadWrite>(cursor))
+        }
+
+        var cursor: Cursor<ReadWrite> {
+            switch self {
+            case .array(let list): list.cursor
+            case .linked(let list): list.cursor
+            }
+        }
+
+        func append(_ data: WriteableData) throws {
+            switch self {
+            case .array(let list): try list.append(data)
+            case .linked(let list): try list.append(data)
+            }
+        }
     }
 
     /// test.zig 772-851: "preventing accidental mutation with freezing", with the freeze-callback loop.
-    ///
-    /// Left out: the loop's `.linked_get` case (816, 823, 832 and 843).
     private func preventsAccidentalMutationWithFreezing(_ database: Database) throws {
         let history = try ArrayList<ReadWrite>(database.rootCursor())
 
@@ -668,27 +712,29 @@ import Testing
         #expect(try bigCities.count() == 2)
 
         // callbacks must see complete headers before freezing their collections
-        for op in [FreezeOp.append, .slice] {
+        for op in [FreezeOp.append, .slice, .linkedGet] {
             try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
                 var map = try HashMap<ReadWrite>(cursor)
                 try map.put(hashInt("freeze-callback"), .slot(nil))
-                var list = try ArrayList<ReadWrite>(try map.putCursor(hashInt("freeze-callback")))
+                var list = try FreezeList(op, try map.putCursor(hashInt("freeze-callback")))
                 try list.append(.uint(1))
                 if op == .slice { try list.append(.uint(2)) }
                 try database.freeze()
                 map = try HashMap<ReadWrite>(map.cursor)
-                list = try ArrayList<ReadWrite>(try map.putCursor(hashInt("freeze-callback")))
+                list = try FreezeList(op, try map.putCursor(hashInt("freeze-callback")))
                 // Zig's `FreezeCtx`, with the list's read-only cursor as its field
                 let frozenList = list.cursor.readOnly()
                 let path: [PathPart] =
                     switch op {
                     case .append: [.arrayListAppend, .write(.uint(2)), .ctx]
                     case .slice: [.arrayListSlice(size: 1), .ctx]
+                    case .linkedGet: [.linkedArrayListGet(0), .write(.uint(2)), .ctx]
                     }
                 _ = try list.cursor.writePath(path) { _ in
                     try database.freeze()
                     #expect(try frozenList.count() == (op == .append ? 2 : 1))
-                    let value = try #require(try frozenList.readPath([.arrayListGet(-1)]))
+                    let get: PathPart = op == .linkedGet ? .linkedArrayListGet(0) : .arrayListGet(-1)
+                    let value = try #require(try frozenList.readPath([get]))
                     #expect(try value.readUint() == (op == .slice ? 1 : 2))
                 }
             }
@@ -718,9 +764,7 @@ import Testing
         }
     }
 
-    /// test.zig 3672-3755: `testIteratorFrom`, the array list half.
-    ///
-    /// Left out: the `linked` list at 3692-3695, 3709, 3726-3734 and 3752-3753.
+    /// test.zig 3672-3755: `testIteratorFrom`.
     @Test(arguments: storageKinds)
     func iteratorFromIndex(kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
@@ -744,12 +788,16 @@ import Testing
                 try list.append(.uint(UInt64(i)))
             }
 
-            // 3692-3695 left out: the `linked` list (M5)
+            let linked = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("linked")))
+            for i in 0..<count {
+                try linked.append(.uint(UInt64(i)))
+            }
         }
 
         let history = try ArrayList<ReadOnly>(database.rootCursor().readOnly())
         let moment = try HashMap<ReadOnly>(try #require(try history.getCursor(-1)))
         let list = try ArrayList<ReadOnly>(try #require(try moment.getCursor(hashInt("list"))))
+        let linked = try LinkedArrayList<ReadOnly>(try #require(try moment.getCursor(hashInt("linked"))))
 
         // iteratorFrom(k) yields exactly k, k+1, .., COUNT-1 in order, for both types.
         // negative indexes count from the end: -1 starts at the last element, -COUNT
@@ -757,14 +805,24 @@ import Testing
         let starts: [Int64] = [0, 1, 15, 16, 17, 100, count - 2, count - 1, -1, -2, -16, -100, -count]
         for start in starts {
             let resolved: UInt64 = start < 0 ? UInt64(count + start) : UInt64(start)
-            var iter = try list.iteratorFrom(start)
-            var expected = resolved
-            while let c = try iter.next() {
-                #expect(try c.readUint() == expected)
-                expected += 1
+            do {
+                var iter = try list.iteratorFrom(start)
+                var expected = resolved
+                while let c = try iter.next() {
+                    #expect(try c.readUint() == expected)
+                    expected += 1
+                }
+                #expect(expected == UInt64(count))
             }
-            #expect(expected == UInt64(count))
-            // 3726-3734 left out: the same over the `linked` list (M5)
+            do {
+                var iter = try linked.iteratorFrom(start)
+                var expected = resolved
+                while let c = try iter.next() {
+                    #expect(try c.readUint() == expected)
+                    expected += 1
+                }
+                #expect(expected == UInt64(count))
+            }
         }
 
         // iteratorFrom(0) matches a plain iterator()
@@ -784,7 +842,9 @@ import Testing
             var li = try list.iteratorFrom(start)
             let first = try li.next()
             #expect(first == nil)
-            // 3752-3753 left out: the same over the `linked` list (M5)
+            var ki = try linked.iteratorFrom(start)
+            let firstLinked = try ki.next()
+            #expect(firstLinked == nil)
         }
     }
 }
