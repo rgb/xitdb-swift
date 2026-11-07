@@ -27,7 +27,7 @@ import Testing
             hashSize: 20,
             hashID: "sha1",
             fileID: 0x0011_2233_4455_6677,
-            random: FixedRandom((1...100).map { UInt64($0) })
+            random: FixedRandom((1...1000).map { UInt64($0) })
         )
     }
 

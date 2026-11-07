@@ -17,8 +17,13 @@ final class FixedRandom: RandomNumberGenerator {
     /// The number of values not yet handed out.
     var remaining: Int { values.count }
 
+    /// The next value, or zero once they have run out, which is recorded as
+    /// an issue: a test that draws more commit IDs than it listed has
+    /// miscounted its commits, and zeros would hide that in bytes that still
+    /// compare equal to each other.
     func next() -> UInt64 {
         guard let value = values.popLast() else {
+            if !exhausted { Issue.record("a FixedRandom ran out of values") }
             exhausted = true
             return 0
         }
