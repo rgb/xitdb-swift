@@ -119,10 +119,12 @@ extension DatabaseReader {
                 return try storage.read(into: &span, at: position)
             }
             var read = try fill(at: keySlot.value)
-            guard read >= Int(ByteArrayFormat.lengthByteCount) else { throw .endOfStream }
             var remaining: UInt64 = chunk.span.bigEndian(at: 0)
             // A length that reaches past the file is a damaged record: it
-            // is reported before any of it is compared.
+            // is reported before any of it is compared. So is a slot so
+            // close to the end that the length itself is cut, whose bytes
+            // are then whatever the buffer held: the record's start is past
+            // the end too.
             var position = try keySlot.value.offset(by: ByteArrayFormat.lengthByteCount)
             let length = try storage.length()
             guard position <= length, remaining <= length - position else { throw .endOfStream }
@@ -143,6 +145,8 @@ extension DatabaseReader {
                 if remaining == 0 { return targetStart < target.count ? .less : .equal }
                 position = try position.offset(by: UInt64(available))
                 read = try fill(at: position)
+                // The length promised the bytes; a storage that does not
+                // give them is reported rather than asked again.
                 guard read > 0 else { throw .endOfStream }
                 storedStart = 0
             }
@@ -259,33 +263,7 @@ extension DatabaseReader {
 }
 
 extension Database {
-    // MARK: Writing nodes and records
-
-    /// Writes a sorted node at `position`: 146 bytes for a leaf, 418 for a
-    /// branch.
-    func writeSortedNode(_ node: SortedNode, at position: UInt64) throws(XitDBError) {
-        var block = InlineArray<418, UInt8>(repeating: 0)
-        var bytes = block.mutableSpan
-        node.encode(into: &bytes)
-        try storage.write(block.span.extracting(0..<Int(node.byteCount)), at: position)
-    }
-
-    /// Appends a sorted node and returns where it is.
-    func appendSortedNode(_ node: SortedNode) throws(XitDBError) -> UInt64 {
-        let position = try storage.length()
-        try writeSortedNode(node, at: position)
-        return position
-    }
-
-    /// Writes a new version of a sorted node: in place of `oldPtr` if that
-    /// node belongs to this transaction, appended otherwise.
-    func sortedWriteNode(_ node: SortedNode, oldPtr: UInt64, frozenAt: UInt64) throws(XitDBError) -> UInt64 {
-        if bTreeReusable(oldPtr, frozenAt: frozenAt) {
-            try writeSortedNode(node, at: oldPtr)
-            return oldPtr
-        }
-        return try appendSortedNode(node)
-    }
+    // MARK: Writing records
 
     /// Writes a key: in a slot when it has at most eight bytes and no zero
     /// byte, as a byte record otherwise. Zig's `writeKey`.
@@ -391,7 +369,7 @@ extension Database {
                 }
                 var written = leaf
                 written.entries[search.index] = entry
-                let ptr = try sortedWriteNode(written, oldPtr: leafPtr, frozenAt: frozenAt)
+                let ptr = try writeNodeVersion(written, oldPtr: leafPtr, frozenAt: frozenAt)
                 result = SortedInsertResult(
                     nodePtr: ptr, count: UInt64(leaf.num), entry: entry, added: false, split: nil)
             }
@@ -404,7 +382,7 @@ extension Database {
             entries.append(entry)
             entries.append(leaf, from: search.index, to: Int(leaf.num))
             if entries.count <= BTree.slotCount {
-                let ptr = try sortedWriteNode(
+                let ptr = try writeNodeVersion(
                     entries.node(.leaf, from: 0, to: entries.count), oldPtr: leafPtr, frozenAt: frozenAt)
                 result = SortedInsertResult(
                     nodePtr: ptr, count: UInt64(entries.count), entry: entry, added: true, split: nil)
@@ -413,9 +391,9 @@ extension Database {
                 // key of its first entry.
                 let leftCount = BTree.splitCount
                 let separator = try reader.sortedEntryPair(entries.slots[leftCount]).keySlot
-                let leftPtr = try sortedWriteNode(
+                let leftPtr = try writeNodeVersion(
                     entries.node(.leaf, from: 0, to: leftCount), oldPtr: leafPtr, frozenAt: frozenAt)
-                let rightPtr = try appendSortedNode(entries.node(.leaf, from: leftCount, to: entries.count))
+                let rightPtr = try appendNode(entries.node(.leaf, from: leftCount, to: entries.count))
                 result = SortedInsertResult(
                     nodePtr: leftPtr,
                     count: UInt64(leftCount),
@@ -442,7 +420,7 @@ extension Database {
             entries.append(frame.node, from: frame.index + 1, to: Int(frame.node.num))
             if entries.count <= BTree.slotCount {
                 let branch = entries.node(.branch, from: 0, to: entries.count)
-                let ptr = try sortedWriteNode(branch, oldPtr: frame.position, frozenAt: frozenAt)
+                let ptr = try writeNodeVersion(branch, oldPtr: frame.position, frozenAt: frozenAt)
                 result = SortedInsertResult(
                     nodePtr: ptr, count: branch.subtreeCount, entry: result.entry, added: result.added, split: nil)
             } else {
@@ -452,8 +430,8 @@ extension Database {
                 let left = entries.node(.branch, from: 0, to: leftCount)
                 let right = entries.node(.branch, from: leftCount, to: entries.count)
                 let separator = entries.separators[leftCount]
-                let leftPtr = try sortedWriteNode(left, oldPtr: frame.position, frozenAt: frozenAt)
-                let rightPtr = try appendSortedNode(right)
+                let leftPtr = try writeNodeVersion(left, oldPtr: frame.position, frozenAt: frozenAt)
+                let rightPtr = try appendNode(right)
                 result = SortedInsertResult(
                     nodePtr: leftPtr,
                     count: left.subtreeCount,
@@ -477,7 +455,7 @@ extension Database {
         root.separators[1] = split.separator
         root.counts[0] = result.count
         root.counts[1] = split.count
-        return try appendSortedNode(root)
+        return try appendNode(root)
     }
 
     // MARK: Remove
@@ -504,7 +482,7 @@ extension Database {
         for index in search.index..<(Int(leaf.num) - 1) {
             written.entries[index] = leaf.entries[index + 1]
         }
-        var childPtr = try sortedWriteNode(written, oldPtr: leafPtr, frozenAt: frozenAt)
+        var childPtr = try writeNodeVersion(written, oldPtr: leafPtr, frozenAt: frozenAt)
 
         for frame in branches.reversed() {
             var branch = frame.node
@@ -513,7 +491,7 @@ extension Database {
             // found beneath it.
             guard branch.counts[frame.index] > 0 else { throw .invalidBTreeNode }
             branch.counts[frame.index] -= 1
-            childPtr = try sortedWriteNode(branch, oldPtr: frame.position, frozenAt: frozenAt)
+            childPtr = try writeNodeVersion(branch, oldPtr: frame.position, frozenAt: frozenAt)
         }
         return (childPtr, true)
     }

@@ -18,6 +18,10 @@ final class FaultInjectingStorage: WritableStorage {
         case cutWriteShort(Int, keeping: Int)
         /// The numbered sync fails. Nothing is flushed or synced by it.
         case failSync(Int)
+        /// A read that starts inside the range gives nothing, while the
+        /// length still counts what is there: a storage that promises more
+        /// than it reads.
+        case readNothing(Range<UInt64>)
     }
 
     static let failure = XitDBError.storageFailure(errno: EIO)
@@ -40,6 +44,11 @@ final class FaultInjectingStorage: WritableStorage {
         at offset: UInt64
     ) throws(XitDBError) -> Int {
         readCount += 1
+        for fault in faults {
+            if case .readNothing(let silent) = fault, silent.contains(offset) {
+                return 0
+            }
+        }
         return try base.read(into: &buffer, range: range, at: offset)
     }
 

@@ -363,6 +363,35 @@ import Testing
         #expect(try #require(try map.getCursor(keys[20])).readUint() == 20)
     }
 
+    /// A storage that gives nothing from the second chunk of a long key on,
+    /// while its length still promises the whole record: the comparison
+    /// reports the end of the stream rather than reading on.
+    @Test(arguments: StorageKind.allCases)
+    func aStorageThatEndsBeforeItsLength(kind: StorageKind) throws {
+        let long = [UInt8](repeating: 0x61, count: 300)
+        let subject = try StorageUnderTest(kind)
+        let database = try Database(
+            storage: subject.storage, hashSize: 20, hashID: nil, fileID: 6,
+            random: FixedRandom((1...50).map { UInt64($0) }))
+        var keyPtr: UInt64 = 0
+        try database.runContext { cursor in
+            let map = try SortedMap(try HashMap(cursor).putCursor(sha1("map").bytes))
+            try map.put(long, .uint(1))
+            keyPtr = try #require(try map.getKeyValuePair(long)).keyCursor.slot().value
+        }
+        // the first chunk, the length and 248 bytes of the key, is there;
+        // the second is not
+        let faulty = FaultInjectingStorage(subject.storage, faults: [.readNothing((keyPtr + 256)..<(keyPtr + 308))])
+        let damaged = try Database(storage: faulty, hashSize: 20, hashID: nil, fileID: nil, random: FixedRandom([9]))
+        let root = try HashMap(damaged.rootCursor().readOnly())
+        let map = try SortedMap(try #require(try root.getCursor(sha1("map").bytes)))
+        #expect(throws: XitDBError.endOfStream) { try map.getCursor(long) }
+        #expect(throws: XitDBError.endOfStream) { try map.rank(long) }
+        // a key that differs within the first chunk is placed without the rest
+        #expect(try map.rank([0x60]) == 0)
+        #expect(try map.rank([0x62]) == 1)
+    }
+
     /// A key record whose length fits the file but reaches past its end by
     /// one byte, through the chunked comparison of a long key.
     @Test(arguments: StorageKind.allCases)
