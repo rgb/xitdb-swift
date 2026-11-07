@@ -42,8 +42,9 @@ public final class Database {
     /// before and after, to know whether it committed anything.
     private(set) var commitCount: UInt64 = 0
 
-    /// The source of the file ID of a new database and of every commit ID.
-    private var random: any RandomNumberGenerator
+    /// The source of the file ID of a new database and of every commit ID,
+    /// shared with the target a compaction opens.
+    let random: RandomSource
 
     /// Opens the database in a storage.
     ///
@@ -64,7 +65,7 @@ public final class Database {
     ///   if it is too short to hold a header; and
     ///   ``XitDBError/storageFailure(errno:)`` if the storage fails.
     public convenience init(opening storage: any WritableStorage, hashSize: Int? = nil) throws(XitDBError) {
-        try self.init(opening: storage, hashSize: hashSize, random: SystemRandomNumberGenerator())
+        try self.init(opening: storage, hashSize: hashSize, random: RandomSource(SystemRandomNumberGenerator()))
     }
 
     /// Creates a database in an empty storage.
@@ -90,7 +91,7 @@ public final class Database {
     ) throws(XitDBError) {
         try self.init(
             creating: storage, hashSize: hashSize, hashID: hashID, fileID: fileID,
-            random: SystemRandomNumberGenerator())
+            random: RandomSource(SystemRandomNumberGenerator()))
     }
 
     /// Opens or creates a database, as Zig's `DB.init` does: a hash size on
@@ -104,6 +105,19 @@ public final class Database {
         fileID: UInt64? = nil,
         random: any RandomNumberGenerator = SystemRandomNumberGenerator()
     ) throws(XitDBError) {
+        try self.init(
+            storage: storage, hashSize: hashSize, hashID: hashID, fileID: fileID, random: RandomSource(random))
+    }
+
+    /// Opens or creates a database, as above, drawing from a source another
+    /// database draws from: what a compaction opens its target with.
+    package convenience init(
+        storage: any WritableStorage,
+        hashSize: UInt16?,
+        hashID: HashID? = nil,
+        fileID: UInt64? = nil,
+        random: RandomSource
+    ) throws(XitDBError) {
         if try storage.length == 0 {
             guard let hashSize else { throw .invalidHashSize }
             try self.init(creating: storage, hashSize: Int(hashSize), hashID: hashID, fileID: fileID, random: random)
@@ -114,9 +128,17 @@ public final class Database {
 
     /// Opens a database with a given source of randomness for its commit
     /// IDs.
-    package init(opening storage: any WritableStorage, hashSize: Int?, random: any RandomNumberGenerator)
+    package convenience init(opening storage: any WritableStorage, hashSize: Int?, random: any RandomNumberGenerator)
         throws(XitDBError)
     {
+        try self.init(opening: storage, hashSize: hashSize, random: RandomSource(random))
+    }
+
+    /// Opens a database drawing its commit IDs from a source another
+    /// database draws from.
+    ///
+    /// - Throws: What ``init(opening:hashSize:)`` throws.
+    package init(opening storage: any WritableStorage, hashSize: Int?, random: RandomSource) throws(XitDBError) {
         var buffer = InlineArray<20, UInt8>(repeating: 0)
         var span = buffer.mutableSpan
         let read = try storage.read(into: &span, at: 0)
@@ -134,14 +156,30 @@ public final class Database {
 
     /// Creates a database with a given source of randomness for its file ID
     /// and commit IDs.
-    package init(
+    package convenience init(
         creating storage: any WritableStorage,
         hashSize: Int,
         hashID: HashID?,
         fileID: UInt64?,
         random: any RandomNumberGenerator
     ) throws(XitDBError) {
-        var random = random
+        try self.init(
+            creating: storage, hashSize: hashSize, hashID: hashID, fileID: fileID, random: RandomSource(random))
+    }
+
+    /// Creates a database drawing its file ID, when none is given, and its
+    /// commit IDs from a source another database draws from, in that
+    /// order: the file ID is drawn here, before the first commit, whose ID
+    /// is zero.
+    ///
+    /// - Throws: What ``init(creating:hashSize:hashID:fileID:)`` throws.
+    package init(
+        creating storage: any WritableStorage,
+        hashSize: Int,
+        hashID: HashID?,
+        fileID: UInt64?,
+        random: RandomSource
+    ) throws(XitDBError) {
         guard try storage.length == 0 else { throw .storageNotEmpty }
         guard let hashSize = UInt16(exactly: hashSize), hashSize > 0 else { throw .invalidHashSize }
         let header = DatabaseHeader(
@@ -330,5 +368,24 @@ public final class Database {
             }
             try storage.write(record.span, at: position)
         }
+    }
+}
+
+/// The source of a database's file ID and commit IDs, which the target of
+/// a compaction shares with its source, as Zig's target is opened with the
+/// source's `io`: the target draws its file ID, when none is given, and
+/// then its commit IDs from the same generator, continuing where it is.
+/// A box, so that a generator with state advances for both.
+package final class RandomSource {
+    private var generator: any RandomNumberGenerator
+
+    /// A source over a generator of the caller's, or the system's.
+    package init(_ generator: any RandomNumberGenerator) {
+        self.generator = generator
+    }
+
+    /// The next value.
+    package func next() -> UInt64 {
+        generator.next()
     }
 }

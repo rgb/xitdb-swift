@@ -93,11 +93,18 @@ extension Database {
     /// random one. A storage that holds a database already keeps that
     /// database's file ID and hash ID, and must have an empty root.
     ///
+    /// The target draws from this database's source of randomness, as
+    /// Zig's target is opened with the source's `io`: its file ID, when
+    /// none is given, and then the commit ID of the compaction's
+    /// transaction, in that order, so that this database's next commit
+    /// draws after them.
+    ///
     /// - Parameters:
     ///   - storage: Where the target lives.
     ///   - hashID: The target's hash ID, for a new database.
     ///   - fileID: The target's file ID, for a new database.
-    ///   - offsetMap: Where the copy remembers what went where.
+    ///   - offsetMap: Where the copy remembers what went where. It is reset
+    ///     before the target is opened.
     /// - Returns: The target, open for reading and writing.
     /// - Throws: What ``compact(into:offsetMap:)`` throws, and what opening a
     ///   database over `storage` throws.
@@ -107,8 +114,12 @@ extension Database {
         fileID: UInt64? = nil,
         offsetMap: inout Map
     ) throws(XitDBError) -> Database {
+        // cached offsets only apply to this compaction's target, and Zig
+        // resets the map before it opens the target
+        try offsetMap.clear()
         let target = try Database(
-            storage: storage, hashSize: header.hashSize, hashID: hashID ?? header.hashID, fileID: fileID)
+            storage: storage, hashSize: header.hashSize, hashID: hashID ?? header.hashID, fileID: fileID,
+            random: random)
         try compact(into: target, offsetMap: &offsetMap)
         return target
     }

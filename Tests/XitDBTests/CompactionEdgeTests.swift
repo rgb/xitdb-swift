@@ -363,6 +363,61 @@ import Testing
         }
     }
 
+    /// The target that `compact(into:hashID:fileID:offsetMap:)` opens takes
+    /// the source's hash ID unless one is given, and draws from the
+    /// source's random source, as Zig's target is opened with the source's
+    /// `io`: its file ID when none is given, then its commit ID, and the
+    /// source's next commit draws after them. A storage that holds an
+    /// empty database keeps that database's IDs.
+    @Test(arguments: StorageKind.allCases)
+    func theOpenedTargetTakesTheSourcesHashIDAndRandom(kind: StorageKind) throws {
+        let random = FixedRandom([11, 12, 13, 14, 15, 16])
+        let subject = try StorageUnderTest(kind)
+        let source = try Database(storage: subject.storage, hashSize: 20, hashID: "sha1", fileID: 6, random: random)
+        try source.withTransaction { cursor in try HashMap(cursor).put(.uint(1), forHash: sha1("k").bytes) }
+        #expect(random.remaining == 5)
+        var map = MemoryOffsetMap()
+
+        // nothing given: the source's hash ID, the next value as the file
+        // ID, the one after as the commit ID
+        let target = try source.compact(into: try StorageUnderTest(kind).storage, offsetMap: &map)
+        #expect(target.header.hashID == "sha1")
+        #expect(target.header.hashSize == 20)
+        #expect(target.header.fileID == 12)
+        #expect(try target.reader.rootTrailer(endingAt: try target.committedSize).commitID == 13)
+        #expect(random.remaining == 3)
+
+        // both given: only the commit ID is drawn
+        let named = try source.compact(
+            into: try StorageUnderTest(kind).storage, hashID: "blk3", fileID: 99, offsetMap: &map)
+        #expect(named.header.hashID == "blk3")
+        #expect(named.header.fileID == 99)
+        #expect(try named.reader.rootTrailer(endingAt: try named.committedSize).commitID == 14)
+        #expect(random.remaining == 2)
+
+        // an existing empty database keeps its IDs, and only the commit ID
+        // is drawn
+        let existingSubject = try StorageUnderTest(kind)
+        _ = try Database(
+            storage: existingSubject.storage, hashSize: 20, hashID: "md5?", fileID: 77, random: FixedRandom([1]))
+        let existing = try source.compact(into: existingSubject.storage, hashID: "blk3", fileID: 99, offsetMap: &map)
+        #expect(existing.header.hashID == "md5?")
+        #expect(existing.header.fileID == 77)
+        #expect(try existing.reader.rootTrailer(endingAt: try existing.committedSize).commitID == 15)
+        #expect(random.remaining == 1)
+
+        // the source's next commit continues after them
+        try source.withTransaction { cursor in try HashMap(cursor).put(.uint(2), forHash: sha1("k").bytes) }
+        #expect(try source.reader.rootTrailer(endingAt: try source.committedSize).commitID == 16)
+        #expect(random.remaining == 0)
+        #expect(!random.exhausted)
+        for compacted in [target, named, existing] {
+            #expect(
+                try #require(try HashMap(compacted.rootCursor.readOnly).cursor(forHash: sha1("k").bytes)).readUInt64()
+                    == 1)
+        }
+    }
+
     /// The source itself as the target, and a target with something in its
     /// root, are refused and left as they were.
     @Test(arguments: StorageKind.allCases)

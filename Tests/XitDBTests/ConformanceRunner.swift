@@ -748,50 +748,50 @@ final class ScriptRunner {
             try op.allow("op", "note", "expect_error", "into", "file_id", "hash_id", "offset_map")
             let source = try openDatabase("compact")
             let into = try op.string("into")
-            let target: Database
+            let named = try op.string("offset_map")
+            guard ["memory", "disk"].contains(named) else { throw UnknownInScript("unknown offset_map") }
+            let useDisk = (named == "disk") != otherOffsetMap
+            if useDisk && diskOffsets == nil {
+                let offsetsStorage = try ScriptStorage(storage.kind)
+                diskOffsetsStorage = offsetsStorage
+                diskOffsets = try DiskOffsets(storage: try offsetsStorage.openStorage(readOnly: false))
+            }
             if let place = databases[into] {
                 // an existing database keeps its own file ID and hash ID
                 if op.has("file_id") || op.has("hash_id") {
                     throw ScriptFailure("compact into an existing database names an ID")
                 }
-                guard let existing = place.database else { throw ScriptFailure("compact into a closed database") }
-                target = existing
+                guard let target = place.database else { throw ScriptFailure("compact into a closed database") }
+                if !useDisk {
+                    try source.compact(into: target, offsetMap: &memoryOffsets)
+                } else {
+                    try diskOffsets!.use { map in try source.compact(into: target, offsetMap: &map) }
+                }
             } else {
-                // a new one, which goes on being a database of the script:
-                // its hash ID is the one given, or the source's; a null
-                // one is the source's too, as Zig's `orelse` makes it
+                // a new one, which the engine opens inside the compaction,
+                // as Zig's does, and which goes on being a database of the
+                // script once the compaction succeeds: its hash ID is the
+                // one given, or the source's; a null one is the source's
+                // too, as Zig's `orelse` makes it
                 guard op.has("file_id") else { throw ScriptFailure("compact into a new database needs file_id") }
-                let hashID: HashID?
+                var hashID: HashID?
                 if op.has("hash_id") && !op.isNull("hash_id") {
                     let bytes = try self.bytes(op.fields["hash_id"], "hash_id")
                     guard bytes.count == 4 else { throw UnknownInScript("hash_id is not four bytes") }
                     hashID = HashID(bytes: [bytes[0], bytes[1], bytes[2], bytes[3]])
-                } else {
-                    hashID = source.header.hashID
                 }
+                let fileID = try fileID(op.fields["file_id"])
                 let place = ScriptDatabase(storage: try ScriptStorage(storage.kind))
-                target = try Database(
-                    creating: try place.storage.openStorage(readOnly: false),
-                    hashSize: Int(hashSize),
-                    hashID: hashID,
-                    fileID: try fileID(op.fields["file_id"]),
-                    random: random
-                )
-                place.database = target
-                databases[into] = place
-            }
-            let named = try op.string("offset_map")
-            guard ["memory", "disk"].contains(named) else { throw UnknownInScript("unknown offset_map") }
-            let useDisk = (named == "disk") != otherOffsetMap
-            if !useDisk {
-                try source.compact(into: target, offsetMap: &memoryOffsets)
-            } else {
-                if diskOffsets == nil {
-                    let offsetsStorage = try ScriptStorage(storage.kind)
-                    diskOffsetsStorage = offsetsStorage
-                    diskOffsets = try DiskOffsets(storage: try offsetsStorage.openStorage(readOnly: false))
+                let targetStorage = try place.storage.openStorage(readOnly: false)
+                if !useDisk {
+                    place.database = try source.compact(
+                        into: targetStorage, hashID: hashID, fileID: fileID, offsetMap: &memoryOffsets)
+                } else {
+                    place.database = try diskOffsets!.use { map in
+                        try source.compact(into: targetStorage, hashID: hashID, fileID: fileID, offsetMap: &map)
+                    }
                 }
-                try diskOffsets!.use { map in try source.compact(into: target, offsetMap: &map) }
+                databases[into] = place
             }
 
         case "write_path":
