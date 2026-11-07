@@ -119,6 +119,8 @@ extension Database {
 struct Compactor {
     private let source: DatabaseReader
     private let target: any WritableStorage
+    /// A branch's worth of zeros, what a reserve writes.
+    private let zeros = InlineArray<418, UInt8>(repeating: 0)
 
     init(source: Database, target: Database) {
         self.source = source.reader
@@ -135,48 +137,48 @@ struct Compactor {
         case arrayListIndex(UInt64, size: UInt64, shift: UInt8)
     }
 
-    /// A block being copied: what it is, where it goes, the slots it holds
-    /// in the source, the slots copied so far, and which is next.
+    /// A block being copied: its bytes as they were read from the source,
+    /// with each slot replaced in place by its copy as the task for it ends,
+    /// so that the block is written from them as it is, prefix, header and
+    /// counts included; where it goes; and which slot is next.
     private struct Frame {
         enum Kind {
-            /// Sixteen slots, each remapped, after a prefix written as it
-            /// is: an index block, a hash map or set, with its count before
-            /// the block if it keeps one, or a tree leaf after its header.
-            case slots(prefix: [UInt8])
-            /// A linked array list's branch: sixteen children, of which only
-            /// nodes are remapped, then the counts as they are.
-            case bTreeBranch(header: [UInt8], counts: [UInt8])
+            /// Sixteen slots after `prefix` bytes kept as they are: an index
+            /// block, a hash map or set, with its count before the block if
+            /// it keeps one, or a tree leaf after its header.
+            case slots(prefix: Int)
+            /// A linked array list's branch: its header, sixteen children, of
+            /// which only nodes are remapped, and the counts as they are.
+            case bTreeBranch
             /// A sorted map's branch: the children as for a linked array
             /// list, then sixteen separators, each remapped, then the counts.
-            case sortedBranch(header: [UInt8], counts: [UInt8])
-            /// A key-value pair: the key slot, then the value slot, written
-            /// in the same form, with the hash it had.
-            case kvPair(tag: Tag, hash: KeyHash)
+            case sortedBranch
+            /// A key-value pair: its hash as it is, then the key slot and the
+            /// value slot.
+            case kvPair(hashSize: Int)
             /// An array list's header: its index, then the header with the
-            /// new pointer.
-            case arrayListHeader(size: UInt64)
+            /// new pointer in place of the old.
+            case arrayListHeader
             /// A linked array list's or sorted map's header: its root node,
             /// then the header with the new pointer.
-            case treeHeader(size: UInt64)
+            case treeHeader
             /// A partial block of an array list's index, copied without the
-            /// memo: its first `used` children, each a block of `childSize`
+            /// memo: its first `count` children, each a block of `childSize`
             /// elements but the last, which holds the rest; the slots after
             /// them are left empty.
-            case arrayListPartial(size: UInt64, childSize: UInt64, shift: UInt8, used: Int)
+            case arrayListPartial(size: UInt64, childSize: UInt64, shift: UInt8)
         }
 
-        var kind: Kind
+        let kind: Kind
         let targetOffset: UInt64
-        /// The slots of the source block, up to thirty-two: a sorted
-        /// branch's children and separators.
-        var slots: InlineArray<32, Slot> = InlineArray(repeating: Slot())
-        /// The copied slots, filled in as the tasks end.
-        var remapped: InlineArray<32, Slot> = InlineArray(repeating: Slot())
-        /// How many of `slots` are used.
+        /// The block's bytes, a branch's worth at most.
+        var bytes = InlineArray<418, UInt8>(repeating: 0)
+        /// How many slots the block has to deal with.
         let count: Int
         /// The next slot to deal with.
         var next = 0
-        /// The one task of a header frame, which has no slots; taken once.
+        /// A task found and not yet begun: a header's one task, or the
+        /// first slot of a block that needs a visit.
         var task: Task?
 
         init(kind: Kind, targetOffset: UInt64, count: Int, task: Task? = nil) {
@@ -186,56 +188,84 @@ struct Compactor {
             self.task = task
         }
 
-        /// Records the target offset a task ended in, as the copy of the
-        /// slot it was for, and moves on. A header frame's one task has no
-        /// slot; its offset lands in the first place.
+        /// How many bytes the block takes.
+        var byteCount: Int {
+            switch kind {
+            case .slots(let prefix): prefix + 144
+            case .bTreeBranch: 274
+            case .sortedBranch: 418
+            case .kvPair(let hashSize): hashSize + 18
+            case .arrayListHeader, .treeHeader: 16
+            case .arrayListPartial: 144
+            }
+        }
+
+        /// Where the slot at `index` is in the bytes.
+        func slotOffset(_ index: Int) -> Int {
+            switch kind {
+            case .slots(let prefix): prefix + 9 * index
+            case .bTreeBranch: 2 + 9 * index
+            case .sortedBranch: index < 16 ? 2 + 9 * index : 146 + 9 * (index - 16)
+            case .kvPair(let hashSize): hashSize + 9 * index
+            case .arrayListHeader, .treeHeader: 8
+            case .arrayListPartial: 9 * index
+            }
+        }
+
+        /// The slot at `index`, validated when the block was read.
+        func slot(_ index: Int) -> Slot {
+            Slot.inNode(bytes.span, at: slotOffset(index))
+        }
+
+        /// Records the target offset a task ended in: for a header, as its
+        /// pointer; otherwise as the copy of the slot the task was for,
+        /// with its tag and full flag. Moves on.
         mutating func deliver(_ offset: UInt64) {
-            let slot = slots[next]
-            remapped[next] = Slot(value: offset, tag: slot.tag, full: slot.full)
+            switch kind {
+            case .arrayListHeader, .treeHeader:
+                var span = bytes.mutableSpan
+                span.storeBigEndian(offset, at: 8)
+            default:
+                let slot = slot(next)
+                let position = slotOffset(next)
+                var span = bytes.mutableSpan
+                Slot(value: offset, tag: slot.tag, full: slot.full).encode(into: &span, at: position)
+            }
             next += 1
         }
     }
 
     // MARK: Reading the source
 
-    /// Reads `count` bytes at `position` into the start of a buffer, all of
-    /// them: Zig's `readSliceAll`.
+    /// A frame over the block at `position`: its `byteCount` bytes, all of
+    /// them (Zig's `readSliceAll`), with the slots it has to deal with
+    /// checked as Zig checks each on reading.
     ///
-    /// - Throws: `endOfStream` if the source ends first.
-    private func read(
-        _ buffer: inout InlineArray<418, UInt8>, count: Int, at position: UInt64
-    ) throws(XitDBError) {
-        var span = buffer.mutableSpan
-        let read = try source.storage.read(into: &span, range: 0..<count, at: position)
-        guard read == count else { throw .endOfStream }
-    }
-
-    /// `count` slots at `position`, each checked as Zig checks it on
-    /// reading, into a frame's slots from `index` on.
-    private func readSlots(
-        _ count: Int, at position: UInt64, into frame: inout Frame, from index: Int
-    ) throws(XitDBError) {
-        var buffer = InlineArray<418, UInt8>(repeating: 0)
-        try read(&buffer, count: count * 9, at: position)
-        for slot in 0..<count {
-            frame.slots[index + slot] = try Slot(decoding: buffer.span, at: slot * 9)
+    /// - Throws: `endOfStream` if the source ends first, `invalidEnumTag`
+    ///   at the first slot whose tag is unknown.
+    private func readFrame(
+        _ kind: Frame.Kind, at position: UInt64, targetOffset: UInt64, count: Int, task: Task? = nil
+    ) throws(XitDBError) -> Frame {
+        var frame = Frame(kind: kind, targetOffset: targetOffset, count: count, task: task)
+        let storage = source.storage
+        let wanted = frame.byteCount
+        var span = frame.bytes.mutableSpan
+        let read = try storage.read(into: &span, range: 0..<wanted, at: position)
+        guard read == wanted else { throw .endOfStream }
+        for index in 0..<count {
+            _ = try Slot(decoding: frame.bytes.span, at: frame.slotOffset(index))
         }
-    }
-
-    /// The raw counts of a branch, copied as they are.
-    private func readCounts(at position: UInt64) throws(XitDBError) -> [UInt8] {
-        var buffer = InlineArray<418, UInt8>(repeating: 0)
-        try read(&buffer, count: 128, at: position)
-        return (0..<128).map { buffer[$0] }
+        return frame
     }
 
     /// The two header bytes of a tree node, checked: Zig's `remapBTreeNode`
     /// reads them before it visits the node.
-    private func nodeHeader(at position: UInt64) throws(XitDBError) -> (kind: BTreeNodeKind, bytes: [UInt8]) {
-        var buffer = InlineArray<418, UInt8>(repeating: 0)
-        try read(&buffer, count: 2, at: position)
-        let header = try TreeNodeHeader.decode(buffer.span.extracting(0..<2))
-        return (header.kind, [buffer[0], buffer[1]])
+    private func nodeKind(at position: UInt64) throws(XitDBError) -> BTreeNodeKind {
+        var buffer = InlineArray<2, UInt8>(repeating: 0)
+        var span = buffer.mutableSpan
+        let read = try source.storage.read(into: &span, at: position)
+        guard read == 2 else { throw .endOfStream }
+        return try TreeNodeHeader.decode(buffer.span).kind
     }
 
     // MARK: Writing the target
@@ -244,28 +274,13 @@ struct Compactor {
     /// start: Zig's `reserveBlock`.
     private func reserve(_ count: Int) throws(XitDBError) -> UInt64 {
         let offset = try target.length()
-        let zeros = [UInt8](repeating: 0, count: count)
-        try target.write(zeros.span, at: offset)
+        try target.write(zeros.span.extracting(0..<count), at: offset)
         return offset
     }
 
-    /// Writes a block at its target offset: `prefix`, then the slots from
-    /// `from` up to `to` of `slots`, then `suffix`.
-    private func writeBlock(
-        prefix: [UInt8], _ slots: InlineArray<32, Slot>, from: Int, to: Int, suffix: [UInt8], at position: UInt64
-    ) throws(XitDBError) {
-        var block = [UInt8](repeating: 0, count: prefix.count + (to - from) * 9 + suffix.count)
-        var bytes = block.mutableSpan
-        for index in prefix.indices {
-            bytes[index] = prefix[index]
-        }
-        for index in from..<to {
-            slots[index].encode(into: &bytes, at: prefix.count + (index - from) * 9)
-        }
-        for index in suffix.indices {
-            bytes[prefix.count + (to - from) * 9 + index] = suffix[index]
-        }
-        try target.write(block.span, at: position)
+    /// Writes a frame's block, its slots all copied, at its target offset.
+    private func finish(_ frame: Frame) throws(XitDBError) {
+        try target.write(frame.bytes.span.extracting(0..<frame.byteCount), at: frame.targetOffset)
     }
 
     // MARK: The walk
@@ -276,7 +291,7 @@ struct Compactor {
         var stack: [Frame] = []
         // The target offset the task just finished ended in, for the frame
         // on top of the stack, or for the caller when there is none.
-        var result = try start(.slot(slot), stack: &stack, offsetMap: &offsetMap)
+        var result = try begin(.slot(slot), stack: &stack, offsetMap: &offsetMap)
         while true {
             if let offset = result {
                 guard let top = stack.indices.last else {
@@ -287,8 +302,8 @@ struct Compactor {
             }
             // The frame on top: its next task, or its end.
             let top = stack.count - 1
-            if let task = try nextTask(of: &stack[top]) {
-                result = try start(task, stack: &stack, offsetMap: &offsetMap)
+            if let task = try advance(&stack[top], offsetMap: &offsetMap) {
+                result = try begin(task, stack: &stack, offsetMap: &offsetMap)
             } else {
                 let frame = stack.removeLast()
                 try finish(frame)
@@ -297,13 +312,84 @@ struct Compactor {
         }
     }
 
+    /// Whether a slot's copy is the slot itself or a byte record copied at
+    /// once, with no block to visit.
+    private static func isImmediate(_ tag: Tag) -> Bool {
+        switch tag {
+        case .none, .uint, .int, .float, .shortBytes, .bytes: true
+        default: false
+        }
+    }
+
+    /// Deals with the frame's slots in order until one needs a visit, and
+    /// returns the task for it, or `nil` when the block is done. A scalar
+    /// slot stays as it is, a byte record is copied at once (Zig's
+    /// `remapSlot` for the tags that need no `visitObject`), a child of a
+    /// branch that is not a node stays as it is.
+    private mutating func advance<Map: OffsetMap>(_ frame: inout Frame, offsetMap: inout Map) throws(XitDBError)
+        -> Task?
+    {
+        if let task = frame.task {
+            frame.task = nil
+            return task
+        }
+        while frame.next < frame.count {
+            let slot = frame.slot(frame.next)
+            switch frame.kind {
+            case .slots, .kvPair:
+                if !Self.isImmediate(slot.tag) { return .slot(slot) }
+            case .bTreeBranch:
+                if slot.tag == .index { return .bTreeNode(slot.value) }
+            case .sortedBranch:
+                if frame.next < 16 {
+                    if slot.tag == .index { return .sortedNode(slot.value) }
+                } else if !Self.isImmediate(slot.tag) {
+                    return .slot(slot)
+                }
+            case .arrayListPartial(let size, let childSize, let shift):
+                if shift > 0 {
+                    guard slot.tag == .index else { throw .unexpectedTag }
+                    let count = min(size - UInt64(frame.next) * childSize, childSize)
+                    return .arrayListIndex(slot.value, size: count, shift: shift - 1)
+                }
+                if !Self.isImmediate(slot.tag) { return .slot(slot) }
+            case .arrayListHeader, .treeHeader:
+                return nil
+            }
+            // the slot's copy is itself, or its record copied now
+            if slot.tag == .bytes {
+                frame.deliver(try remapBytes(slot, offsetMap: &offsetMap))
+            } else {
+                frame.next += 1
+            }
+        }
+        return nil
+    }
+
+    /// Takes a frame that was just read: begins its slots, and if none
+    /// needs a visit, writes the block and gives its offset; otherwise
+    /// keeps the first task found and pushes the frame.
+    private mutating func settle<Map: OffsetMap>(
+        _ frame: Frame, stack: inout [Frame], offsetMap: inout Map
+    ) throws(XitDBError) -> UInt64? {
+        var frame = frame
+        if let task = try advance(&frame, offsetMap: &offsetMap) {
+            frame.task = task
+            stack.append(frame)
+            return nil
+        }
+        try finish(frame)
+        return frame.targetOffset
+    }
+
     /// Begins a task. A scalar slot and an object copied already end at
     /// once, and so does a byte record, which is copied here; anything else
-    /// reserves its block, records the mapping, and pushes a frame for its
-    /// children: Zig's `visitObject`.
+    /// reserves its block, records the mapping, reads the block, and either
+    /// finishes it at once or pushes a frame for the children it has to
+    /// visit: Zig's `visitObject`.
     ///
     /// - Returns: The target offset, or `nil` if a frame was pushed.
-    private mutating func start<Map: OffsetMap>(
+    private mutating func begin<Map: OffsetMap>(
         _ task: Task, stack: inout [Frame], offsetMap: inout Map
     ) throws(XitDBError) -> UInt64? {
         switch task {
@@ -317,113 +403,88 @@ struct Compactor {
                 if let offset = try offsetMap.get(slot.value) { return offset }
                 let offset = try reserve(144)
                 try offsetMap.put(slot.value, offset)
-                var frame = Frame(kind: .slots(prefix: []), targetOffset: offset, count: 16)
-                try readSlots(16, at: slot.value, into: &frame, from: 0)
-                stack.append(frame)
+                let frame = try readFrame(.slots(prefix: 0), at: slot.value, targetOffset: offset, count: 16)
+                return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             case .countedHashMap, .countedHashSet:
                 if let offset = try offsetMap.get(slot.value) { return offset }
                 let offset = try reserve(152)
                 try offsetMap.put(slot.value, offset)
-                var buffer = InlineArray<418, UInt8>(repeating: 0)
-                try read(&buffer, count: 8, at: slot.value)
-                var frame = Frame(kind: .slots(prefix: (0..<8).map { buffer[$0] }), targetOffset: offset, count: 16)
-                try readSlots(16, at: try slot.value.offset(by: 8), into: &frame, from: 0)
-                stack.append(frame)
+                let frame = try readFrame(.slots(prefix: 8), at: slot.value, targetOffset: offset, count: 16)
+                return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             case .arrayList:
                 if let offset = try offsetMap.get(slot.value) { return offset }
                 let offset = try reserve(16)
                 try offsetMap.put(slot.value, offset)
                 let header = try source.arrayListHeader(at: slot.value)
                 let shift = header.size <= Trie.slotsPerBlock ? 0 : Trie.arrayListShift(lastIndex: header.size - 1)
-                stack.append(
-                    Frame(
-                        kind: .arrayListHeader(size: header.size), targetOffset: offset, count: 0,
-                        task: .arrayListIndex(header.ptr, size: header.size, shift: shift)))
+                let frame = try readFrame(
+                    .arrayListHeader, at: slot.value, targetOffset: offset, count: 0,
+                    task: .arrayListIndex(header.ptr, size: header.size, shift: shift))
+                stack.append(frame)
+                return nil
             case .linkedArrayList:
                 if let offset = try offsetMap.get(slot.value) { return offset }
                 let offset = try reserve(16)
                 try offsetMap.put(slot.value, offset)
                 let header = try source.bTreeHeader(at: slot.value)
-                stack.append(
-                    Frame(
-                        kind: .treeHeader(size: header.size), targetOffset: offset, count: 0,
-                        task: .bTreeNode(header.rootPtr)))
+                let frame = try readFrame(
+                    .treeHeader, at: slot.value, targetOffset: offset, count: 0, task: .bTreeNode(header.rootPtr))
+                stack.append(frame)
+                return nil
             case .sortedMap, .sortedSet:
                 if let offset = try offsetMap.get(slot.value) { return offset }
                 let offset = try reserve(16)
                 try offsetMap.put(slot.value, offset)
                 let header = try source.bTreeHeader(at: slot.value)
-                stack.append(
-                    Frame(
-                        kind: .treeHeader(size: header.size), targetOffset: offset, count: 0,
-                        task: .sortedNode(header.rootPtr)))
+                let frame = try readFrame(
+                    .treeHeader, at: slot.value, targetOffset: offset, count: 0, task: .sortedNode(header.rootPtr))
+                stack.append(frame)
+                return nil
             case .kvPair:
                 if let offset = try offsetMap.get(slot.value) { return offset }
-                let offset = try reserve(Int(source.hashSize) + 18)
+                let hashSize = Int(source.hashSize)
+                let offset = try reserve(hashSize + 18)
                 try offsetMap.put(slot.value, offset)
-                let hashed = try source.hashedPair(at: slot.value)
-                var frame = Frame(kind: .kvPair(tag: .kvPair, hash: hashed.hash), targetOffset: offset, count: 2)
-                frame.slots[0] = hashed.pair.keySlot
-                frame.slots[1] = hashed.pair.valueSlot
-                stack.append(frame)
+                let frame = try readFrame(.kvPair(hashSize: hashSize), at: slot.value, targetOffset: offset, count: 2)
+                return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             case .sortedKvPair:
                 if let offset = try offsetMap.get(slot.value) { return offset }
                 let offset = try reserve(18)
                 try offsetMap.put(slot.value, offset)
-                let pair = try source.sortedPair(at: slot.value)
-                var frame = Frame(
-                    kind: .kvPair(tag: .sortedKvPair, hash: KeyHash(zeros: 0)), targetOffset: offset, count: 2)
-                frame.slots[0] = pair.keySlot
-                frame.slots[1] = pair.valueSlot
-                stack.append(frame)
+                let frame = try readFrame(.kvPair(hashSize: 0), at: slot.value, targetOffset: offset, count: 2)
+                return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             }
-            return nil
 
         case .bTreeNode(let nodePtr):
             if let offset = try offsetMap.get(nodePtr) { return offset }
             // read the header first because the node kind determines its size
-            let header = try nodeHeader(at: nodePtr)
-            let body = try nodePtr.offset(by: 2)
-            switch header.kind {
+            switch try nodeKind(at: nodePtr) {
             case .leaf:
                 let offset = try reserve(146)
                 try offsetMap.put(nodePtr, offset)
-                var frame = Frame(kind: .slots(prefix: header.bytes), targetOffset: offset, count: 16)
-                try readSlots(16, at: body, into: &frame, from: 0)
-                stack.append(frame)
+                let frame = try readFrame(.slots(prefix: 2), at: nodePtr, targetOffset: offset, count: 16)
+                return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             case .branch:
                 let offset = try reserve(274)
                 try offsetMap.put(nodePtr, offset)
-                var frame = Frame(kind: .bTreeBranch(header: header.bytes, counts: []), targetOffset: offset, count: 16)
-                try readSlots(16, at: body, into: &frame, from: 0)
-                frame.kind = .bTreeBranch(header: header.bytes, counts: try readCounts(at: try nodePtr.offset(by: 146)))
-                stack.append(frame)
+                let frame = try readFrame(.bTreeBranch, at: nodePtr, targetOffset: offset, count: 16)
+                return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             }
-            return nil
 
         case .sortedNode(let nodePtr):
             if let offset = try offsetMap.get(nodePtr) { return offset }
-            let header = try nodeHeader(at: nodePtr)
-            let body = try nodePtr.offset(by: 2)
-            switch header.kind {
+            switch try nodeKind(at: nodePtr) {
             case .leaf:
                 let offset = try reserve(146)
                 try offsetMap.put(nodePtr, offset)
-                var frame = Frame(kind: .slots(prefix: header.bytes), targetOffset: offset, count: 16)
-                try readSlots(16, at: body, into: &frame, from: 0)
-                stack.append(frame)
+                let frame = try readFrame(.slots(prefix: 2), at: nodePtr, targetOffset: offset, count: 16)
+                return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             case .branch:
                 let offset = try reserve(418)
                 try offsetMap.put(nodePtr, offset)
-                var frame = Frame(
-                    kind: .sortedBranch(header: header.bytes, counts: []), targetOffset: offset, count: 32)
-                try readSlots(16, at: body, into: &frame, from: 0)
-                try readSlots(16, at: try nodePtr.offset(by: 146), into: &frame, from: 16)
-                frame.kind = .sortedBranch(
-                    header: header.bytes, counts: try readCounts(at: try nodePtr.offset(by: 290)))
-                stack.append(frame)
+                let frame = try readFrame(.sortedBranch, at: nodePtr, targetOffset: offset, count: 32)
+                return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             }
-            return nil
 
         case .arrayListIndex(let blockPtr, let size, let shift):
             // full blocks can use the normal cache. partial blocks may be
@@ -432,18 +493,25 @@ struct Compactor {
             let childSize: UInt64 = 1 << (UInt64(shift) * 4)
             let (full, overflow) = childSize.multipliedReportingOverflow(by: Trie.slotsPerBlock)
             if !overflow && size == full {
-                return try start(.slot(Slot(value: blockPtr, tag: .index)), stack: &stack, offsetMap: &offsetMap)
+                return try begin(.slot(Slot(value: blockPtr, tag: .index)), stack: &stack, offsetMap: &offsetMap)
             }
             let offset = try reserve(144)
             let used = Int(min((size + childSize - 1) / childSize, Trie.slotsPerBlock))
+            // Zig reads the used children one by one and stops, so only
+            // those are read and checked; the rest of the block stays empty.
             var frame = Frame(
-                kind: .arrayListPartial(size: size, childSize: childSize, shift: shift, used: used),
-                targetOffset: offset, count: used)
+                kind: .arrayListPartial(size: size, childSize: childSize, shift: shift), targetOffset: offset,
+                count: used)
             if used > 0 {
-                try readSlots(used, at: blockPtr, into: &frame, from: 0)
+                let storage = source.storage
+                var span = frame.bytes.mutableSpan
+                let read = try storage.read(into: &span, range: 0..<(used * 9), at: blockPtr)
+                guard read == used * 9 else { throw .endOfStream }
+                for index in 0..<used {
+                    _ = try Slot(decoding: frame.bytes.span, at: 9 * index)
+                }
             }
-            stack.append(frame)
-            return nil
+            return try settle(frame, stack: &stack, offsetMap: &offsetMap)
         }
     }
 
@@ -477,77 +545,5 @@ struct Compactor {
         }
         try offsetMap.put(slot.value, newOffset)
         return newOffset
-    }
-
-    /// The next task of a frame, or `nil` when its slots are all dealt
-    /// with. A slot that needs no copy is passed through here.
-    private func nextTask(of frame: inout Frame) throws(XitDBError) -> Task? {
-        if let task = frame.task {
-            frame.task = nil
-            return task
-        }
-        while frame.next < frame.count {
-            let slot = frame.slots[frame.next]
-            switch frame.kind {
-            case .slots, .kvPair:
-                return .slot(slot)
-            case .bTreeBranch:
-                guard slot.tag == .index else { break }
-                return .bTreeNode(slot.value)
-            case .sortedBranch:
-                if frame.next >= 16 { return .slot(slot) }
-                guard slot.tag == .index else { break }
-                return .sortedNode(slot.value)
-            case .arrayListPartial(let size, let childSize, let shift, _):
-                if shift == 0 { return .slot(slot) }
-                guard slot.tag == .index else { throw .unexpectedTag }
-                let count = min(size - UInt64(frame.next) * childSize, childSize)
-                return .arrayListIndex(slot.value, size: count, shift: shift - 1)
-            case .arrayListHeader, .treeHeader:
-                return nil
-            }
-            // a child that is not a node stays as it is
-            frame.remapped[frame.next] = slot
-            frame.next += 1
-        }
-        return nil
-    }
-
-    /// Writes a frame's block, all its children copied.
-    private func finish(_ frame: Frame) throws(XitDBError) {
-        switch frame.kind {
-        case .slots(let prefix):
-            try writeBlock(prefix: prefix, frame.remapped, from: 0, to: 16, suffix: [], at: frame.targetOffset)
-        case .bTreeBranch(let header, let counts):
-            try writeBlock(prefix: header, frame.remapped, from: 0, to: 16, suffix: counts, at: frame.targetOffset)
-        case .sortedBranch(let header, let counts):
-            try writeBlock(prefix: header, frame.remapped, from: 0, to: 32, suffix: counts, at: frame.targetOffset)
-        case .kvPair(let tag, let hash):
-            let pair = KeyValuePair(keySlot: frame.remapped[0], valueSlot: frame.remapped[1])
-            var bytes: [UInt8] = []
-            if tag == .kvPair {
-                bytes = [UInt8](repeating: 0, count: Int(source.hashSize) + 18)
-                var span = bytes.mutableSpan
-                hash.copyBytes(into: &span)
-                pair.keySlot.encode(into: &span, at: Int(source.hashSize))
-                pair.valueSlot.encode(into: &span, at: Int(source.hashSize) + 9)
-            } else {
-                bytes = [UInt8](repeating: 0, count: 18)
-                var span = bytes.mutableSpan
-                pair.keySlot.encode(into: &span, at: 0)
-                pair.valueSlot.encode(into: &span, at: 9)
-            }
-            try target.write(bytes.span, at: frame.targetOffset)
-        case .arrayListHeader(let size):
-            let header = ArrayListHeader(size: size, ptr: frame.remapped[0].value)
-            let bytes = InlineArray<16, UInt8> { (output: inout OutputSpan<UInt8>) in header.encode(into: &output) }
-            try target.write(bytes.span, at: frame.targetOffset)
-        case .treeHeader(let size):
-            let header = BTreeHeader(size: size, rootPtr: frame.remapped[0].value)
-            let bytes = InlineArray<16, UInt8> { (output: inout OutputSpan<UInt8>) in header.encode(into: &output) }
-            try target.write(bytes.span, at: frame.targetOffset)
-        case .arrayListPartial:
-            try writeBlock(prefix: [], frame.remapped, from: 0, to: 16, suffix: [], at: frame.targetOffset)
-        }
     }
 }
