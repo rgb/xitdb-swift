@@ -58,6 +58,47 @@ struct CollectingSink: ByteSink {
         }
     }
 
+    /// A source that gives one byte per read, however large the buffer, as
+    /// a slow socket might.
+    private struct OneByteSource: ByteSource {
+        private let bytes: [UInt8]
+        private var position = 0
+
+        init(_ bytes: [UInt8]) {
+            self.bytes = bytes
+        }
+
+        mutating func read(into buffer: inout MutableSpan<UInt8>) -> Int {
+            guard position < bytes.count, buffer.count > 0 else { return 0 }
+            buffer[0] = bytes[position]
+            position += 1
+            return 1
+        }
+    }
+
+    /// What a source or a sink of the tests' own throws.
+    private struct Refused: Error, CustomStringConvertible {
+        var description: String { "refused by the test" }
+    }
+
+    /// A source that throws on every read.
+    private struct ThrowingSource: ByteSource {
+        mutating func read(into buffer: inout MutableSpan<UInt8>) throws -> Int {
+            throw Refused()
+        }
+    }
+
+    /// A sink that takes `accepting` writes and throws on the next.
+    private struct ThrowingSink: ByteSink {
+        let accepting: Int
+        var taken = 0
+
+        mutating func write(_ bytes: Span<UInt8>) throws {
+            guard taken < accepting else { throw Refused() }
+            taken += 1
+        }
+    }
+
     /// A source with two moments.
     private func makeSource(_ kind: StorageKind, fileID: UInt64 = 6) throws -> (StorageUnderTest, Database) {
         let subject = try StorageUnderTest(kind)
@@ -224,6 +265,173 @@ struct CollectingSink: ByteSink {
         #expect(try replica.replicaState == (try source.replicaState))
     }
 
+    /// A source that gives one byte per read syncs the same bytes as one
+    /// that gives them whole, at 0 and at the committed size: the loop
+    /// takes a short read for what it is and asks again.
+    @Test(arguments: StorageKind.allCases)
+    func aSourceThatGivesOneByteAtATimeSyncs(kind: StorageKind) throws {
+        let (_, source) = try makeSource(kind)
+        let committed = try source.committedSize
+        let whole = try readCommitted(source, from: 0, to: committed)
+        let replicaSubject = try StorageUnderTest(kind)
+        let faulty = FaultInjectingStorage(replicaSubject.storage)
+        let replica = try Database(storage: faulty, hashSize: 20, hashID: nil, fileID: 7, random: FixedRandom([1]))
+
+        var first = OneByteSource(try readCommitted(source, from: 0, to: 62))
+        var writes = faulty.writeCount
+        try replica.applyReplicated(at: 0, from: &first, count: 62)
+        #expect(faulty.writeCount - writes == 62)
+        #expect(try replica.committedSize == 62)
+        #expect(replica.header.fileID == 6)
+
+        var rest = OneByteSource(Array(whole[62...]))
+        writes = faulty.writeCount
+        try replica.applyReplicated(at: 62, from: &rest, count: committed - 62)
+        // one write per byte, and one for the root header
+        #expect(UInt64(faulty.writeCount - writes) == committed - 62 + 1)
+        #expect(try replica.committedSize == committed)
+        #expect(try readCommitted(replica, from: 0, to: committed) == whole)
+        #expect(try replica.replicaState == (try source.replicaState))
+    }
+
+    /// A source or a sink of the caller's that fails: a source claiming more
+    /// than its buffer holds is `endOfStream` at the committed size as at
+    /// 0, before anything is written; one that throws has its error
+    /// carried as `callerError`, and so does a sink, wherever in the bytes
+    /// it throws. At 0 the file was emptied first, as for any failure
+    /// there.
+    @Test(arguments: StorageKind.allCases)
+    func aSourceOrSinkOfTheCallersThatFails(kind: StorageKind) throws {
+        let (_, source) = try makeSource(kind)
+        let committed = try source.committedSize
+        let replicaSubject = try StorageUnderTest(kind)
+        let replica = try makeDatabase(replicaSubject, fileID: 7)
+        try replica.applyReplicated(at: 0, bytes: try readCommitted(source, from: 0, to: committed))
+
+        var overstating = OverstatingSource()
+        #expect(throws: XitDBError.endOfStream) {
+            try replica.applyReplicated(at: committed, from: &overstating, count: 10)
+        }
+        #expect(try replica.committedSize == committed)
+        #expect(try replicaSubject.storage.length == committed)
+
+        var refusing = ThrowingSource()
+        #expect(throws: XitDBError.callerError(Refused())) {
+            try replica.applyReplicated(at: committed, from: &refusing, count: 10)
+        }
+        #expect(try replica.committedSize == committed)
+        #expect(try replicaSubject.storage.length == committed)
+        #expect(throws: XitDBError.callerError(Refused())) {
+            try replica.applyReplicated(at: 0, from: &refusing, count: 10)
+        }
+        #expect(try replicaSubject.storage.length == 0)
+        #expect(throws: XitDBError.endOfStream) { try replica.committedSize }
+
+        // from 0 the sink takes the bytes before the root header, the root
+        // header, and the rest; from elsewhere, the bytes as they are
+        for accepting in 0...2 {
+            var sink = ThrowingSink(accepting: accepting)
+            #expect(throws: XitDBError.callerError(Refused())) {
+                try source.readCommitted(from: 0, to: committed, into: &sink)
+            }
+            #expect(sink.taken == accepting)
+        }
+        var sink = ThrowingSink(accepting: 0)
+        #expect(throws: XitDBError.callerError(Refused())) {
+            try source.readCommitted(from: 62, to: committed, into: &sink)
+        }
+        var taking = ThrowingSink(accepting: 3)
+        try source.readCommitted(from: 0, to: committed, into: &taking)
+        #expect(taking.taken == 3)
+    }
+
+    /// The storage failing during a sync, at each write and each sync of
+    /// one, and what each failure leaves, which is what Zig leaves. At the
+    /// committed size: bytes written before the failure stay past the
+    /// committed size, which the next sync discards, until the root header
+    /// is written, after which the commit is made and only its last sync
+    /// is missing. At 0: the file was emptied first, so a failed write
+    /// leaves no database, and a failed sync leaves the bytes with the
+    /// replica's own header not yet replaced, so that they do not check.
+    @Test(arguments: StorageKind.allCases)
+    func aStorageThatFailsDuringASync(kind: StorageKind) throws {
+        let (_, source) = try makeSource(kind)
+        let committed = try source.committedSize
+        let whole = try readCommitted(source, from: 0, to: committed)
+        let tail = try readCommitted(source, from: 62, to: committed)
+        let replicaSubject = try StorageUnderTest(kind)
+        let faulty = FaultInjectingStorage(replicaSubject.storage)
+        let replica = try Database(storage: faulty, hashSize: 20, hashID: nil, fileID: 7, random: FixedRandom([1]))
+        try replica.applyReplicated(at: 0, bytes: try readCommitted(source, from: 0, to: 62))
+        #expect(try replica.committedSize == 62)
+        let failure = FaultInjectingStorage.failure
+
+        // the bytes' write fails: nothing is written
+        faulty.faults = [.failWrite(faulty.writeCount + 1)]
+        #expect(throws: failure) { try replica.applyReplicated(at: 62, bytes: tail) }
+        #expect(try replica.committedSize == 62)
+        #expect(try faulty.length == 62)
+
+        // the bytes' write is cut short: what it wrote stays past the
+        // committed size
+        faulty.faults = [.cutWriteShort(faulty.writeCount + 1, keeping: 5)]
+        #expect(throws: failure) { try replica.applyReplicated(at: 62, bytes: tail) }
+        #expect(try replica.committedSize == 62)
+        #expect(try faulty.length == 67)
+
+        // the second write of a streaming sync fails: the first byte stays
+        var slow = OneByteSource(tail)
+        faulty.faults = [.failWrite(faulty.writeCount + 2)]
+        #expect(throws: failure) { try replica.applyReplicated(at: 62, from: &slow, count: UInt64(tail.count)) }
+        #expect(try replica.committedSize == 62)
+        #expect(try faulty.length == 63)
+
+        // the sync before the root header fails: the bytes stay, uncommitted
+        faulty.faults = [.failSync(faulty.syncCount + 1)]
+        #expect(throws: failure) { try replica.applyReplicated(at: 62, bytes: tail) }
+        #expect(try replica.committedSize == 62)
+        #expect(try faulty.length == committed)
+
+        // the root header's write fails: the same
+        faulty.faults = [.failWrite(faulty.writeCount + 2)]
+        #expect(throws: failure) { try replica.applyReplicated(at: 62, bytes: tail) }
+        #expect(try replica.committedSize == 62)
+        #expect(try faulty.length == committed)
+
+        // the sync after the root header fails: the commit is made, and the
+        // error reported
+        faulty.faults = [.failSync(faulty.syncCount + 2)]
+        #expect(throws: failure) { try replica.applyReplicated(at: 62, bytes: tail) }
+        #expect(try replica.committedSize == committed)
+        #expect(try readCommitted(replica, from: 0, to: committed) == whole)
+        #expect(try replica.replicaState == (try source.replicaState))
+
+        // at 0, the write fails: no database is left, and the header is the
+        // replica's own
+        faulty.faults = [.failWrite(faulty.writeCount + 1)]
+        #expect(throws: failure) { try replica.applyReplicated(at: 0, bytes: whole) }
+        #expect(try faulty.length == 0)
+        #expect(throws: XitDBError.endOfStream) { try replica.committedSize }
+        #expect(replica.header.fileID == 6)
+
+        // at 0, the sync fails: the bytes are there, with the header of the
+        // replica as it was, which they do not check against
+        faulty.faults = []
+        let other = try Database(storage: faulty, hashSize: 20, hashID: nil, fileID: 7, random: FixedRandom([1]))
+        faulty.faults = [.failSync(faulty.syncCount + 1)]
+        #expect(throws: failure) { try other.applyReplicated(at: 0, bytes: whole) }
+        #expect(try faulty.length == committed)
+        #expect(other.header.fileID == 7)
+        #expect(throws: XitDBError.invalidDatabase) { try other.committedSize }
+
+        // a sync at 0 that succeeds puts it right
+        faulty.faults = []
+        try other.applyReplicated(at: 0, bytes: whole)
+        #expect(other.header.fileID == 6)
+        #expect(try other.committedSize == committed)
+        #expect(try other.replicaState == (try source.replicaState))
+    }
+
     /// A sync at 0 that fails leaves no database: the file was emptied
     /// first. Everything that needs the committed size raises from then on,
     /// and a sync at 0 that succeeds puts it right.
@@ -249,6 +457,11 @@ struct CollectingSink: ByteSink {
         // not even the header
         #expect(throws: XitDBError.endOfStream) { try replica.applyReplicated(at: 0, bytes: Array(whole[0..<10])) }
         #expect(throws: XitDBError.endOfStream) { try replica.committedSize }
+        // a start past the end is refused before the committed size is
+        // read, as Zig's `or` short-circuits, so the range is reported and
+        // not the state the failed sync left
+        #expect(throws: XitDBError.invalidRange) { try readCommitted(replica, from: 5, to: 3) }
+        #expect(throws: XitDBError.endOfStream) { try readCommitted(replica, from: 37, to: 40) }
         // a trailer that does not check
         var damaged = whole
         damaged[damaged.count - 1] ^= 0xFF

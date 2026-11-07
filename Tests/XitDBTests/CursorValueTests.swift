@@ -371,6 +371,58 @@ import Testing
         }
     }
 
+    /// A slot that holds bytes reads as a key-only entry, as Zig's does: the
+    /// key cursor is at the bytes, the value is empty and the hash is zeros.
+    /// Such a slot is what a sorted set's entry is, and nothing tells a
+    /// byte value from one, so `readEntry` succeeds on a byte value too
+    /// (D5). Anything else is refused.
+    @Test func aByteValueReadsAsAKeyOnlyEntry() throws {
+        let database = try makeDatabase()
+        try put(database, "short", .bytes([1, 2, 3]))
+        try put(database, "long", .bytes(Self.longValue))
+        try put(database, "tagged", .bytes([4, 5], formatTag: FormatTag(0x74, 0x67)))
+        try put(database, "number", .uint(1))
+        try put(database, "none", .slot(nil))
+        for (name, bytes) in [("short", [1, 2, 3]), ("long", Self.longValue), ("tagged", [4, 5])] {
+            let value = try get(database, name)
+            let entry = try value.readEntry()
+            #expect(try entry.key.slot == (try value.slot))
+            #expect(try entry.key.readBytes() == bytes)
+            #expect(try entry.value.slot.isEmpty)
+            #expect(try entry.value.readBytes() == [])
+            #expect(entry.hash == [UInt8](repeating: 0, count: 20))
+        }
+        #expect(throws: XitDBError.unexpectedTag) { try get(database, "number").readEntry() }
+        #expect(throws: XitDBError.unexpectedTag) { try get(database, "none").readEntry() }
+        #expect(throws: XitDBError.unexpectedTag) { try database.rootCursor.readEntry() }
+    }
+
+    /// A seek so far that the next write's position is beyond any position
+    /// a storage has is the writer's own error, not the end of a stream:
+    /// nothing is read, and the storage is not asked. Zig traps on the sum.
+    @Test func aWriterRefusesAPositionBeyondAnyStorage() throws {
+        let database = try makeDatabase()
+        try database.withTransaction { cursor in
+            var value = try cursor.writePath([.hashMapGet(.value, sha1("far"))])
+            // the position itself would pass the largest number
+            #expect(throws: XitDBError.unexpectedWriterPosition) {
+                try value.writeBytes { writer in
+                    try writer.write([1])
+                    writer.seek(to: .max - 2)
+                    try writer.write([2, 3, 4])
+                }
+            }
+            // the position fits, but not added to where the array starts
+            #expect(throws: XitDBError.unexpectedWriterPosition) {
+                try value.writeBytes { writer in
+                    writer.seek(to: .max - 2)
+                    try writer.write([2])
+                }
+            }
+            #expect(try value.slot.isEmpty, "a refused write leaves the slot as it was")
+        }
+    }
+
     // MARK: Cursors
 
     @Test func writeIfEmptyGoesByTheSnapshot() throws {

@@ -39,6 +39,11 @@ extension Database {
         frozenAt: UInt64
     ) throws(XitDBError) -> SlotPointer {
         let header = try reader.sortedMapHeader(pointer.slot)
+        // A size that cannot grow comes from a damaged file: it is reported
+        // before the tree is written to, whether or not the key is there,
+        // as the linked array list's insert does. (Zig checks nothing and
+        // adds one for a new key.)
+        guard header.size < .max else { throw .invalidBTreeNode }
         // Only a set that is just touching the key can leave out the value.
         let keyOnly = pointer.slot.tag == .sortedSet && kind == .key
         let result = try key.withBytes { (bytes: Span<UInt8>) throws(XitDBError) in
@@ -49,12 +54,7 @@ extension Database {
         // Update the header before the value is filled in, so that a
         // failure in the rest of the path leaves the tree and the header
         // consistent: the entry exists, with an empty value.
-        var size = header.size
-        if result.added {
-            // A size that cannot grow comes from a damaged file.
-            guard size < .max else { throw .invalidBTreeNode }
-            size += 1
-        }
+        let size = result.added ? header.size + 1 : header.size
         try write(BTreeHeader(size: size, rootPtr: newRootPtr), at: pointer.slot.value)
         return try reader.sortedTargetSlot(result.entry, kind)
     }
@@ -65,7 +65,11 @@ extension Database {
             try sortedRemove(rootPtr: header.rootPtr, key: bytes, frozenAt: frozenAt)
         }
         guard result.found else { throw .keyNotFound }
-        // The key was found in a map whose header says it is empty.
+        // The key was found in a map whose header says it is empty. A size
+        // of nothing is right for an empty map, so only finding the key
+        // proves it wrong: the check follows the rewrite, as in Zig, and
+        // what a callback that catches the error leaves behind is for the
+        // transaction's poisoning (finding 16).
         guard header.size > 0 else { throw .invalidBTreeNode }
         try write(BTreeHeader(size: header.size - 1, rootPtr: result.rootPtr), at: pointer.slot.value)
     }

@@ -209,15 +209,29 @@ import Testing
     func aHeaderAtTheLargestSize(kind: StorageKind) throws {
         let subject = try Subject(kind)
         let database = try subject.damaged(bigEndianBytes(UInt64.max), at: subject.headerPtr)
-        // A new entry cannot be counted; a rank from the end is beyond the
-        // tree. Everything else works, removes counting down included.
+        // A size that cannot grow is damage whatever the key: every put is
+        // reported, before the tree is written to (C4). A rank from the end
+        // is beyond the tree. Everything else works, removes counting down
+        // included.
         let failed = try failing(database)
         #expect(
             failed
                 == invalid([
-                    "put new first", "put new last", "get index -1", "get index 50", "iterate from index -1",
-                    "iterate from index 50",
+                    "put first", "put last", "put new first", "put new last", "get index -1", "get index 50",
+                    "iterate from index -1", "iterate from index 50",
                 ]))
+        // nothing is written by a put that is reported
+        do {
+            try database.withTransaction { cursor in
+                let map = try SortedMap(try HashMap(cursor).putCursor(forHash: sha1("map").bytes))
+                let length = try subject.subject.storage.length
+                #expect(throws: XitDBError.invalidBTreeNode) { try map.put(.uint(1), forKey: Subject.key(5)) }
+                #expect(throws: XitDBError.invalidBTreeNode) { try map.put(.uint(1), forKey: Array("k99".utf8)) }
+                #expect(throws: XitDBError.invalidBTreeNode) { try map.putCursor(forKey: Subject.key(5)) }
+                #expect(try subject.subject.storage.length == length)
+                throw Rollback()
+            }
+        } catch is Rollback {}
     }
 
     /// The root's counts add up past what a number holds: its first is the
@@ -226,7 +240,10 @@ import Testing
     /// the first child writes the child's own count in its place and goes
     /// through, as does a remove, which counts down. Every rank falls in
     /// the first child by that count, and is reported by the leaf's bound
-    /// unless it is one the leaf has.
+    /// unless it is one the leaf has. The rank of a key beyond the first
+    /// child, and the walk from such a key, sum the counts before it and
+    /// are reported by the call itself rather than giving a rank that
+    /// wrapped (C3).
     @Test(arguments: StorageKind.allCases)
     func countsThatAddUpPastTheLargestNumber(kind: StorageKind) throws {
         let subject = try Subject(kind)
@@ -236,8 +253,19 @@ import Testing
             failed
                 == invalid([
                     "put last", "put new last", "get index 24", "get index -1", "iterate from index 24",
-                    "iterate from index -1",
+                    "iterate from index -1", "rank last", "rank missing", "iterate from last", "iterate from missing",
                 ]))
+        // A key in the first child sums nothing; one in the second child
+        // sums the first count and its own place in the leaf, which is one
+        // too many. The error comes from the call, not from a later read.
+        let root = try HashMap(database.rootCursor.readOnly)
+        let map = try SortedMap(try #require(try root.cursor(forHash: sha1("map").bytes)))
+        #expect(try map.rank(of: Subject.key(5)) == 5)
+        #expect(throws: XitDBError.invalidBTreeNode) { try map.rank(of: Subject.key(10)) }
+        #expect(throws: XitDBError.invalidBTreeNode) { try map.rank(of: Array("k1".utf8)) }
+        #expect(throws: XitDBError.invalidBTreeNode) { try map.iterator(fromKey: Subject.key(10)) }
+        var fromFirst = try map.iterator(fromKey: Subject.key(5))
+        #expect(try fromFirst.next()?.readEntry().value.readUInt64() == 5)
     }
 
     /// The root's count for its first child is zero.

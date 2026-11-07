@@ -1,9 +1,10 @@
-/// A counted hash set in a database: Zig's `CountedHashSet`.
+/// A counted hash set in a database.
 ///
-/// A set holds keys, each under its hash. **The set hashes nothing itself.**
-/// The caller hashes each key, with any function whose result has as many
-/// bytes as the database's hash size, and gives the hash with the key. Two
-/// keys with the same hash are the same key to the set.
+/// A set holds keys, each under its hash; it is Zig's `CountedHashSet`.
+/// **The set hashes nothing itself.** The caller hashes each key, with any
+/// function whose result has as many bytes as the database's hash size,
+/// and gives the hash with the key. Two keys with the same hash are the
+/// same key to the set.
 ///
 /// A counted set keeps the number of its entries, which ``count`` reads
 /// without going through them. It costs eight bytes and one more write for
@@ -61,9 +62,11 @@ public struct CountedHashSet<Access: CursorAccess> {
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
     ///   size.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
-    ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
-    ///   the slot holds something other than a hash map or set, or an error
-    ///   of the storage or of a damaged file.
+    ///   bytes as the database's hash size, once the slot holds a map or
+    ///   set (a slot that holds nothing checks no hash and has no entry for
+    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   something other than a hash map or set, or an error of the storage
+    ///   or of a damaged file.
     public func cursor(forHash hash: Span<UInt8>) throws(XitDBError) -> Cursor<ReadOnly>? {
         let path: InlineArray<1, PathPart> = [.hashMapGet(.key, KeyHash(hash))]
         return try cursor.readPath(path.span)
@@ -76,9 +79,11 @@ public struct CountedHashSet<Access: CursorAccess> {
     ///   size, in any collection of bytes: an array, a digest, a slice, a
     ///   string's `utf8`. The `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
-    ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
-    ///   the slot holds something other than a hash map or set, or an error
-    ///   of the storage or of a damaged file.
+    ///   bytes as the database's hash size, once the slot holds a map or
+    ///   set (a slot that holds nothing checks no hash and has no entry for
+    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   something other than a hash map or set, or an error of the storage
+    ///   or of a damaged file.
     @inlinable
     public func cursor(forHash hash: some Collection<UInt8>) throws(XitDBError) -> Cursor<ReadOnly>? {
         let bytes = Array(hash)
@@ -91,9 +96,11 @@ public struct CountedHashSet<Access: CursorAccess> {
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
     ///   size.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
-    ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
-    ///   the slot holds something other than a hash map or set, or an error
-    ///   of the storage or of a damaged file.
+    ///   bytes as the database's hash size, once the slot holds a map or
+    ///   set (a slot that holds nothing checks no hash and has no entry for
+    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   something other than a hash map or set, or an error of the storage
+    ///   or of a damaged file.
     public func slot(forHash hash: Span<UInt8>) throws(XitDBError) -> Slot? {
         let path: InlineArray<1, PathPart> = [.hashMapGet(.key, KeyHash(hash))]
         return try cursor.readPathSlot(path.span)
@@ -106,9 +113,11 @@ public struct CountedHashSet<Access: CursorAccess> {
     ///   size, in any collection of bytes: an array, a digest, a slice, a
     ///   string's `utf8`. The `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
-    ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
-    ///   the slot holds something other than a hash map or set, or an error
-    ///   of the storage or of a damaged file.
+    ///   bytes as the database's hash size, once the slot holds a map or
+    ///   set (a slot that holds nothing checks no hash and has no entry for
+    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   something other than a hash map or set, or an error of the storage
+    ///   or of a damaged file.
     @inlinable
     public func slot(forHash hash: some Collection<UInt8>) throws(XitDBError) -> Slot? {
         let bytes = Array(hash)
@@ -124,9 +133,11 @@ public struct CountedHashSet<Access: CursorAccess> {
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
     ///   size.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
-    ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
-    ///   the slot holds something other than a hash map or set, or an error
-    ///   of the storage or of a damaged file.
+    ///   bytes as the database's hash size, once the slot holds a map or
+    ///   set (a slot that holds nothing checks no hash and has no entry for
+    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   something other than a hash map or set, or an error of the storage
+    ///   or of a damaged file.
     public func contains(hash: Span<UInt8>) throws(XitDBError) -> Bool {
         try slot(forHash: hash) != nil
     }
@@ -141,9 +152,11 @@ public struct CountedHashSet<Access: CursorAccess> {
     ///   size, in any collection of bytes: an array, a digest, a slice, a
     ///   string's `utf8`. The `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
-    ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
-    ///   the slot holds something other than a hash map or set, or an error
-    ///   of the storage or of a damaged file.
+    ///   bytes as the database's hash size, once the slot holds a map or
+    ///   set (a slot that holds nothing checks no hash and has no entry for
+    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   something other than a hash map or set, or an error of the storage
+    ///   or of a damaged file.
     @inlinable
     public func contains(hash: some Collection<UInt8>) throws(XitDBError) -> Bool {
         let bytes = Array(hash)
@@ -187,17 +200,28 @@ extension CountedHashSet where Access == ReadWrite {
     /// A view of the set at a cursor's slot, for reading and writing.
     ///
     /// A slot that holds nothing becomes an empty set. A set from an
-    /// earlier transaction is readied for this one: its first block is
-    /// copied, so that writing to it leaves earlier moments as they were.
+    /// earlier transaction is readied for this one: its count and first
+    /// block are copied, so that writing to it leaves earlier moments as
+    /// they were.
+    ///
+    /// **A counted hash map becomes a counted hash set.** A counted map
+    /// and a counted set are one kind to the slot, as in Zig: the slot's
+    /// tag is written as a set, and the count and the entries stay, values
+    /// included, though a set reads only their keys. On the root, where
+    /// this is a transaction of its own, a map is a set from then on; a
+    /// map is opened with ``CountedHashMap``. A map or set that keeps no
+    /// count is another kind, and is refused.
     ///
     /// On the root cursor this is a transaction of its own, unless the root
     /// is such a set already, in which case nothing is written.
     ///
     /// - Parameter cursor: A cursor at the slot.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
-    ///   other than a counted hash set, ``XitDBError/expectedTxStart`` if no
-    ///   transaction is in progress and `cursor` is not the root cursor, or
-    ///   an error of the storage or of a damaged file.
+    ///   other than a counted hash map or set,
+    ///   ``XitDBError/expectedTxStart`` if no transaction is in progress
+    ///   and `cursor` is not the root cursor,
+    ///   ``XitDBError/nestedTopLevelWrite`` if `cursor` is the root cursor
+    ///   and one is, or an error of the storage or of a damaged file.
     public init(_ cursor: Cursor<ReadWrite>) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.hashMapInit(counted: true, set: true)]
         self.cursor = try cursor.writePath(path.span)

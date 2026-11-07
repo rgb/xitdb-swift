@@ -12,7 +12,7 @@
 #endif
 
 /// A way of asking the operating system to put a file's data on the disk.
-enum SyncCall: Sendable, Equatable {
+package enum SyncCall: Sendable, Equatable {
     /// The data reaches the disk and the drive flushes its cache. On Apple
     /// platforms, `fcntl` with `F_FULLFSYNC`.
     case full
@@ -50,8 +50,12 @@ enum Platform {
     /// it once it holds whatever lock it was asked to take, so that a file
     /// locked by someone else is not destroyed by an opener that then fails.
     ///
-    /// - Throws: `storageFailure` with the error `open` reported.
+    /// - Throws: `storageFailure` with the error `open` reported, or with
+    ///   `EINVAL` for a path that contains a NUL byte: a C string ends at
+    ///   the first NUL, so `open` would be given the part before it and
+    ///   open some other file.
     static func openFile(_ path: String, access: FileAccess) throws(XitDBError) -> Int32 {
+        guard !path.utf8.contains(0) else { throw .storageFailure(errno: EINVAL) }
         let flags: Int32 =
             switch access {
             case .readOnly: O_RDONLY
@@ -74,39 +78,70 @@ enum Platform {
         _ = close(descriptor)
     }
 
-    /// Reads into `buffer[range]` the bytes of the file that start at
-    /// `offset`, until the range is full or the file ends.
+    /// The most bytes one `pread` or `pwrite` is asked for: 1 GiB.
     ///
-    /// - Returns: The number of bytes read.
-    /// - Throws: `storageFailure` with the error `pread` reported.
-    static func readFile(
-        _ descriptor: Int32,
-        into buffer: inout MutableSpan<UInt8>,
-        range: Range<Int>,
-        at offset: UInt64
+    /// A single call for more than `INT_MAX` bytes fails with `EINVAL` on
+    /// Apple platforms, and a value of a few gigabytes written through a
+    /// cursor is one write of the storage. Zig's standard library caps its
+    /// calls the same way; the loop in ``transfer(_:count:at:callLimit:_:)``
+    /// makes as many calls as it takes.
+    static let maximumCallSize = 1 << 30
+
+    /// Which way ``transfer(_:count:at:callLimit:_:)`` moves bytes, which
+    /// decides what a call that moves nothing, or fewer bytes than it was
+    /// asked for, means.
+    enum TransferDirection {
+        case read
+        case write
+    }
+
+    /// The loop that `readFile` and `writeFile` share: moves `count` bytes
+    /// from `offset` on, in calls of at most `callLimit` bytes each.
+    ///
+    /// `call` makes one system call for the bytes from `done` on, `wanted`
+    /// of them at most, at `fileOffset`, and returns what the system
+    /// returned: the bytes moved, zero at the end of the file, or -1 with
+    /// `errno` set. A call interrupted by a signal is made again.
+    ///
+    /// A read stops at the end of the file, which is a call that moves
+    /// nothing or fewer bytes than it was asked for: a regular file gives
+    /// fewer only at its end, and asking again would cost a call that
+    /// returns nothing. A read that reaches the end is common: the trailer
+    /// that ends the file, a leaf asked for with a branch's worth. A call
+    /// that moves exactly what it was asked for is not short, the cap
+    /// included, so a read of more than the cap goes on to the next call.
+    /// A read at an offset the system cannot express stops as well:
+    /// nothing can be stored there.
+    ///
+    /// A write stops only when every byte is written. A call that writes
+    /// nothing would loop forever and is reported as `EIO`; an offset the
+    /// system cannot express is `EFBIG`.
+    ///
+    /// - Returns: The number of bytes moved.
+    /// - Throws: `storageFailure` with the error the call reported, or with
+    ///   `EIO` or `EFBIG` as above.
+    static func transfer(
+        _ direction: TransferDirection,
+        count: Int,
+        at offset: UInt64,
+        callLimit: Int,
+        _ call: (_ done: Int, _ wanted: Int, _ fileOffset: off_t) -> Int
     ) throws(XitDBError) -> Int {
-        precondition(range.lowerBound >= 0 && range.upperBound <= buffer.count, "the range is out of bounds")
+        precondition(callLimit > 0, "a call must be allowed at least one byte")
         var total = 0
-        while total < range.count {
+        while total < count {
             let (position, overflow) = offset.addingReportingOverflow(UInt64(total))
-            // Nothing can be stored beyond the largest offset the system has.
-            guard !overflow, let fileOffset = off_t(exactly: position) else { break }
-            let start = range.lowerBound + total
-            let wanted = range.count - total
-            // Safe: `start` and `wanted` stay within the span, which was
-            // checked above, and `pread` writes at most `wanted` bytes.
-            let result = buffer.withUnsafeMutableBytes { bytes in
-                unsafe pread(descriptor, bytes.baseAddress.unsafelyUnwrapped + start, wanted, fileOffset)
+            guard !overflow, let fileOffset = off_t(exactly: position) else {
+                if direction == .write { throw .storageFailure(errno: fileTooLarge) }
+                break
             }
+            let wanted = min(count - total, callLimit)
+            let result = call(total, wanted, fileOffset)
             if result > 0 {
                 total += result
-                // A regular file gives fewer bytes than asked only at its
-                // end, so a short read is the end: asking again would cost
-                // a call that returns nothing. A read that reaches the end
-                // is common: the trailer that ends the file, a leaf asked
-                // for with a branch's worth.
-                if result < wanted { break }
+                if direction == .read && result < wanted { break }
             } else if result == 0 {
+                if direction == .write { throw .storageFailure(errno: EIO) }
                 break
             } else {
                 let error = errno
@@ -116,32 +151,65 @@ enum Platform {
         return total
     }
 
-    /// Writes all of `bytes` to the file at `offset`.
+    /// Reads into `buffer[range]` the bytes of the file that start at
+    /// `offset`, until the range is full or the file ends, in calls of at
+    /// most ``maximumCallSize`` bytes.
+    ///
+    /// - Returns: The number of bytes read.
+    /// - Throws: `storageFailure` with the error `pread` reported.
+    static func readFile(
+        _ descriptor: Int32,
+        into buffer: inout MutableSpan<UInt8>,
+        range: Range<Int>,
+        at offset: UInt64
+    ) throws(XitDBError) -> Int {
+        try readFile(descriptor, into: &buffer, range: range, at: offset, callLimit: maximumCallSize)
+    }
+
+    /// ``readFile(_:into:range:at:)`` with the cap on each call given, so
+    /// that a test can see the loop go on past a call for the whole cap
+    /// without a file of gigabytes.
+    static func readFile(
+        _ descriptor: Int32,
+        into buffer: inout MutableSpan<UInt8>,
+        range: Range<Int>,
+        at offset: UInt64,
+        callLimit: Int
+    ) throws(XitDBError) -> Int {
+        precondition(range.lowerBound >= 0 && range.upperBound <= buffer.count, "the range is out of bounds")
+        return try transfer(.read, count: range.count, at: offset, callLimit: callLimit) { done, wanted, fileOffset in
+            let start = range.lowerBound + done
+            // Safe: `start` and `wanted` stay within the range, which was
+            // checked against the span above, and `pread` writes at most
+            // `wanted` bytes.
+            return buffer.withUnsafeMutableBytes { bytes in
+                unsafe pread(descriptor, bytes.baseAddress.unsafelyUnwrapped + start, wanted, fileOffset)
+            }
+        }
+    }
+
+    /// Writes all of `bytes` to the file at `offset`, in calls of at most
+    /// ``maximumCallSize`` bytes.
     ///
     /// - Throws: `storageFailure` with the error `pwrite` reported. Some of
     ///   the bytes may have been written.
     static func writeFile(_ descriptor: Int32, _ bytes: Span<UInt8>, at offset: UInt64) throws(XitDBError) {
-        var total = 0
-        while total < bytes.count {
-            let (position, overflow) = offset.addingReportingOverflow(UInt64(total))
-            guard !overflow, let fileOffset = off_t(exactly: position) else {
-                throw .storageFailure(errno: fileTooLarge)
-            }
-            let start = total
-            let wanted = bytes.count - total
-            // Safe: `start` and `wanted` stay within the span, and `pwrite`
+        try writeFile(descriptor, bytes, at: offset, callLimit: maximumCallSize)
+    }
+
+    /// ``writeFile(_:_:at:)`` with the cap on each call given, for the same
+    /// test as ``readFile(_:into:range:at:callLimit:)``.
+    static func writeFile(
+        _ descriptor: Int32,
+        _ bytes: Span<UInt8>,
+        at offset: UInt64,
+        callLimit: Int
+    ) throws(XitDBError) {
+        _ = try transfer(.write, count: bytes.count, at: offset, callLimit: callLimit) { done, wanted, fileOffset in
+            // Safe: `done` and `wanted` stay within the span, and `pwrite`
             // reads at most `wanted` bytes.
-            let result = bytes.withUnsafeBytes { source in
-                unsafe pwrite(descriptor, source.baseAddress.unsafelyUnwrapped + start, wanted, fileOffset)
-            }
-            if result > 0 {
-                total += result
-            } else if result == 0 {
-                // A write that makes no progress would loop forever.
-                throw .storageFailure(errno: EIO)
-            } else {
-                let error = errno
-                if error != EINTR { throw .storageFailure(errno: error) }
+            bytes.withUnsafeBytes { source in
+                unsafe pwrite(descriptor, source.baseAddress.unsafelyUnwrapped + done, wanted, fileOffset)
             }
         }
     }

@@ -21,9 +21,15 @@ enum BTree {
     /// The entries kept on the left when a node overflows.
     static let splitCount = (slotCount + 1) / 2
 
-    /// The greatest height a tree can have: a branch has at least two
-    /// children, and there are at most 2⁶⁴ elements. A tree deeper than
-    /// this is a damaged file.
+    /// The greatest height a tree can have. The count of elements does not
+    /// bound it on its own: a branch is not always over two children, since
+    /// a remove merges a thin child with a neighbour and can leave a branch
+    /// with one, and the sorted tree never rebalances. What bounds it is
+    /// how a tree grows: a level is gained only when the root splits, in
+    /// an insert or a join, and a split needs a node of seventeen, each of
+    /// them made by a split in turn, so a tree of this height would need
+    /// more nodes appended than a file with 64-bit positions holds. A tree
+    /// deeper than this is a damaged file.
     static let maxHeight = 64
 
     /// The size of the kind and count bytes a node starts with, which the

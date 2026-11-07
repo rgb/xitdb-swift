@@ -13,3 +13,4 @@ DerivedData/
 
 # Worktrees of helper agents
 .claude/worktrees/
+.worktrees/

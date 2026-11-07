@@ -97,11 +97,6 @@ import Testing
         }
     }
 
-    /// The UTF-8 bytes of a string.
-    private func utf8(_ text: String) -> [UInt8] {
-        Array(text.utf8)
-    }
-
     /// Zig's `HashId.fromBytes(name)`.
     private func hashID(_ name: String) -> HashID {
         HashID(string: name)!

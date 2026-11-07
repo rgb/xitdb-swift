@@ -174,8 +174,8 @@ extension Database {
         }
         let header = try reader.arrayListHeader(at: pointer.slot.value)
         guard let key = DatabaseReader.arrayListKey(index: index, size: header.size) else { throw .indexOutOfRange }
-        let lastKey = header.size - 1
-        let shift: UInt8 = lastKey < Trie.slotsPerBlock ? 0 : Trie.arrayListShift(lastIndex: lastKey)
+        // The size is at least one, since the index names an element.
+        let shift = Trie.arrayListShift(lastIndex: header.size - 1)
         return try arrayListSlot(indexPosition: header.ptr, key: key, shift: shift, frozenAt: frozenAt)
     }
 
@@ -370,11 +370,20 @@ extension Database {
         let map = try DatabaseReader.hashMapIndexPosition(pointer.slot)
         try reader.checkHashSize(hash)
 
+        // A counted map's count is read first, so that a count that cannot
+        // grow, which comes from a damaged file, is reported before the trie
+        // is written to, whether or not the key is there. (Zig reads it
+        // after, for a new key only.) The trie's blocks never hold the
+        // count, so a sound one is the same before and after.
+        var count: UInt64 = 0
+        if map.counted {
+            count = try reader.uint64(at: pointer.slot.value)
+            if count == .max { throw .invalidCount }
+        }
+
         let found = try mapSlot(indexPosition: map.position, hash: hash, kind: kind, frozenAt: frozenAt)
 
         if map.counted && found.isNew {
-            let count = try reader.uint64(at: pointer.slot.value)
-            if count == .max { throw .invalidDatabase }
             try write(count + 1, at: pointer.slot.value)
         }
 
@@ -396,8 +405,12 @@ extension Database {
         if map.counted && keyFound {
             let count = try reader.uint64(at: pointer.slot.value)
             // A count of nothing with something in the map is a corrupt
-            // file.
-            if count == 0 { throw .invalidDatabase }
+            // file. A count of nothing is right for an empty map, so only
+            // finding the key proves it wrong: the check follows the
+            // rewrite, as in Zig, and what a callback that catches the
+            // error leaves behind is for the transaction's poisoning
+            // (finding 16).
+            if count == 0 { throw .invalidCount }
             try write(count - 1, at: pointer.slot.value)
         }
 

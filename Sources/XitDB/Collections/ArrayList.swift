@@ -1,8 +1,8 @@
-/// A list in a database, indexed by position: Zig's `ArrayList`.
+/// A list in a database, indexed by position.
 ///
 /// Elements are appended at the end, read and written by index, and cut off
-/// from the end with ``truncate(to:)``. A negative index counts from the
-/// end: `-1` is the last element.
+/// from the end with ``truncate(to:)``; it is Zig's `ArrayList`. A negative
+/// index counts from the end: `-1` is the last element.
 ///
 /// A list is a view of a slot. Making one that can only read checks that
 /// the slot holds a list, or nothing. Making one that can write makes the
@@ -133,11 +133,15 @@ extension ArrayList where Access == ReadWrite {
     /// On the root cursor this is a transaction of its own, unless the root
     /// is a list already, in which case nothing is written.
     ///
+    /// A list has no sibling kind: a slot that holds a ``LinkedArrayList``
+    /// is refused, and the tag of a slot is never rewritten.
+    ///
     /// - Parameter cursor: A cursor at the slot.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
-    ///   other than a list, ``XitDBError/expectedTxStart`` if no transaction
-    ///   is in progress and `cursor` is not the root cursor, or an error of
-    ///   the storage or of a damaged file.
+    ///   other than an array list, ``XitDBError/expectedTxStart`` if no
+    ///   transaction is in progress and `cursor` is not the root cursor,
+    ///   ``XitDBError/nestedTopLevelWrite`` if `cursor` is the root cursor
+    ///   and one is, or an error of the storage or of a damaged file.
     public init(_ cursor: Cursor<ReadWrite>) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.arrayListInit]
         self.cursor = try cursor.writePath(path.span)
@@ -218,7 +222,10 @@ extension ArrayList where Access == ReadWrite {
     /// run: `value` is usually the slot of the last element, so that the new
     /// element starts as a copy of the last moment, and `body` makes the
     /// changes. The transaction commits when `body` returns. If `body`
-    /// throws, nothing of it is kept and the error is rethrown.
+    /// throws, the error is rethrown; what was appended is discarded only
+    /// if this call started the transaction, as it does on the root. Inside
+    /// a transaction the element stays, with what `body` wrote before it
+    /// threw, as a ``LinkedArrayList``'s does.
     ///
     /// The result may be ignored: a transaction is often run for its writes
     /// alone, with a body whose one expression happens to have a value.

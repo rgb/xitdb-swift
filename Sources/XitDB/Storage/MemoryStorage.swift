@@ -36,7 +36,8 @@ struct MemoryBuffer {
     /// any gap before the write with zeros. Writing nothing does nothing.
     ///
     /// - Throws: `maxSizeExceeded` if the write would grow the buffer beyond
-    ///   `maxSize`. Nothing is changed then.
+    ///   `maxSize`, or beyond what an array can hold. Nothing is changed
+    ///   then.
     mutating func write(_ source: Span<UInt8>, at offset: UInt64) throws(XitDBError) {
         guard source.count > 0 else { return }
         let oldCount = bytes.count
@@ -126,7 +127,9 @@ public final class MemoryStorage: WritableStorage {
     /// Without a limit, a write far beyond the end makes the storage as large
     /// as it takes to reach it, and the process ends if that much memory
     /// cannot be had. Set a limit for a storage whose writes are not under
-    /// the caller's control.
+    /// the caller's control. Only a write whose bytes would end beyond what
+    /// an array can hold, past `Int.max`, is refused without a limit, with
+    /// the same ``XitDBError/maxSizeExceeded``.
     public var maxSize: UInt64? {
         unsafe buffer.maxSize
     }
@@ -151,12 +154,16 @@ public final class MemoryStorage: WritableStorage {
     ///   - offset: The position of the first byte to read.
     /// - Returns: The number of bytes read, which is less than `range.count`
     ///   only when the storage ends first.
+    /// - Precondition: `range` lies within `buffer`, as the file storages
+    ///   require too; a range that does not is a programming error, whatever
+    ///   the offset.
     public func read(
         into buffer: inout MutableSpan<UInt8>,
         range: Range<Int>,
         at offset: UInt64
     ) throws(XitDBError) -> Int {
-        unsafe self.buffer.read(into: &buffer, range: range, at: offset)
+        precondition(range.lowerBound >= 0 && range.upperBound <= buffer.count, "the range is out of bounds")
+        return unsafe self.buffer.read(into: &buffer, range: range, at: offset)
     }
 
     /// The number of bytes in the storage. This never throws.
@@ -173,7 +180,9 @@ public final class MemoryStorage: WritableStorage {
     ///   - bytes: The bytes to write.
     ///   - offset: The position of the first byte written.
     /// - Throws: ``XitDBError/maxSizeExceeded`` if the write would grow the
-    ///   storage beyond ``maxSize``. Nothing is changed then.
+    ///   storage beyond ``maxSize``, or, with or without a limit, if the
+    ///   bytes would end beyond what an array can hold, past `Int.max`.
+    ///   Nothing is changed then.
     public func write(_ bytes: Span<UInt8>, at offset: UInt64) throws(XitDBError) {
         try unsafe buffer.write(bytes, at: offset)
     }

@@ -234,6 +234,10 @@ extension DatabaseReader {
 
     /// The number of keys below `key` in the tree at `rootPtr`, whether or
     /// not it is there: Zig's `sortedRank`.
+    ///
+    /// - Throws: `invalidBTreeNode` if the counts on the way, which came
+    ///   from the file, add up past what a number holds, and the errors of
+    ///   the descent.
     func sortedRank(rootPtr: UInt64, key: Span<UInt8>) throws(XitDBError) -> UInt64 {
         var nodePtr = rootPtr
         var rank: UInt64 = 0
@@ -242,11 +246,11 @@ extension DatabaseReader {
             switch node.kind {
             case .leaf:
                 let search = try sortedLeafSearch(node, key: key)
-                return rank &+ UInt64(search.index)
+                return try rank.addingCount(UInt64(search.index))
             case .branch:
                 let (index, position) = try sortedChild(of: node, key: key)
                 for below in 0..<index {
-                    rank &+= node.count(below)
+                    rank = try rank.addingCount(node.count(below))
                 }
                 nodePtr = position
             }
@@ -270,6 +274,21 @@ extension DatabaseReader {
                 slot: try sortedEntryPair(entry).valueSlot
             )
         }
+    }
+}
+
+extension UInt64 {
+    /// This rank moved past `count` more entries.
+    ///
+    /// Ranks are summed from the counts of the branches on the way down,
+    /// which came from the file, so that a damaged file is reported and
+    /// cannot give a rank that wrapped.
+    ///
+    /// - Throws: `invalidBTreeNode` if the sum is past what a number holds.
+    func addingCount(_ count: UInt64) throws(XitDBError) -> UInt64 {
+        let (sum, overflow) = addingReportingOverflow(count)
+        guard !overflow else { throw .invalidBTreeNode }
+        return sum
     }
 }
 
@@ -420,6 +439,11 @@ extension Database {
 
         for frame in branches.reversed() {
             // Nothing below changed: this branch, and all above it, stay.
+            // Zig gives the subtree's count in this result; here it is zero,
+            // which is harmless today: a result's count is read only by the
+            // branch above, which this skips, and by sortedGrowRoot for a
+            // split, which this has none of. A caller that starts to read
+            // it must compute it, as Zig does.
             if !result.added, result.nodePtr == frame.node.child(frame.index).value {
                 return SortedInsertResult(nodePtr: rootPtr, count: 0, entry: result.entry, added: false, split: nil)
             }

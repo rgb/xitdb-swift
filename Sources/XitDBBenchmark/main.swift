@@ -33,6 +33,8 @@ enum StorageKind: String {
 final class RunStorage {
     let kind: StorageKind
     let storage: any WritableStorage
+    /// The file under the storage, for `--count` to put its counters on.
+    let file: FileStorage?
     private let path: String?
 
     init(_ kind: StorageKind) throws {
@@ -40,15 +42,15 @@ final class RunStorage {
         switch kind {
         case .memory:
             path = nil
+            file = nil
             storage = MemoryStorage()
         case .bufferedFile, .file:
-            let file = FileManager.default.temporaryDirectory
+            let path = FileManager.default.temporaryDirectory
                 .appendingPathComponent("xitdb-benchmark-\(UUID().uuidString).db").path
-            path = file
-            storage =
-                kind == .file
-                ? try FileStorage(path: file, access: .truncate, durability: .none)
-                : try BufferedFileStorage(path: file, access: .truncate, durability: .none)
+            self.path = path
+            let file = try FileStorage(path: path, access: .truncate, durability: .none)
+            self.file = file
+            storage = kind == .file ? file : BufferedFileStorage(file)
         }
     }
 
@@ -167,6 +169,10 @@ struct Workload {
     /// cost time the phase does not.
     var afterWrite: (Database, Any) throws -> Void = { _, _ in }
     var afterRead: (Database, Any) throws -> Void = { _, _ in }
+    /// What the read phase needs put back before it runs, off the clock,
+    /// for a phase that changes the database it reads and is run again
+    /// on the same one under `--repeat`.
+    var beforeRead: (Database, Any) throws -> Void = { _, _ in }
 
     /// A workload whose write phase fills the prepared database.
     init(
@@ -391,6 +397,18 @@ func replicate(_ transactions: Int, kinds: [StorageKind]) -> Workload {
             throw BenchmarkFailure(description: "the incremental sync did not bring the replica to the source's size")
         }
     }
+    // The read phase syncs the ten transactions and keeps their bytes. Run
+    // again on the same replica, it would find nothing to sync and apply
+    // the kept bytes a second time, so the replica is put back to the full
+    // sync's state and the buffer emptied, and each run does the first
+    // run's work.
+    workload.beforeRead = { replica, prepared in
+        let run = prepared as! ReplicationRun
+        if try replica.committedSize != run.sizeAfterFirst {
+            try replica.applyReplicated(at: 0, bytes: run.fullSync)
+        }
+        run.incrementalSync = []
+    }
     return workload
 }
 
@@ -505,19 +523,33 @@ func precedes(_ left: [UInt8], _ leftCount: Int, _ right: [UInt8], _ rightCount:
     return leftCount < rightCount
 }
 
+/// `--divide <d>` divides every size by `d`, as the Zig benchmark's does, to
+/// check quickly that every workload runs: the gate's smoke run. The sizes
+/// then say nothing, and the file sizes no longer match the spec's.
+let divide: Int = {
+    let arguments = CommandLine.arguments
+    guard let index = arguments.firstIndex(of: "--divide"), index + 1 < arguments.count,
+        let value = Int(arguments[index + 1]), value > 0
+    else { return 1 }
+    return value
+}()
+
+/// A workload's size under `--divide`, never below one.
+func sized(_ size: Int) -> Int { max(size / divide, 1) }
+
 let workloads: [Workload] = [
-    mapInsert(100_000, kinds: [.memory, .bufferedFile]),
-    mapInsert(10_000, kinds: [.file]),
-    listAppend(1_000_000, kinds: [.memory, .bufferedFile]),
-    mapTransactions(2_000, kinds: [.memory, .bufferedFile]),
-    linkedAppend(100_000, kinds: [.memory, .bufferedFile]),
-    linkedAppend(10_000, kinds: [.file]),
-    sortedInsert(100_000, kinds: [.memory, .bufferedFile]),
-    sortedInsert(10_000, kinds: [.file]),
-    mapCompact(2_000, kinds: [.memory, .bufferedFile]),
-    mapCompact(200, kinds: [.file]),
-    replicate(2_000, kinds: [.memory, .bufferedFile]),
-    replicate(200, kinds: [.file]),
+    mapInsert(sized(100_000), kinds: [.memory, .bufferedFile]),
+    mapInsert(sized(10_000), kinds: [.file]),
+    listAppend(sized(1_000_000), kinds: [.memory, .bufferedFile]),
+    mapTransactions(sized(2_000), kinds: [.memory, .bufferedFile]),
+    linkedAppend(sized(100_000), kinds: [.memory, .bufferedFile]),
+    linkedAppend(sized(10_000), kinds: [.file]),
+    sortedInsert(sized(100_000), kinds: [.memory, .bufferedFile]),
+    sortedInsert(sized(10_000), kinds: [.file]),
+    mapCompact(sized(2_000), kinds: [.memory, .bufferedFile]),
+    mapCompact(sized(200), kinds: [.file]),
+    replicate(sized(2_000), kinds: [.memory, .bufferedFile]),
+    replicate(sized(200), kinds: [.file]),
 ]
 
 func median(_ values: [Double]) -> Double {
@@ -526,7 +558,7 @@ func median(_ values: [Double]) -> Double {
 
 func report(_ workload: Workload, _ phase: String, _ kind: StorageKind, _ times: [Double], _ fileSize: UInt64) {
     let line = String(
-        format: #"{"workload": "%@", "phase": "%@", "kind": "%@", "n": %d, "median_ms": %.6f, "file_size": %llu}"#,
+        format: #"{"workload": "%@", "phase": "%@", "kind": "%@", "n": %ld, "median_ms": %.6f, "file_size": %llu}"#,
         workload.name, phase, kind.rawValue, workload.size, median(times), fileSize
     )
     print(line)
@@ -547,6 +579,7 @@ func run(_ workload: Workload) throws {
             writeTimes.append(try milliseconds { database = try workload.write(storage, keys, prepared) })
             guard let database else { throw BenchmarkFailure(description: "the write phase gave no database") }
             try workload.afterWrite(database, prepared)
+            try workload.beforeRead(database, prepared)
             readTimes.append(try milliseconds { try workload.read(database, keys, prepared) })
             try workload.afterRead(database, prepared)
             iterateTimes.append(try milliseconds { try workload.iterate(database, keys, prepared) })
@@ -564,6 +597,81 @@ func run(_ workload: Workload) throws {
     }
 }
 
+/// The system calls a file storage made: what `--count` reports per phase.
+final class IOCounts {
+    var preadCalls = 0
+    var preadBytes = 0
+    var pwriteCalls = 0
+    var pwriteBytes = 0
+    var fstatCalls = 0
+    var ftruncateCalls = 0
+
+    /// The file's own calls, kept from the first install so that a later
+    /// one counts once, not through the counters already there.
+    private var base: FileCalls?
+
+    func install(on file: FileStorage) {
+        let base = self.base ?? file.calls
+        self.base = base
+        file.calls.read = {
+            (descriptor: Int32, buffer: inout MutableSpan<UInt8>, range: Range<Int>, offset: UInt64)
+                throws(XitDBError) -> Int in
+            let read = try base.read(descriptor, &buffer, range, offset)
+            self.preadCalls += 1
+            self.preadBytes += read
+            return read
+        }
+        file.calls.write = { (descriptor: Int32, bytes: Span<UInt8>, offset: UInt64) throws(XitDBError) in
+            self.pwriteCalls += 1
+            self.pwriteBytes += bytes.count
+            try base.write(descriptor, bytes, offset)
+        }
+        file.calls.length = { (descriptor: Int32) throws(XitDBError) -> UInt64 in
+            self.fstatCalls += 1
+            return try base.length(descriptor)
+        }
+        file.calls.setLength = { (descriptor: Int32, length: UInt64) throws(XitDBError) in
+            self.ftruncateCalls += 1
+            try base.setLength(descriptor, length)
+        }
+    }
+
+    func report(_ workload: Workload, _ phase: String, _ kind: StorageKind) {
+        print(
+            "counts \(workload.name) \(phase) \(kind.rawValue): pread \(preadCalls) calls \(preadBytes) bytes, "
+                + "pwrite \(pwriteCalls) calls \(pwriteBytes) bytes, fstat \(fstatCalls), ftruncate \(ftruncateCalls)")
+        preadCalls = 0
+        preadBytes = 0
+        pwriteCalls = 0
+        pwriteBytes = 0
+        fstatCalls = 0
+        ftruncateCalls = 0
+    }
+}
+
+/// Runs one run of a workload on one kind of storage with the file's system
+/// calls counted, and prints the counts of each phase: calls and bytes of
+/// pread and pwrite, calls of fstat and ftruncate.
+func runCounting(_ workload: Workload, _ kind: StorageKind) throws {
+    let keys = Keys(workload.keyKind, count: workload.keyCount)
+    let storage = try RunStorage(kind)
+    guard let file = storage.file else { throw BenchmarkFailure(description: "a memory storage makes no calls") }
+    let counts = IOCounts()
+    let prepared = try workload.prepare(storage, keys)
+    counts.install(on: file)
+    let database = try workload.write(storage, keys, prepared)
+    counts.report(workload, "write", kind)
+    try workload.afterWrite(database, prepared)
+    try workload.beforeRead(database, prepared)
+    counts.install(on: file)
+    try workload.read(database, keys, prepared)
+    counts.report(workload, "read", kind)
+    try workload.afterRead(database, prepared)
+    counts.install(on: file)
+    try workload.iterate(database, keys, prepared)
+    counts.report(workload, "iterate", kind)
+}
+
 /// Runs one phase of a workload until `seconds` have passed, and prints how
 /// often it ran and how long a run took on average. The write phase starts
 /// from a new, empty database each time, as it does when it is measured. The
@@ -579,6 +687,7 @@ func runRepeatedly(_ workload: Workload, _ kind: StorageKind, phase: String, sec
         let database = try workload.write(storage, keys, prepared)
         let run = phase == "read" ? workload.read : workload.iterate
         while DispatchTime.now().uptimeNanoseconds < deadline {
+            if phase == "read" { try workload.beforeRead(database, prepared) }
             total += try milliseconds { try run(database, keys, prepared) }
             runs += 1
         }
@@ -591,13 +700,34 @@ func runRepeatedly(_ workload: Workload, _ kind: StorageKind, phase: String, sec
         }
     }
     let line = String(
-        format: #"{"workload": "%@", "phase": "%@", "kind": "%@", "n": %d, "runs": %d, "mean_ms": %.3f}"#,
+        format: #"{"workload": "%@", "phase": "%@", "kind": "%@", "n": %ld, "runs": %ld, "mean_ms": %.3f}"#,
         workload.name, phase, kind.rawValue, workload.size, runs, total / Double(max(runs, 1))
     )
     print(line)
 }
 
-let arguments = Array(CommandLine.arguments.dropFirst())
+let arguments: [String] = {
+    var arguments = Array(CommandLine.arguments.dropFirst())
+    if let index = arguments.firstIndex(of: "--divide"), index + 1 < arguments.count {
+        arguments.removeSubrange(index...(index + 1))
+    }
+    return arguments
+}()
+if arguments.first == "--count" {
+    guard arguments.count == 3, let workload = workloads.first(where: { $0.name == arguments[1] }),
+        let kind = StorageKind(rawValue: arguments[2])
+    else {
+        FileHandle.standardError.write(Data("usage: XitDBBenchmark --count <workload> <kind>\n".utf8))
+        exit(2)
+    }
+    do {
+        try runCounting(workload, kind)
+    } catch {
+        FileHandle.standardError.write(Data("XitDBBenchmark: \(error)\n".utf8))
+        exit(1)
+    }
+    exit(0)
+}
 if arguments.first == "--repeat" {
     guard
         arguments.count == 5,

@@ -47,16 +47,6 @@ import Testing
         mutating func write(_ bytes: Span<UInt8>) {}
     }
 
-    /// The UTF-8 bytes of a string.
-    private func utf8(_ text: String) -> [UInt8] {
-        Array(text.utf8)
-    }
-
-    /// Zig's `hashInt(text)`: the SHA-1 of the text, as the twenty bytes the collections take.
-    private func hashInt(_ text: String) -> [UInt8] {
-        sha1(text).bytes
-    }
-
     // MARK: Zig's helpers
 
     /// Zig's `std.Io.Writer.Allocating`: the committed bytes from `start` to `end`, through a sink.

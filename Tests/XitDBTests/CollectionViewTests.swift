@@ -119,6 +119,96 @@ import Testing
         #expect(try database.rootCursor.slot.tag == .hashMap)
     }
 
+    /// A writing view of the sibling kind rewrites the slot's tag, on the
+    /// root too, where it is a transaction of its own: a hash set made on a
+    /// root that holds a map commits the root as a set, with the entries
+    /// kept. The counted pair and the sorted pair do the same; the two
+    /// lists have no sibling and refuse each other (D3).
+    @Test func aWritingViewOfTheSiblingKindRetagsTheRoot() throws {
+        let storage = MemoryStorage()
+        let database = try makeDatabase(storage)
+        let hash = key("k")
+        try database.withTransaction { cursor in
+            try HashMap(cursor).put(.uint(1), forHash: hash)
+        }
+        let mapSlot = try database.rootCursor.slot
+        #expect(mapSlot.tag == .hashMap)
+        let committed = storage.bytes.count
+
+        let set = try HashSet(database.rootCursor)
+        #expect(try set.slot.tag == .hashSet)
+        #expect(try database.rootCursor.slot.tag == .hashSet, "committed on the root")
+        #expect(try set.slot.value != mapSlot.value, "the root block was copied into the transaction")
+        // the bytes: the transaction's copy of the root slot, the copy of
+        // the root block, and the trailer that commits it
+        #expect(storage.bytes.count == committed + 9 + 144 + 25)
+        #expect(try database.committedSize == UInt64(storage.bytes.count))
+        // the entry is still there, with its value, which a map reads
+        #expect(try set.cursor(forHash: hash) == nil, "a set reads keys, and none was written")
+        #expect(try HashMap<ReadOnly>(database.rootCursor).cursor(forHash: hash)?.readUInt64() == 1)
+        // and back
+        let map = try HashMap(database.rootCursor)
+        #expect(try map.slot.tag == .hashMap)
+        #expect(try database.rootCursor.slot.tag == .hashMap)
+        #expect(try map.cursor(forHash: hash)?.readUInt64() == 1)
+        #expect(storage.bytes.count == committed + 2 * (9 + 144 + 25))
+
+        try database.withTransaction { cursor in
+            let root = try HashMap(cursor)
+            let counted = try CountedHashMap(try root.putCursor(forHash: key("counted")))
+            try counted.put(.uint(2), forHash: hash)
+            let countedSet = try CountedHashSet(try root.putCursor(forHash: key("counted")))
+            #expect(try countedSet.slot.tag == .countedHashSet)
+            #expect(try root.slot(forHash: key("counted"))?.tag == .countedHashSet)
+            #expect(try countedSet.count == 1, "the count stays")
+            #expect(try CountedHashMap(try root.putCursor(forHash: key("counted"))).slot.tag == .countedHashMap)
+            #expect(try counted.cursor(forHash: hash)?.readUInt64() == 2)
+
+            let sorted = try SortedMap(try root.putCursor(forHash: key("sorted")))
+            try sorted.put(.uint(3), forKey: Array("a".utf8))
+            let sortedSet = try SortedSet(try root.putCursor(forHash: key("sorted")))
+            #expect(try sortedSet.slot.tag == .sortedSet)
+            #expect(try root.slot(forHash: key("sorted"))?.tag == .sortedSet)
+            #expect(try sortedSet.contains(Array("a".utf8)))
+            #expect(try SortedMap(try root.putCursor(forHash: key("sorted"))).slot.tag == .sortedMap)
+            #expect(try sorted.cursor(forKey: Array("a".utf8))?.readUInt64() == 3)
+
+            let list = try ArrayList(try root.putCursor(forHash: key("list")))
+            try list.append(.uint(4))
+            #expect(throws: XitDBError.unexpectedTag) { try LinkedArrayList(try root.putCursor(forHash: key("list"))) }
+            let linked = try LinkedArrayList(try root.putCursor(forHash: key("linked")))
+            try linked.append(.uint(5))
+            #expect(throws: XitDBError.unexpectedTag) { try ArrayList(try root.putCursor(forHash: key("linked"))) }
+            #expect(try root.slot(forHash: key("list"))?.tag == .arrayList)
+            #expect(try root.slot(forHash: key("linked"))?.tag == .linkedArrayList)
+            // and a kind that keeps a count is not one that does not
+            #expect(throws: XitDBError.unexpectedTag) { try HashSet(try root.putCursor(forHash: key("counted"))) }
+            #expect(throws: XitDBError.unexpectedTag) { try CountedHashSet(try root.putCursor(forHash: key("list"))) }
+        }
+    }
+
+    /// A writing view on the root cursor while a transaction is in progress
+    /// is a nested top-level write, for each of the eight kinds; the
+    /// read-only views are not writes.
+    @Test func aWritingViewOnTheRootInsideATransactionIsANestedWrite() throws {
+        let database = try makeDatabase()
+        try database.withTransaction { cursor in
+            try HashMap(cursor).put(.uint(1), forHash: key("k"))
+            let root = database.rootCursor
+            #expect(throws: XitDBError.nestedTopLevelWrite) { try HashMap<ReadWrite>(root) }
+            #expect(throws: XitDBError.nestedTopLevelWrite) { try HashSet<ReadWrite>(root) }
+            #expect(throws: XitDBError.nestedTopLevelWrite) { try CountedHashMap<ReadWrite>(root) }
+            #expect(throws: XitDBError.nestedTopLevelWrite) { try CountedHashSet<ReadWrite>(root) }
+            #expect(throws: XitDBError.nestedTopLevelWrite) { try ArrayList<ReadWrite>(root) }
+            #expect(throws: XitDBError.nestedTopLevelWrite) { try LinkedArrayList<ReadWrite>(root) }
+            #expect(throws: XitDBError.nestedTopLevelWrite) { try SortedMap<ReadWrite>(root) }
+            #expect(throws: XitDBError.nestedTopLevelWrite) { try SortedSet<ReadWrite>(root) }
+            #expect(try HashMap<ReadOnly>(root).cursor(forHash: key("k")) == nil, "the root is not committed yet")
+            #expect(try ArrayList<ReadOnly>(root).count == 0)
+        }
+        #expect(try HashMap(database.rootCursor).cursor(forHash: key("k"))?.readUInt64() == 1)
+    }
+
     /// The methods that take a hash accept it as an array and as a span,
     /// and a hash of the wrong size is refused by every one of them.
     @Test func aHashIsASpanOrAnArray() throws {
@@ -204,6 +294,53 @@ import Testing
             #expect(try countedSet.remove(forHash: hash.span))
             #expect(try !countedSet.remove(forHash: hash.span))
             #expect(try countedSet.count == 0)
+        }
+    }
+
+    /// A read-only view over a slot that holds nothing checks no hash: a
+    /// hash of the wrong size finds nothing there, as in Zig, and is
+    /// refused with `invalidHashSize` once the slot holds a map, which the
+    /// first put makes it (D6). A writing view's init makes the slot a map,
+    /// so it checks from its first call.
+    @Test func anEmptyViewChecksNoHash() throws {
+        let database = try makeDatabase()
+        let wrong = [UInt8](repeating: 1, count: 19)
+        let root = database.rootCursor
+        #expect(try root.slot.tag == .none)
+        #expect(try HashMap<ReadOnly>(root).cursor(forHash: wrong) == nil)
+        #expect(try HashMap<ReadOnly>(root).slot(forHash: wrong.span) == nil)
+        #expect(try HashMap<ReadOnly>(root).keyCursor(forHash: wrong) == nil)
+        #expect(try HashMap<ReadOnly>(root).keySlot(forHash: wrong) == nil)
+        #expect(try HashMap<ReadOnly>(root).entry(forHash: wrong) == nil)
+        #expect(try HashSet<ReadOnly>(root).cursor(forHash: wrong) == nil)
+        #expect(try !HashSet<ReadOnly>(root).contains(hash: wrong))
+        #expect(try CountedHashMap<ReadOnly>(root).cursor(forHash: wrong.span) == nil)
+        #expect(try !CountedHashSet<ReadOnly>(root).contains(hash: wrong.span))
+
+        try HashMap(root).put(.uint(1), forHash: key("k"))
+        #expect(try root.slot.tag == .hashMap)
+        let map = try HashMap<ReadOnly>(root)
+        #expect(throws: XitDBError.invalidHashSize) { try map.cursor(forHash: wrong) }
+        #expect(throws: XitDBError.invalidHashSize) { try map.slot(forHash: wrong.span) }
+        #expect(throws: XitDBError.invalidHashSize) { try map.keyCursor(forHash: wrong) }
+        #expect(throws: XitDBError.invalidHashSize) { try map.keySlot(forHash: wrong) }
+        #expect(throws: XitDBError.invalidHashSize) { try map.entry(forHash: wrong) }
+        #expect(throws: XitDBError.invalidHashSize) { try HashSet<ReadOnly>(root).contains(hash: wrong) }
+        #expect(try map.cursor(forHash: key("k"))?.readUInt64() == 1)
+
+        // a slot set to nothing below the root is as empty, and a writing
+        // view's slot is a map from its init on
+        try database.withTransaction { cursor in
+            let root = try HashMap(cursor)
+            _ = try cursor.writePath([.hashMapGet(.value, sha1("none")), .write(.slot(nil))])
+            let none = try #require(try root.cursor(forHash: key("none")))
+            #expect(try CountedHashMap(none).cursor(forHash: wrong) == nil)
+            #expect(try !CountedHashSet(none).contains(hash: wrong))
+            let fresh = try CountedHashMap(try root.putCursor(forHash: key("fresh")))
+            #expect(try fresh.count == 0)
+            #expect(throws: XitDBError.invalidHashSize) { try fresh.cursor(forHash: wrong) }
+            #expect(throws: XitDBError.invalidHashSize) { try fresh.put(.uint(1), forHash: wrong) }
+            #expect(throws: XitDBError.invalidHashSize) { try fresh.remove(forHash: wrong) }
         }
     }
 

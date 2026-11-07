@@ -13,11 +13,6 @@ extension UInt64 {
     }
 }
 
-/// Everything the read side of the engine needs from a database: its bytes,
-/// its hash size and its file ID.
-///
-/// Code that only reads depends on this and not on ``Database``, so that the
-/// same code can later read a snapshot of committed data from any thread.
 /// A key-value pair with the hash it is stored under. (A struct and not a
 /// tuple, because a tuple of these needs its metadata looked up at run time
 /// each time one is destroyed, which showed in iterating over a map.)
@@ -37,6 +32,11 @@ final class DatabaseIdentity {
     }
 }
 
+/// Everything the read side of the engine needs from a database: its bytes,
+/// its hash size and its file ID.
+///
+/// Code that only reads depends on this and not on ``Database``, so that the
+/// same code can later read a snapshot of committed data from any thread.
 struct DatabaseReader {
     let storage: any ReadableStorage
     /// The hash size, which a replication cannot change.

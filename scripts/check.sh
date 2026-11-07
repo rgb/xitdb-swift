@@ -34,10 +34,18 @@ step "Release build and tests"
 swift build -c release "${strict[@]}"
 swift test -c release "${strict[@]}"
 
-# Sources/XitDB may import the standard library, Synchronization and the platform C
-# library, and nothing else. The platform C library may be imported in one file only.
-# The documentation catalogue is not code of the library: the tutorials' step files in
-# it are what a client writes, and import what a client imports.
+# The benchmark, built above as the release build's second product, runs every
+# workload on every kind at a hundredth of its size: that it runs is the check, not
+# its numbers. It prints one line per phase; a workload that fails exits non-zero.
+step "Benchmark smoke run"
+.build/release/XitDBBenchmark --divide 100 > /dev/null
+echo "ok"
+
+# R5: Sources/XitDB may import the standard library, Synchronization and the platform C
+# library, and nothing else. The platform C library is imported in exactly one file,
+# behind `#if canImport` for Darwin, Glibc, Musl and Android. The documentation catalogue
+# is not code of the library: the tutorials' step files in it are what a client writes,
+# and import what a client imports.
 step "Import check"
 find Sources/XitDB -name '*.swift' -not -path '*.docc/*' -exec awk '
     {
@@ -66,13 +74,22 @@ find Sources/XitDB -name '*.swift' -not -path '*.docc/*' -exec awk '
         failed = 1
     }
     END {
-        if (libcCount > 1) {
-            printf "error: the platform C library is imported in %d files, but only one may:%s\n", libcCount, libcList
+        if (libcCount != 1) {
+            printf "error: the platform C library is imported in %d files, and exactly one must:%s\n", libcCount, libcList
             failed = 1
         }
         exit failed
     }
 ' {} +
+# The one file guards each import of the C library with `#if canImport`, for the four
+# libraries R5 names, so that the package builds on each platform.
+libc_file=$(grep -l -E '^[[:space:]]*(public |package |internal |private )?import[[:space:]]+(Darwin|Glibc|Musl|Android)' -r Sources/XitDB)
+for library in Darwin Glibc Musl Android; do
+    grep -q -E "^#(if|elseif) canImport\($library\)" "$libc_file" || {
+        echo "error: $libc_file does not import $library behind #if canImport($library)"
+        exit 1
+    }
+done
 echo "ok"
 
 step "Formatting check"
@@ -80,7 +97,10 @@ swift format lint --strict --recursive --parallel Package.swift Sources Tests
 echo "ok"
 
 # The DocC documentation for the library, built through swift-docc-plugin. With
-# warnings as errors a link to a symbol that does not exist fails the gate.
+# warnings as errors a link to a symbol that does not exist fails the gate. The
+# plugin compiles the library once more for its symbol graph, without the compiler's
+# warnings-as-errors flag: the debug and release builds above compile the same
+# sources with it, so a compiler warning cannot reach this step unseen.
 step "Documentation build"
 swift package generate-documentation --target XitDB --warnings-as-errors
 

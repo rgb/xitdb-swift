@@ -10,10 +10,9 @@ import Testing
     /// The scripts that can run now, on each storage they apply to. A
     /// script that compacts runs twice more, with the offset map it does
     /// not name in place of the one it does.
-    static let runnable: [(ConformanceFixture, ScriptStorageKind, otherOffsetMap: Bool)] = ConformanceFixture.all
-        .filter { $0.waitsFor == nil && $0.needsOp == nil }
+    static let runnable: [(ConformanceFixture, StorageKind, otherOffsetMap: Bool)] = ConformanceFixture.all
         .flatMap { fixture in
-            ScriptStorageKind.allCases
+            StorageKind.allCases
                 // The memory storage has no read-only mode, in Zig or here.
                 .filter { !($0 == .memory && fixture.features.contains("read_only")) }
                 .flatMap { kind in
@@ -24,7 +23,7 @@ import Testing
         }
 
     @Test(arguments: runnable)
-    func script(fixture: ConformanceFixture, kind: ScriptStorageKind, otherOffsetMap: Bool) throws {
+    func script(fixture: ConformanceFixture, kind: StorageKind, otherOffsetMap: Bool) throws {
         // Callbacks nest up to 64 deep in the scripts, and each level is a
         // dozen frames of runner and engine. Swift Testing runs tests on
         // threads with half a megabyte of stack, which a debug build of that
@@ -32,20 +31,44 @@ import Testing
         try onLargeStack { try fixture.run(on: kind, otherOffsetMap: otherOffsetMap) }
     }
 
-    /// The manifest was read, and every script in it either runs or is
-    /// waiting for a milestone that is named here. Nothing is skipped
-    /// silently: a script that starts to wait, or stops, changes this test.
-    @Test func everyScriptRunsOrWaitsForANamedMilestone() {
+    /// The manifest was read and every script in it runs, on every storage
+    /// kind. Nothing is skipped silently: a script that stops running changes
+    /// this test.
+    @Test func everyScriptRuns() {
         let all = ConformanceFixture.all
         #expect(all.count == 209)
-        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && $0.mustPass }.count == 111)
-        #expect(all.filter { $0.waitsFor == nil && $0.needsOp == nil && !$0.mustPass }.count == 98)
+        #expect(all.filter { $0.mustPass }.count == 111)
+        #expect(all.filter { !$0.mustPass }.count == 98)
 
-        // nothing waits for a milestone any more
-        #expect(all.filter { $0.waitsFor != nil }.isEmpty)
-
-        // every op of the script format is in the runner
-        #expect(all.filter { $0.needsOp != nil }.isEmpty)
+        // the failing scripts whose description pins the engine error that
+        // their last op raises and nothing handles; the runner holds each
+        // to that error, and the rest to any script failure
+        let pinned = Dictionary(
+            uniqueKeysWithValues: all.filter { !$0.mustPass }.compactMap { fixture -> (String, String)? in
+                guard
+                    let bytes = try? fixtureFile(fixture.script),
+                    let script = try? JSONSerialization.jsonObject(with: Data(bytes)) as? [String: Any],
+                    let error = ConformanceFixture.pinnedError(in: script["description"] as? String)
+                else { return nil }
+                return (fixture.name, error)
+            })
+        #expect(
+            pinned == [
+                "bytes-into-too-small-not-handled": "StreamTooLong",
+                "invalid-range-not-handled": "InvalidRange",
+                "iterator-from-key-on-a-list-not-handled": "UnexpectedTag",
+                "iterator-on-a-number-not-handled": "UnexpectedTag",
+                "max-size-too-small-not-handled": "StreamTooLong",
+                "rank-on-a-number-not-handled": "UnexpectedTag",
+                "reopen-error-not-handled": "InvalidDatabase",
+                "short-apply-not-handled": "InvalidDatabase",
+                "stream-end-not-handled": "EndOfStream",
+                "stream-of-a-number-not-handled": "UnexpectedTag",
+                "target-not-empty-not-handled": "TargetNotEmpty",
+                "unhandled-error-through-callback": "UnexpectedTag",
+                "unhandled-error": "ExpectedTxStart",
+                "write-on-read-only-not-handled": "WriteFailed",
+            ])
 
         // not applicable to the memory storage, which has no read-only mode
         let readOnly = all.filter { $0.features.contains("read_only") }.map(\.name).sorted()
@@ -71,10 +94,7 @@ import Testing
         ("stream-short-no-position", "finding 9: a short key of a sorted set streams from the cursor's own slot"),
     ]
 
-    /// The scripts that need something of a later milestone.
-    static let waiting: [String: String] = [:]
-
-    private func runs(_ script: String, on kind: ScriptStorageKind) throws -> Bool {
+    private func runs(_ script: String, on kind: StorageKind) throws -> Bool {
         let runner = ScriptRunner(storage: try ScriptStorage(kind), random: FixedRandom((1...64).map { UInt64($0) }))
         do {
             for op in try runner.start(try JSONSerialization.jsonObject(with: Data(try portDifferenceFile(script)))) {
@@ -86,8 +106,8 @@ import Testing
         return true
     }
 
-    @Test(arguments: corrections, ScriptStorageKind.allCases)
-    func thePortsScriptPassesAndZigsFails(correction: (name: String, what: String), kind: ScriptStorageKind) throws {
+    @Test(arguments: corrections, StorageKind.allCases)
+    func thePortsScriptPassesAndZigsFails(correction: (name: String, what: String), kind: StorageKind) throws {
         #expect(try runs("\(correction.name).port.json", on: kind), "\(correction.what)")
         #expect(try !runs("\(correction.name).zig.json", on: kind), "\(correction.what)")
     }
@@ -103,6 +123,6 @@ import Testing
                     $0.replacingOccurrences(of: ".port.json", with: "").replacingOccurrences(of: ".zig.json", with: "")
                 }
         )
-        #expect(names == Set(Self.corrections.map(\.0)).union(Self.waiting.keys))
+        #expect(names == Set(Self.corrections.map(\.0)))
     }
 }

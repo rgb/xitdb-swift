@@ -206,15 +206,19 @@ public struct Cursor<Access: CursorAccess> {
     /// Reads the entry of a map or set that this cursor is at: its key, its
     /// value and its hash.
     ///
-    /// The cursor must be at an entry: one obtained by asking a map for an
-    /// entry, or by iterating over a map or set. A slot that holds bytes is
-    /// read as a key on its own, which is what a sorted set's entry is.
+    /// The cursor should be at an entry: one obtained by asking a map for an
+    /// entry, or by iterating over a map or set. Any slot that holds bytes
+    /// is read as a key on its own, which is what a sorted set's entry is,
+    /// so on a cursor at a byte value this succeeds, as Zig's does: the
+    /// key cursor is at the bytes, the value is empty and the hash is
+    /// zeros. Nothing tells such a value from a set's key.
     ///
     /// The entry is read-only whatever this cursor is: an entry's key is
     /// what the collection is ordered or indexed by, and is changed only
     /// through the collection.
     ///
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot is not an entry.
+    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds anything
+    ///   else: a number, a collection, or nothing.
     public func readEntry() throws(XitDBError) -> Entry {
         let entry = try resolved().slot
         let found = try database.reader.keyValuePair(entry)
@@ -306,7 +310,8 @@ extension Cursor where Access == ReadWrite {
     ///
     /// On a root cursor this is a transaction: it commits when the path has
     /// finished, and everything it wrote is discarded if an error leaves
-    /// it.
+    /// it before the commit. An error from the storage's sync after the
+    /// commit is thrown too, but the commit stands, as in Zig.
     ///
     /// The cursor itself is not changed. The result is a new cursor at the
     /// slot the path arrived at.
@@ -496,8 +501,11 @@ extension Cursor where Access == ReadWrite {
     /// changing it in place.
     ///
     /// Call it after pointing this slot at data that something else still
-    /// refers to. Other cursors keep writing in place; ``Database/freeze()``
-    /// does the same for all of them.
+    /// refers to, and before wrapping the cursor in a collection: a
+    /// collection keeps its own copy of the cursor, freeze point included,
+    /// so freezing the cursor after wrapping it changes nothing the
+    /// collection does. Other cursors keep writing in place;
+    /// ``Database/freeze()`` does the same for all of them.
     ///
     /// - Throws: ``XitDBError/expectedTxStart`` outside a transaction.
     public mutating func freeze() throws(XitDBError) {
@@ -522,8 +530,9 @@ public struct ByteWriter: ~Copyable {
     /// - Parameter bytes: The bytes to write.
     /// - Throws: ``XitDBError/unexpectedWriterPosition`` if the write would
     ///   make the array longer and something else has been written to the
-    ///   database since the writer was made,
-    ///   ``XitDBError/expectedTxStart`` if the transaction has ended, or
+    ///   database since the writer was made, or if the position, after a
+    ///   far ``seek(to:)``, lies beyond any position a storage has;
+    ///   ``XitDBError/expectedTxStart`` if the transaction has ended; or
     ///   ``XitDBError/storageFailure(errno:)`` if the storage fails.
     public mutating func write(_ bytes: Span<UInt8>) throws(XitDBError) {
         try record.write(bytes)
@@ -542,7 +551,10 @@ public struct ByteWriter: ~Copyable {
     /// the start of the array.
     ///
     /// Writing beyond the end of what has been written leaves zeros in
-    /// between.
+    /// between: a seek far past the end makes the next write grow the
+    /// array, and the storage with it, to where the position reaches, and
+    /// the array stays that long. A position beyond any a storage has is
+    /// reported by that write.
     ///
     /// - Parameter offset: The new position.
     public mutating func seek(to offset: UInt64) {
@@ -578,7 +590,9 @@ extension Database {
     /// through, and gives what it returns.
     ///
     /// The transaction commits when `body` returns. If `body` throws,
-    /// everything it wrote is discarded and the database is as it was.
+    /// everything it wrote is discarded and the database is as it was. One
+    /// error is not a rollback: if the storage fails in the sync after the
+    /// commit, the error is thrown, but the commit stands, as in Zig.
     ///
     /// Use this to group writes to a root that is not an array list, such as
     /// a hash map: without it, each write through a root cursor is a

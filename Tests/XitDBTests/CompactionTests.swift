@@ -31,16 +31,6 @@ import Testing
 
 /// Zig's compaction tests: what the latest moment reaches survives, copied once, and nothing else does.
 @Suite struct CompactionTests {
-    /// The UTF-8 bytes of a string.
-    private func utf8(_ text: String) -> [UInt8] {
-        Array(text.utf8)
-    }
-
-    /// Zig's `hashInt(text)`: the SHA-1 of the text, as the twenty bytes the collections take.
-    private func hashInt(_ text: String) -> [UInt8] {
-        sha1(text).bytes
-    }
-
     /// test.zig 2775-2865: "compaction", with the offsets map in memory.
     @Test(arguments: StorageKind.allCases, StorageKind.allCases)
     func compaction(source: StorageKind, target: StorageKind) throws {

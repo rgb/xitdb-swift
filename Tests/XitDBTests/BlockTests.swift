@@ -60,6 +60,77 @@ private func count(_ value: UInt8) -> [UInt8] {
     }
 }
 
+/// The codecs for the groups of sixteen, on their own: `IndexBlock` and the
+/// tree nodes are made of them.
+@Suite struct SlotGroupTests {
+    static let slots = InlineArray<16, Slot> { index in
+        Slot(value: UInt64(index) * 1000 + 1, tag: Slot.Tag(rawValue: UInt8(index))!, full: index % 2 == 1)
+    }
+
+    @Test func encodesSixteenSlotsInOrderAndDecodesThemBack() throws {
+        let bytes = encoded(capacity: 144) { SlotGroup.encode(Self.slots, into: &$0) }
+        #expect(bytes == (0..<16).flatMap { slotBytes(Self.slots[$0]) })
+        #expect(array(try SlotGroup.decode(bytes.span, at: 0)) == array(Self.slots))
+        try SlotGroup.validate(bytes.span, at: 0)
+
+        // at an offset, with bytes after the group
+        let padded = [0xEE, 0xEE] + bytes + [0xEE]
+        #expect(array(try SlotGroup.decode(padded.span, at: 2)) == array(Self.slots))
+        try SlotGroup.validate(padded.span, at: 2)
+        #expect(throws: XitDBError.endOfStream) { try SlotGroup.decode(padded.span, at: 4) }
+        #expect(throws: XitDBError.endOfStream) { try SlotGroup.validate(padded.span, at: 4) }
+    }
+
+    /// `validate` is `decode` without the slots: the same error for the same
+    /// bytes, and in the same order when the bytes run out and a tag is
+    /// unknown.
+    @Test func validateReportsWhatDecodeReports() throws {
+        let short = zeros(143)
+        #expect(throws: XitDBError.endOfStream) { try SlotGroup.decode(short.span, at: 0) }
+        #expect(throws: XitDBError.endOfStream) { try SlotGroup.validate(short.span, at: 0) }
+        let full = zeros(144)
+        #expect(throws: XitDBError.endOfStream) { try SlotGroup.decode(full.span, at: -1) }
+        #expect(throws: XitDBError.endOfStream) { try SlotGroup.validate(full.span, at: -1) }
+        #expect(throws: XitDBError.endOfStream) { try SlotGroup.decode(full.span, at: 1) }
+        #expect(throws: XitDBError.endOfStream) { try SlotGroup.validate(full.span, at: 1) }
+
+        // an unknown tag in the last slot, with all sixteen present; the
+        // high bit is the full flag, not part of the tag
+        var badLast = zeros(144)
+        badLast[9 * 15] = 0x80 | 0x11
+        #expect(throws: XitDBError.invalidEnumTag) { try SlotGroup.decode(badLast.span, at: 0) }
+        #expect(throws: XitDBError.invalidEnumTag) { try SlotGroup.validate(badLast.span, at: 0) }
+        badLast[9 * 15] = 0x80 | 0x10
+        #expect(try SlotGroup.decode(badLast.span, at: 0)[15] == Slot(tag: .sortedKvPair, full: true))
+        try SlotGroup.validate(badLast.span, at: 0)
+
+        // the unknown tag in slot 2 is met before the bytes run out in slot 5
+        var badSecond = zeros(144)
+        badSecond[9 * 2] = 0x7F
+        let badThenShort = Array(badSecond.prefix(9 * 5 + 3))
+        #expect(throws: XitDBError.invalidEnumTag) { try SlotGroup.decode(badThenShort.span, at: 0) }
+        #expect(throws: XitDBError.invalidEnumTag) { try SlotGroup.validate(badThenShort.span, at: 0) }
+
+        // the bytes run out in slot 1, before the unknown tag in slot 2
+        let shortThenBad = Array(badSecond.prefix(9 + 4))
+        #expect(throws: XitDBError.endOfStream) { try SlotGroup.decode(shortThenBad.span, at: 0) }
+        #expect(throws: XitDBError.endOfStream) { try SlotGroup.validate(shortThenBad.span, at: 0) }
+    }
+
+    @Test func countsAreBigEndianAndDecodeBack() throws {
+        let counts = InlineArray<16, UInt64> { index in UInt64(index) << 56 | UInt64(index) }
+        let bytes = encoded(capacity: 128) { SlotGroup.encodeCounts(counts, into: &$0) }
+        #expect(bytes == (0..<16).flatMap { bigEndianBytes(counts[$0]) })
+        #expect(array(try SlotGroup.decodeCounts(bytes.span, at: 0)) == array(counts))
+
+        let padded = [0xEE] + bytes
+        #expect(array(try SlotGroup.decodeCounts(padded.span, at: 1)) == array(counts))
+        #expect(throws: XitDBError.endOfStream) { try SlotGroup.decodeCounts(padded.span, at: 2) }
+        #expect(throws: XitDBError.endOfStream) { try SlotGroup.decodeCounts(padded.span, at: -1) }
+        #expect(throws: XitDBError.endOfStream) { try SlotGroup.decodeCounts(zeros(127).span, at: 0) }
+    }
+}
+
 @Suite struct BTreeNodeTests {
     @Test func sizesOnDisk() {
         #expect(TreeNodeHeader.byteCount == 2)
@@ -67,6 +138,46 @@ private func count(_ value: UInt8) -> [UInt8] {
         #expect(BTreeNode.branchByteCount == 274)
         #expect(BTreeNode(kind: .leaf, num: 0).byteCount == 146)
         #expect(BTreeNode(kind: .branch, num: 0).byteCount == 274)
+    }
+
+    /// The in-place encoder, which the engine uses to rewrite a node: it
+    /// stores the node's bytes at the start of a span, a leaf's 146 or a
+    /// branch's 274, and leaves the rest of the span alone.
+    @Test func encodesInPlaceAtTheStartOfASpan() throws {
+        let leafBytes: [UInt8] = [0x00, 0x02] + uintSlot(7) + uintSlot(9) + zeros(9 * 14)
+        let leaf = try BTreeNode(decoding: leafBytes.span)
+        var buffer = [UInt8](repeating: 0xEE, count: 300)
+        var span = buffer.mutableSpan
+        leaf.encode(into: &span)
+        #expect(buffer == leafBytes + [UInt8](repeating: 0xEE, count: 154))
+        #expect(Array(buffer[..<146]) == encoded(capacity: 146) { leaf.encode(into: &$0) })
+        #expect(array(try BTreeNode(decoding: buffer.span).bytes) == array(leaf.bytes))
+
+        let branchBytes: [UInt8] =
+            [0x01, 0x02] + indexSlot(100) + indexSlot(200) + zeros(9 * 14) + count(16) + count(3) + zeros(8 * 14)
+        let branch = try BTreeNode(decoding: branchBytes.span)
+        buffer = [UInt8](repeating: 0xEE, count: 300)
+        span = buffer.mutableSpan
+        branch.encode(into: &span)
+        #expect(buffer == branchBytes + [UInt8](repeating: 0xEE, count: 26))
+        #expect(Array(buffer[..<274]) == encoded(capacity: 274) { branch.encode(into: &$0) })
+
+        // a span of exactly the node's size, and a full node built with the
+        // setters, decode back to the same node
+        var full = BTreeNode(kind: .branch, num: 16)
+        for index in 0..<16 {
+            full.setChild(Slot(value: UInt64(index) * 300 + 37, tag: .index), at: index)
+            full.setCount(UInt64(index) << 40 | 1, at: index)
+        }
+        var exact = zeros(274)
+        var exactSpan = exact.mutableSpan
+        full.encode(into: &exactSpan)
+        let decoded = try BTreeNode(decoding: exact.span)
+        #expect(decoded.kind == .branch)
+        #expect(decoded.num == 16)
+        #expect(array(decoded.children) == array(full.children))
+        #expect(array(decoded.counts) == array(full.counts))
+        #expect(array(decoded.bytes) == array(full.bytes))
     }
 
     @Test func leafDecodesAndEncodesHandWrittenBytes() throws {
@@ -206,6 +317,49 @@ private func count(_ value: UInt8) -> [UInt8] {
         #expect(SortedNode.branchByteCount == 418)
         #expect(SortedNode(kind: .leaf, num: 0).byteCount == 146)
         #expect(SortedNode(kind: .branch, num: 0).byteCount == 418)
+    }
+
+    /// The in-place encoder, as for ``BTreeNode``: a leaf's 146 bytes or a
+    /// branch's 418 at the start of the span, the rest left alone.
+    @Test func encodesInPlaceAtTheStartOfASpan() throws {
+        let key: [UInt8] = [0x07, 0x61, 0, 0, 0, 0, 0, 0, 0]
+        let pair: [UInt8] = [0x10, 0, 0, 0, 0, 0, 0, 0, 0x40]
+        let leafBytes: [UInt8] = [0x00, 0x02] + key + pair + zeros(9 * 14)
+        let leaf = try SortedNode(decoding: leafBytes.span)
+        var buffer = [UInt8](repeating: 0xEE, count: 450)
+        var span = buffer.mutableSpan
+        leaf.encode(into: &span)
+        #expect(buffer == leafBytes + [UInt8](repeating: 0xEE, count: 304))
+        #expect(Array(buffer[..<146]) == encoded(capacity: 146) { leaf.encode(into: &$0) })
+        #expect(array(try SortedNode(decoding: buffer.span).bytes) == array(leaf.bytes))
+
+        let separators = zeros(9) + [0x07, 0x6D, 0, 0, 0, 0, 0, 0, 0] + zeros(9 * 14)
+        let branchBytes: [UInt8] =
+            [0x01, 0x02] + indexSlot(100) + indexSlot(200) + zeros(9 * 14) + separators + count(4) + count(9)
+            + zeros(8 * 14)
+        let branch = try SortedNode(decoding: branchBytes.span)
+        buffer = [UInt8](repeating: 0xEE, count: 450)
+        span = buffer.mutableSpan
+        branch.encode(into: &span)
+        #expect(buffer == branchBytes + [UInt8](repeating: 0xEE, count: 32))
+        #expect(Array(buffer[..<418]) == encoded(capacity: 418) { branch.encode(into: &$0) })
+
+        var full = SortedNode(kind: .branch, num: 16)
+        for index in 0..<16 {
+            full.setChild(Slot(value: UInt64(index) * 500 + 37, tag: .index), at: index)
+            full.setSeparator(Slot(value: UInt64(index) + 900, tag: .bytes, full: index % 2 == 0), at: index)
+            full.setCount(UInt64(index) << 33 | 7, at: index)
+        }
+        var exact = zeros(418)
+        var exactSpan = exact.mutableSpan
+        full.encode(into: &exactSpan)
+        let decoded = try SortedNode(decoding: exact.span)
+        #expect(decoded.kind == .branch)
+        #expect(decoded.num == 16)
+        #expect(array(decoded.children) == array(full.children))
+        #expect(array(decoded.separators) == array(full.separators))
+        #expect(array(decoded.counts) == array(full.counts))
+        #expect(array(decoded.bytes) == array(full.bytes))
     }
 
     @Test func leafDecodesAndEncodesHandWrittenBytes() throws {

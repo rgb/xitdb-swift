@@ -80,7 +80,9 @@ public enum XitDBError: Error, Sendable {
     /// An array list is deeper than the format allows.
     case maxShiftExceeded
 
-    /// A write would grow an in-memory database beyond its size limit.
+    /// A write would grow an in-memory database beyond its size limit, or,
+    /// when it has none, beyond what an array can hold: a write whose bytes
+    /// would end past `Int.max` is reported the same way.
     case maxSizeExceeded
 
     /// A byte array is larger than the limit or the buffer given for reading
@@ -117,6 +119,11 @@ public enum XitDBError: Error, Sendable {
     /// ``OffsetMap`` that XitDB was calling. The error is carried as it was
     /// thrown.
     case callerError(any Error)
+
+    /// A count recorded in the file disagrees with its tree: a counted hash
+    /// map or set whose count says it is empty holds the key being removed,
+    /// or whose count cannot grow is being added to.
+    case invalidCount
 }
 
 extension XitDBError: Equatable {

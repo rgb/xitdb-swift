@@ -42,13 +42,19 @@ struct ByteRecordWriter: ~Copyable {
     ///
     /// - Throws: `expectedTxStart` outside a transaction, or
     ///   `unexpectedWriterPosition` if the write would make the array longer
-    ///   and something else has been written after it since it was started.
+    ///   and something else has been written after it since it was started
     ///   (Zig reports both as `WriteFailed`, which is all its writer
-    ///   interface can report.)
+    ///   interface can report), or if the position, after a far `seek`,
+    ///   lies beyond any position a storage has (Zig traps on the sum).
     mutating func write(_ bytes: Span<UInt8>) throws(XitDBError) {
         guard bytes.count > 0 else { return }
         guard database.transactionStart != nil else { throw .expectedTxStart }
-        let newPosition = try position.offset(by: UInt64(bytes.count))
+        // A position that no storage can hold is the writer's own error,
+        // not the storage's and not the end of a stream: nothing is read,
+        // and the storage is not asked.
+        let (newPosition, overflow) = position.addingReportingOverflow(UInt64(bytes.count))
+        let (writePosition, beyond) = startPosition.addingReportingOverflow(position)
+        if overflow || beyond { throw .unexpectedWriterPosition }
 
         // Another record may now follow this byte array. Extending the array
         // would overwrite it.
@@ -57,7 +63,7 @@ struct ByteRecordWriter: ~Copyable {
             if end != (try startPosition.offset(by: size)) { throw .unexpectedWriterPosition }
         }
 
-        try database.storage.write(bytes, at: try startPosition.offset(by: position))
+        try database.storage.write(bytes, at: writePosition)
         position = newPosition
         if position > size {
             size = position

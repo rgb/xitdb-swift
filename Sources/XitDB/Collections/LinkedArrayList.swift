@@ -1,13 +1,12 @@
-/// A list in a database that can be changed anywhere, not only at its end:
-/// Zig's `LinkedArrayList`.
+/// A list in a database that can be changed anywhere, not only at its end.
 ///
 /// Elements are addressed by position, as in an ``ArrayList``, and can also
-/// be inserted and removed at any position. Two lists are joined with
-/// ``append(contentsOf:)-(Slot)`` and a part of one kept with
-/// ``formSlice(offset:count:)``, each in time that grows with the logarithm
-/// of the size, because the result shares what it can with the lists it
-/// came from. A negative index counts from the end: `-1` is the last
-/// element.
+/// be inserted and removed at any position; it is Zig's `LinkedArrayList`.
+/// Two lists are joined with ``append(contentsOf:)-(Slot)`` and a part of
+/// one kept with ``formSlice(offset:count:)``, each in time that grows with
+/// the logarithm of the size, because the result shares what it can with
+/// the lists it came from. A negative index counts from the end: `-1` is
+/// the last element.
 ///
 /// Underneath is a tree whose nodes hold up to sixteen elements or children
 /// and whose branches count the elements beneath each child.
@@ -24,9 +23,10 @@
 /// **Appending another list freezes the transaction.** The joined tree
 /// shares nodes with both lists, so after ``append(contentsOf:)-(Slot)``
 /// every write in the transaction copies what was written before it, as
-/// after ``Database/freeze()``. Collections made before the call, other
-/// than the list that made it, should be made again from their cursors
-/// afterwards.
+/// after ``Database/freeze()``, with the same part for the caller:
+/// collections made before the call, other than the list that made it,
+/// are made again afterwards, from the transaction's root cursor, before
+/// anything is written through them.
 public struct LinkedArrayList<Access: CursorAccess> {
     /// The cursor at the slot that holds the list.
     public let cursor: Cursor<Access>
@@ -149,11 +149,15 @@ extension LinkedArrayList where Access == ReadWrite {
     /// On the root cursor this is a transaction of its own, unless the root
     /// is a linked array list already, in which case nothing is written.
     ///
+    /// A linked array list has no sibling kind: a slot that holds an
+    /// ``ArrayList`` is refused, and the tag of a slot is never rewritten.
+    ///
     /// - Parameter cursor: A cursor at the slot.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a linked array list, ``XitDBError/expectedTxStart`` if
     ///   no transaction is in progress and `cursor` is not the root cursor,
-    ///   or an error of the storage or of a damaged file.
+    ///   ``XitDBError/nestedTopLevelWrite`` if `cursor` is the root cursor
+    ///   and one is, or an error of the storage or of a damaged file.
     public init(_ cursor: Cursor<ReadWrite>) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.linkedArrayListInit]
         self.cursor = try cursor.writePath(path.span)

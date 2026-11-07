@@ -14,9 +14,13 @@ import Testing
 /// fixtures' `failing` folder must end in one of these.
 struct ScriptFailure: Error, CustomStringConvertible {
     let description: String
+    /// Zig's name of the engine error an op raised that nothing handled,
+    /// when that is the failure.
+    let unhandled: String?
 
-    init(_ description: String) {
+    init(_ description: String, unhandled: String? = nil) {
         self.description = description
+        self.unhandled = unhandled
     }
 }
 
@@ -36,24 +40,16 @@ struct UnknownInScript: Error, CustomStringConvertible {
 struct ScriptAbort: Error {}
 
 /// The kinds of storage a script can run on.
-enum ScriptStorageKind: String, CaseIterable, CustomTestStringConvertible {
-    case memory
-    case file
-    case bufferedFile
-
-    var testDescription: String { rawValue }
-}
-
 /// Where a script's database lives, across closing and reopening it. The raw
 /// ops of a script write here directly, past the engine.
 final class ScriptStorage {
-    let kind: ScriptStorageKind
+    let kind: StorageKind
     private let directory: TemporaryDirectory?
     private var memoryBytes: [UInt8] = []
     private var memory: MemoryStorage?
     private var open: (any WritableStorage)?
 
-    init(_ kind: ScriptStorageKind) throws {
+    init(_ kind: StorageKind) throws {
         self.kind = kind
         directory = kind == .memory ? nil : try TemporaryDirectory()
     }
@@ -74,6 +70,12 @@ final class ScriptStorage {
         case .bufferedFile:
             let path = try #require(directory).path()
             storage = try BufferedFileStorage(path: path, access: readOnly ? .readOnly : .create, durability: .none)
+        case .bufferedFileSmallWindow:
+            // a window most of a script's writes restart or go around, as
+            // the storage tests use it
+            let path = try #require(directory).path()
+            storage = try BufferedFileStorage(
+                path: path, access: readOnly ? .readOnly : .create, durability: .none, bufferLimit: 200)
         }
         open = storage
         return storage
@@ -98,7 +100,7 @@ final class ScriptStorage {
                 memoryBytes.append(contentsOf: [UInt8](repeating: 0, count: end - memoryBytes.count))
             }
             memoryBytes.replaceSubrange(Int(offset)..<end, with: bytes)
-        case .file, .bufferedFile:
+        case .file, .bufferedFile, .bufferedFileSmallWindow:
             let file = try FileStorage(path: try #require(directory).path(), access: .create, durability: .none)
             try file.write(bytes.span, at: offset)
         }
@@ -114,7 +116,7 @@ final class ScriptStorage {
         try open?.flush()
         switch kind {
         case .memory: return memory?.bytes ?? memoryBytes
-        case .file, .bufferedFile: return try #require(directory).contents()
+        case .file, .bufferedFile, .bufferedFileSmallWindow: return try #require(directory).contents()
         }
     }
 }
@@ -619,6 +621,7 @@ final class ScriptRunner {
         case .invalidEnumTag: "InvalidEnumTag"
         case .invalidBTreeNode: "InvalidBTreeNode"
         case .invalidBTreeNodeKind: "InvalidBTreeNodeKind"
+        case .invalidCount: "InvalidCount"
         case .invalidRange: "InvalidRange"
         case .invalidLength: "InvalidLength"
         case .targetNotEmpty: "TargetNotEmpty"
@@ -669,7 +672,9 @@ final class ScriptRunner {
                 // Inside a callback the error leaves the callback, and the
                 // op that called it raises it in turn. At the top level
                 // nothing is left to handle it.
-                if topLevel { throw ScriptFailure("the op '\(name)' raised \(raised), which nothing handles") }
+                if topLevel {
+                    throw ScriptFailure("the op '\(name)' raised \(raised), which nothing handles", unhandled: raised)
+                }
                 throw error
             }
             guard expectedError == raised else {
@@ -748,50 +753,57 @@ final class ScriptRunner {
             try op.allow("op", "note", "expect_error", "into", "file_id", "hash_id", "offset_map")
             let source = try openDatabase("compact")
             let into = try op.string("into")
-            let target: Database
+            let named = try op.string("offset_map")
+            guard ["memory", "disk"].contains(named) else { throw UnknownInScript("unknown offset_map") }
+            let useDisk = (named == "disk") != otherOffsetMap
+            if useDisk && diskOffsets == nil {
+                let offsetsStorage = try ScriptStorage(storage.kind)
+                diskOffsetsStorage = offsetsStorage
+                diskOffsets = try DiskOffsets(storage: try offsetsStorage.openStorage(readOnly: false))
+            }
             if let place = databases[into] {
-                // an existing database keeps its own file ID and hash ID
-                if op.has("file_id") || op.has("hash_id") {
-                    throw ScriptFailure("compact into an existing database names an ID")
+                // an existing database keeps its own file ID and hash ID.
+                // Zig's runner refuses a file ID named for it, and passes a
+                // hash ID on to an init that ignores it for a database
+                // that exists, so one is accepted here and ignored too.
+                if op.has("file_id") { throw ScriptFailure("compact into an existing database names a file ID") }
+                if op.has("hash_id") && !op.isNull("hash_id") {
+                    let bytes = try self.bytes(op.fields["hash_id"], "hash_id")
+                    guard bytes.count == 4 else { throw UnknownInScript("hash_id is not four bytes") }
                 }
-                guard let existing = place.database else { throw ScriptFailure("compact into a closed database") }
-                target = existing
+                guard let target = place.database else { throw ScriptFailure("compact into a closed database") }
+                if !useDisk {
+                    try source.compact(into: target, offsetMap: &memoryOffsets)
+                } else {
+                    try diskOffsets!.use { map in try source.compact(into: target, offsetMap: &map) }
+                }
             } else {
-                // a new one, which goes on being a database of the script:
-                // its hash ID is the one given, or the source's; a null
-                // one is the source's too, as Zig's `orelse` makes it
+                // a new one, which the engine opens inside the compaction,
+                // as Zig's does, and which goes on being a database of the
+                // script once the compaction succeeds; a compaction that
+                // fails leaves no database of that name, as Zig's runner
+                // deletes the file it made. Its hash ID is the one given,
+                // or the source's; a null one is the source's too, as
+                // Zig's `orelse` makes it
                 guard op.has("file_id") else { throw ScriptFailure("compact into a new database needs file_id") }
-                let hashID: HashID?
+                var hashID: HashID?
                 if op.has("hash_id") && !op.isNull("hash_id") {
                     let bytes = try self.bytes(op.fields["hash_id"], "hash_id")
                     guard bytes.count == 4 else { throw UnknownInScript("hash_id is not four bytes") }
                     hashID = HashID(bytes: [bytes[0], bytes[1], bytes[2], bytes[3]])
-                } else {
-                    hashID = source.header.hashID
                 }
+                let fileID = try fileID(op.fields["file_id"])
                 let place = ScriptDatabase(storage: try ScriptStorage(storage.kind))
-                target = try Database(
-                    creating: try place.storage.openStorage(readOnly: false),
-                    hashSize: Int(hashSize),
-                    hashID: hashID,
-                    fileID: try fileID(op.fields["file_id"]),
-                    random: random
-                )
-                place.database = target
-                databases[into] = place
-            }
-            let named = try op.string("offset_map")
-            guard ["memory", "disk"].contains(named) else { throw UnknownInScript("unknown offset_map") }
-            let useDisk = (named == "disk") != otherOffsetMap
-            if !useDisk {
-                try source.compact(into: target, offsetMap: &memoryOffsets)
-            } else {
-                if diskOffsets == nil {
-                    let offsetsStorage = try ScriptStorage(storage.kind)
-                    diskOffsetsStorage = offsetsStorage
-                    diskOffsets = try DiskOffsets(storage: try offsetsStorage.openStorage(readOnly: false))
+                let targetStorage = try place.storage.openStorage(readOnly: false)
+                if !useDisk {
+                    place.database = try source.compact(
+                        into: targetStorage, hashID: hashID, fileID: fileID, offsetMap: &memoryOffsets)
+                } else {
+                    place.database = try diskOffsets!.use { map in
+                        try source.compact(into: targetStorage, hashID: hashID, fileID: fileID, offsetMap: &map)
+                    }
                 }
-                try diskOffsets!.use { map in try source.compact(into: target, offsetMap: &map) }
+                databases[into] = place
             }
 
         case "write_path":
@@ -1291,18 +1303,6 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
 
     var testDescription: String { name }
 
-    /// The milestone that brings what this script still needs, or `nil` if
-    /// it can run now.
-    var waitsFor: String? {
-        nil
-    }
-
-    /// An op the runner does not have yet, which keeps the script from
-    /// running although nothing in the engine is missing.
-    var needsOp: String? {
-        nil
-    }
-
     /// Every script in the copied fixtures, as the manifest lists them.
     static let all: [ConformanceFixture] = {
         guard
@@ -1331,20 +1331,35 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
         }
     }()
 
+    /// The engine error a failing script's description pins, if it pins
+    /// one: "expected failure: unexpected error X" is Zig's message for an
+    /// error X that its last op raised and nothing handled. Any other text
+    /// after "expected failure:" is a reason in Zig's own words, whose
+    /// wording is not part of the format.
+    static func pinnedError(in description: String?) -> String? {
+        guard let description, let range = description.range(of: "expected failure: unexpected error ") else {
+            return nil
+        }
+        let name = description[range.upperBound...].prefix { $0.isLetter || $0.isNumber }
+        return name.isEmpty ? nil : String(name)
+    }
+
     /// Runs the script on a storage kind and holds it to what Zig did.
     ///
     /// A script that must pass is given the commit IDs from its sidecar, has
     /// its committed size checked after every top-level op, and must leave
     /// the file Zig wrote. A script that must fail has to end in a
-    /// `ScriptFailure`.
-    /// Runs the script on a storage kind. With `otherOffsetMap`, every
-    /// `compact` uses the offset map the script does not name, which must
-    /// change nothing in what is written: the conformance `check.sh` holds
-    /// the scripts to that the same way.
-    func run(on kind: ScriptStorageKind, otherOffsetMap: Bool = false) throws {
+    /// `ScriptFailure`, and one whose description pins an unhandled error
+    /// has to end in that error, raised by its last op.
+    ///
+    /// With `otherOffsetMap`, every `compact` uses the offset map the
+    /// script does not name, which must change nothing in what is written:
+    /// the conformance `check.sh` holds the scripts to that the same way.
+    func run(on kind: StorageKind, otherOffsetMap: Bool = false) throws {
         let script = try JSONSerialization.jsonObject(with: Data(try fixtureFile(script)))
 
         guard mustPass else {
+            let pinned = Self.pinnedError(in: try ScriptObject(script, "the script").optionalString("description"))
             // Some of these commit before they fail, so the random source
             // has to return something. Any values will do.
             let runner = ScriptRunner(
@@ -1352,12 +1367,21 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
                 random: FixedRandom((1...64).map { UInt64($0) })
             )
             runner.otherOffsetMap = otherOffsetMap
-            do {
-                for op in try runner.start(script) {
+            let ops = try runner.start(script)
+            for (index, op) in ops.enumerated() {
+                do {
                     try runner.run(op, topLevel: true)
+                } catch let failure as ScriptFailure {
+                    guard let pinned else { return }
+                    guard index == ops.count - 1 else {
+                        throw ScriptFailure("\(name) must fail at its last op, and op \(index) failed: \(failure)")
+                    }
+                    guard failure.unhandled == pinned else {
+                        throw ScriptFailure(
+                            "\(name) must raise \(pinned), which nothing handles, and it failed: \(failure)")
+                    }
+                    return
                 }
-            } catch is ScriptFailure {
-                return
             }
             throw ScriptFailure("\(name) must fail, and it ran to the end")
         }

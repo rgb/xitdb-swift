@@ -38,8 +38,9 @@ public final class BufferedFileStorage: WritableStorage {
     /// The buffer limit used when none is given: 2 MiB.
     public static let defaultBufferLimit: UInt64 = 2 * 1024 * 1024
 
-    /// Puts a buffer in front of a file storage. Internal: the tests use it
-    /// to put their own calls on the file; a client opens the file through
+    /// Puts a buffer in front of a file storage. Package-level: the tests
+    /// use it to put their own calls on the file, and the benchmark to
+    /// count them; a client opens the file through
     /// ``init(path:access:durability:lock:bufferLimit:)``, so that nothing
     /// else can write through it.
     ///
@@ -48,7 +49,7 @@ public final class BufferedFileStorage: WritableStorage {
     ///     afterwards.
     ///   - bufferLimit: The most bytes to hold before flushing. A write
     ///     larger than this goes straight to the file.
-    init(_ file: FileStorage, bufferLimit: UInt64 = BufferedFileStorage.defaultBufferLimit) {
+    package init(_ file: FileStorage, bufferLimit: UInt64 = BufferedFileStorage.defaultBufferLimit) {
         self.file = file
         self.bufferLimit = bufferLimit
     }
@@ -63,7 +64,9 @@ public final class BufferedFileStorage: WritableStorage {
     ///   - lock: An advisory lock to take on the file, or `nil` for none.
     ///   - bufferLimit: The most bytes to hold before flushing.
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the file cannot be
-    ///   opened or the lock cannot be had at once.
+    ///   opened or the lock cannot be had at once. A path with a NUL byte in
+    ///   it is refused with `EINVAL`, rather than opening the file that the
+    ///   part before the NUL names.
     public convenience init(
         path: String,
         access: FileAccess,

@@ -266,8 +266,9 @@ struct SlotIterator {
     ///
     /// - Throws: `unexpectedTag` if the slot holds something other than a
     ///   sorted map or set; `invalidBTreeNode` if a branch has no children
-    ///   or a child is not a node, or the tree is deeper than a tree can
-    ///   be; and the errors of comparing keys.
+    ///   or a child is not a node, the tree is deeper than a tree can be,
+    ///   or the counts on the way add up past what a number holds; and
+    ///   the errors of comparing keys.
     init(reader: DatabaseReader, sortedMap slot: Slot, fromKey key: SortedKey) throws(XitDBError) {
         switch slot.tag {
         case .none:
@@ -297,7 +298,7 @@ struct SlotIterator {
                 switch node.kind {
                 case .leaf:
                     let search = try reader.sortedLeafSearch(node, key: bytes)
-                    before &+= UInt64(search.index)
+                    before = try before.addingCount(UInt64(search.index))
                     push(Level(position: position, block: IndexBlock(slots: node.entries), index: UInt8(search.index)))
                     return
                 case .branch:
@@ -305,7 +306,7 @@ struct SlotIterator {
                     let index = try reader.sortedBranchSearch(node, key: bytes)
                     guard node.child(index).tag == .index else { throw .invalidBTreeNode }
                     for below in 0..<index {
-                        before &+= node.count(below)
+                        before = try before.addingCount(node.count(below))
                     }
                     push(Level(position: position, block: IndexBlock(slots: node.children), index: UInt8(index)))
                     nodePtr = node.child(index).value

@@ -35,16 +35,6 @@ import Testing
     /// Zig's `COUNT`: keys "k0000".."k0059" sort lexicographically in numeric order.
     private let count = 60
 
-    /// The UTF-8 bytes of a string.
-    private func utf8(_ text: String) -> [UInt8] {
-        Array(text.utf8)
-    }
-
-    /// Zig's `hashInt(text)`: the SHA-1 of the text, as the twenty bytes the collections take.
-    private func hashInt(_ text: String) -> [UInt8] {
-        sha1(text).bytes
-    }
-
     /// Zig's `std.mem.print(&kbuf, "k{d:0>4}", .{i})`: the key for a number, its digits padded with zeros on
     /// the left to `width`.
     private func paddedKey(_ number: Int, width: Int) -> [UInt8] {

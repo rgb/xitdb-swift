@@ -41,9 +41,11 @@ public protocol ByteSink {
 /// the error as ``XitDBError/callerError(_:)``. ``ArrayByteSource`` reads
 /// from bytes in memory.
 public protocol ByteSource {
-    /// Fills as much of `buffer` as it can with the next bytes, and returns
-    /// how many: fewer than the buffer holds only when the bytes are about
-    /// to run out, and zero when they have.
+    /// Fills `buffer` with the next bytes, as many as it has at hand, and
+    /// returns how many: fewer than the buffer holds when fewer are at
+    /// hand, as a socket gives them, and zero only when they have run out.
+    /// A count larger than the buffer is an error of the source's, which
+    /// the sync reports as ``XitDBError/endOfStream``.
     mutating func read(into buffer: inout MutableSpan<UInt8>) throws -> Int
 }
 
@@ -142,9 +144,7 @@ extension Database {
     public func readCommitted<Sink: ByteSink>(from start: UInt64, to end: UInt64, into sink: inout Sink)
         throws(XitDBError)
     {
-        let committedSize = try reader.committedSize
-        if start > end || end > committedSize { throw .invalidRange }
-        if start > 0 && start < RootHeader.endPosition { throw .invalidRange }
+        try checkRange(from: start, to: end)
         if start == 0 {
             let trailer = try reader.rootTrailer(endingAt: end)
             try stream(from: 0, to: RootHeader.position, into: &sink)
@@ -164,9 +164,7 @@ extension Database {
     ///
     /// - Throws: What ``readCommitted(from:to:into:)-(_,_,Sink)`` throws.
     public func readCommitted(from start: UInt64, to end: UInt64, into bytes: inout [UInt8]) throws(XitDBError) {
-        let committedSize = try reader.committedSize
-        if start > end || end > committedSize { throw .invalidRange }
-        if start > 0 && start < RootHeader.endPosition { throw .invalidRange }
+        try checkRange(from: start, to: end)
         let trailer = start == 0 ? try reader.rootTrailer(endingAt: end) : nil
 
         let first = bytes.count
@@ -181,6 +179,18 @@ extension Database {
             }
             span.copyBytes(from: header.span, count: 17, to: first + Int(RootHeader.position))
         }
+    }
+
+    /// The checks of `readCommitted`'s range, in Zig's order: a start past
+    /// the end is refused before the committed size is read, so that a
+    /// replica with no database behind it reports the range and not its
+    /// own state.
+    ///
+    /// - Throws: `invalidRange`, or what ``committedSize`` throws.
+    private func checkRange(from start: UInt64, to end: UInt64) throws(XitDBError) {
+        if start > end { throw .invalidRange }
+        if end > (try reader.committedSize) { throw .invalidRange }
+        if start > 0 && start < RootHeader.endPosition { throw .invalidRange }
     }
 
     /// The committed bytes from `start` up to `end`, in memory.
@@ -216,8 +226,9 @@ extension Database {
     ///
     /// - Throws: ``XitDBError/invalidRange`` for a `start` that is neither
     ///   0 nor the committed size, which changes nothing;
-    ///   ``XitDBError/endOfStream`` if the source gives fewer than `count`
-    ///   bytes; ``XitDBError/invalidDatabase`` if the bytes do not end with
+    ///   ``XitDBError/endOfStream`` if the source runs out before `count`
+    ///   bytes, or claims to have given more than its buffer holds;
+    ///   ``XitDBError/invalidDatabase`` if the bytes do not end with
     ///   a trailer that checks, or, at 0, do not hold a database;
     ///   ``XitDBError/invalidHashSize`` at 0 for a database of another
     ///   hash size; the storage's errors; and the source's, carried as
@@ -227,14 +238,18 @@ extension Database {
     {
         try beginApplying(at: start)
 
-        // the source fills a buffer of up to a chunk at a time, no more
-        // than what remains
+        // One buffer for the whole sync: a chunk at most, and never more
+        // than what remains, so that the source is never asked for more
+        // than the count. As the end nears it is cut down in place, which
+        // keeps its storage; a new one for every short read near the end
+        // was allocated and zeroed again, once per byte for a source that
+        // gives one at a time.
         var buffer = [UInt8](repeating: 0, count: Int(min(count, UInt64(Self.streamChunk))))
         var position = start
         var remaining = count
         while remaining > 0 {
             if remaining < UInt64(buffer.count) {
-                buffer = [UInt8](repeating: 0, count: Int(remaining))
+                buffer.removeLast(buffer.count - Int(remaining))
             }
             var span = buffer.mutableSpan
             let read = try XitDBError.carrying { try source.read(into: &span) }

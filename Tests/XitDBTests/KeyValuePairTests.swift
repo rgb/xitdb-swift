@@ -77,6 +77,37 @@ import Testing
         #expect(KeyValuePair.valuePosition(of: sorted, hashSize: 20) == 1009)
     }
 
+    /// A position that does not fit a number is a damaged slot: there is no
+    /// such position, so the result is `nil` rather than a wrapped offset.
+    @Test func positionsThatOverflowAreNil() {
+        // the hash does not fit after the record's offset
+        let hashedAtTheEnd = Slot(value: .max, tag: .kvPair)
+        #expect(KeyValuePair.keyPosition(of: hashedAtTheEnd, hashSize: 20) == nil)
+        #expect(KeyValuePair.valuePosition(of: hashedAtTheEnd, hashSize: 20) == nil)
+        #expect(KeyValuePair.keyPosition(of: Slot(value: .max - 19, tag: .kvPair), hashSize: 20) == nil)
+        #expect(KeyValuePair.valuePosition(of: Slot(value: .max - 19, tag: .kvPair), hashSize: 20) == nil)
+
+        // the key slot fits exactly, and the value slot after it does not
+        let keyFits = Slot(value: .max - 20, tag: .kvPair)
+        #expect(KeyValuePair.keyPosition(of: keyFits, hashSize: 20) == .max)
+        #expect(KeyValuePair.valuePosition(of: keyFits, hashSize: 20) == nil)
+        #expect(KeyValuePair.keyPosition(of: hashedAtTheEnd, hashSize: 0) == .max)
+        #expect(KeyValuePair.valuePosition(of: hashedAtTheEnd, hashSize: 0) == nil)
+        #expect(KeyValuePair.keyPosition(of: Slot(value: .max - 65535, tag: .kvPair), hashSize: .max) == .max)
+        #expect(KeyValuePair.keyPosition(of: Slot(value: .max - 65534, tag: .kvPair), hashSize: .max) == nil)
+
+        // the sorted form has no hash before its key slot
+        let sortedAtTheEnd = Slot(value: .max, tag: .sortedKvPair)
+        #expect(KeyValuePair.keyPosition(of: sortedAtTheEnd, hashSize: 20) == .max)
+        #expect(KeyValuePair.valuePosition(of: sortedAtTheEnd, hashSize: 20) == nil)
+        let sortedValueFits = Slot(value: UInt64.max - 9, tag: .sortedKvPair)
+        #expect(KeyValuePair.keyPosition(of: sortedValueFits, hashSize: 20) == UInt64.max - 9)
+        #expect(KeyValuePair.valuePosition(of: sortedValueFits, hashSize: 20) == .max)
+        let sortedValueOverflows = Slot(value: UInt64.max - 8, tag: .sortedKvPair)
+        #expect(KeyValuePair.keyPosition(of: sortedValueOverflows, hashSize: 20) == UInt64.max - 8)
+        #expect(KeyValuePair.valuePosition(of: sortedValueOverflows, hashSize: 20) == nil)
+    }
+
     @Test func aKeyOnlyEntryHasNoPositions() {
         for tag in [Tag.bytes, .shortBytes] {
             let entry = Slot(value: 1000, tag: tag)

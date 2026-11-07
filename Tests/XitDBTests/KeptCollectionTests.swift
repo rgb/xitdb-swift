@@ -15,10 +15,10 @@ import Testing
 //
 // The comments inside the tests are Zig's. Zig's `Ctx` structs with a `run` method are the trailing closures
 // of `append(_:_:)` here; `cursor.db.freeze()` is `cursor.database.freeze()`, `list.?` is `#require(list)`,
-// and `expectError(error.X, call)` is `#expect(throws: XitDBError.x) { call }`. Zig's `error.InvalidCount`,
-// for a counted hash map whose count disagrees with its entries, is `invalidDatabase` in the port, which has no
-// `InvalidCount`. Where Zig damages bytes of the file through `db.core.writeBytes()`, the bytes are written to the
-// storage directly. Zig's allocator and `buffer` lines have no counterpart.
+// and `expectError(error.X, call)` is `#expect(throws: XitDBError.x) { call }`. Zig's `error.InvalidCount`, for a
+// counted hash map whose count disagrees with its entries, is `invalidCount` in the port. Where Zig damages bytes of
+// the file through `db.core.writeBytes()`, the bytes are written to the storage directly. Zig's allocator and
+// `buffer` lines have no counterpart.
 //
 // Left out, with what each part tests and the feature it waits for:
 //
@@ -87,16 +87,6 @@ import Testing
     /// The values the first two blocks run for here: `std.enums.values(Freeze)` without `.concat`, whose
     /// moments need the fix branch's concat (see the file's header).
     static let freezesWithTheOriginalsConcat: [Freeze] = [.database, .concatElsewhere]
-
-    /// The UTF-8 bytes of a string.
-    private func utf8(_ text: String) -> [UInt8] {
-        Array(text.utf8)
-    }
-
-    /// Zig's `hashInt(text)`: the SHA-1 of the text, as the twenty bytes the collections take.
-    private func hashInt(_ text: String) -> [UInt8] {
-        sha1(text).bytes
-    }
 
     /// Zig's `std.mem.print(&kbuf, "k{d:0>3}", .{i})`: the key for a number, its digits padded with zeros on
     /// the left to `width`.
@@ -356,7 +346,7 @@ import Testing
                 #expect(try countedAgain.remove(forHash: hashNumber(hash)))
             }
             #expect(try countedAgain.count == 0)
-            #expect(throws: XitDBError.invalidDatabase) { try countedAgain.remove(forHash: hashNumber(0x31)) }
+            #expect(throws: XitDBError.invalidCount) { try countedAgain.remove(forHash: hashNumber(0x31)) }
         }
     }
 

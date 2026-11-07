@@ -89,7 +89,9 @@ package enum PathPart: Sendable {
     /// key and the entry come with no position, since moving a key would
     /// leave the entry out of order. In a sorted set, asking for the key
     /// of a new entry stores the key on its own; asking for its value or
-    /// the pair makes a pair.
+    /// the pair makes a pair, and in a write path turns an existing
+    /// key-only entry into a pair with an empty value, as Zig does
+    /// (finding 14: wasteful, not wrong, and kept for the bytes).
     case sortedMapGet(HashMapSlotKind, SortedKey)
 
     /// Moves to the entry at an index, in a read path only. A negative

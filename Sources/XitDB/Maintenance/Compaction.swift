@@ -44,8 +44,10 @@ extension Database {
     ///   and ``XitDBError/unexpectedTag`` for an array list whose index does
     ///   not hold what its size says. A compaction that fails leaves the
     ///   target as a transaction that did not commit: nothing of it is
-    ///   reachable, and the next transaction truncates it. Errors of the
-    ///   two storages and of the offset map are passed on.
+    ///   reachable, and what it wrote is discarded at once, as after any
+    ///   transaction that fails; should the storage refuse to cut it off
+    ///   then, the next transaction discards it. Errors of the two
+    ///   storages and of the offset map are passed on.
     public func compact<Map: OffsetMap>(into target: Database, offsetMap: inout Map) throws(XitDBError) {
         // cached offsets only apply to this compaction's target
         try offsetMap.clear()
@@ -93,11 +95,18 @@ extension Database {
     /// random one. A storage that holds a database already keeps that
     /// database's file ID and hash ID, and must have an empty root.
     ///
+    /// The target draws from this database's source of randomness, as
+    /// Zig's target is opened with the source's `io`: its file ID, when
+    /// none is given, and then the commit ID of the compaction's
+    /// transaction, in that order, so that this database's next commit
+    /// draws after them.
+    ///
     /// - Parameters:
     ///   - storage: Where the target lives.
     ///   - hashID: The target's hash ID, for a new database.
     ///   - fileID: The target's file ID, for a new database.
-    ///   - offsetMap: Where the copy remembers what went where.
+    ///   - offsetMap: Where the copy remembers what went where. It is reset
+    ///     before the target is opened.
     /// - Returns: The target, open for reading and writing.
     /// - Throws: What ``compact(into:offsetMap:)`` throws, and what opening a
     ///   database over `storage` throws.
@@ -107,8 +116,12 @@ extension Database {
         fileID: UInt64? = nil,
         offsetMap: inout Map
     ) throws(XitDBError) -> Database {
+        // cached offsets only apply to this compaction's target, and Zig
+        // resets the map before it opens the target
+        try offsetMap.clear()
         let target = try Database(
-            storage: storage, hashSize: header.hashSize, hashID: hashID ?? header.hashID, fileID: fileID)
+            storage: storage, hashSize: header.hashSize, hashID: hashID ?? header.hashID, fileID: fileID,
+            random: random)
         try compact(into: target, offsetMap: &offsetMap)
         return target
     }
@@ -212,9 +225,19 @@ struct Compactor {
             }
         }
 
-        /// The slot at `index`, validated when the block was read.
+        /// The slot at `index`, whose tag `checkedSlot` found to be one
+        /// when the walk reached it.
         func slot(_ index: Int) -> Slot {
             Slot.inNode(bytes.span, at: slotOffset(index))
+        }
+
+        /// The slot at `index` with its tag checked: Zig's `validate`, made
+        /// as the walk reaches the slot, so that a child visited earlier
+        /// reports its own damage first.
+        ///
+        /// - Throws: `invalidEnumTag` if the tag is not one.
+        func checkedSlot(_ index: Int) throws(XitDBError) -> Slot {
+            try Slot(decoding: bytes.span, at: slotOffset(index))
         }
 
         /// Records the target offset a task ended in: for a header, as its
@@ -238,11 +261,14 @@ struct Compactor {
     // MARK: Reading the source
 
     /// A frame over the block at `position`: its `byteCount` bytes, all of
-    /// them (Zig's `readSliceAll`), with the slots it has to deal with
-    /// checked as Zig checks each on reading.
+    /// them (Zig's `readSliceAll`). A key-value pair's two slots are
+    /// checked here, as Zig's `decodeKvPair` checks both before either is
+    /// remapped; any other block's slots are checked one at a time as the
+    /// walk reaches them, as Zig's populate functions check each before
+    /// they remap it.
     ///
     /// - Throws: `endOfStream` if the source ends first, `invalidEnumTag`
-    ///   at the first slot whose tag is unknown.
+    ///   for a pair whose key or value has a tag that is not one.
     private func readFrame(
         _ kind: Frame.Kind, at position: UInt64, targetOffset: UInt64, count: Int, task: Task? = nil
     ) throws(XitDBError) -> Frame {
@@ -252,20 +278,23 @@ struct Compactor {
         var span = frame.bytes.mutableSpan
         let read = try storage.read(into: &span, range: 0..<wanted, at: position)
         guard read == wanted else { throw .endOfStream }
-        for index in 0..<count {
-            _ = try Slot(decoding: frame.bytes.span, at: frame.slotOffset(index))
+        if case .kvPair = kind {
+            for index in 0..<count {
+                _ = try frame.checkedSlot(index)
+            }
         }
         return frame
     }
 
-    /// The two header bytes of a tree node, checked: Zig's `remapBTreeNode`
-    /// reads them before it visits the node.
+    /// The two header bytes of a tree node, checked in Zig's order: its
+    /// `remapBTreeNode` reads the kind, checks it, then reads the count,
+    /// so a node whose kind is the last byte of the source reports the
+    /// kind before the end.
     private func nodeKind(at position: UInt64) throws(XitDBError) -> BTreeNodeKind {
         var buffer = InlineArray<2, UInt8>(repeating: 0)
         var span = buffer.mutableSpan
         let read = try source.storage.read(into: &span, at: position)
-        guard read == 2 else { throw .endOfStream }
-        return try TreeNodeHeader.decode(buffer.span).kind
+        return try TreeNodeHeader.decode(buffer.span.extracting(0..<read)).kind
     }
 
     // MARK: Writing the target
@@ -334,7 +363,7 @@ struct Compactor {
             return task
         }
         while frame.next < frame.count {
-            let slot = frame.slot(frame.next)
+            let slot = try frame.checkedSlot(frame.next)
             switch frame.kind {
             case .slots, .kvPair:
                 if !Self.isImmediate(slot.tag) { return .slot(slot) }
@@ -496,9 +525,13 @@ struct Compactor {
                 return try begin(.slot(Slot(value: blockPtr, tag: .index)), stack: &stack, offsetMap: &offsetMap)
             }
             let offset = try reserve(144)
-            let used = Int(min((size + childSize - 1) / childSize, Trie.slotsPerBlock))
+            // The children Zig reads: one while any of the size is left, so
+            // a last child that is not full counts. Rounding up through a
+            // sum overflowed for a size near the largest.
+            let used = Int(min(size / childSize + (size % childSize == 0 ? 0 : 1), Trie.slotsPerBlock))
             // Zig reads the used children one by one and stops, so only
-            // those are read and checked; the rest of the block stays empty.
+            // those are read, and each is checked as the walk reaches it;
+            // the rest of the block stays empty.
             var frame = Frame(
                 kind: .arrayListPartial(size: size, childSize: childSize, shift: shift), targetOffset: offset,
                 count: used)
@@ -507,9 +540,6 @@ struct Compactor {
                 var span = frame.bytes.mutableSpan
                 let read = try storage.read(into: &span, range: 0..<(used * 9), at: blockPtr)
                 guard read == used * 9 else { throw .endOfStream }
-                for index in 0..<used {
-                    _ = try Slot(decoding: frame.bytes.span, at: 9 * index)
-                }
             }
             return try settle(frame, stack: &stack, offsetMap: &offsetMap)
         }

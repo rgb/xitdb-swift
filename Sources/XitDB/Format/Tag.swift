@@ -21,7 +21,14 @@ extension Slot {
         /// The offset of a hash map.
         case hashMap = 4
 
-        /// The offset of a key-value pair that belongs to a hash map or set.
+        /// The offset of a key-value pair that starts with the key's hash:
+        /// the entry of a hash map or set.
+        ///
+        /// A sorted map's own pairs are ``sortedKvPair``, but an entry of a
+        /// sorted leaf may carry this tag too. XitDB reads such an entry and
+        /// copies it with its hash when the leaf is rewritten; it never
+        /// writes one there itself, so one comes from a crafted or a foreign
+        /// file.
         case kvPair = 5
 
         /// The offset of a byte array.
