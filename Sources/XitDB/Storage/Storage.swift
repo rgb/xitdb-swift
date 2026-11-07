@@ -85,8 +85,10 @@ public protocol WritableStorage: AnyObject, ReadableStorage {
     ///   - bytes: The bytes to write.
     ///   - offset: The position in the storage of the first byte written.
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the storage
-    ///   underneath fails, or ``XitDBError/maxSizeExceeded`` if the storage
-    ///   has a size limit and the write would grow it beyond that.
+    ///   underneath fails, or ``XitDBError/maxSizeExceeded`` if the write
+    ///   would grow the storage beyond a size limit it has, or beyond what
+    ///   it can hold at all, as a memory storage cannot hold more than an
+    ///   array.
     func write(_ bytes: Span<UInt8>, at offset: UInt64) throws(XitDBError)
 
     /// Cuts the storage down to `length` bytes, discarding everything after.

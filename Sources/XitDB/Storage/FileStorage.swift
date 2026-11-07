@@ -2,7 +2,9 @@
 public enum FileAccess: Sendable {
     /// Open an existing file for reading only.
     ///
-    /// Writing to the storage fails, and a request to shorten it is ignored.
+    /// Writing to the storage fails. A request to shorten it is ignored; a
+    /// length larger than the file's is still ``XitDBError/invalidLength``,
+    /// as on every storage.
     case readOnly
 
     /// Open an existing file for reading and writing.
@@ -26,15 +28,22 @@ public enum FileAccess: Sendable {
 /// is written, before the root header is changed to point at it, and once
 /// after. The level decides what each of those does.
 ///
-/// On Apple platforms the levels use `F_BARRIERFSYNC` and `F_FULLFSYNC`.
-/// Plain `fsync` is not a level there, because it promises neither that
-/// writes reach the disk in order nor that the drive flushes them.
+/// On Apple platforms the levels use `F_BARRIERFSYNC` and `F_FULLFSYNC`:
+/// ``ordered`` makes a barrier sync at both points, and ``full`` a barrier
+/// sync before the root header and a full sync after it. Plain `fsync` is
+/// not a level there, because it promises neither that writes reach the
+/// disk in order nor that the drive flushes them.
 ///
 /// Not every volume supports every call. Where one is not supported, the
 /// storage tries another that keeps what the level promises, and plain
 /// `fsync` only when nothing better is left. In particular the sync before
 /// the root header, which is what keeps a file openable after a power loss,
 /// falls back from a barrier to a full sync before it settles for less.
+///
+/// Off Apple platforms there are no such calls, and every call the storage
+/// makes is plain `fsync`, so ``ordered`` and ``full`` are the same there:
+/// one `fsync` at each of the two points, promising what `fsync` promises
+/// on that system. ``none`` makes no call anywhere.
 public enum Durability: Sendable {
     /// Never sync.
     ///
