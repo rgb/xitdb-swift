@@ -4,10 +4,10 @@ An immutable, append-only embedded database, compatible with the files of the or
 
 ## Overview
 
-XitDB is a Swift port of [xitdb](https://github.com/xit-vcs/xitdb). It is in development. What exists so far:
+XitDB is a Swift port of [xitdb](https://github.com/xit-vcs/xitdb), complete to the surface of the original:
 a ``Database`` can be created and opened; every collection of the original can be built in it, read, written
 and iterated over; values can be read and written through a ``Cursor``, including byte arrays read and
-written a part at a time; and a database can be compacted. Replicating one is not there yet.
+written a part at a time; a database can be compacted, and replicated by copying the bytes a replica lacks.
 
 A database keeps its bytes in a storage. ``BufferedFileStorage`` keeps them in a file and is the one to use
 for a database on disk. ``MemoryStorage`` keeps them in memory. ``FileStorage`` reads and writes a file
@@ -32,6 +32,11 @@ larger record. A slot's ``Tag`` says which. A file starts with a ``DatabaseHeade
 A database only grows, since every transaction appends. ``Database/compact(into:offsetMap:)`` writes a new
 one that holds what the latest moment reaches and nothing else, every object once however many slots point
 at it. The copy remembers where things went in an ``OffsetMap``; ``MemoryOffsetMap`` keeps that in memory.
+
+Committed bytes never change except for the root header, so a replica is brought up to date by copying the
+bytes it does not have. A replica describes itself with a ``ReplicaState``; the source answers with
+``Database/replicationStart(_:)``, sends with ``Database/readCommitted(from:to:into:)`` into a ``ByteSink``,
+and the replica takes the bytes with ``Database/applyReplicated(at:from:count:)`` from a ``ByteSource``.
 
 ## Topics
 
@@ -68,6 +73,13 @@ at it. The copy remembers where things went in an ``OffsetMap``; ``MemoryOffsetM
 
 - ``OffsetMap``
 - ``MemoryOffsetMap``
+
+### Replication
+
+- ``ReplicaState``
+- ``ByteSink``
+- ``ByteSource``
+- ``ArrayByteSource``
 
 ### Storage
 
