@@ -64,17 +64,17 @@ import Testing
             database = try makeDatabase(subject)
             try ArrayList(database.rootCursor).appendContext(.slot(nil)) { cursor in
                 let map = try HashMap(cursor)
-                try map.put(sha1("bytes").bytes, .bytes(Array("a value long enough for a record".utf8)))
-                let list = try ArrayList(try map.putCursor(sha1("list").bytes))
+                try map.put(.bytes(Array("a value long enough for a record".utf8)), forHash: sha1("bytes").bytes)
+                let list = try ArrayList(try map.putCursor(forHash: sha1("list").bytes))
                 for index in 0..<5 {
                     try list.append(.uint(UInt64(index)))
                 }
-                let linked = try LinkedArrayList(try map.putCursor(sha1("linked").bytes))
+                let linked = try LinkedArrayList(try map.putCursor(forHash: sha1("linked").bytes))
                 for index in 0..<3 {
                     try linked.append(.uint(UInt64(index)))
                 }
-                let inner = try HashMap(try map.putCursor(sha1("map").bytes))
-                try inner.put(sha1("k").bytes, .uint(9))
+                let inner = try HashMap(try map.putCursor(forHash: sha1("map").bytes))
+                try inner.put(.uint(9), forHash: sha1("k").bytes)
             }
             moment = try #require(try database.rootCursor.readPath([.arrayListGet(-1)]))
         }
@@ -220,7 +220,7 @@ import Testing
         let subject = try StorageUnderTest(kind)
         let source = try makeDatabase(subject)
         try source.withTransaction { cursor in
-            let map = try SortedMap(try HashMap(cursor).putCursor(sha1("sorted").bytes))
+            let map = try SortedMap(try HashMap(cursor).putCursor(forHash: sha1("sorted").bytes))
             for (index, key) in keys.enumerated() {
                 try map.put(key, .uint(UInt64(index)))
             }
@@ -233,7 +233,7 @@ import Testing
         var map = MemoryOffsetMap()
         let target = try source.compact(into: targetSubject.storage, fileID: 8, offsetMap: &map)
         let copied = try SortedMap(
-            try #require(try HashMap(target.rootCursor.readOnly).getCursor(sha1("sorted").bytes)))
+            try #require(try HashMap(target.rootCursor.readOnly).cursor(forHash: sha1("sorted").bytes)))
         for (index, key) in keys.enumerated() {
             #expect(try #require(try copied.getCursor(key)).readUInt64() == UInt64(index))
             #expect(try copied.rank(key) == UInt64(index))
@@ -306,11 +306,11 @@ import Testing
         let source = try makeDatabase(subject)
         try source.withTransaction { cursor in
             let map = try HashMap(cursor)
-            let linked = try LinkedArrayList(try map.putCursor(sha1("linked").bytes))
+            let linked = try LinkedArrayList(try map.putCursor(forHash: sha1("linked").bytes))
             for index in 0..<40 {
                 try linked.append(.uint(UInt64(index)))
             }
-            let sorted = try SortedMap(try map.putCursor(sha1("sorted").bytes))
+            let sorted = try SortedMap(try map.putCursor(forHash: sha1("sorted").bytes))
             for index in 0..<40 {
                 try sorted.put(Array("k\(index)".utf8), .uint(UInt64(index)))
             }

@@ -240,6 +240,19 @@ extension SortedMap where Access == ReadOnly {
             throw .unexpectedTag
         }
     }
+
+    /// A view of the map at a cursor's slot, for reading, from a cursor of
+    /// either access: one that can write is read through as its
+    /// ``Cursor/readOnly``, so that a reader need not take it first.
+    ///
+    /// A slot that holds nothing is an empty map.
+    ///
+    /// - Parameter cursor: A cursor at the slot.
+    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
+    ///   other than a sorted map or set.
+    public init(_ cursor: Cursor<some CursorAccess>) throws(XitDBError) {
+        try self.init(Cursor<ReadOnly>(slotPointer: cursor.slotPointer, database: cursor.database))
+    }
 }
 
 extension SortedMap where Access == ReadWrite {

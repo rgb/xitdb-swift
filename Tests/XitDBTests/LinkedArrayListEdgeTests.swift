@@ -30,11 +30,11 @@ import Testing
         )
         _ = try database.rootCursor.writePath([.arrayListInit, .arrayListAppend, .hashMapInit(), .ctx]) { cursor in
             let moment = try HashMap(cursor)
-            let a = try LinkedArrayList(try moment.putCursor(sha1("a").bytes))
+            let a = try LinkedArrayList(try moment.putCursor(forHash: sha1("a").bytes))
             for value in 0..<16 {
                 try a.append(.uint(UInt64(value)))
             }
-            let b = try LinkedArrayList(try moment.putCursor(sha1("b").bytes))
+            let b = try LinkedArrayList(try moment.putCursor(forHash: sha1("b").bytes))
             for value in 16..<32 {
                 try b.append(.uint(UInt64(value)))
             }
@@ -58,7 +58,7 @@ import Testing
             #expect(root.kind == .leaf && root.num == 16)
 
             // a list of one element, emptied: a new root is appended
-            let c = try LinkedArrayList(try moment.putCursor(sha1("c").bytes))
+            let c = try LinkedArrayList(try moment.putCursor(forHash: sha1("c").bytes))
             try c.append(.uint(7))
             let before = try subject.storage.length
             #expect(before == 1685)
@@ -106,7 +106,7 @@ import Testing
         let database = try Database(
             storage: storage, hashSize: 20, hashID: nil, fileID: 6, random: FixedRandom([1, 2, 3]))
         try database.withTransaction { cursor in
-            let list = try LinkedArrayList(try HashMap(cursor).putCursor(sha1("list").bytes))
+            let list = try LinkedArrayList(try HashMap(cursor).putCursor(forHash: sha1("list").bytes))
             for value in 0..<40 {
                 try list.append(.uint(UInt64(value)))
             }
@@ -117,7 +117,7 @@ import Testing
             #expect(storage.writeCount == writes + 2)
         }
         try database.withTransaction { cursor in
-            let list = try LinkedArrayList(try HashMap(cursor).putCursor(sha1("list").bytes))
+            let list = try LinkedArrayList(try HashMap(cursor).putCursor(forHash: sha1("list").bytes))
             let writes = storage.writeCount
             try list.put(3, .uint(97))
             // the leaf, the branch, the header, the slot

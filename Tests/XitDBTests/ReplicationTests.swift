@@ -117,8 +117,8 @@ import Testing
     /// fails after writing if asked to.
     private func writeMoment(_ cursor: Cursor<ReadWrite>, i: Int, fail: Bool = false) throws {
         let moment = try HashMap<ReadWrite>(cursor)
-        try moment.put(hashInt("key-\(i)"), .uint(UInt64(i)))
-        let list = try ArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+        try moment.put(.uint(UInt64(i)), forHash: hashInt("key-\(i)"))
+        let list = try ArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
         try list.append(.uint(UInt64(i)))
         if fail { throw Fail() }
     }
@@ -217,11 +217,11 @@ import Testing
         #expect(try sourceHistory.count() == replicaHistory.count())
         let momentCursor = try #require(try replicaHistory.getCursor(-1))
         let moment = try HashMap<ReadOnly>(momentCursor)
-        let key299 = try #require(try moment.getCursor(hashInt("key-299")))
+        let key299 = try #require(try moment.cursor(forHash: hashInt("key-299")))
         #expect(try key299.readUInt64() == 299)
         // removed by the slice
-        #expect(try moment.getCursor(hashInt("key-180")) == nil)
-        let key149 = try #require(try moment.getCursor(hashInt("key-149")))
+        #expect(try moment.cursor(forHash: hashInt("key-180")) == nil)
+        let key149 = try #require(try moment.cursor(forHash: hashInt("key-149")))
         #expect(try key149.readUInt64() == 149)
 
         // a compacted database is a new file, so a replica of it is seeded from byte 0
@@ -243,7 +243,7 @@ import Testing
             #expect(try compactedHistory.count() == 2)
             let compactedMomentCursor = try #require(try compactedHistory.getCursor(-1))
             let compactedMoment = try HashMap<ReadOnly>(compactedMomentCursor)
-            let compactedKey299 = try #require(try compactedMoment.getCursor(hashInt("key-299")))
+            let compactedKey299 = try #require(try compactedMoment.cursor(forHash: hashInt("key-299")))
             #expect(try compactedKey299.readUInt64() == 299)
         }
 
@@ -343,7 +343,7 @@ import Testing
     private func writeBatch(_ cursor: Cursor<ReadWrite>, fail: Bool) throws {
         let root = try HashMap<ReadWrite>(cursor)
         for i in 0..<100 {
-            try root.put(hashInt("batch-\(i)"), .uint(UInt64(i)))
+            try root.put(.uint(UInt64(i)), forHash: hashInt("batch-\(i)"))
         }
         if fail { throw Fail() }
     }
@@ -373,18 +373,18 @@ import Testing
         var committed = try readCommittedBytes(source, from: 0)
 
         for i in 0..<100 {
-            try map.put(hashInt("key-\(i)"), .uint(UInt64(i)))
+            try map.put(.uint(UInt64(i)), forHash: hashInt("key-\(i)"))
             if i == 50 {
-                #expect(try map.remove(hashInt("key-25")))
+                #expect(try map.remove(forHash: hashInt("key-25")))
             }
 
             try expectAppendOnlyAndReplicate(source, replica, committed: &committed)
         }
 
         // a key is written in the same transaction as the lookup, so it works on a root map
-        try map.putKey(hashInt("key-1"), .bytes(utf8("key-1")))
+        try map.putKey(.bytes(utf8("key-1")), forHash: hashInt("key-1"))
         do {
-            let kv = try #require(try map.getKeyValuePair(hashInt("key-1")))
+            let kv = try #require(try map.entry(forHash: hashInt("key-1")))
             #expect(try kv.key.readBytes(maxCount: 8) == utf8("key-1"))
             #expect(try kv.value.readUInt64() == 1)
         }
@@ -392,8 +392,8 @@ import Testing
         // nested collections are written inside one transaction
         _ = try map.cursor.writePath([.hashMapGet(.value, sha1("inner")), .ctx]) { cursor in
             let inner = try HashMap<ReadWrite>(cursor)
-            try inner.put(hashInt("foo"), .bytes(utf8("foo")))
-            let list = try ArrayList<ReadWrite>(try inner.putCursor(hashInt("list")))
+            try inner.put(.bytes(utf8("foo")), forHash: hashInt("foo"))
+            let list = try ArrayList<ReadWrite>(try inner.putCursor(forHash: hashInt("list")))
             try list.append(.uint(1))
             try list.append(.uint(2))
         }
@@ -409,21 +409,21 @@ import Testing
                 try source.withTransaction { cursor in try writeBatch(cursor, fail: true) }
             }
             #expect(try source.committedSize == sizeBefore)
-            #expect(try map.getCursor(hashInt("batch-0")) == nil)
+            #expect(try map.cursor(forHash: hashInt("batch-0")) == nil)
 
             // a successful one commits everything at once
             try source.withTransaction { cursor in try writeBatch(cursor, fail: false) }
             #expect(try source.committedSize > sizeBefore)
-            let batch0 = try #require(try map.getCursor(hashInt("batch-0")))
+            let batch0 = try #require(try map.cursor(forHash: hashInt("batch-0")))
             #expect(try batch0.readUInt64() == 0)
-            let batch99 = try #require(try map.getCursor(hashInt("batch-99")))
+            let batch99 = try #require(try map.cursor(forHash: hashInt("batch-99")))
             #expect(try batch99.readUInt64() == 99)
             try replicate(source, replica)
             try expectSameCommittedBytes(source, replica)
         }
 
         // a nested write cursor can't be written to after its transaction
-        var lateCursor = try map.putCursor(hashInt("late"))
+        var lateCursor = try map.putCursor(forHash: hashInt("late"))
         #expect(throws: XitDBError.expectedTxStart) { try lateCursor.write(.uint(1)) }
         #expect(throws: XitDBError.expectedTxStart) { _ = try HashMap<ReadWrite>(lateCursor) }
         try replicate(source, replica)
@@ -433,12 +433,12 @@ import Testing
         replica = try Database(storage: replicaSubject.storage, hashSize: 20)
         do {
             let replicaMap = try HashMap<ReadOnly>(replica.rootCursor.readOnly)
-            let key99 = try #require(try replicaMap.getCursor(hashInt("key-99")))
+            let key99 = try #require(try replicaMap.cursor(forHash: hashInt("key-99")))
             #expect(try key99.readUInt64() == 99)
-            #expect(try replicaMap.getCursor(hashInt("key-25")) == nil)
-            let innerCursor = try #require(try replicaMap.getCursor(hashInt("inner")))
+            #expect(try replicaMap.cursor(forHash: hashInt("key-25")) == nil)
+            let innerCursor = try #require(try replicaMap.cursor(forHash: hashInt("inner")))
             let inner = try HashMap<ReadOnly>(innerCursor)
-            let listCursor = try #require(try inner.getCursor(hashInt("list")))
+            let listCursor = try #require(try inner.cursor(forHash: hashInt("list")))
             let list = try ArrayList<ReadOnly>(listCursor)
             #expect(try list.count() == 2)
             let last = try #require(try list.getCursor(-1))
@@ -453,12 +453,12 @@ import Testing
             #expect(try target.committedSize < replica.committedSize)
 
             let targetMap = try HashMap<ReadOnly>(target.rootCursor.readOnly)
-            let key99 = try #require(try targetMap.getCursor(hashInt("key-99")))
+            let key99 = try #require(try targetMap.cursor(forHash: hashInt("key-99")))
             #expect(try key99.readUInt64() == 99)
-            #expect(try targetMap.getCursor(hashInt("key-25")) == nil)
-            let innerCursor = try #require(try targetMap.getCursor(hashInt("inner")))
+            #expect(try targetMap.cursor(forHash: hashInt("key-25")) == nil)
+            let innerCursor = try #require(try targetMap.cursor(forHash: hashInt("inner")))
             let inner = try HashMap<ReadOnly>(innerCursor)
-            let listCursor = try #require(try inner.getCursor(hashInt("list")))
+            let listCursor = try #require(try inner.cursor(forHash: hashInt("list")))
             let list = try ArrayList<ReadOnly>(listCursor)
             #expect(try list.count() == 2)
 
@@ -524,8 +524,8 @@ import Testing
         // but once it is cleared, it can
         try root.write(.slot(nil))
         let map = try HashMap<ReadWrite>(db.rootCursor)
-        try map.put(hashInt("foo"), .uint(1))
-        let foo = try #require(try map.getCursor(hashInt("foo")))
+        try map.put(.uint(1), forHash: hashInt("foo"))
+        let foo = try #require(try map.cursor(forHash: hashInt("foo")))
         #expect(try foo.readUInt64() == 1)
     }
 
@@ -536,12 +536,12 @@ import Testing
         let db = try Database(storage: subject.storage, hashSize: 20)
 
         let set = try HashSet<ReadWrite>(db.rootCursor)
-        try set.put(hashInt("a"), .bytes(utf8("a")))
-        try set.put(hashInt("a"), .bytes(utf8("a")))
-        try set.put(hashInt("b"), .bytes(utf8("b")))
-        let a = try #require(try set.getCursor(hashInt("a")))
+        try set.insert(.bytes(utf8("a")), forHash: hashInt("a"))
+        try set.insert(.bytes(utf8("a")), forHash: hashInt("a"))
+        try set.insert(.bytes(utf8("b")), forHash: hashInt("b"))
+        let a = try #require(try set.cursor(forHash: hashInt("a")))
         #expect(try a.readBytes(maxCount: 8) == utf8("a"))
-        let b = try #require(try set.getCursor(hashInt("b")))
+        let b = try #require(try set.cursor(forHash: hashInt("b")))
         #expect(try b.readBytes(maxCount: 8) == utf8("b"))
     }
 

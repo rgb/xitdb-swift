@@ -146,7 +146,7 @@ import Testing
                     }
                 }
                 tolerating { try drain(try moment.iterator()) }
-                tolerating { _ = try HashMap(moment).getKeyValuePair(sha1("a").bytes)?.key.readUInt64() }
+                tolerating { _ = try HashMap(moment).entry(forHash: sha1("a").bytes)?.key.readUInt64() }
                 tolerating { _ = try moment.readPath([.hashMapGet(.key, sha1("a"))])?.readBytes(maxCount: 4) }
                 tolerating { _ = try moment.readPath([.hashMapGet(.kvPair, sha1("a"))])?.readEntry() }
                 for element in [Int64(0), 15, 16, 19, 20, -1, -21] {
@@ -206,13 +206,13 @@ import Testing
             tolerating {
                 try database.withTransaction { cursor in
                     let map = try HashMap(try cursor.writePath([.arrayListGet(0)]))
-                    var linked = try LinkedArrayList(try map.putCursor(sha1("linked").bytes))
+                    var linked = try LinkedArrayList(try map.putCursor(forHash: sha1("linked").bytes))
                     self.tolerating { try linked.append(.uint(20)) }
                     self.tolerating { try linked.put(3, .uint(30)) }
                     self.tolerating { try linked.insert(16, .uint(160)) }
                     self.tolerating { try linked.remove(0) }
                     self.tolerating { try linked.slice(offset: 2, size: 5) }
-                    self.tolerating { linked = try LinkedArrayList(try map.putCursor(sha1("linked").bytes)) }
+                    self.tolerating { linked = try LinkedArrayList(try map.putCursor(forHash: sha1("linked").bytes)) }
                     self.tolerating { try linked.concat(try linked.slot()) }
                     self.tolerating { try self.drain(try linked.iterator()) }
                 }

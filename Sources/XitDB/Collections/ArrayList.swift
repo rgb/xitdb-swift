@@ -100,6 +100,19 @@ extension ArrayList where Access == ReadOnly {
             throw .unexpectedTag
         }
     }
+
+    /// A view of the list at a cursor's slot, for reading, from a cursor of
+    /// either access: one that can write is read through as its
+    /// ``Cursor/readOnly``, so that a reader need not take it first.
+    ///
+    /// A slot that holds nothing is an empty list.
+    ///
+    /// - Parameter cursor: A cursor at the slot.
+    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
+    ///   other than a list.
+    public init(_ cursor: Cursor<some CursorAccess>) throws(XitDBError) {
+        try self.init(Cursor<ReadOnly>(slotPointer: cursor.slotPointer, database: cursor.database))
+    }
 }
 
 extension ArrayList where Access == ReadWrite {

@@ -67,7 +67,7 @@ import Testing
         /// test.zig 3938-3945: `Freeze.run`.
         func run(_ cursor: Cursor<ReadWrite>, _ moment: HashMap<ReadWrite>, _ list: LinkedArrayList<ReadWrite>?) throws
         {
-            let other = try LinkedArrayList<ReadWrite>(try moment.putCursor(sha1("other").bytes))
+            let other = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: sha1("other").bytes))
             switch self {
             case .database: try cursor.database.freeze()
             case .concat: try #require(list).concat(try other.slot())
@@ -133,19 +133,19 @@ import Testing
 
         try history.appendContext(.slot(nil)) { cursor in
             var moment = try HashMap<ReadWrite>(cursor)
-            var list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            var list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try list.append(.uint(1))
             try list.append(.uint(2))
             let slotBefore = try list.slot()
 
             try freeze.run(cursor, moment, list)
             moment = try HashMap<ReadWrite>(cursor)
-            list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try list.append(.uint(3))
             try list.remove(0)
             try expectUints(list, [2, 3])
 
-            var cloneCursor = try moment.putCursor(hashInt("clone"))
+            var cloneCursor = try moment.putCursor(forHash: hashInt("clone"))
             try cloneCursor.write(.slot(slotBefore))
             let clone = try LinkedArrayList<ReadWrite>(cloneCursor)
             try clone.append(.uint(4))
@@ -164,19 +164,19 @@ import Testing
 
         try history.appendContext(.slot(nil)) { cursor in
             var moment = try HashMap<ReadWrite>(cursor)
-            var list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            var list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try list.append(.uint(1))
             try list.append(.uint(2))
             let slotBefore = try list.slot()
 
             try Freeze.concat.run(cursor, moment, list)
             moment = try HashMap<ReadWrite>(cursor)
-            list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try list.append(.uint(3))
             try list.remove(0)
             try expectUints(list, [2, 3])
 
-            var cloneCursor = try moment.putCursor(hashInt("clone"))
+            var cloneCursor = try moment.putCursor(forHash: hashInt("clone"))
             try cloneCursor.write(.slot(slotBefore))
             let clone = try LinkedArrayList<ReadWrite>(cloneCursor)
             try clone.append(.uint(4))
@@ -196,12 +196,12 @@ import Testing
 
         try history.appendContext(.slot(nil)) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try list.append(.uint(1))
             try list.append(.uint(2))
 
             try freeze.run(cursor, moment, list)
-            let listAgain = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            let listAgain = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try listAgain.remove(0)
             try list.append(.uint(3))
             try expectUints(list, [1, 2, 3])
@@ -219,12 +219,12 @@ import Testing
 
         try history.appendContext(.slot(nil)) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try list.append(.uint(1))
             try list.append(.uint(2))
 
             try Freeze.concat.run(cursor, moment, list)
-            let listAgain = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            let listAgain = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try listAgain.remove(0)
             #expect(throws: XitDBError.invalidBTreeNode) { try list.append(.uint(3)) }
             try expectUints(listAgain, [2])
@@ -240,7 +240,7 @@ import Testing
 
         try history.appendContext(.slot(nil)) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try list.append(.uint(1))
             try list.append(.uint(2))
             try list.append(.uint(3))
@@ -248,7 +248,7 @@ import Testing
             try freeze.run(cursor, moment, list)
             try list.append(.uint(4))
             try expectUints(list, [1, 2, 3, 4])
-            let listAgain = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            let listAgain = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try listAgain.remove(0)
             try listAgain.remove(0)
             try expectUints(listAgain, [3, 4])
@@ -275,17 +275,17 @@ import Testing
 
         try history.appendContext(.slot(nil)) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
+            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             try list.append(.uint(1))
-            var earlyCursor = try moment.putCursor(hashInt("early"))
+            var earlyCursor = try moment.putCursor(forHash: hashInt("early"))
             try earlyCursor.write(.slot(try list.slot()))
 
             try freeze.run(cursor, moment, list)
             try list.append(.uint(2))
-            let early = try LinkedArrayList<ReadOnly>(try #require(try moment.getCursor(hashInt("early"))))
+            let early = try LinkedArrayList<ReadOnly>(try #require(try moment.cursor(forHash: hashInt("early"))))
             try expectUints(early, [1, 2])
 
-            var lateCursor = try moment.putCursor(hashInt("late"))
+            var lateCursor = try moment.putCursor(forHash: hashInt("late"))
             try lateCursor.write(.slot(try list.slot()))
             let late = try LinkedArrayList<ReadWrite>(lateCursor)
             try late.remove(0)
@@ -301,14 +301,14 @@ import Testing
 
         try history.appendContext(.slot(nil)) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            let map = try SortedMap<ReadWrite>(try moment.putCursor(hashInt("map")))
+            let map = try SortedMap<ReadWrite>(try moment.putCursor(forHash: hashInt("map")))
             for i in 0..<UInt64(40) {
                 try map.put(paddedKey(i, width: 3), .uint(i))
             }
 
             try freeze.run(cursor, moment, nil)
             try map.put(utf8("k999"), .uint(999))
-            let mapAgain = try SortedMap<ReadWrite>(try moment.putCursor(hashInt("map")))
+            let mapAgain = try SortedMap<ReadWrite>(try moment.putCursor(forHash: hashInt("map")))
             for i in 0..<UInt64(36) {
                 #expect(try mapAgain.remove(paddedKey(i, width: 3)))
             }
@@ -338,23 +338,23 @@ import Testing
 
         try history.appendContext(.slot(nil)) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            let counted = try CountedHashMap<ReadWrite>(try moment.putCursor(hashInt("counted")))
+            let counted = try CountedHashMap<ReadWrite>(try moment.putCursor(forHash: hashInt("counted")))
             // these hashes end with the same four bits, so they are in a block below the root
-            try counted.put(hashNumber(0x01), .uint(1))
-            try counted.put(hashNumber(0x11), .uint(2))
+            try counted.put(.uint(1), forHash: hashNumber(0x01))
+            try counted.put(.uint(2), forHash: hashNumber(0x11))
 
             try freeze.run(cursor, moment, nil)
-            try counted.put(hashNumber(0x21), .uint(3))
-            let countedAgain = try CountedHashMap<ReadWrite>(try moment.putCursor(hashInt("counted")))
-            try counted.put(hashNumber(0x31), .uint(4))
+            try counted.put(.uint(3), forHash: hashNumber(0x21))
+            let countedAgain = try CountedHashMap<ReadWrite>(try moment.putCursor(forHash: hashInt("counted")))
+            try counted.put(.uint(4), forHash: hashNumber(0x31))
 
             // the second count is 3, in a map that has 4 keys
             #expect(try countedAgain.count() == 3)
             for hash in [UInt8(0x01), 0x11, 0x21] {
-                #expect(try countedAgain.remove(hashNumber(hash)))
+                #expect(try countedAgain.remove(forHash: hashNumber(hash)))
             }
             #expect(try countedAgain.count() == 0)
-            #expect(throws: XitDBError.invalidDatabase) { try countedAgain.remove(hashNumber(0x31)) }
+            #expect(throws: XitDBError.invalidDatabase) { try countedAgain.remove(forHash: hashNumber(0x31)) }
         }
     }
 
@@ -366,14 +366,14 @@ import Testing
 
         try history.appendContext(.slot(nil)) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            let array = try ArrayList<ReadWrite>(try moment.putCursor(hashInt("array")))
+            let array = try ArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("array")))
             for i in 0..<20 {
                 try array.append(.uint(UInt64(i)))
             }
 
             try freeze.run(cursor, moment, nil)
             try array.append(.uint(20))
-            let arrayAgain = try ArrayList<ReadWrite>(try moment.putCursor(hashInt("array")))
+            let arrayAgain = try ArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("array")))
             try arrayAgain.put(20, .uint(99))
             #expect(try #require(try array.getCursor(20)).readUInt64() == 99)
         }
@@ -388,21 +388,21 @@ import Testing
         // a list and a sorted map with enough entries for their root to be a branch
         try history.appendContext(.slot(nil)) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
-            let map = try SortedMap<ReadWrite>(try moment.putCursor(hashInt("map")))
+            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
+            let map = try SortedMap<ReadWrite>(try moment.putCursor(forHash: hashInt("map")))
             for i in 0..<(Self.slotCount + 1) {
                 try list.append(.uint(i))
                 try map.put(paddedKey(i, width: 2), .uint(i))
             }
-            let shortList = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("short-list")))
+            let shortList = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("short-list")))
             try shortList.append(.uint(0))
         }
 
         // a header is the size followed by the position of the root node
         let committed = try HashMap<ReadOnly>(try #require(try history.getCursor(-1)))
-        let listHeader = try #require(try committed.getSlot(hashInt("list"))).value
+        let listHeader = try #require(try committed.slot(forHash: hashInt("list"))).value
         let listRoot = bigEndian(try readBytes(subject.storage, at: listHeader + 8, count: 8))
-        let mapHeader = try #require(try committed.getSlot(hashInt("map"))).value
+        let mapHeader = try #require(try committed.slot(forHash: hashInt("map"))).value
         let mapRoot = bigEndian(try readBytes(subject.storage, at: mapHeader + 8, count: 8))
 
         // a node is its kind, its number of entries, and then its slots. change the
@@ -414,9 +414,9 @@ import Testing
 
         try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("list")))
-            let shortList = try LinkedArrayList<ReadWrite>(try moment.putCursor(hashInt("short-list")))
-            let map = try SortedMap<ReadWrite>(try moment.putCursor(hashInt("map")))
+            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
+            let shortList = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("short-list")))
+            let map = try SortedMap<ReadWrite>(try moment.putCursor(forHash: hashInt("map")))
 
             #expect(throws: XitDBError.invalidBTreeNode) { try list.remove(0) }
             #expect(throws: XitDBError.invalidBTreeNode) { try list.slice(offset: 1, size: 2) }

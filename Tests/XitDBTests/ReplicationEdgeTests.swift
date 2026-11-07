@@ -65,7 +65,7 @@ struct CollectingSink: ByteSink {
         for moment in 1...2 {
             try ArrayList(source.rootCursor).appendContext(.slot(try ArrayList(source.rootCursor).getSlot(-1))) {
                 cursor in
-                try HashMap(cursor).put(sha1("moment").bytes, .uint(UInt64(moment)))
+                try HashMap(cursor).put(.uint(UInt64(moment)), forHash: sha1("moment").bytes)
             }
         }
         return (subject, source)

@@ -14,7 +14,7 @@ import Testing
         let subject = try StorageUnderTest(kind)
         let database = try Database(storage: subject.storage, hashSize: 20)
         try database.withTransaction { cursor in
-            let set = try SortedSet(try HashMap(cursor).putCursor(sha1("set").bytes))
+            let set = try SortedSet(try HashMap(cursor).putCursor(forHash: sha1("set").bytes))
             for index in 0..<40 {
                 try set.put(Array("k\(index)".utf8))
             }
@@ -24,7 +24,7 @@ import Testing
         let lengthBefore = try subject.storage.length
 
         try database.withTransaction { cursor in
-            let set = try SortedSet(try HashMap(cursor).putCursor(sha1("set").bytes))
+            let set = try SortedSet(try HashMap(cursor).putCursor(forHash: sha1("set").bytes))
             try set.put(Array("k7".utf8))
             try set.put(Array("k39".utf8))
             #expect(try set.count() == 40)
@@ -40,7 +40,7 @@ import Testing
         // hash map's blocks and the set's header, and no node
         let lengthBetween = try subject.storage.length
         try database.withTransaction { cursor in
-            _ = try SortedSet(try HashMap(cursor).putCursor(sha1("set").bytes))
+            _ = try SortedSet(try HashMap(cursor).putCursor(forHash: sha1("set").bytes))
         }
         #expect(try subject.storage.length - lengthBetween == appended)
     }

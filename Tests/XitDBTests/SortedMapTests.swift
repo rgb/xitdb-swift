@@ -109,7 +109,7 @@ import Testing
             .ctx,
         ]) { (cursor: inout Cursor<ReadWrite>) in
             let moment = try HashMap<ReadWrite>(cursor)
-            let map = try SortedMap<ReadWrite>(try moment.putCursor(hashInt("map")))
+            let map = try SortedMap<ReadWrite>(try moment.putCursor(forHash: hashInt("map")))
 
             try fillsTheMapInReverseOrder(map)
             try iteratesInOrder(map)
@@ -258,7 +258,7 @@ import Testing
     /// test.zig 3531-3551: the set, filled and iterated.
     private func fillsTheSet(_ moment: HashMap<ReadWrite>) throws -> SortedSet<ReadWrite> {
         // SortedSet with mixed short (inline) and long (external) keys
-        let set = try SortedSet<ReadWrite>(try moment.putCursor(hashInt("set")))
+        let set = try SortedSet<ReadWrite>(try moment.putCursor(forHash: hashInt("set")))
         try set.put(utf8("short"))
         try set.put(utf8("a-much-longer-key-stored-externally"))
         try set.put(utf8("mid"))
@@ -381,7 +381,7 @@ import Testing
             .ctx,
         ]) { (cursor: inout Cursor<ReadWrite>) in
             let moment = try HashMap<ReadWrite>(cursor)
-            let map = try SortedMap<ReadWrite>(try moment.putCursor(hashInt("map")))
+            let map = try SortedMap<ReadWrite>(try moment.putCursor(forHash: hashInt("map")))
             #expect(try map.remove(utf8("k0001")))
             try map.put(utf8("k0001"), .uint(7))  // not in moment 0
         }

@@ -24,11 +24,11 @@ import Testing
                 random: FixedRandom((1...50).map { UInt64($0) }))
             try database.withTransaction { cursor in
                 let map = try HashMap(cursor)
-                let list = try LinkedArrayList(try map.putCursor(sha1("list").bytes))
+                let list = try LinkedArrayList(try map.putCursor(forHash: sha1("list").bytes))
                 for index in 0..<40 {
                     try list.append(.uint(UInt64(index)))
                 }
-                let short = try LinkedArrayList(try map.putCursor(sha1("short").bytes))
+                let short = try LinkedArrayList(try map.putCursor(forHash: sha1("short").bytes))
                 try short.append(.uint(100))
             }
             let slot = try #require(try database.rootCursor.readPathSlot([.hashMapGet(.value, sha1("list"))]))
@@ -60,8 +60,8 @@ import Testing
             do {
                 try database.withTransaction { cursor in
                     let map = try HashMap(cursor)
-                    let list = try LinkedArrayList(try map.putCursor(sha1("list").bytes))
-                    let short = try LinkedArrayList(try map.putCursor(sha1("short").bytes))
+                    let list = try LinkedArrayList(try map.putCursor(forHash: sha1("list").bytes))
+                    let short = try LinkedArrayList(try map.putCursor(forHash: sha1("short").bytes))
                     try body(list, short)
                     throw Rollback()
                 }
@@ -113,7 +113,7 @@ import Testing
         let subject = try Subject(kind)
         var count = 0
         try subject.database.withTransaction { cursor in
-            let list = try LinkedArrayList(try HashMap(cursor).putCursor(sha1("list").bytes))
+            let list = try LinkedArrayList(try HashMap(cursor).putCursor(forHash: sha1("list").bytes))
             #expect(try list.count() == 40)
             #expect(throws: XitDBError.keyNotFound) { try list.put(50, .uint(1)) }
             #expect(throws: XitDBError.keyNotFound) { try list.slice(offset: 45, size: 2) }
@@ -216,11 +216,11 @@ import Testing
             random: FixedRandom((1...50).map { UInt64($0) }))
         try database.withTransaction { cursor in
             let map = try HashMap(cursor)
-            let list = try LinkedArrayList(try map.putCursor(sha1("list").bytes))
+            let list = try LinkedArrayList(try map.putCursor(forHash: sha1("list").bytes))
             for index in 0..<1500 {
                 try list.append(.uint(UInt64(index)))
             }
-            let short = try LinkedArrayList(try map.putCursor(sha1("short").bytes))
+            let short = try LinkedArrayList(try map.putCursor(forHash: sha1("short").bytes))
             try short.append(.uint(100))
         }
         let slot = try #require(try database.rootCursor.readPathSlot([.hashMapGet(.value, sha1("list"))]))
@@ -242,8 +242,8 @@ import Testing
             var reported = false
             try damaged.withTransaction { cursor in
                 let map = try HashMap(cursor)
-                let list = try LinkedArrayList(try map.putCursor(sha1("list").bytes))
-                let short = try LinkedArrayList(try map.putCursor(sha1("short").bytes))
+                let list = try LinkedArrayList(try map.putCursor(forHash: sha1("list").bytes))
+                let short = try LinkedArrayList(try map.putCursor(forHash: sha1("short").bytes))
                 do {
                     if listOnto {
                         try short.concat(try list.slot())

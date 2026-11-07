@@ -23,7 +23,7 @@ import Testing
                 storage: subject.storage, hashSize: 20, hashID: nil, fileID: 6,
                 random: FixedRandom((1...50).map { UInt64($0) }))
             try database.withTransaction { cursor in
-                let map = try SortedMap(try HashMap(cursor).putCursor(sha1("map").bytes))
+                let map = try SortedMap(try HashMap(cursor).putCursor(forHash: sha1("map").bytes))
                 for (index, key) in keys.enumerated() {
                     try map.put(key, .uint(UInt64(index)))
                 }
@@ -57,7 +57,7 @@ import Testing
         func attempt(_ name: String, _ body: (SortedMap<ReadWrite>) throws -> Void) {
             do {
                 try database.withTransaction { cursor in
-                    let map = try SortedMap(try HashMap(cursor).putCursor(sha1("map").bytes))
+                    let map = try SortedMap(try HashMap(cursor).putCursor(forHash: sha1("map").bytes))
                     try body(map)
                     throw Rollback()
                 }
@@ -148,7 +148,7 @@ import Testing
         #expect(try failing(subject.database).isEmpty)
         var count = 0
         try subject.database.withTransaction { cursor in
-            let map = try SortedMap(try HashMap(cursor).putCursor(sha1("map").bytes))
+            let map = try SortedMap(try HashMap(cursor).putCursor(forHash: sha1("map").bytes))
             #expect(try map.count() == 40)
             #expect(try map.getIndexKeyValuePair(40) == nil)
             #expect(try map.getIndexKeyValuePair(-41) == nil)
@@ -253,7 +253,7 @@ import Testing
         #expect(failed == invalid(["remove first", "get index -1", "iterate from index -1"]))
         // a search by key does not use the counts
         try database.withTransaction { cursor in
-            let map = try SortedMap(try HashMap(cursor).putCursor(sha1("map").bytes))
+            let map = try SortedMap(try HashMap(cursor).putCursor(forHash: sha1("map").bytes))
             #expect(try map.rank(Subject.key(10)) == 2)
             #expect(try #require(try map.getCursor(Subject.key(10))).readUInt64() == 10)
         }
@@ -335,7 +335,7 @@ import Testing
         // The leaf search of the first leaf meets the fourth entry for a key
         // below it or at it; a key beyond the first leaf never reads it.
         try database.withTransaction { cursor in
-            let map = try SortedMap(try HashMap(cursor).putCursor(sha1("map").bytes))
+            let map = try SortedMap(try HashMap(cursor).putCursor(forHash: sha1("map").bytes))
             #expect(throws: XitDBError.endOfStream) { try map.getCursor(keys[4]) }
             #expect(throws: XitDBError.endOfStream) { try map.getCursor(keys[0]) }
             #expect(throws: XitDBError.endOfStream) { try map.rank(keys[4]) }
@@ -376,7 +376,7 @@ import Testing
         // the pair record starts with its key slot
         let database = try subject.damaged(slotBytes(Slot(value: length - 4, tag: .bytes)), at: entry.value)
         let root = try HashMap(database.rootCursor.readOnly)
-        let map = try SortedMap(try #require(try root.getCursor(sha1("map").bytes)))
+        let map = try SortedMap(try #require(try root.cursor(forHash: sha1("map").bytes)))
         #expect(throws: XitDBError.endOfStream) { try map.getCursor(keys[0]) }
         #expect(throws: XitDBError.endOfStream) { try map.rank(keys[4]) }
         #expect(throws: XitDBError.endOfStream) { try map.iteratorFrom(keys[7]) }
@@ -396,7 +396,7 @@ import Testing
             random: FixedRandom((1...50).map { UInt64($0) }))
         var keyPtr: UInt64 = 0
         try database.withTransaction { cursor in
-            let map = try SortedMap(try HashMap(cursor).putCursor(sha1("map").bytes))
+            let map = try SortedMap(try HashMap(cursor).putCursor(forHash: sha1("map").bytes))
             try map.put(long, .uint(1))
             keyPtr = try #require(try map.getKeyValuePair(long)).key.slot().value
         }
@@ -405,7 +405,7 @@ import Testing
         let faulty = FaultInjectingStorage(subject.storage, faults: [.readNothing((keyPtr + 256)..<(keyPtr + 308))])
         let damaged = try Database(storage: faulty, hashSize: 20, hashID: nil, fileID: nil, random: FixedRandom([9]))
         let root = try HashMap(damaged.rootCursor.readOnly)
-        let map = try SortedMap(try #require(try root.getCursor(sha1("map").bytes)))
+        let map = try SortedMap(try #require(try root.cursor(forHash: sha1("map").bytes)))
         #expect(throws: XitDBError.endOfStream) { try map.getCursor(long) }
         #expect(throws: XitDBError.endOfStream) { try map.rank(long) }
         // a key that differs within the first chunk is placed without the rest
@@ -416,7 +416,7 @@ import Testing
         let silent = FaultInjectingStorage(subject.storage, faults: [.readNothing(keyPtr..<(keyPtr + 1))])
         let unread = try Database(storage: silent, hashSize: 20, hashID: nil, fileID: nil, random: FixedRandom([9]))
         let unreadMap = try SortedMap(
-            try #require(try HashMap(unread.rootCursor.readOnly).getCursor(sha1("map").bytes)))
+            try #require(try HashMap(unread.rootCursor.readOnly).cursor(forHash: sha1("map").bytes)))
         #expect(throws: XitDBError.endOfStream) { try unreadMap.getCursor(long) }
         #expect(throws: XitDBError.endOfStream) { try unreadMap.rank([0x60]) }
     }
@@ -435,10 +435,10 @@ import Testing
         try database.withTransaction { cursor in
             let root = try HashMap(cursor)
             // a hash map's pair whose key slot holds the key's bytes
-            let map = try HashMap(try root.putCursor(sha1("map").bytes))
-            try map.put(sha1("k").bytes, .uint(1))
-            try map.putKey(sha1("k").bytes, .bytes(key))
-            let sorted = try SortedMap(try root.putCursor(sha1("sorted").bytes))
+            let map = try HashMap(try root.putCursor(forHash: sha1("map").bytes))
+            try map.put(.uint(1), forHash: sha1("k").bytes)
+            try map.putKey(.bytes(key), forHash: sha1("k").bytes)
+            let sorted = try SortedMap(try root.putCursor(forHash: sha1("sorted").bytes))
             try sorted.put(key, .uint(2))
         }
         let pair = try #require(
@@ -452,7 +452,7 @@ import Testing
         let crafted = try Database(
             storage: subject.storage, hashSize: 20, hashID: nil, fileID: nil, random: FixedRandom([9]))
         try crafted.withTransaction { cursor in
-            let sorted = try SortedMap(try HashMap(cursor).putCursor(sha1("sorted").bytes))
+            let sorted = try SortedMap(try HashMap(cursor).putCursor(forHash: sha1("sorted").bytes))
             try sorted.put(key, .uint(3))
         }
         let copied = try #require(
@@ -482,7 +482,7 @@ import Testing
             random: FixedRandom((1...50).map { UInt64($0) }))
         var keyPtr: UInt64 = 0
         try database.withTransaction { cursor in
-            let map = try SortedMap(try HashMap(cursor).putCursor(sha1("map").bytes))
+            let map = try SortedMap(try HashMap(cursor).putCursor(forHash: sha1("map").bytes))
             try map.put(long, .uint(1))
             let pair = try #require(try map.getKeyValuePair(long))
             keyPtr = try pair.key.slot().value
@@ -494,7 +494,7 @@ import Testing
         let damaged = try Database(
             storage: subject.storage, hashSize: 20, hashID: nil, fileID: nil, random: FixedRandom([9]))
         let root = try HashMap(damaged.rootCursor.readOnly)
-        let map = try SortedMap(try #require(try root.getCursor(sha1("map").bytes)))
+        let map = try SortedMap(try #require(try root.cursor(forHash: sha1("map").bytes)))
         #expect(throws: XitDBError.endOfStream) { try map.getCursor(long) }
         #expect(throws: XitDBError.endOfStream) { try map.rank(long + [0x61]) }
         // with the length it had, the key is read in two chunks and found

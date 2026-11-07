@@ -114,8 +114,8 @@ import Testing
             let history = try ArrayList<ReadWrite>(source.rootCursor)
             try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
-                try moment.put(hashInt("key1"), .bytes(utf8("value1")))
-                try moment.put(hashInt("key2"), .uint(100))
+                try moment.put(.bytes(utf8("value1")), forHash: hashInt("key1"))
+                try moment.put(.uint(100), forHash: hashInt("key2"))
             }
         }
 
@@ -124,61 +124,59 @@ import Testing
             let history = try ArrayList<ReadWrite>(source.rootCursor)
             try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
-                try moment.put(hashInt("key1"), .bytes(utf8("updated_value1")))
-                try moment.put(hashInt("key2"), .uint(200))
-                try moment.put(hashInt("key3"), .int(-42))
-                try moment.put(hashInt("key4"), .double(3.14))
-                try moment.put(hashInt("short"), .bytes(utf8("hi")))
+                try moment.put(.bytes(utf8("updated_value1")), forHash: hashInt("key1"))
+                try moment.put(.uint(200), forHash: hashInt("key2"))
+                try moment.put(.int(-42), forHash: hashInt("key3"))
+                try moment.put(.double(3.14), forHash: hashInt("key4"))
+                try moment.put(.bytes(utf8("hi")), forHash: hashInt("short"))
 
                 // long bytes with format_tag
                 try moment.put(
-                    hashInt("tagged"),
-                    .bytes(utf8("this is a long tagged string!!"), formatTag: "bi")
-                )
+                    .bytes(utf8("this is a long tagged string!!"), formatTag: "bi"), forHash: hashInt("tagged"))
 
                 // ArrayList
-                let fruitsCursor = try moment.putCursor(hashInt("fruits"))
+                let fruitsCursor = try moment.putCursor(forHash: hashInt("fruits"))
                 let fruits = try ArrayList<ReadWrite>(fruitsCursor)
                 try fruits.append(.bytes(utf8("apple")))
                 try fruits.append(.bytes(utf8("banana")))
                 try fruits.append(.bytes(utf8("cherry")))
 
                 // LinkedArrayList
-                let todosCursor = try moment.putCursor(hashInt("todos"))
+                let todosCursor = try moment.putCursor(forHash: hashInt("todos"))
                 let todos = try LinkedArrayList<ReadWrite>(todosCursor)
                 try todos.append(.bytes(utf8("task1")))
                 try todos.append(.bytes(utf8("task2")))
                 try todos.append(.bytes(utf8("task3")))
 
                 // CountedHashMap
-                let countedCursor = try moment.putCursor(hashInt("counted"))
+                let countedCursor = try moment.putCursor(forHash: hashInt("counted"))
                 let counted = try CountedHashMap<ReadWrite>(countedCursor)
-                try counted.put(hashInt("a"), .uint(1))
-                try counted.putKey(hashInt("a"), .bytes(utf8("a")))
-                try counted.put(hashInt("b"), .uint(2))
-                try counted.putKey(hashInt("b"), .bytes(utf8("b")))
+                try counted.put(.uint(1), forHash: hashInt("a"))
+                try counted.putKey(.bytes(utf8("a")), forHash: hashInt("a"))
+                try counted.put(.uint(2), forHash: hashInt("b"))
+                try counted.putKey(.bytes(utf8("b")), forHash: hashInt("b"))
 
                 // HashSet
-                let setCursor = try moment.putCursor(hashInt("myset"))
+                let setCursor = try moment.putCursor(forHash: hashInt("myset"))
                 let set = try HashSet<ReadWrite>(setCursor)
-                try set.put(hashInt("x"), .bytes(utf8("x")))
-                try set.put(hashInt("y"), .bytes(utf8("y")))
+                try set.insert(.bytes(utf8("x")), forHash: hashInt("x"))
+                try set.insert(.bytes(utf8("y")), forHash: hashInt("y"))
 
                 // CountedHashSet
-                let csetCursor = try moment.putCursor(hashInt("mycset"))
+                let csetCursor = try moment.putCursor(forHash: hashInt("mycset"))
                 let cset = try CountedHashSet<ReadWrite>(csetCursor)
-                try cset.put(hashInt("p"), .bytes(utf8("p")))
-                try cset.put(hashInt("q"), .bytes(utf8("q")))
+                try cset.insert(.bytes(utf8("p")), forHash: hashInt("p"))
+                try cset.insert(.bytes(utf8("q")), forHash: hashInt("q"))
 
                 // SortedMap
-                let sortedCursor = try moment.putCursor(hashInt("sorted"))
+                let sortedCursor = try moment.putCursor(forHash: hashInt("sorted"))
                 let sorted = try SortedMap<ReadWrite>(sortedCursor)
                 try sorted.put(utf8("apple"), .uint(1))
                 try sorted.put(utf8("banana"), .uint(2))
                 try sorted.put(utf8("cherry"), .uint(3))
 
                 // SortedSet
-                let sortedSetCursor = try moment.putCursor(hashInt("sortedset"))
+                let sortedSetCursor = try moment.putCursor(forHash: hashInt("sortedset"))
                 let sortedSet = try SortedSet<ReadWrite>(sortedSetCursor)
                 try sortedSet.put(utf8("foo"))
                 try sortedSet.put(utf8("bar"))
@@ -190,19 +188,19 @@ import Testing
             let history = try ArrayList<ReadWrite>(source.rootCursor)
             try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
-                try moment.put(hashInt("key1"), .bytes(utf8("final_value")))
+                try moment.put(.bytes(utf8("final_value")), forHash: hashInt("key1"))
 
                 // cycles must survive compaction rather than causing the
                 // remapper to recurse indefinitely.
-                try moment.put(hashInt("self"), .slot(try moment.slot()))
+                try moment.put(.slot(try moment.slot()), forHash: hashInt("self"))
 
-                let cyclicList = try ArrayList<ReadWrite>(try moment.putCursor(hashInt("cyclic-list")))
+                let cyclicList = try ArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("cyclic-list")))
                 try cyclicList.append(.slot(try cyclicList.slot()))
 
-                let mapA = try HashMap<ReadWrite>(try moment.putCursor(hashInt("map-a")))
-                let mapB = try HashMap<ReadWrite>(try moment.putCursor(hashInt("map-b")))
-                try mapA.put(hashInt("map-b"), .slot(try mapB.slot()))
-                try mapB.put(hashInt("map-a"), .slot(try mapA.slot()))
+                let mapA = try HashMap<ReadWrite>(try moment.putCursor(forHash: hashInt("map-a")))
+                let mapB = try HashMap<ReadWrite>(try moment.putCursor(forHash: hashInt("map-b")))
+                try mapA.put(.slot(try mapB.slot()), forHash: hashInt("map-b"))
+                try mapB.put(.slot(try mapA.slot()), forHash: hashInt("map-a"))
             }
         }
 
@@ -226,50 +224,50 @@ import Testing
 
         // self-references and mutual references point back to the same compacted
         // objects rather than duplicate objects or dangling source offsets.
-        let selfCursor = try #require(try moment.getCursor(hashInt("self")))
+        let selfCursor = try #require(try moment.cursor(forHash: hashInt("self")))
         #expect(try selfCursor.slot() == momentCursor.slot())
 
-        let cyclicListCursor = try #require(try moment.getCursor(hashInt("cyclic-list")))
+        let cyclicListCursor = try #require(try moment.cursor(forHash: hashInt("cyclic-list")))
         let cyclicList = try ArrayList<ReadOnly>(cyclicListCursor)
         let cyclicListFirst = try #require(try cyclicList.getSlot(0))
         #expect(try cyclicListFirst == cyclicListCursor.slot())
 
-        let mapACursor = try #require(try moment.getCursor(hashInt("map-a")))
+        let mapACursor = try #require(try moment.cursor(forHash: hashInt("map-a")))
         let mapA = try HashMap<ReadOnly>(mapACursor)
-        let mapBCursor = try #require(try mapA.getCursor(hashInt("map-b")))
+        let mapBCursor = try #require(try mapA.cursor(forHash: hashInt("map-b")))
         let mapB = try HashMap<ReadOnly>(mapBCursor)
-        let mapBToA = try #require(try mapB.getSlot(hashInt("map-a")))
+        let mapBToA = try #require(try mapB.slot(forHash: hashInt("map-a")))
         #expect(try mapBToA == mapACursor.slot())
 
         // key1 should have the final value
-        let key1Cursor = try #require(try moment.getCursor(hashInt("key1")))
+        let key1Cursor = try #require(try moment.cursor(forHash: hashInt("key1")))
         #expect(try key1Cursor.readBytes(maxCount: 1024) == utf8("final_value"))
 
         // key2 from moment 2
-        let key2Cursor = try #require(try moment.getCursor(hashInt("key2")))
+        let key2Cursor = try #require(try moment.cursor(forHash: hashInt("key2")))
         #expect(try key2Cursor.readUInt64() == 200)
 
         // key3 - int
-        let key3Cursor = try #require(try moment.getCursor(hashInt("key3")))
+        let key3Cursor = try #require(try moment.cursor(forHash: hashInt("key3")))
         #expect(try key3Cursor.readInt64() == -42)
 
         // key4 - float
-        let key4Cursor = try #require(try moment.getCursor(hashInt("key4")))
+        let key4Cursor = try #require(try moment.cursor(forHash: hashInt("key4")))
         #expect(try key4Cursor.readDouble() == 3.14)
 
         // short bytes
-        let shortCursor = try #require(try moment.getCursor(hashInt("short")))
+        let shortCursor = try #require(try moment.cursor(forHash: hashInt("short")))
         #expect(try shortCursor.readBytes(maxCount: 1024) == utf8("hi"))
 
         // tagged bytes
-        let taggedCursor = try #require(try moment.getCursor(hashInt("tagged")))
+        let taggedCursor = try #require(try moment.cursor(forHash: hashInt("tagged")))
         let taggedObject = try taggedCursor.readBytesWithFormatTag(maxCount: 1024)
         #expect(taggedObject.value == utf8("this is a long tagged string!!"))
         let taggedFormatTag = try #require(taggedObject.formatTag)
         #expect(taggedFormatTag == "bi")
 
         // ArrayList
-        let fruitsCursor = try #require(try moment.getCursor(hashInt("fruits")))
+        let fruitsCursor = try #require(try moment.cursor(forHash: hashInt("fruits")))
         let fruits = try ArrayList<ReadOnly>(fruitsCursor)
         #expect(try fruits.count() == 3)
         let appleCursor = try #require(try fruits.getCursor(0))
@@ -278,7 +276,7 @@ import Testing
         #expect(try cherryCursor.readBytes(maxCount: 1024) == utf8("cherry"))
 
         // LinkedArrayList
-        let todosCursor = try #require(try moment.getCursor(hashInt("todos")))
+        let todosCursor = try #require(try moment.cursor(forHash: hashInt("todos")))
         let todos = try LinkedArrayList<ReadOnly>(todosCursor)
         #expect(try todos.count() == 3)
         let task1Cursor = try #require(try todos.getCursor(0))
@@ -287,29 +285,29 @@ import Testing
         #expect(try task3Cursor.readBytes(maxCount: 1024) == utf8("task3"))
 
         // CountedHashMap
-        let countedCursor = try #require(try moment.getCursor(hashInt("counted")))
+        let countedCursor = try #require(try moment.cursor(forHash: hashInt("counted")))
         let counted = try CountedHashMap<ReadOnly>(countedCursor)
         #expect(try counted.count() == 2)
-        let countedACursor = try #require(try counted.getCursor(hashInt("a")))
+        let countedACursor = try #require(try counted.cursor(forHash: hashInt("a")))
         #expect(try countedACursor.readUInt64() == 1)
-        let countedBCursor = try #require(try counted.getCursor(hashInt("b")))
+        let countedBCursor = try #require(try counted.cursor(forHash: hashInt("b")))
         #expect(try countedBCursor.readUInt64() == 2)
 
         // HashSet
-        let setCursor = try #require(try moment.getCursor(hashInt("myset")))
+        let setCursor = try #require(try moment.cursor(forHash: hashInt("myset")))
         let set = try HashSet<ReadOnly>(setCursor)
-        let xCursor = try #require(try set.getCursor(hashInt("x")))
+        let xCursor = try #require(try set.cursor(forHash: hashInt("x")))
         #expect(try xCursor.readBytes(maxCount: 1024) == utf8("x"))
 
         // CountedHashSet
-        let csetCursor = try #require(try moment.getCursor(hashInt("mycset")))
+        let csetCursor = try #require(try moment.cursor(forHash: hashInt("mycset")))
         let cset = try CountedHashSet<ReadOnly>(csetCursor)
         #expect(try cset.count() == 2)
-        let pCursor = try #require(try cset.getCursor(hashInt("p")))
+        let pCursor = try #require(try cset.cursor(forHash: hashInt("p")))
         #expect(try pCursor.readBytes(maxCount: 1024) == utf8("p"))
 
         // SortedMap
-        let sortedCursor = try #require(try moment.getCursor(hashInt("sorted")))
+        let sortedCursor = try #require(try moment.cursor(forHash: hashInt("sorted")))
         let sorted = try SortedMap<ReadOnly>(sortedCursor)
         #expect(try sorted.count() == 3)
         let bananaCursor = try #require(try sorted.getCursor(utf8("banana")))
@@ -321,7 +319,7 @@ import Testing
         #expect(try lastPair.key.readBytes(maxCount: 1024) == utf8("cherry"))
 
         // SortedSet
-        let sortedSetCursor = try #require(try moment.getCursor(hashInt("sortedset")))
+        let sortedSetCursor = try #require(try moment.cursor(forHash: hashInt("sortedset")))
         let sortedSet = try SortedSet<ReadOnly>(sortedSetCursor)
         #expect(try sortedSet.count() == 2)
         #expect(try sortedSet.contains(utf8("foo")))
@@ -346,7 +344,7 @@ import Testing
             try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
                 for i in 0..<20 {
-                    try moment.put(hashInt("shared_key_\(i)"), .uint(UInt64(i)))
+                    try moment.put(.uint(UInt64(i)), forHash: hashInt("shared_key_\(i)"))
                 }
             }
         }
@@ -356,7 +354,7 @@ import Testing
             let history = try ArrayList<ReadWrite>(source.rootCursor)
             try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
-                try moment.put(hashInt("changing_key"), .uint(UInt64(round) + 100))
+                try moment.put(.uint(UInt64(round) + 100), forHash: hashInt("changing_key"))
             }
         }
 
@@ -370,12 +368,12 @@ import Testing
 
         // verify shared keys are intact
         for i in 0..<20 {
-            let keyCursor = try #require(try moment.getCursor(hashInt("shared_key_\(i)")))
+            let keyCursor = try #require(try moment.cursor(forHash: hashInt("shared_key_\(i)")))
             #expect(try keyCursor.readUInt64() == UInt64(i))
         }
 
         // verify changing key has latest value
-        let changingKeyCursor = try #require(try moment.getCursor(hashInt("changing_key")))
+        let changingKeyCursor = try #require(try moment.cursor(forHash: hashInt("changing_key")))
         #expect(try changingKeyCursor.readUInt64() == 103)
     }
 
@@ -399,8 +397,8 @@ import Testing
             let history = try ArrayList<ReadWrite>(source.rootCursor)
             try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
-                try moment.put(hashInt("persist"), .bytes(utf8("persistent_value")))
-                try moment.put(hashInt("number"), .uint(999))
+                try moment.put(.bytes(utf8("persistent_value")), forHash: hashInt("persist"))
+                try moment.put(.uint(999), forHash: hashInt("number"))
             }
         }
 
@@ -415,9 +413,9 @@ import Testing
 
         let momentCursor = try #require(try history.getCursor(0))
         let moment = try HashMap<ReadOnly>(momentCursor)
-        let persistCursor = try #require(try moment.getCursor(hashInt("persist")))
+        let persistCursor = try #require(try moment.cursor(forHash: hashInt("persist")))
         #expect(try persistCursor.readBytes(maxCount: 1024) == utf8("persistent_value"))
-        let numberCursor = try #require(try moment.getCursor(hashInt("number")))
+        let numberCursor = try #require(try moment.cursor(forHash: hashInt("number")))
         #expect(try numberCursor.readUInt64() == 999)
     }
 
@@ -437,7 +435,7 @@ import Testing
             let history = try ArrayList<ReadWrite>(source.rootCursor)
             try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
-                try moment.put(hashInt("original"), .bytes(utf8("original_data")))
+                try moment.put(.bytes(utf8("original_data")), forHash: hashInt("original"))
             }
         }
 
@@ -449,7 +447,7 @@ import Testing
             let history = try ArrayList<ReadWrite>(compacted.rootCursor)
             try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
-                try moment.put(hashInt("new_key"), .bytes(utf8("new_data")))
+                try moment.put(.bytes(utf8("new_data")), forHash: hashInt("new_key"))
             }
         }
 
@@ -460,17 +458,17 @@ import Testing
         // moment 0 (compacted original)
         let m0Cursor = try #require(try history.getCursor(0))
         let m0 = try HashMap<ReadOnly>(m0Cursor)
-        let originalCursor = try #require(try m0.getCursor(hashInt("original")))
+        let originalCursor = try #require(try m0.cursor(forHash: hashInt("original")))
         #expect(try originalCursor.readBytes(maxCount: 1024) == utf8("original_data"))
 
         // moment 1 (new data added after compact)
         let m1Cursor = try #require(try history.getCursor(1))
         let m1 = try HashMap<ReadOnly>(m1Cursor)
-        let newCursor = try #require(try m1.getCursor(hashInt("new_key")))
+        let newCursor = try #require(try m1.cursor(forHash: hashInt("new_key")))
         #expect(try newCursor.readBytes(maxCount: 1024) == utf8("new_data"))
 
         // original data should still be in moment 1 (inherited)
-        let originalInM1Cursor = try #require(try m1.getCursor(hashInt("original")))
+        let originalInM1Cursor = try #require(try m1.cursor(forHash: hashInt("original")))
         #expect(try originalInM1Cursor.readBytes(maxCount: 1024) == utf8("original_data"))
     }
 }

@@ -49,8 +49,8 @@ import Testing
 
         // a map and a set are each other's kind to the views, as in Zig
         for fine in [map, set, none] {
-            #expect(try HashMap(fine).getCursor(key("x")) == nil)
-            #expect(try HashSet(fine).getCursor(key("x")) == nil)
+            #expect(try HashMap(fine).cursor(forHash: key("x")) == nil)
+            #expect(try HashSet(fine).cursor(forHash: key("x")) == nil)
         }
         for other in [list, countedMap, countedSet, number] {
             #expect(throws: XitDBError.unexpectedTag) { try HashMap(other) }
@@ -73,9 +73,9 @@ import Testing
         var entries = try HashMap(none).iterator()
         #expect(try entries.next() == nil)
         #expect(try ArrayList(none).getSlot(0) == nil)
-        #expect(try HashMap(none).getKeyValuePair(key("x")) == nil)
-        #expect(try HashMap(none).getKeySlot(key("x")) == nil)
-        #expect(try CountedHashSet(none).getSlot(key("x")) == nil)
+        #expect(try HashMap(none).entry(forHash: key("x")) == nil)
+        #expect(try HashMap(none).keySlot(forHash: key("x")) == nil)
+        #expect(try CountedHashSet(none).slot(forHash: key("x")) == nil)
     }
 
     /// A writing view makes the slot its kind of collection, and the other
@@ -88,33 +88,33 @@ import Testing
             #expect(try cursor.slot().tag == .none, "the view's cursor is a new one; the caller's is unchanged")
             #expect(try map.cursor.slot().tag == .hashMap)
 
-            let list = try ArrayList(try map.putCursor(key("list")))
+            let list = try ArrayList(try map.putCursor(forHash: key("list")))
             #expect(try list.slot().tag == .arrayList)
-            #expect(try map.getSlot(key("list"))?.tag == .arrayList)
-            let countedMap = try CountedHashMap(try map.putCursor(key("counted-map")))
+            #expect(try map.slot(forHash: key("list"))?.tag == .arrayList)
+            let countedMap = try CountedHashMap(try map.putCursor(forHash: key("counted-map")))
             #expect(try countedMap.slot().tag == .countedHashMap)
-            let set = try HashSet(try map.putCursor(key("set")))
+            let set = try HashSet(try map.putCursor(forHash: key("set")))
             #expect(try set.slot().tag == .hashSet)
-            let countedSet = try CountedHashSet(try map.putCursor(key("counted-set")))
+            let countedSet = try CountedHashSet(try map.putCursor(forHash: key("counted-set")))
             #expect(try countedSet.slot().tag == .countedHashSet)
 
             // the wrong kind of view on each, writing: a list is not a map,
             // and a counted map is not an uncounted one. A map and a set
             // are one kind to the init part, as in Zig, which gives the
             // slot the tag asked for: a map becomes a set, and back.
-            #expect(throws: XitDBError.unexpectedTag) { try HashMap(try map.putCursor(key("list"))) }
-            #expect(throws: XitDBError.unexpectedTag) { try ArrayList(try map.putCursor(key("set"))) }
-            #expect(throws: XitDBError.unexpectedTag) { try HashSet(try map.putCursor(key("counted-set"))) }
-            #expect(throws: XitDBError.unexpectedTag) { try CountedHashMap(try map.putCursor(key("set"))) }
-            #expect(try CountedHashSet(try map.putCursor(key("counted-map"))).slot().tag == .countedHashSet)
-            #expect(try HashMap(try map.putCursor(key("set"))).slot().tag == .hashMap)
+            #expect(throws: XitDBError.unexpectedTag) { try HashMap(try map.putCursor(forHash: key("list"))) }
+            #expect(throws: XitDBError.unexpectedTag) { try ArrayList(try map.putCursor(forHash: key("set"))) }
+            #expect(throws: XitDBError.unexpectedTag) { try HashSet(try map.putCursor(forHash: key("counted-set"))) }
+            #expect(throws: XitDBError.unexpectedTag) { try CountedHashMap(try map.putCursor(forHash: key("set"))) }
+            #expect(try CountedHashSet(try map.putCursor(forHash: key("counted-map"))).slot().tag == .countedHashSet)
+            #expect(try HashMap(try map.putCursor(forHash: key("set"))).slot().tag == .hashMap)
 
             // and the read-only form of each keeps the slot
             #expect(try list.readOnly.slot() == (try list.slot()))
             #expect(try countedMap.readOnly.count() == 0)
-            #expect(try set.readOnly.getCursor(key("x")) == nil)
+            #expect(try set.readOnly.cursor(forHash: key("x")) == nil)
             #expect(try countedSet.readOnly.count() == 0)
-            #expect(try map.readOnly.getCursor(key("list"))?.slot().tag == .arrayList)
+            #expect(try map.readOnly.cursor(forHash: key("list"))?.slot().tag == .arrayList)
         }
         #expect(try database.rootCursor.slot().tag == .hashMap)
     }
@@ -127,84 +127,191 @@ import Testing
         let wrong = [UInt8](repeating: 1, count: 19)
         try database.withTransaction { cursor in
             let map = try HashMap(cursor)
-            try map.put(hash.span, .uint(1))
-            try map.putKey(hash, .bytes(Array("k".utf8)))
-            try map.putKey(hash.span, .bytes(Array("other".utf8)))
-            try map.putKey(hash, .bytes(Array("another".utf8)))
-            #expect(try map.getKeyCursor(hash)?.readBytes() == Array("k".utf8), "a key is only written once")
-            #expect(try !map.remove(key("missing").span))
-            #expect(try !map.remove(key("missing")))
-            #expect(try map.getCursor(hash.span)?.readUInt64() == 1)
-            #expect(try map.getCursor(hash)?.readUInt64() == 1)
-            #expect(try map.getKeyCursor(hash.span)?.readBytes() == Array("k".utf8))
-            #expect(try map.getKeySlot(hash)?.tag == .shortBytes)
-            #expect(try map.getSlot(hash.span)?.tag == .uint)
-            let pair = try #require(try map.getKeyValuePair(hash.span))
+            try map.put(.uint(1), forHash: hash.span)
+            try map.putKey(.bytes(Array("k".utf8)), forHash: hash)
+            try map.putKey(.bytes(Array("other".utf8)), forHash: hash.span)
+            try map.putKey(.bytes(Array("another".utf8)), forHash: hash)
+            #expect(try map.keyCursor(forHash: hash)?.readBytes() == Array("k".utf8), "a key is only written once")
+            #expect(try !map.remove(forHash: key("missing").span))
+            #expect(try !map.remove(forHash: key("missing")))
+            #expect(try map.cursor(forHash: hash.span)?.readUInt64() == 1)
+            #expect(try map.cursor(forHash: hash)?.readUInt64() == 1)
+            #expect(try map.keyCursor(forHash: hash.span)?.readBytes() == Array("k".utf8))
+            #expect(try map.keySlot(forHash: hash)?.tag == .shortBytes)
+            #expect(try map.slot(forHash: hash.span)?.tag == .uint)
+            let pair = try #require(try map.entry(forHash: hash.span))
             #expect(pair.hash == hash)
             #expect(pair.withHash { Array($0.indices.map { pair.hash[$0] }) } == hash)
-            #expect(try map.putCursor(hash.span).readUInt64() == 1)
-            #expect(try map.putKeyCursor(hash).readBytes() == Array("k".utf8))
+            #expect(try map.putCursor(forHash: hash.span).readUInt64() == 1)
+            #expect(try map.putKeyCursor(forHash: hash).readBytes() == Array("k".utf8))
 
-            #expect(throws: XitDBError.invalidHashSize) { try map.put(wrong, .uint(2)) }
-            #expect(throws: XitDBError.invalidHashSize) { try map.put(wrong.span, .uint(2)) }
-            #expect(throws: XitDBError.invalidHashSize) { try map.putKey(wrong.span, .uint(2)) }
-            #expect(throws: XitDBError.invalidHashSize) { try map.getCursor(wrong) }
-            #expect(throws: XitDBError.invalidHashSize) { try map.getSlot(wrong.span) }
-            #expect(throws: XitDBError.invalidHashSize) { try map.getKeyCursor(wrong) }
-            #expect(throws: XitDBError.invalidHashSize) { try map.getKeySlot(wrong.span) }
-            #expect(throws: XitDBError.invalidHashSize) { try map.getKeyValuePair(wrong) }
-            #expect(throws: XitDBError.invalidHashSize) { try map.putCursor(wrong) }
-            #expect(throws: XitDBError.invalidHashSize) { try map.putKeyCursor(wrong.span) }
-            #expect(throws: XitDBError.invalidHashSize) { try map.remove(wrong) }
-            #expect(throws: XitDBError.invalidHashSize) { try map.remove(wrong.span) }
+            #expect(throws: XitDBError.invalidHashSize) { try map.put(.uint(2), forHash: wrong) }
+            #expect(throws: XitDBError.invalidHashSize) { try map.put(.uint(2), forHash: wrong.span) }
+            #expect(throws: XitDBError.invalidHashSize) { try map.putKey(.uint(2), forHash: wrong.span) }
+            #expect(throws: XitDBError.invalidHashSize) { try map.cursor(forHash: wrong) }
+            #expect(throws: XitDBError.invalidHashSize) { try map.slot(forHash: wrong.span) }
+            #expect(throws: XitDBError.invalidHashSize) { try map.keyCursor(forHash: wrong) }
+            #expect(throws: XitDBError.invalidHashSize) { try map.keySlot(forHash: wrong.span) }
+            #expect(throws: XitDBError.invalidHashSize) { try map.entry(forHash: wrong) }
+            #expect(throws: XitDBError.invalidHashSize) { try map.putCursor(forHash: wrong) }
+            #expect(throws: XitDBError.invalidHashSize) { try map.putKeyCursor(forHash: wrong.span) }
+            #expect(throws: XitDBError.invalidHashSize) { try map.remove(forHash: wrong) }
+            #expect(throws: XitDBError.invalidHashSize) { try map.remove(forHash: wrong.span) }
 
-            let set = try HashSet(try map.putCursor(key("set")))
-            try set.put(hash.span, .bytes(Array("k".utf8)))
-            try set.put(hash.span, .bytes(Array("other".utf8)))
-            try set.put(hash, .bytes(Array("another".utf8)))
-            #expect(try set.getCursor(hash)?.readBytes() == Array("k".utf8))
-            #expect(try set.getSlot(hash.span)?.tag == .shortBytes)
-            #expect(try set.putCursor(hash).readBytes() == Array("k".utf8))
-            #expect(throws: XitDBError.invalidHashSize) { try set.put(wrong, .uint(2)) }
-            #expect(throws: XitDBError.invalidHashSize) { try set.getCursor(wrong.span) }
-            #expect(throws: XitDBError.invalidHashSize) { try set.getSlot(wrong) }
-            #expect(throws: XitDBError.invalidHashSize) { try set.putCursor(wrong.span) }
-            #expect(throws: XitDBError.invalidHashSize) { try set.remove(wrong) }
-            #expect(try set.remove(hash.span))
-            #expect(try !set.remove(hash))
+            let set = try HashSet(try map.putCursor(forHash: key("set")))
+            try set.insert(.bytes(Array("k".utf8)), forHash: hash.span)
+            try set.insert(.bytes(Array("other".utf8)), forHash: hash.span)
+            try set.insert(.bytes(Array("another".utf8)), forHash: hash)
+            #expect(try set.cursor(forHash: hash)?.readBytes() == Array("k".utf8))
+            #expect(try set.slot(forHash: hash.span)?.tag == .shortBytes)
+            #expect(try set.insertCursor(forHash: hash).readBytes() == Array("k".utf8))
+            #expect(throws: XitDBError.invalidHashSize) { try set.insert(.uint(2), forHash: wrong) }
+            #expect(throws: XitDBError.invalidHashSize) { try set.cursor(forHash: wrong.span) }
+            #expect(throws: XitDBError.invalidHashSize) { try set.slot(forHash: wrong) }
+            #expect(throws: XitDBError.invalidHashSize) { try set.insertCursor(forHash: wrong.span) }
+            #expect(throws: XitDBError.invalidHashSize) { try set.remove(forHash: wrong) }
+            #expect(try set.remove(forHash: hash.span))
+            #expect(try !set.remove(forHash: hash))
 
-            let counted = try CountedHashMap(try map.putCursor(key("counted")))
-            try counted.put(hash, .uint(3))
-            try counted.putKey(hash.span, .bytes([1]))
-            try counted.putKey(hash.span, .bytes([9]))
-            try counted.putKey(hash, .bytes([9]))
-            #expect(try !counted.remove(key("missing")))
-            #expect(try !counted.remove(key("missing").span))
+            let counted = try CountedHashMap(try map.putCursor(forHash: key("counted")))
+            try counted.put(.uint(3), forHash: hash)
+            try counted.putKey(.bytes([1]), forHash: hash.span)
+            try counted.putKey(.bytes([9]), forHash: hash.span)
+            try counted.putKey(.bytes([9]), forHash: hash)
+            #expect(try !counted.remove(forHash: key("missing")))
+            #expect(try !counted.remove(forHash: key("missing").span))
             #expect(try counted.count() == 1)
-            #expect(try counted.getCursor(hash.span)?.readUInt64() == 3)
-            #expect(try counted.getKeyValuePair(hash)?.key.readBytes() == [1])
-            #expect(try counted.getKeyCursor(hash)?.readBytes() == [1])
-            #expect(try counted.getKeySlot(hash.span)?.tag == .shortBytes)
-            #expect(try counted.getSlot(hash)?.tag == .uint)
-            #expect(try counted.putCursor(hash).readUInt64() == 3)
-            #expect(try counted.putKeyCursor(hash.span).readBytes() == [1])
-            #expect(throws: XitDBError.invalidHashSize) { try counted.remove(wrong.span) }
-            #expect(try counted.remove(hash))
+            #expect(try counted.cursor(forHash: hash.span)?.readUInt64() == 3)
+            #expect(try counted.entry(forHash: hash)?.key.readBytes() == [1])
+            #expect(try counted.keyCursor(forHash: hash)?.readBytes() == [1])
+            #expect(try counted.keySlot(forHash: hash.span)?.tag == .shortBytes)
+            #expect(try counted.slot(forHash: hash)?.tag == .uint)
+            #expect(try counted.putCursor(forHash: hash).readUInt64() == 3)
+            #expect(try counted.putKeyCursor(forHash: hash.span).readBytes() == [1])
+            #expect(throws: XitDBError.invalidHashSize) { try counted.remove(forHash: wrong.span) }
+            #expect(try counted.remove(forHash: hash))
             #expect(try counted.count() == 0)
 
-            let countedSet = try CountedHashSet(try map.putCursor(key("counted-set")))
-            try countedSet.put(hash.span, .bytes([2]))
-            try countedSet.put(hash, .bytes([3]))
-            try countedSet.put(hash.span, .bytes([4]))
+            let countedSet = try CountedHashSet(try map.putCursor(forHash: key("counted-set")))
+            try countedSet.insert(.bytes([2]), forHash: hash.span)
+            try countedSet.insert(.bytes([3]), forHash: hash)
+            try countedSet.insert(.bytes([4]), forHash: hash.span)
             #expect(try countedSet.count() == 1)
-            #expect(try countedSet.getCursor(hash)?.readBytes() == [2], "a key is only written once")
-            #expect(try countedSet.getSlot(hash.span)?.tag == .shortBytes)
-            #expect(try countedSet.putCursor(hash.span).readBytes() == [2])
-            #expect(throws: XitDBError.invalidHashSize) { try countedSet.put(wrong.span, .uint(1)) }
-            #expect(try countedSet.remove(hash.span))
-            #expect(try !countedSet.remove(hash.span))
+            #expect(try countedSet.cursor(forHash: hash)?.readBytes() == [2], "a key is only written once")
+            #expect(try countedSet.slot(forHash: hash.span)?.tag == .shortBytes)
+            #expect(try countedSet.insertCursor(forHash: hash.span).readBytes() == [2])
+            #expect(throws: XitDBError.invalidHashSize) { try countedSet.insert(.uint(1), forHash: wrong.span) }
+            #expect(try countedSet.remove(forHash: hash.span))
+            #expect(try !countedSet.remove(forHash: hash.span))
             #expect(try countedSet.count() == 0)
         }
+    }
+
+    /// A set says whether a key is stored under a hash: not before the key
+    /// is written, and not after it is removed.
+    @Test func aSetSaysWhetherItContainsAHash() throws {
+        let database = try makeDatabase()
+        let hash = key("k")
+        let other = key("other")
+        let wrong = [UInt8](repeating: 1, count: 19)
+        try database.withTransaction { cursor in
+            let map = try HashMap(cursor)
+
+            let set = try HashSet(try map.putCursor(forHash: key("set")))
+            #expect(try !set.contains(hash: hash))
+            try set.insert(.bytes([1]), forHash: hash)
+            #expect(try set.contains(hash: hash))
+            #expect(try set.contains(hash: hash.span))
+            #expect(try !set.contains(hash: other))
+            #expect(try set.readOnly.contains(hash: hash))
+            #expect(throws: XitDBError.invalidHashSize) { try set.contains(hash: wrong) }
+            #expect(throws: XitDBError.invalidHashSize) { try set.contains(hash: wrong.span) }
+            _ = try set.insertCursor(forHash: other)
+            #expect(try !set.contains(hash: other), "an entry whose key was never written does not count")
+            #expect(try set.remove(forHash: hash))
+            #expect(try !set.contains(hash: hash))
+            #expect(try !set.contains(hash: hash.span))
+
+            let countedSet = try CountedHashSet(try map.putCursor(forHash: key("counted-set")))
+            #expect(try !countedSet.contains(hash: hash.span))
+            try countedSet.insert(.bytes([2]), forHash: hash.span)
+            #expect(try countedSet.contains(hash: hash))
+            #expect(try countedSet.contains(hash: hash.span))
+            #expect(try !countedSet.contains(hash: other.span))
+            #expect(try countedSet.readOnly.contains(hash: hash.span))
+            #expect(throws: XitDBError.invalidHashSize) { try countedSet.contains(hash: wrong) }
+            #expect(throws: XitDBError.invalidHashSize) { try countedSet.contains(hash: wrong.span) }
+            _ = try countedSet.insertCursor(forHash: other.span)
+            #expect(try !countedSet.contains(hash: other), "an entry whose key was never written does not count")
+            #expect(try countedSet.remove(forHash: hash.span))
+            #expect(try !countedSet.contains(hash: hash))
+            #expect(try !countedSet.contains(hash: hash.span))
+        }
+    }
+
+    /// A read-only view takes a cursor of either access and checks the slot
+    /// as it does for a read-only cursor. A cursor that can write makes the
+    /// writing view unless the read-only one is named.
+    @Test func aReadOnlyViewTakesACursorOfEitherAccess() throws {
+        let database = try makeDatabase()
+        let hash = key("k")
+        try database.withTransaction { cursor in
+            let map = try HashMap(cursor)
+            #expect(type(of: map) == HashMap<ReadWrite>.self)
+            try map.put(.uint(1), forHash: hash)
+            let list = try ArrayList(try map.putCursor(forHash: key("list")))
+            let linked = try LinkedArrayList(try map.putCursor(forHash: key("linked")))
+            let set = try HashSet(try map.putCursor(forHash: key("set")))
+            let countedMap = try CountedHashMap(try map.putCursor(forHash: key("counted-map")))
+            let countedSet = try CountedHashSet(try map.putCursor(forHash: key("counted-set")))
+            let sortedMap = try SortedMap(try map.putCursor(forHash: key("sorted-map")))
+            let sortedSet = try SortedSet(try map.putCursor(forHash: key("sorted-set")))
+            let none = try map.putCursor(forHash: key("none"))
+            #expect(type(of: list) == ArrayList<ReadWrite>.self)
+            #expect(type(of: sortedSet) == SortedSet<ReadWrite>.self)
+
+            // each kind's read-only view from the writing cursor of its own
+            // kind, and from a cursor at nothing
+            #expect(try ArrayList<ReadOnly>(list.cursor).count() == 0)
+            #expect(try LinkedArrayList<ReadOnly>(linked.cursor).count() == 0)
+            #expect(try HashMap<ReadOnly>(map.cursor).cursor(forHash: hash)?.readUInt64() == 1)
+            #expect(try HashSet<ReadOnly>(set.cursor).cursor(forHash: hash) == nil)
+            #expect(try CountedHashMap<ReadOnly>(countedMap.cursor).count() == 0)
+            #expect(try CountedHashSet<ReadOnly>(countedSet.cursor).count() == 0)
+            #expect(try SortedMap<ReadOnly>(sortedMap.cursor).count() == 0)
+            #expect(try SortedSet<ReadOnly>(sortedSet.cursor).count() == 0)
+            #expect(try ArrayList<ReadOnly>(none).count() == 0)
+            #expect(try LinkedArrayList<ReadOnly>(none).count() == 0)
+            #expect(try HashMap<ReadOnly>(none).cursor(forHash: hash) == nil)
+            #expect(try HashSet<ReadOnly>(none).cursor(forHash: hash) == nil)
+            #expect(try CountedHashMap<ReadOnly>(none).count() == 0)
+            #expect(try CountedHashSet<ReadOnly>(none).count() == 0)
+            #expect(try SortedMap<ReadOnly>(none).count() == 0)
+            #expect(try SortedSet<ReadOnly>(none).count() == 0)
+
+            // and the check of the slot
+            #expect(throws: XitDBError.unexpectedTag) { try ArrayList<ReadOnly>(map.cursor) }
+            #expect(throws: XitDBError.unexpectedTag) { try LinkedArrayList<ReadOnly>(list.cursor) }
+            #expect(throws: XitDBError.unexpectedTag) { try HashMap<ReadOnly>(list.cursor) }
+            #expect(throws: XitDBError.unexpectedTag) { try HashSet<ReadOnly>(countedSet.cursor) }
+            #expect(throws: XitDBError.unexpectedTag) { try CountedHashMap<ReadOnly>(map.cursor) }
+            #expect(throws: XitDBError.unexpectedTag) { try CountedHashSet<ReadOnly>(set.cursor) }
+            #expect(throws: XitDBError.unexpectedTag) { try SortedMap<ReadOnly>(linked.cursor) }
+            #expect(throws: XitDBError.unexpectedTag) { try SortedSet<ReadOnly>(list.cursor) }
+        }
+
+        // the root cursor can write: without a type context it makes the
+        // writing view, and the read-only one no longer needs `readOnly`
+        let map = try HashMap(database.rootCursor)
+        #expect(type(of: map) == HashMap<ReadWrite>.self)
+        #expect(try map.cursor(forHash: hash)?.readUInt64() == 1)
+        let readOnly = try HashMap<ReadOnly>(database.rootCursor)
+        #expect(try readOnly.cursor(forHash: hash)?.readUInt64() == 1)
+        #expect(try HashMap<ReadOnly>(database.rootCursor.readOnly).cursor(forHash: hash)?.readUInt64() == 1)
+        let fromReadOnly = try HashMap(database.rootCursor.readOnly)
+        #expect(type(of: fromReadOnly) == HashMap<ReadOnly>.self)
+        #expect(throws: XitDBError.unexpectedTag) { try ArrayList<ReadOnly>(database.rootCursor) }
+        #expect(throws: XitDBError.unexpectedTag) { try SortedMap<ReadOnly>(database.rootCursor) }
     }
 
     /// The list's own edges: a missing index, slicing, and iterating from
