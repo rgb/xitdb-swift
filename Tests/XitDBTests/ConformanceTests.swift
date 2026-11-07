@@ -47,6 +47,36 @@ import Testing
         // every op of the script format is in the runner
         #expect(all.filter { $0.needsOp != nil }.isEmpty)
 
+        // the failing scripts whose description pins the engine error that
+        // their last op raises and nothing handles; the runner holds each
+        // to that error, and the rest to any script failure
+        let pinned = Dictionary(
+            uniqueKeysWithValues: all.filter { !$0.mustPass }.compactMap { fixture -> (String, String)? in
+                guard
+                    let bytes = try? fixtureFile(fixture.script),
+                    let script = try? JSONSerialization.jsonObject(with: Data(bytes)) as? [String: Any],
+                    let error = ConformanceFixture.pinnedError(in: script["description"] as? String)
+                else { return nil }
+                return (fixture.name, error)
+            })
+        #expect(
+            pinned == [
+                "bytes-into-too-small-not-handled": "StreamTooLong",
+                "invalid-range-not-handled": "InvalidRange",
+                "iterator-from-key-on-a-list-not-handled": "UnexpectedTag",
+                "iterator-on-a-number-not-handled": "UnexpectedTag",
+                "max-size-too-small-not-handled": "StreamTooLong",
+                "rank-on-a-number-not-handled": "UnexpectedTag",
+                "reopen-error-not-handled": "InvalidDatabase",
+                "short-apply-not-handled": "InvalidDatabase",
+                "stream-end-not-handled": "EndOfStream",
+                "stream-of-a-number-not-handled": "UnexpectedTag",
+                "target-not-empty-not-handled": "TargetNotEmpty",
+                "unhandled-error-through-callback": "UnexpectedTag",
+                "unhandled-error": "ExpectedTxStart",
+                "write-on-read-only-not-handled": "WriteFailed",
+            ])
+
         // not applicable to the memory storage, which has no read-only mode
         let readOnly = all.filter { $0.features.contains("read_only") }.map(\.name).sorted()
         #expect(

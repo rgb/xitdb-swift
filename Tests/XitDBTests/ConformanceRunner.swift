@@ -14,9 +14,13 @@ import Testing
 /// fixtures' `failing` folder must end in one of these.
 struct ScriptFailure: Error, CustomStringConvertible {
     let description: String
+    /// Zig's name of the engine error an op raised that nothing handled,
+    /// when that is the failure.
+    let unhandled: String?
 
-    init(_ description: String) {
+    init(_ description: String, unhandled: String? = nil) {
         self.description = description
+        self.unhandled = unhandled
     }
 }
 
@@ -669,7 +673,9 @@ final class ScriptRunner {
                 // Inside a callback the error leaves the callback, and the
                 // op that called it raises it in turn. At the top level
                 // nothing is left to handle it.
-                if topLevel { throw ScriptFailure("the op '\(name)' raised \(raised), which nothing handles") }
+                if topLevel {
+                    throw ScriptFailure("the op '\(name)' raised \(raised), which nothing handles", unhandled: raised)
+                }
                 throw error
             }
             guard expectedError == raised else {
@@ -1338,20 +1344,35 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
         }
     }()
 
+    /// The engine error a failing script's description pins, if it pins
+    /// one: "expected failure: unexpected error X" is Zig's message for an
+    /// error X that its last op raised and nothing handled. Any other text
+    /// after "expected failure:" is a reason in Zig's own words, whose
+    /// wording is not part of the format.
+    static func pinnedError(in description: String?) -> String? {
+        guard let description, let range = description.range(of: "expected failure: unexpected error ") else {
+            return nil
+        }
+        let name = description[range.upperBound...].prefix { $0.isLetter || $0.isNumber }
+        return name.isEmpty ? nil : String(name)
+    }
+
     /// Runs the script on a storage kind and holds it to what Zig did.
     ///
     /// A script that must pass is given the commit IDs from its sidecar, has
     /// its committed size checked after every top-level op, and must leave
     /// the file Zig wrote. A script that must fail has to end in a
-    /// `ScriptFailure`.
-    /// Runs the script on a storage kind. With `otherOffsetMap`, every
-    /// `compact` uses the offset map the script does not name, which must
-    /// change nothing in what is written: the conformance `check.sh` holds
-    /// the scripts to that the same way.
+    /// `ScriptFailure`, and one whose description pins an unhandled error
+    /// has to end in that error, raised by its last op.
+    ///
+    /// With `otherOffsetMap`, every `compact` uses the offset map the
+    /// script does not name, which must change nothing in what is written:
+    /// the conformance `check.sh` holds the scripts to that the same way.
     func run(on kind: ScriptStorageKind, otherOffsetMap: Bool = false) throws {
         let script = try JSONSerialization.jsonObject(with: Data(try fixtureFile(script)))
 
         guard mustPass else {
+            let pinned = Self.pinnedError(in: try ScriptObject(script, "the script").optionalString("description"))
             // Some of these commit before they fail, so the random source
             // has to return something. Any values will do.
             let runner = ScriptRunner(
@@ -1359,12 +1380,21 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
                 random: FixedRandom((1...64).map { UInt64($0) })
             )
             runner.otherOffsetMap = otherOffsetMap
-            do {
-                for op in try runner.start(script) {
+            let ops = try runner.start(script)
+            for (index, op) in ops.enumerated() {
+                do {
                     try runner.run(op, topLevel: true)
+                } catch let failure as ScriptFailure {
+                    guard let pinned else { return }
+                    guard index == ops.count - 1 else {
+                        throw ScriptFailure("\(name) must fail at its last op, and op \(index) failed: \(failure)")
+                    }
+                    guard failure.unhandled == pinned else {
+                        throw ScriptFailure(
+                            "\(name) must raise \(pinned), which nothing handles, and it failed: \(failure)")
+                    }
+                    return
                 }
-            } catch is ScriptFailure {
-                return
             }
             throw ScriptFailure("\(name) must fail, and it ran to the end")
         }
