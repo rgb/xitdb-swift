@@ -93,6 +93,44 @@ import XitDB
         #expect(try root.count == 2)
     }
 
+    @Test func onlyTheSlotIsASnapshot() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        try database.withTransaction { cursor in
+            let list = try ArrayList<ReadWrite>(cursor)
+            try list.append(.uint(1))
+
+            // The slot is the cursor's, but what it points at is read when asked
+            // for, and this transaction changes its own list in place.
+            let held = list.cursor
+            let before = try held.count
+            try list.append(.uint(2))
+            #expect(before == 1)
+            #expect(try held.count == 2)
+        }
+    }
+
+    @Test func writeIfEmptyGoesByTheSnapshot() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        try database.withTransaction { cursor in
+            let map = try HashMap<ReadWrite>(cursor)
+            var first = try map.putCursor(forHash: sha256("a"))
+            var second = try map.putCursor(forHash: sha256("a"))
+            try first.write(.uint(1))
+            try second.writeIfEmpty(.uint(2))
+            #expect(try map.cursor(forHash: sha256("a"))!.readUInt64() == 2)
+        }
+    }
+
+    @Test func anEmptySlotIsWrittenAsNothing() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let empty = try database.rootCursor.slot
+        #expect(empty.isEmpty)
+
+        let list = try ArrayList<ReadWrite>(database.rootCursor)
+        try list.append(.slot(empty))
+        #expect(try !list.slot(at: 0)!.isEmpty)
+    }
+
     @Test func aCursorThatCanOnlyRead() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         let list = try ArrayList<ReadWrite>(database.rootCursor)

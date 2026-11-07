@@ -10,7 +10,7 @@ language. It is a tree of lists, maps and sets that you nest as you need, read a
 so it can be larger than memory.
 
 A transaction appends what it changes to the end of the file and then rewrites one small header to point at
-it. Nothing committed changes, so every earlier state of the database stays readable. It is usual to keep them
+it. It leaves what is already committed as it is, so every earlier state of the database stays readable. It is usual to keep them
 in a list at the root, one element per transaction:
 
 ```swift

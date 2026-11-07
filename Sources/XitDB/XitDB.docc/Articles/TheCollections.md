@@ -4,8 +4,8 @@ The eight collections, when to use which, and what they have in common at the ca
 
 ## Overview
 
-A database is a tree of collections, and any of them can hold any other. A collection is a value you make from a
-cursor, and it reads and writes the slot that cursor is at.
+A database is a tree of collections. An element of a list and a value of a map can be anything, another collection
+included. A collection is a value you make from a cursor, and it reads and writes the slot that cursor is at.
 
 The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYourOwnHashes>. They force-unwrap a
 lookup where the value was just written; real code handles the `nil` that means it is not there.
@@ -15,7 +15,7 @@ lookup where the value was just written; real code handles the `nil` that means 
 | Collection | What it holds | Use it for |
 |---|---|---|
 | ``ArrayList`` | Elements by position. Appends at the end, cuts from the end. | A history; a log; any list that mostly grows. |
-| ``LinkedArrayList`` | Elements by position. Inserts and removes anywhere; joins and cuts in logarithmic time. | A list you edit in the middle; lists joined or split often. |
+| ``LinkedArrayList`` | Elements by position. Inserts and removes anywhere; joins and cuts without going through the list. | A list you edit in the middle; lists joined or split often. |
 | ``HashMap`` | Values under a hash you compute. | Looking things up by key. The first choice for a map. |
 | ``CountedHashMap`` | The same, and it knows how many. | A map whose size you ask for. |
 | ``HashSet`` | Keys under a hash you compute. | Membership. |
@@ -24,9 +24,9 @@ lookup where the value was just written; real code handles the `nil` that means 
 | ``SortedSet`` | Byte strings, in order. | An index with no values. |
 
 Prefer ``ArrayList`` to ``LinkedArrayList`` and a hash map to a sorted map unless you need what the other one adds.
-The trie behind the first of each pair is simpler, and a lookup in it reads less. ``SortedMap`` and
-``LinkedArrayList`` are trees whose nodes carry counts, so that they can find a position in logarithmic time, and
-whose branches are larger for it: 274 and 418 bytes, against the 144 of a block of the trie.
+The trie behind the first of each pair is simpler, and a lookup in it reads less. ``LinkedArrayList`` and
+``SortedMap`` are trees whose nodes carry counts, so that they can find a position in logarithmic time, and whose
+branches are larger for it: 274 and 418 bytes, against the 144 of a block of the trie.
 
 Each is a view of one slot, and they nest. A value that is a collection is written by asking for a cursor at the
 slot and making the collection there:
@@ -60,7 +60,8 @@ made:
   ``Database/rootCursor`` straight to it.
 - **`ArrayList<ReadWrite>`** makes the slot a list if it holds nothing. If the list is from an earlier transaction, it
   readies it for this one by copying its header and first block, so that writing leaves earlier moments as they
-  were. That is why it needs a read-write cursor, and a transaction unless the cursor is at the root.
+  were. That is why it needs a read-write cursor, and a transaction unless the cursor is at the root. On a list at the
+  root it writes nothing, since each transaction there does that copying when it starts.
 
 ```swift
 // The read-write form makes the collection if it is not there yet.
@@ -73,9 +74,10 @@ let viaProperty: ArrayList<ReadOnly> = writable.readOnly
 let viaCursor = try ArrayList<ReadOnly>(database.rootCursor)
 ```
 
-Either form throws ``XitDBError/unexpectedTag`` for a slot that holds something else. A hash map and a hash set are
-one kind to a reader, and so are a sorted map and a sorted set, but a counted collection and an uncounted one are
-not.
+Either form throws ``XitDBError/unexpectedTag`` for a slot that holds another kind of thing. A hash map and a hash set
+are one kind here, and so are a sorted map and a sorted set: a read-only view of either reads the same entries, and
+making the read-write form changes the slot's tag to its own, keeping the entries. A counted collection and an uncounted
+one are different kinds.
 
 Lookups give read-only cursors on both forms, and a lookup of something that is not there gives `nil`.
 
@@ -116,12 +118,16 @@ try tasks.append(contentsOf: more)
 try tasks.formSlice(offset: 1, count: 2)
 ```
 
+Neither goes through the list. With two lists of 4,096 elements, a join did 31 reads and appended 494 bytes, and cutting
+out the middle of the result did 108 reads and appended 8,584, because a cut rebuilds the edges of the tree at every
+level.
+
 A join is `mutating`, so the list has to be a `var`. It also freezes the transaction, as
 ``LinkedArrayList/append(contentsOf:)-(LinkedArrayList<CursorAccess>)`` explains: make other collections again
 from their cursors afterwards.
 
-`insert` needs an element to insert before, so `insert(_:at:)` with an index equal to the count throws
-``XitDBError/indexOutOfRange``. Use `append(_:)` to add at the end.
+``LinkedArrayList/insert(_:at:)`` needs an element to insert before, so an index equal to the count throws
+``XitDBError/indexOutOfRange``. Use ``LinkedArrayList/append(_:)`` to add at the end.
 
 ### The hash maps and sets
 
@@ -131,8 +137,8 @@ try map.putKey(.bytes(Array("age".utf8)), forHash: sha256("age"))
 ```
 
 A map stores the value under the hash and, unless you ask, not the key. ``HashMap/putKey(_:forHash:)-(_,Collection<UInt8>)``
-stores the key beside it, and is what makes keys readable when you iterate. `remove` returns whether there was an
-entry to remove, and the result may be ignored.
+stores the key beside it, and is what makes keys readable when you iterate. ``HashMap/remove(forHash:)-(Collection<UInt8>)``
+returns whether there was an entry to remove, and the result may be ignored.
 
 A set holds keys:
 
@@ -144,10 +150,10 @@ and answers ``HashSet/contains(hash:)-(Collection<UInt8>)``.
 
 ### The counted forms
 
-``CountedHashMap`` and ``CountedHashSet`` are a map and a set that keep the number of their entries, so that `count`
-does not have to go through them. A plain ``HashMap`` and ``HashSet`` have no `count` at all. The counted forms cost
-eight bytes, and one more write for each entry added or removed. Writing to a key that exists does not change the
-count:
+``CountedHashMap`` and ``CountedHashSet`` are a map and a set that keep the number of their entries, so that
+``CountedHashMap/count`` does not have to go through them. A plain ``HashMap`` and ``HashSet`` have no count at all. The
+count sits in front of the first block, so a counted form costs eight bytes more each time that block is copied, and one
+more write for each entry added or removed. Writing to a key that exists does not change the count:
 
 ```swift
 let visits = try CountedHashMap<ReadWrite>(moment.putCursor(forHash: sha256("visits")))
@@ -156,7 +162,7 @@ try visits.put(.uint(2), forHash: sha256("alice"))
 try visits.put(.uint(1), forHash: sha256("bob"))
 ```
 
-That map has a `count` of 2. The lists and the sorted collections always know their count.
+That map's count is 2. The lists and the sorted collections always know their count.
 
 ### Indices
 
@@ -169,11 +175,13 @@ let first = try list.cursor(at: -3)!.readUInt64()
 let tooFar = try list.cursor(at: -4)
 ```
 
-A read of an index that names nothing gives `nil`, and a write throws ``XitDBError/indexOutOfRange``.
+A lookup of an index that names nothing gives `nil`, an iterator from one gives nothing, and a write throws
+``XitDBError/indexOutOfRange``.
 
 An index is `some BinaryInteger`, so an `Int`, a `UInt64` and a `UInt8` all work without a conversion, and a loop
-over `0..<(try list.count)` passes straight in. Counts are `UInt64`. An index that does not fit in 64 bits names no
-element.
+over `0..<(try list.count)` passes straight in. Counts are `UInt64`, and so are the counts and offsets that
+``ArrayList/truncate(to:)`` and ``LinkedArrayList/formSlice(offset:count:)`` take. An index that does not fit in an
+`Int64` names no element: a lookup gives `nil`, and a write or an iterator throws ``XitDBError/indexOutOfRange``.
 
 ```swift
 // An `Int`, a `UInt64` and a `UInt8` are all indices.

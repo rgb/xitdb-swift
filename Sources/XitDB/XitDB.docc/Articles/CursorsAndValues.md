@@ -37,7 +37,8 @@ includes reading an `int` as a `uint`.
 
 Numbers and short byte arrays cost nothing beyond their slot. A byte array of at most eight bytes with no zero
 byte in it, or six with a format tag, is stored in the slot; ``Bytes/isShort`` says whether one would be. A longer
-one gets a record of its own, with an eight-byte length in front.
+one gets a record of its own, with an eight-byte length in front, and so does one written a part at a time
+(<doc:LargeByteArrays>).
 
 A value that could be of several kinds is read by looking at the tag first:
 
@@ -75,8 +76,8 @@ like, and tag what you stored.
 
 ### Cursors
 
-A cursor is generic over what it can do. A `Cursor<ReadOnly>` has only the reading methods, and
-a `Cursor<ReadWrite>` has the writing ones as well, so writing through a read-only cursor does not compile.
+A cursor is generic over what it can do. A cursor of ``ReadOnly`` access has only the reading methods, and
+one of ``ReadWrite`` access has the writing ones as well, so writing through a read-only cursor does not compile.
 ``Cursor/readOnly`` gives a read-only cursor from a read-write one. Every lookup on a collection gives a read-only
 cursor, so a read cannot change anything by mistake.
 
@@ -88,10 +89,12 @@ try cursor.write(.uint(1))
 ```
 
 Do this in a transaction's body. On a collection at the root those methods are transactions of their own, which have
-committed by the time they return: the entry is there without a value, and a write through the cursor throws
-``XitDBError/expectedTxStart``.
+committed by the time they return: the entry is there without a value, and with no transaction running, a write
+through the cursor throws ``XitDBError/expectedTxStart``. Do not keep such a cursor for a later transaction, as
+<doc:Transactions> explains.
 
-``Cursor/writeIfEmpty(_:)`` writes only if the slot is empty, for a value that should be set once:
+``Cursor/writeIfEmpty(_:)`` writes only if the cursor's snapshot of the slot is empty, for a value that should be set
+once:
 
 ```swift
 var maybe = try moment.putCursor(forHash: sha256("once"))
@@ -125,9 +128,12 @@ try list.append(.uint(3))
 
 After that, `countBefore` is 1 and `root.count` is 2.
 
+Only the slot is a snapshot. What it points at is read when you ask for it, so a cursor held on a list changed in place
+in the same transaction reports the list's new count.
+
 ### Iterating
 
-Every collection has an `iterator()`. It gives a ``CollectionIterator``, whose ``CollectionIterator/next()`` gives
+Every collection has an iterator, such as ``ArrayList/iterator()``. It gives a ``CollectionIterator``, whose ``CollectionIterator/next()`` gives
 a read-only cursor, or `nil` at the end. It is not a Swift `Sequence`, because reading the next element can fail:
 
 ```swift
@@ -184,8 +190,9 @@ _ = try list.appendCursor()
 // Three elements: a value, a slot set to nothing, a slot never written.
 ```
 
-That list has a `count` of 3. Its elements read as a `uint`, as a slot with the tag ``Slot/Tag/none``, and as `nil`,
-and its iterator gives only the first two.
+That list has a ``ArrayList/count`` of 3. Its elements read as a `uint`, as a slot with the tag ``Slot/Tag/none``, and as
+`nil`, and its iterator gives only the first two. A ``LinkedArrayList`` has no slots that were never written: an element
+it appends and nobody writes is set to nothing, so a lookup and its iterator both give it.
 
 Setting a map's value to nothing is not removing the entry. The entry stays, and a counted map goes on counting it:
 
@@ -196,9 +203,11 @@ try map.remove(forHash: sha256("removed"))
 
 ### Copying a slot
 
-``WritableData/slot(_:)`` writes a slot exactly as it is, without copying what it points at. Both slots then share
-it, which is what makes cloning cheap and how one moment starts from another. A client cannot make a slot; every
-slot it writes is one a database gave it, and it must have come from the same database.
+``WritableData/slot(_:)`` writes a slot as it is, without copying what it points at. Both slots then share it, which is
+what makes cloning cheap and how one moment starts from another. An empty slot is written as one set to nothing. A
+client cannot make a slot; every slot it writes is one a database gave it, and it must have come from the same database.
+It should also be a value: the slot of a cursor from a map's iterator is the entry's own, and is not one to write
+(<doc:DifferencesFromTheOriginal>).
 
 ## See Also
 

@@ -5,7 +5,8 @@ What this package does differently from xitdb in Zig, and what it does the same 
 ## Overview
 
 The port's first rule is that it writes the same bytes: given the same file ID, the same commit IDs and the same operations, it
-produces the same file as the original. That is checked with 209 conformance scripts, which compare whole files.
+produces the same file as the original. That is checked with 209 conformance scripts: in 111 the file must match the original's
+byte for byte, and in the other 98 the script must fail where the original fails.
 
 The second rule is that where the original's behaviour looks wrong, the port does what is correct, as long as the bytes of an
 operation that is valid in both stay the same. The differences are therefore all of one kind: the port gives an error, or a

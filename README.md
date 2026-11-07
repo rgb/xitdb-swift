@@ -21,7 +21,8 @@ keep your own indexes. If you want queries or a schema, use SQLite.
 ## Status
 
 The port reached parity with the original on 2026-11-07: every operation of the original, checked by 209
-conformance scripts that compare whole files. It has not been released yet.
+conformance scripts. In 111 of them the file must match the original's byte for byte, and in the other 98 the
+script must fail where the original fails. It has not been released yet.
 
 Not there yet, and being worked on in this order:
 

@@ -23,7 +23,7 @@ import XitDB
         let separately = try Database(creating: MemoryStorage(), hashSize: 32)
         let grouped = try Database(creating: MemoryStorage(), hashSize: 32)
 
-        // Two commits: each write through a root collection is a transaction.
+        // Three commits: making the map is one, and each write is another.
         let map = try HashMap<ReadWrite>(separately.rootCursor)
         try map.put(.uint(3), forHash: sha256("apples"))
         try map.put(.uint(4), forHash: sha256("pears"))
@@ -73,6 +73,40 @@ import XitDB
         #expect(try database.rootCursor.readUInt64() == 42)
     }
 
+    @Test func theBodysCursorIsASnapshotLikeAnyOther() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+
+        try database.withTransaction { cursor in
+            // The map writes through the same position, but through its own
+            // copy of the cursor, so this one does not notice.
+            let map = try HashMap<ReadWrite>(cursor)
+            try map.put(.uint(1), forHash: sha256("a"))
+            #expect(try cursor.slot.tag == .none)
+            #expect(try map.cursor(forHash: sha256("a"))!.readUInt64() == 1)
+        }
+
+        // What the slot holds when the body returns is the root, whichever
+        // cursor wrote it.
+        let other = try Database(creating: MemoryStorage(), hashSize: 32)
+        try other.withTransaction { cursor in
+            var copy = cursor
+            try copy.write(.uint(42))
+            #expect(try cursor.slot.tag == .none)
+        }
+        #expect(try other.rootCursor.readUInt64() == 42)
+    }
+
+    /// The numbers the article's list of what a transaction appends rests on:
+    /// a collection at the root is readied before the body runs.
+    @Test func aTransactionReadiesARootCollection() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        _ = try HashMap<ReadWrite>(database.rootCursor)
+
+        let before = try database.committedSize
+        try database.withTransaction { _ in }
+        #expect(try database.committedSize - before == 178)  // 9 + 144 + 25
+    }
+
     @Test func readsThroughTheRootSeeTheLastCommit() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         let history = try ArrayList<ReadWrite>(database.rootCursor)
@@ -83,7 +117,8 @@ import XitDB
             let committed = try history.count  // 0
             #expect(committed == 0)
 
-            // The body's cursor sees what the transaction has written.
+            // A collection made from the body's cursor sees what the transaction
+            // has written.
             let moment = try HashMap<ReadWrite>(cursor)
             try moment.put(.uint(1), forHash: sha256("seen"))
             let seen = try moment.cursor(forHash: sha256("seen"))!.readUInt64()  // 1

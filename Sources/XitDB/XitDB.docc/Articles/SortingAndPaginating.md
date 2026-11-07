@@ -169,8 +169,9 @@ func signedKey(_ value: Int64) -> [UInt8] {
 }
 ```
 
-A key costs little if it is short. One of up to eight bytes with no zero byte fits in the entry's slot, and a longer one is a
-record of its own. An entry in a sorted map or set has no hash, and ``Entry/hash`` gives zeros for it.
+A key costs little if it is short. One of up to eight bytes with no zero byte is held in a slot, and a longer one is a record of
+its own. In a set that slot is the entry, and in a map it is in an 18-byte record with the value. An entry in a sorted map or set
+has no hash, and ``Entry/hash`` gives zeros for it.
 
 ### Keeping an index in step
 
@@ -198,7 +199,7 @@ A remove leaves an empty place in its leaf and does not rebalance the tree. Posi
 
 You can keep as many indexes over one primary store as you have orders to show, each a ``SortedMap`` in the moment, each
 written in the same transactions. An index that holds no value is a ``SortedSet``, which has the same iterators, positions and
-ranks, and a `contains`:
+ranks, and ``SortedSet/contains(_:)-(Collection<UInt8>)``:
 
 ```swift
 try usernames.insert("alice".utf8)

@@ -12,8 +12,8 @@ The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYour
 
 ### Running a transaction
 
-``Database/withTransaction(_:)`` runs its body with a cursor at the root, commits when the body returns, and
-gives back what the body returned:
+``Database/withTransaction(_:)`` runs its body with a cursor at the root of the transaction, commits when the body
+returns, and gives back what the body returned:
 
 ```swift
 let total = try database.withTransaction { cursor in
@@ -42,7 +42,7 @@ body. A body that catches it and carries on commits whatever the failed operatio
 A collection made from ``Database/rootCursor`` writes through the root, and each such write commits:
 
 ```swift
-// Two commits: each write through a root collection is a transaction.
+// Three commits: making the map is one, and each write is another.
 let map = try HashMap<ReadWrite>(separately.rootCursor)
 try map.put(.uint(3), forHash: sha256("apples"))
 try map.put(.uint(4), forHash: sha256("pears"))
@@ -55,7 +55,7 @@ try grouped.withTransaction { cursor in
 }
 ```
 
-The first database is 696 bytes after that and the second 340, and the first has paid for twice as many syncs.
+The first database is 696 bytes after that and the second 340, and the first has paid for three times as many syncs.
 If you make many writes, group them.
 
 ``ArrayList/append(_:_:)`` on a list at the root is the same kind of transaction, with a body that runs before
@@ -63,8 +63,8 @@ it commits. The body may write as much as it likes, so one element of the list c
 
 ### The body's cursor
 
-The cursor is `inout` because a write through it changes it: it is a value that remembers what its slot holds,
-and the write has to reach the cursor the transaction goes on with.
+The cursor is `inout` because ``Cursor/write(_:)`` is `mutating`: a cursor is a value that remembers what its slot
+holds, and a write through it updates that.
 
 ```swift
 try database.withTransaction { cursor in
@@ -72,14 +72,15 @@ try database.withTransaction { cursor in
 }
 ```
 
-Whatever that slot holds when the body returns is the new root. In ``ArrayList/append(_:_:)``, the cursor is at
-the new element instead, and the element is what the slot holds. Passing the cursor to a collection's
-initialiser, as most bodies do, gives the collection a copy of it, and the collection writes through the same
-position.
+Whatever that slot holds when the body returns is the new root, whichever cursor wrote it. In
+``ArrayList/append(_:_:)``, the cursor is at the new element instead, and the element is what the slot holds. Passing
+the cursor to a collection's initialiser, as most bodies do, gives the collection a copy of it, and the collection
+writes through the same slot.
 
-Reads depend on which cursor they go through. A cursor at the root of the database reads the last commit, so the
-transaction's writes do not show there until it commits. The body's cursor, and collections made from it, see
-what the transaction has written:
+Reads depend on what they go through. A cursor at the root of the database reads the last commit, so the transaction's
+writes do not show there until it commits. A collection made from the body's cursor sees what the transaction has
+written. The body's cursor itself is a snapshot like any other, so once a collection has been made from it, read
+through the collection:
 
 ```swift
 try history.append(.slot(try history.slot(at: -1))) { cursor in
@@ -87,7 +88,8 @@ try history.append(.slot(try history.slot(at: -1))) { cursor in
     // from the last commit until this one is made.
     let committed = try history.count  // 0
 
-    // The body's cursor sees what the transaction has written.
+    // A collection made from the body's cursor sees what the transaction
+    // has written.
     let moment = try HashMap<ReadWrite>(cursor)
     try moment.put(.uint(1), forHash: sha256("seen"))
     let seen = try moment.cursor(forHash: sha256("seen"))!.readUInt64()  // 1
@@ -104,14 +106,18 @@ progress, because it would commit before the transaction ended. Both are errors:
   while one is running.
 
 A cursor belongs to the transaction that made it. Do not keep one for the next transaction; make a new one from
-the root. A collection at the root is the exception, because it reads the root again each time.
+the root. With no transaction running it throws ``XitDBError/expectedTxStart``, but during a later transaction it
+writes into committed bytes, without an error: see <doc:DifferencesFromTheOriginal>. A collection at the root is the
+exception, because it reads the root again each time.
 
 ### What a commit does to the file
 
 There is no journal and no write-ahead log. A transaction goes like this:
 
 1. It discards any bytes past the committed size, which only an earlier failure can have left there, and appends
-   a 9-byte copy of the root slot to work on.
+   a 9-byte copy of the root slot to work on. If the root is a collection, it also copies that collection's header or
+   first block, so a transaction on a map at the root costs at least 178 bytes, with the trailer, even if it writes
+   nothing.
 2. The body's writes append to the end of the storage. What the transaction made itself is changed in place;
    anything older is copied first.
 3. To commit, it appends a 25-byte trailer: the new root slot, a random commit ID, and a checksum over those, the
@@ -126,8 +132,8 @@ that ends at that size, whose checksum it checks. So a transaction's bytes are i
 crash before that leaves bytes that nothing refers to.
 
 Rolling back is cutting those bytes off. When a body throws, the storage goes back to its committed size at once.
-If the process died instead, they stay until the next transaction starts, or until a read-write collection is
-made on the root cursor, either of which discards them.
+If the process died instead, they stay until the next write discards them: a transaction, a replica's sync, or a
+read-write collection made on the root cursor.
 
 ### Durability
 
@@ -140,7 +146,7 @@ let storage = try BufferedFileStorage(path: "cache.db", access: .create, durabil
 | Level | The syncs | After a power loss | A small commit took |
 |---|---|---|---|
 | ``Durability/full`` (the default) | A barrier, then a full flush of the drive | A commit that returned is there | about 4.3 ms |
-| ``Durability/ordered`` | A barrier, twice | The file opens; the latest commits may be missing | about 0.3 ms |
+| ``Durability/ordered`` | A barrier, twice | The file opens; the latest commits may be missing | 0.3 to 1 ms |
 | ``Durability/none`` | Nothing | The file may not open at all | about 0.008 ms |
 
 The times are from one machine, an Apple M4 with its internal SSD on APFS, committing one value. Yours will
@@ -149,8 +155,12 @@ it is paid per commit, not per byte.
 
 On Apple platforms a barrier is `F_BARRIERFSYNC` and a full flush is `F_FULLFSYNC`. Plain `fsync` is not a level,
 because it promises neither that writes reach the disk in order nor that the drive flushes them. A volume that
-does not support a call gets another that keeps what the level promises, and plain `fsync` only when nothing
-better is left.
+does not support a call gets the strongest one it does, which can be less than the level promises, and plain
+`fsync` only when nothing better is left.
+
+The table has one hole for now, at every level. A power loss in the middle of rewriting the root header can leave its
+size unreadable, and such a file does not open, although all its commits are intact behind it. Explicit recovery is
+coming.
 
 None of the levels matters if only the process crashes: what has been written is in the operating system's hands
 by then, and a commit that returned survives at every level. They are about power loss and system crashes.

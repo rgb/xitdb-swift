@@ -28,7 +28,8 @@ A hash goes in wherever a map asks for one, and it has to have the database's si
 try map.put(.uint(1), forHash: Array(SHA256.hash(data: Array("alice".utf8))))
 ```
 
-Anything else throws ``XitDBError/invalidHashSize``. That includes a SHA-1 hash in a database of SHA-256 hashes.
+A hash of any other size throws ``XitDBError/invalidHashSize`` as soon as there is a map to look in. That includes a
+SHA-1 hash in a database of SHA-256 hashes.
 
 A CryptoKit digest has to go in as an array, as above. It is a `Sequence` of bytes and not a `Collection`, which is
 what the map asks for:
@@ -55,7 +56,7 @@ map stores its hash, so each entry takes that many bytes and eighteen more.
 ### Two keys, one hash
 
 If two keys have the same hash, they are the same key. The database compares hashes and nothing else, so the second
-`put` replaces the first without an error. To show it, here is a hash of one byte that collides easily:
+``HashMap/put(_:forHash:)-(_,Collection<UInt8>)`` replaces the first without an error. To show it, here is a hash of one byte that collides easily:
 
 ```swift
 // A hash of one byte, the sum of the key's: "ab" and "ba" collide.
@@ -88,7 +89,7 @@ let collided = stored != Array("ba".utf8)
 ### A hash need not be cryptographic
 
 Keys that are unique already can be their own hash, which costs nothing to compute and is what a hash size of 8 is
-for. The bytes have to go in big-endian:
+for. The bytes should go in big-endian:
 
 ```swift
 // Keys that are already unique, such as 64-bit IDs, can be their own

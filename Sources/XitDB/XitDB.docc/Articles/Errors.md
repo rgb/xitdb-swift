@@ -8,7 +8,7 @@ The package throws one type, ``XitDBError``. Methods that run no closure of your
 their errors arrive typed. Methods that run your closure, such as ``Database/withTransaction(_:)``, throw `any Error`, because
 they also pass on whatever your closure throws, as it was thrown.
 
-Nothing in a file can stop your program. A damaged or malicious file gives an error, whatever its bytes are.
+Nothing in a file can stop your program. A damaged file gives an error, whatever its bytes are.
 
 ### Your program
 

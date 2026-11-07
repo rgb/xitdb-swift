@@ -69,6 +69,166 @@ import XitDB
         }
     }
 
+    @Test func theReadWriteFormTakesOverTheOtherKind() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let set = try HashSet<ReadWrite>(database.rootCursor)
+        try set.insert(.bytes(Array("a".utf8)), forHash: sha256("a"))
+        #expect(try database.rootCursor.slot.tag == .hashSet)
+
+        // A read-write map over a set makes the slot a map, with the same entries.
+        let map = try HashMap<ReadWrite>(database.rootCursor)
+        #expect(try database.rootCursor.slot.tag == .hashMap)
+        #expect(try map.keyCursor(forHash: sha256("a")) != nil)
+
+        let sorted = try Database(creating: MemoryStorage(), hashSize: 32)
+        try SortedSet<ReadWrite>(sorted.rootCursor).insert("a".utf8)
+        _ = try SortedMap<ReadWrite>(sorted.rootCursor)
+        #expect(try sorted.rootCursor.slot.tag == .sortedMap)
+
+        #expect(throws: XitDBError.unexpectedTag) {
+            try CountedHashMap<ReadWrite>(database.rootCursor)
+        }
+    }
+
+    @Test func aHashIsCheckedOnceThereIsAMapToLookIn() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        #expect(try HashMap<ReadOnly>(database.rootCursor).cursor(forHash: [1, 2, 3]) == nil)
+
+        let map = try HashMap<ReadWrite>(database.rootCursor)
+        #expect(throws: XitDBError.invalidHashSize) {
+            try map.cursor(forHash: [1, 2, 3])
+        }
+    }
+
+    /// The numbers the article quotes: a join touches little, and a cut more.
+    @Test func whatAJoinAndACutCost() throws {
+        final class CountingStorage: WritableStorage {
+            let inner = MemoryStorage()
+            var reads = 0
+
+            func read(into buffer: inout MutableSpan<UInt8>, range: Range<Int>, at offset: UInt64) throws(XitDBError)
+                -> Int
+            {
+                reads += 1
+                return try inner.read(into: &buffer, range: range, at: offset)
+            }
+
+            var length: UInt64 { get throws(XitDBError) { try inner.length } }
+
+            func write(_ bytes: Span<UInt8>, at offset: UInt64) throws(XitDBError) {
+                try inner.write(bytes, at: offset)
+            }
+
+            func truncate(to length: UInt64) throws(XitDBError) { try inner.truncate(to: length) }
+            func flush() throws(XitDBError) {}
+            func sync(_ point: SyncPoint) throws(XitDBError) {}
+        }
+
+        let first = [UInt8](repeating: 1, count: 8)
+        let second = [UInt8](repeating: 2, count: 8)
+        let storage = CountingStorage()
+        let database = try Database(creating: storage, hashSize: 8)
+        try database.withTransaction { cursor in
+            let map = try HashMap<ReadWrite>(cursor)
+            let a = try LinkedArrayList<ReadWrite>(map.putCursor(forHash: first))
+            let b = try LinkedArrayList<ReadWrite>(map.putCursor(forHash: second))
+            for number in 0..<4096 as Range<UInt64> {
+                try a.append(.uint(number))
+                try b.append(.uint(number))
+            }
+        }
+
+        var reads = storage.reads
+        var size = try database.committedSize
+        try database.withTransaction { cursor in
+            let map = try HashMap<ReadWrite>(cursor)
+            var a = try LinkedArrayList<ReadWrite>(map.putCursor(forHash: first))
+            try a.append(contentsOf: try LinkedArrayList<ReadOnly>(map.cursor(forHash: second)!))
+        }
+        #expect(storage.reads - reads == 31)
+        #expect(try database.committedSize - size == 494)
+
+        reads = storage.reads
+        size = try database.committedSize
+        try database.withTransaction { cursor in
+            let map = try HashMap<ReadWrite>(cursor)
+            try LinkedArrayList<ReadWrite>(map.putCursor(forHash: first)).formSlice(offset: 2048, count: 1024)
+        }
+        #expect(storage.reads - reads == 108)
+        #expect(try database.committedSize - size == 8584)
+    }
+
+    @Test func aSortedSetHoldsOnlyKeys() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let keys = try SortedSet<ReadWrite>(database.rootCursor)
+        try keys.insert("a".utf8)
+        var iterator = try keys.iterator()
+        #expect(try iterator.next()!.slot.tag == .shortBytes)
+    }
+
+    @Test func aSortedMapsEntryPointsAtAPairHoldingTheKey() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let map = try SortedMap<ReadWrite>(database.rootCursor)
+        try map.put(.uint(1), forKey: "a".utf8)
+
+        var iterator = try map.iterator()
+        let cursor = try iterator.next()!
+        #expect(try cursor.slot.tag == .sortedKvPair)
+        #expect(try cursor.readEntry().key.slot.tag == .shortBytes)
+    }
+
+    @Test func aLinkedListHasNoSlotNeverWritten() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        try database.withTransaction { cursor in
+            let list = try LinkedArrayList<ReadWrite>(cursor)
+            _ = try list.appendCursor()
+
+            // What an array list would call never written is here set to nothing.
+            let element = try #require(try list.cursor(at: 0))
+            #expect(try element.slot.tag == .none)
+            #expect(try !element.slot.isEmpty)
+            var iterator = try list.iterator()
+            #expect(try iterator.next() != nil)
+        }
+    }
+
+    @Test func anIndexBeyondInt64() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let list = try ArrayList<ReadWrite>(database.rootCursor)
+        try list.append(.uint(1))
+
+        // One that fits in an `Int64` but names no element: nothing to give.
+        var far = try list.iterator(fromIndex: 99)
+        #expect(try far.next() == nil)
+
+        // One that does not fit in an `Int64`: a lookup gives nil, an iterator throws.
+        let tooBig = UInt64(1) << 63
+        #expect(try list.cursor(at: tooBig) == nil)
+        #expect(throws: XitDBError.indexOutOfRange) {
+            try list.iterator(fromIndex: tooBig)
+        }
+    }
+
+    @Test func aCountedMapCostsEightBytesWhereverItIsCopied() throws {
+        func cost(counted: Bool) throws -> UInt64 {
+            let database = try Database(creating: MemoryStorage(), hashSize: 32)
+            let hash = sha256("a")
+            if counted {
+                let map = try CountedHashMap<ReadWrite>(database.rootCursor)
+                try map.put(.uint(1), forHash: hash)
+                let before = try database.committedSize
+                try map.put(.uint(2), forHash: hash)
+                return try database.committedSize - before
+            }
+            let map = try HashMap<ReadWrite>(database.rootCursor)
+            try map.put(.uint(1), forHash: hash)
+            let before = try database.committedSize
+            try map.put(.uint(2), forHash: hash)
+            return try database.committedSize - before
+        }
+        #expect(try cost(counted: true) == cost(counted: false) + 8)
+    }
+
     @Test func arrayList() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         let list = try ArrayList<ReadWrite>(database.rootCursor)
