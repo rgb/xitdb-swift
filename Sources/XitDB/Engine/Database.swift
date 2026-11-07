@@ -16,15 +16,19 @@ public final class Database {
     /// Where the database's bytes are kept.
     let storage: any WritableStorage
 
-    /// The read side of the engine over this database's storage. Replaced
-    /// with the header when a replication from zero makes this another
-    /// database.
-    private(set) var reader: DatabaseReader
+    /// The read side of the engine over this database's storage.
+    let reader: DatabaseReader
+
+    /// The header, in the box the reader shares. A class's stored `var` is
+    /// read through a dynamic exclusivity check; the reader is used on every
+    /// node read, so it is a `let`, and the one thing a replication from
+    /// zero replaces, the header, lives here and is read once per use.
+    private let identity: DatabaseIdentity
 
     /// The header at the start of the database: its file ID, hash size and
     /// hash ID, and the version of the file format. A replication from
     /// zero replaces it with the source's.
-    public private(set) var header: DatabaseHeader
+    public var header: DatabaseHeader { identity.header }
 
     /// Where the transaction in progress started, or `nil` between
     /// transactions.
@@ -111,8 +115,8 @@ public final class Database {
         }
 
         self.storage = storage
-        self.header = header
-        self.reader = DatabaseReader(storage: storage, hashSize: header.hashSize, fileID: header.fileID)
+        identity = DatabaseIdentity(header: header)
+        self.reader = DatabaseReader(storage: storage, identity: identity)
         self.transactionStart = nil
         self.random = random
 
@@ -198,8 +202,7 @@ public final class Database {
     /// replication from zero replaced the bytes: the header and the reader
     /// take the new file ID.
     func become(_ newHeader: DatabaseHeader) {
-        header = newHeader
-        reader = DatabaseReader(storage: storage, hashSize: newHeader.hashSize, fileID: newHeader.fileID)
+        identity.header = newHeader
     }
 
     /// Discards whatever lies beyond the committed size: what a transaction

@@ -26,10 +26,31 @@ struct HashedPair {
     var pair: KeyValuePair
 }
 
+/// What a replication from zero replaces: the database's header, shared
+/// by the database and its reader, so that both stay `let` properties and
+/// only this box is read through a dynamic exclusivity check.
+final class DatabaseIdentity {
+    var header: DatabaseHeader
+
+    init(header: DatabaseHeader) {
+        self.header = header
+    }
+}
+
 struct DatabaseReader {
     let storage: any ReadableStorage
+    /// The hash size, which a replication cannot change.
     let hashSize: UInt16
-    let fileID: UInt64
+    private let identity: DatabaseIdentity
+
+    /// The file ID, which the trailers' checksums cover.
+    var fileID: UInt64 { identity.header.fileID }
+
+    init(storage: any ReadableStorage, identity: DatabaseIdentity) {
+        self.storage = storage
+        hashSize = identity.header.hashSize
+        self.identity = identity
+    }
 
     // MARK: Records
 
