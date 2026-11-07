@@ -162,6 +162,39 @@ import Testing
         #expect(try compacting(subject, into: kind).error == .invalidBTreeNodeKind)
     }
 
+    /// A tree node whose kind byte is the last byte of the source: Zig
+    /// reads the kind and checks it before it reads the count, so a kind
+    /// that is not one is reported before the end, and a kind that is one
+    /// reaches the end at the count.
+    @Test(arguments: StorageKind.allCases)
+    func aNodeWhoseKindIsTheLastByte(kind: StorageKind) throws {
+        let subject = try Subject(kind, makeDatabase: makeDatabase)
+        let header = try subject.slot("linked").value
+        let end = try subject.subject.storage.length
+        try subject.damage([5], at: end)
+        try subject.damage(bigEndianBytes(end), at: header + 8)
+        #expect(try compacting(subject, into: kind).error == .invalidBTreeNodeKind)
+        try subject.damage([0], at: end)
+        #expect(try compacting(subject, into: kind).error == .endOfStream)
+    }
+
+    /// A block whose first child runs past the end of the source, and whose
+    /// next slot has a tag that is not one: Zig checks each slot as it
+    /// reaches it, so the child's end is reported, not the later tag.
+    @Test(arguments: StorageKind.allCases)
+    func aChildPastTheEndBeforeATagThatIsNotOne(kind: StorageKind) throws {
+        let subject = try Subject(kind, makeDatabase: makeDatabase)
+        let block = try subject.moment.slot.value
+        let slots = try subject.database.reader.indexBlock(at: block)
+        let index = try #require((0..<16).first { slots.slots[$0].tag != .none })
+        let slot = slots.slots[index]
+        let end = try subject.subject.storage.length
+        try subject.damage(
+            slotBytes(Slot(value: end - 5, tag: slot.tag, full: slot.full)), at: block + UInt64(index) * 9)
+        try subject.damage([0x7F], at: block + UInt64(index + 1) * 9)
+        #expect(try compacting(subject, into: kind).error == .endOfStream)
+    }
+
     /// An array list whose header says a hundred elements where its index
     /// holds five: the walk expects blocks of sixteen beneath the root and
     /// finds numbers.
