@@ -92,7 +92,7 @@ import Testing
     private func writesTheFirstTransaction(_ database: Database) throws {
         // to get the benefits of immutability, the top-level data structure
         // must be an ArrayList, so each transaction is stored as an item in it
-        let history = try ArrayList<ReadWrite>(database.rootCursor())
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
 
         // this is how a transaction is executed. we call history.appendContext,
         // providing it with the most recent copy of the db and a context
@@ -324,7 +324,7 @@ import Testing
 
     /// test.zig 451-558: "make a new transaction and change the data".
     private func changesTheDataInANewTransaction(_ database: Database) throws {
-        let history = try ArrayList<ReadWrite>(database.rootCursor())
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
 
         try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
@@ -427,7 +427,7 @@ import Testing
 
     /// test.zig 560-601: "the old data hasn't changed".
     private func theOldDataHasNotChanged(_ database: Database) throws {
-        let history = try ArrayList<ReadWrite>(database.rootCursor())
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
 
         let momentCursor = try #require(try history.getCursor(0))
         let moment = try HashMap<ReadOnly>(momentCursor)
@@ -467,7 +467,7 @@ import Testing
 
     /// test.zig 603-646: "remove the last transaction with `slice`".
     private func removesTheLastTransactionWithSlice(_ database: Database) throws {
-        let history = try ArrayList<ReadWrite>(database.rootCursor())
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
 
         try history.slice(1)
 
@@ -542,7 +542,7 @@ import Testing
 
         #expect(sizeWithTail == sizeAfter)
 
-        _ = try ArrayList<ReadWrite>(reopened.rootCursor())
+        _ = try ArrayList<ReadWrite>(reopened.rootCursor)
         #expect(try subject.storage.length == sizeBefore)
 
         return reopened
@@ -550,7 +550,7 @@ import Testing
 
     /// test.zig 690-726: "cloning".
     private func clones(_ database: Database) throws {
-        let history = try ArrayList<ReadWrite>(database.rootCursor())
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
 
         try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
@@ -585,7 +585,7 @@ import Testing
 
     /// test.zig 728-770: "accidental mutation when cloning inside a transaction".
     private func mutatesAccidentallyWhenCloningInsideATransaction(_ database: Database) throws {
-        let history = try ArrayList<ReadWrite>(database.rootCursor())
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
 
         let historyIndex = try history.count() - 1
 
@@ -661,7 +661,7 @@ import Testing
 
     /// test.zig 772-851: "preventing accidental mutation with freezing", with the freeze-callback loop.
     private func preventsAccidentalMutationWithFreezing(_ database: Database) throws {
-        let history = try ArrayList<ReadWrite>(database.rootCursor())
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
 
         try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
@@ -742,7 +742,7 @@ import Testing
     private func buildsASecondaryIndexWithASortedMap(_ database: Database) throws {
         // build a secondary index with a SortedMap to sort and paginate,
         // like the "Sorting and Paginating" section of the readme
-        let history = try ArrayList<ReadWrite>(database.rootCursor())
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
 
         let userIDSize = 16
 
@@ -839,7 +839,7 @@ import Testing
     /// size of eight; a `u64` hash is its eight big-endian bytes.
     @Test func hashMapWithU64Hashes() throws {
         let database = try Database(storage: MemoryStorage(), hashSize: 8)
-        let map = try HashMap<ReadWrite>(database.rootCursor())
+        let map = try HashMap<ReadWrite>(database.rootCursor)
 
         // the first two keys share all but their highest nibble, exercising
         // the full trie depth with the narrower shift type required by u64.
@@ -861,7 +861,7 @@ import Testing
     func iteratorFromIndex(kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let database = try Database(storage: subject.storage, hashSize: 20)
-        let rootCursor = database.rootCursor()
+        let rootCursor = database.rootCursor
 
         // enough items to force several tiers in both the array-list radix trie
         // (16^2 = 256 > 200) and the linked-array-list b-tree
@@ -886,7 +886,7 @@ import Testing
             }
         }
 
-        let history = try ArrayList<ReadOnly>(database.rootCursor().readOnly())
+        let history = try ArrayList<ReadOnly>(database.rootCursor.readOnly())
         let moment = try HashMap<ReadOnly>(try #require(try history.getCursor(-1)))
         let list = try ArrayList<ReadOnly>(try #require(try moment.getCursor(hashInt("list"))))
         let linked = try LinkedArrayList<ReadOnly>(try #require(try moment.getCursor(hashInt("linked"))))

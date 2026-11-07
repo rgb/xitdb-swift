@@ -36,10 +36,10 @@ import Testing
         let database = try database()
         _ = recorder.take()
 
-        _ = try database.rootCursor().writePath([.arrayListInit, .arrayListAppend, .write(.uint(1))])
+        _ = try database.rootCursor.writePath([.arrayListInit, .arrayListAppend, .write(.uint(1))])
         #expect(recorder.take() == [.barrier, .full])
 
-        var root = database.rootCursor()
+        var root = database.rootCursor
         _ = try root.writePath([.arrayListInit, .arrayListAppend, .ctx]) { cursor in
             // writes inside the transaction do not sync
             try cursor.write(.uint(2))
@@ -47,11 +47,11 @@ import Testing
         }
         #expect(recorder.take() == [.barrier, .full])
 
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             _ = try cursor.writePath([.arrayListAppend, .write(.uint(3))])
         }
         #expect(recorder.take() == [.barrier, .full])
-        root = database.rootCursor()
+        root = database.rootCursor
         #expect(try root.count() == 3)
     }
 
@@ -59,13 +59,13 @@ import Testing
     /// it does not sync. Zig does, with what is a full flush here.
     @Test func aFreeInitDoesNotSync() throws {
         let database = try database()
-        _ = try database.rootCursor().writePath([.arrayListInit])
+        _ = try database.rootCursor.writePath([.arrayListInit])
         #expect(recorder.take() == [.barrier, .full, .barrier, .full])
-        let sizeBefore = try database.committedSize()
+        let sizeBefore = try database.committedSize
 
-        let list = try database.rootCursor().writePath([.arrayListInit])
+        let list = try database.rootCursor.writePath([.arrayListInit])
         #expect(recorder.take() == [])
-        #expect(try database.committedSize() == sizeBefore)
+        #expect(try database.committedSize == sizeBefore)
         #expect(try list.count() == 0)
     }
 
@@ -73,7 +73,7 @@ import Testing
     @Test func anEmptyPathDoesNotSync() throws {
         let database = try database()
         _ = recorder.take()
-        _ = try database.rootCursor().writePath([])
+        _ = try database.rootCursor.writePath([])
         #expect(recorder.take() == [])
     }
 
@@ -82,22 +82,22 @@ import Testing
         let database = try database()
         _ = recorder.take()
         #expect(throws: Cancel.self) {
-            try database.runContext { cursor in
+            try database.withTransaction { cursor in
                 try cursor.write(.uint(1))
                 throw Cancel()
             }
         }
         #expect(recorder.take() == [])
-        #expect(try database.committedSize() == 62)
+        #expect(try database.committedSize == 62)
     }
 
     @Test func aBufferedDatabaseFlushesItsCommitToTheFile() throws {
         let buffered = BufferedFileStorage(file)
         let database = try Database(storage: buffered, hashSize: 20, hashID: nil, fileID: 1, random: FixedRandom([9]))
         #expect(recorder.take() == [.barrier, .full])
-        _ = try database.rootCursor().writePath([.hashMapInit(), .hashMapGet(.value, sha1("a")), .write(.uint(1))])
+        _ = try database.rootCursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("a")), .write(.uint(1))])
         #expect(recorder.take() == [.barrier, .full])
         // everything committed is in the file, with nothing left in memory
-        #expect(UInt64(try directory.contents().count) == (try database.committedSize()))
+        #expect(UInt64(try directory.contents().count) == (try database.committedSize))
     }
 }

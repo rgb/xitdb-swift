@@ -9,7 +9,7 @@
 /// slot a list if it holds nothing, and readies it for this transaction's
 /// writes.
 ///
-/// Writing needs a transaction: see ``Database/runContext(_:)``. A list at
+/// Writing needs a transaction: see ``Database/withTransaction(_:)``. A list at
 /// the root of the database is the exception: there, every write is a
 /// transaction of its own. That is how a database's history is kept: a
 /// list at the root, with one element per transaction, each appended with

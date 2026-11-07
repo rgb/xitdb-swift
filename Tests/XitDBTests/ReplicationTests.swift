@@ -68,15 +68,15 @@ import Testing
 
     /// test.zig 3917-3922: `readCommittedBytes`, the committed bytes from `start` to the committed size.
     private func readCommittedBytes(_ database: Database, from start: UInt64) throws -> [UInt8] {
-        try readCommitted(database, from: start, to: try database.committedSize())
+        try readCommitted(database, from: start, to: try database.committedSize)
     }
 
     /// test.zig 3924-3934: `replicate`.
     private func replicate(_ source: Database, _ replica: Database) throws {
         // the replica sends its state, and the source sends back the bytes it doesn't
         // have yet (or all of them, if it isn't a replica of this source)
-        let start = try source.replicationStart(try replica.replicaState())
-        let end = try source.committedSize()
+        let start = try source.replicationStart(for: try replica.replicaState)
+        let end = try source.committedSize
         let bytes = try readCommitted(source, from: start, to: end)
         var reader = ArrayByteSource(bytes)
         try replica.applyReplicated(at: start, from: &reader, count: end - start)
@@ -154,13 +154,13 @@ import Testing
 
         // new databases have their own random file IDs, so the
         // first sync replaces the replica with a copy of the source
-        #expect(try source.replicationStart(try replica.replicaState()) == 0)
+        #expect(try source.replicationStart(for: try replica.replicaState) == 0)
         try replicate(source, replica)
         try expectSameCommittedBytes(source, replica)
 
         #expect(source.header.version == DatabaseHeader.currentVersion)
 
-        let history = try ArrayList<ReadWrite>(source.rootCursor())
+        let history = try ArrayList<ReadWrite>(source.rootCursor)
 
         var committed = try readCommittedBytes(source, from: 0)
 
@@ -191,13 +191,13 @@ import Testing
             try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
                 try writeMoment(cursor, i: 300)
             }
-            let start = try replica.committedSize()
-            let end = try source.committedSize()
+            let start = try replica.committedSize
+            let end = try source.committedSize
             let bytes = try readCommittedBytes(source, from: start)
             #expect(throws: XitDBError.invalidDatabase) {
                 try replica.applyReplicated(at: start, bytes: Array(bytes[0..<(bytes.count - 1)]))
             }
-            #expect(try replica.committedSize() == start)
+            #expect(try replica.committedSize == start)
             // and only committed bytes can be read, starting at 0 or after the root header
             var discarding = DiscardingSink()
             #expect(throws: XitDBError.invalidRange) {
@@ -212,8 +212,8 @@ import Testing
 
         // the replica can be reopened and read
         replica = try Database(storage: replicaSubject.storage, hashSize: 20)
-        let sourceHistory = try ArrayList<ReadOnly>(source.rootCursor().readOnly())
-        let replicaHistory = try ArrayList<ReadOnly>(replica.rootCursor().readOnly())
+        let sourceHistory = try ArrayList<ReadOnly>(source.rootCursor.readOnly())
+        let replicaHistory = try ArrayList<ReadOnly>(replica.rootCursor.readOnly())
         #expect(try sourceHistory.count() == replicaHistory.count())
         let momentCursor = try #require(try replicaHistory.getCursor(-1))
         let moment = try HashMap<ReadOnly>(momentCursor)
@@ -234,12 +234,12 @@ import Testing
             try expectSameCommittedBytes(target, compactedReplica)
 
             // and it can keep receiving transactions
-            let targetHistory = try ArrayList<ReadWrite>(target.rootCursor())
+            let targetHistory = try ArrayList<ReadWrite>(target.rootCursor)
             try targetHistory.append(.slot(try targetHistory.getSlot(-1)))
             try replicate(target, compactedReplica)
             try expectSameCommittedBytes(target, compactedReplica)
 
-            let compactedHistory = try ArrayList<ReadOnly>(compactedReplica.rootCursor().readOnly())
+            let compactedHistory = try ArrayList<ReadOnly>(compactedReplica.rootCursor.readOnly())
             #expect(try compactedHistory.count() == 2)
             let compactedMomentCursor = try #require(try compactedHistory.getCursor(-1))
             let compactedMoment = try HashMap<ReadOnly>(compactedMomentCursor)
@@ -249,7 +249,7 @@ import Testing
 
         // a database whose trailer doesn't match its header is invalid
         do {
-            let position = try replica.committedSize() - 1
+            let position = try replica.committedSize - 1
             let byte = try #require(try readBytes(replicaSubject.storage, at: position, count: 1).first)
             try writeBytes(replicaSubject.storage, [~byte], at: position)
             #expect(throws: XitDBError.invalidDatabase) {
@@ -268,35 +268,35 @@ import Testing
         let replica = try Database(storage: MemoryStorage(), hashSize: 20)
 
         // the same writes give both files the same layout
-        var sourceRoot = source.rootCursor()
+        var sourceRoot = source.rootCursor
         try sourceRoot.write(.uint(1))
-        var otherRoot = other.rootCursor()
+        var otherRoot = other.rootCursor
         try otherRoot.write(.uint(1))
         try replicate(source, replica)
 
         // the other file has a trailer where the replica's committed bytes end,
         // but its checksum covers a different file ID, so the replica is replaced
         try otherRoot.write(.uint(2))
-        #expect(try other.replicationStart(try replica.replicaState()) == 0)
+        #expect(try other.replicationStart(for: try replica.replicaState) == 0)
 
         // and if its bytes are appended anyway, they are rejected
         do {
-            let start = try replica.committedSize()
-            let end = try other.committedSize()
+            let start = try replica.committedSize
+            let end = try other.committedSize
             let bytes = try readCommitted(other, from: start, to: end)
             var reader = ArrayByteSource(bytes)
             #expect(throws: XitDBError.invalidDatabase) {
                 try replica.applyReplicated(at: start, from: &reader, count: end - start)
             }
-            #expect(try replica.committedSize() == start)
+            #expect(try replica.committedSize == start)
         }
 
         // a source restored from an older copy keeps its file ID, but
         // its history diverges, so the replica is replaced too
         let restored = try Database(storage: MemoryStorage(), hashSize: 20, fileID: 1)
-        var restoredRoot = restored.rootCursor()
+        var restoredRoot = restored.rootCursor
         try restoredRoot.write(.uint(3))
-        #expect(try restored.replicationStart(try replica.replicaState()) == 0)
+        #expect(try restored.replicationStart(for: try replica.replicaState) == 0)
 
         // copies of one file that write different data of the same size have the
         // same layout, but every commit has a random ID, so their histories differ
@@ -304,21 +304,21 @@ import Testing
             let copyA = try Database(storage: MemoryStorage(), hashSize: 20, fileID: 3)
             let copyB = try Database(storage: MemoryStorage(), hashSize: 20, fileID: 3)
             let copyReplica = try Database(storage: MemoryStorage(), hashSize: 20)
-            var copyARoot = copyA.rootCursor()
+            var copyARoot = copyA.rootCursor
             try copyARoot.write(.bytes(utf8("aaaaaaaaaaaa")))
-            var copyBRoot = copyB.rootCursor()
+            var copyBRoot = copyB.rootCursor
             try copyBRoot.write(.bytes(utf8("bbbbbbbbbbbb")))
 
             try replicate(copyA, copyReplica)
-            #expect(try copyA.committedSize() == copyB.committedSize())
-            #expect(try copyB.replicationStart(try copyReplica.replicaState()) == 0)
+            #expect(try copyA.committedSize == copyB.committedSize)
+            #expect(try copyB.replicationStart(for: try copyReplica.replicaState) == 0)
             try replicate(copyB, copyReplica)
-            #expect(try copyReplica.rootCursor().readBytesAlloc(maxSize: 16) == utf8("bbbbbbbbbbbb"))
+            #expect(try copyReplica.rootCursor.readBytesAlloc(maxSize: 16) == utf8("bbbbbbbbbbbb"))
         }
 
         // while the real source only sends the new bytes
         try sourceRoot.write(.uint(2))
-        #expect(try source.replicationStart(try replica.replicaState()) == replica.committedSize())
+        #expect(try source.replicationStart(for: try replica.replicaState) == replica.committedSize)
         try replicate(source, replica)
         try expectSameCommittedBytes(source, replica)
     }
@@ -349,7 +349,7 @@ import Testing
     }
 
     /// test.zig 4122-4257: "a hash map root": a hundred keys put one transaction at a time and replicated after
-    /// each, a key written, nested collections in one transaction, a batch under `runContext`, a late cursor, the
+    /// each, a key written, nested collections in one transaction, a batch under `withTransaction`, a late cursor, the
     /// replica reopened, and compacted.
     private func hashMapRoot(_ kind: StorageKind) throws {
         // a hash map root
@@ -359,16 +359,16 @@ import Testing
         let source = try Database(storage: sourceSubject.storage, hashSize: 20)
         var replica = try Database(storage: replicaSubject.storage, hashSize: 20)
 
-        let map = try HashMap<ReadWrite>(source.rootCursor())
+        let map = try HashMap<ReadWrite>(source.rootCursor)
 
         // initializing an initialized root doesn't start a transaction
-        let sizeAfterInit = try source.committedSize()
-        _ = try HashMap<ReadWrite>(source.rootCursor())
-        #expect(try source.committedSize() == sizeAfterInit)
+        let sizeAfterInit = try source.committedSize
+        _ = try HashMap<ReadWrite>(source.rootCursor)
+        #expect(try source.committedSize == sizeAfterInit)
 
         // nor can the root be initialized as another type
-        #expect(throws: XitDBError.unexpectedTag) { _ = try ArrayList<ReadWrite>(source.rootCursor()) }
-        #expect(try source.committedSize() == sizeAfterInit)
+        #expect(throws: XitDBError.unexpectedTag) { _ = try ArrayList<ReadWrite>(source.rootCursor) }
+        #expect(try source.committedSize == sizeAfterInit)
 
         var committed = try readCommittedBytes(source, from: 0)
 
@@ -400,20 +400,20 @@ import Testing
         try replicate(source, replica)
         try expectSameCommittedBytes(source, replica)
 
-        // `runContext` groups many writes into one transaction
+        // `withTransaction` groups many writes into one transaction
         do {
-            let sizeBefore = try source.committedSize()
+            let sizeBefore = try source.committedSize
 
             // a failed transaction leaves nothing behind
             #expect(throws: Fail.self) {
-                try source.runContext { cursor in try writeBatch(cursor, fail: true) }
+                try source.withTransaction { cursor in try writeBatch(cursor, fail: true) }
             }
-            #expect(try source.committedSize() == sizeBefore)
+            #expect(try source.committedSize == sizeBefore)
             #expect(try map.getCursor(hashInt("batch-0")) == nil)
 
             // a successful one commits everything at once
-            try source.runContext { cursor in try writeBatch(cursor, fail: false) }
-            #expect(try source.committedSize() > sizeBefore)
+            try source.withTransaction { cursor in try writeBatch(cursor, fail: false) }
+            #expect(try source.committedSize > sizeBefore)
             let batch0 = try #require(try map.getCursor(hashInt("batch-0")))
             #expect(try batch0.readUint() == 0)
             let batch99 = try #require(try map.getCursor(hashInt("batch-99")))
@@ -432,7 +432,7 @@ import Testing
         // the replica can be reopened and read
         replica = try Database(storage: replicaSubject.storage, hashSize: 20)
         do {
-            let replicaMap = try HashMap<ReadOnly>(replica.rootCursor().readOnly())
+            let replicaMap = try HashMap<ReadOnly>(replica.rootCursor.readOnly())
             let key99 = try #require(try replicaMap.getCursor(hashInt("key-99")))
             #expect(try key99.readUint() == 99)
             #expect(try replicaMap.getCursor(hashInt("key-25")) == nil)
@@ -450,9 +450,9 @@ import Testing
             var offsetMap = MemoryOffsetMap()
 
             let target = try replica.compact(into: MemoryStorage(), offsetMap: &offsetMap)
-            #expect(try target.committedSize() < replica.committedSize())
+            #expect(try target.committedSize < replica.committedSize)
 
-            let targetMap = try HashMap<ReadOnly>(target.rootCursor().readOnly())
+            let targetMap = try HashMap<ReadOnly>(target.rootCursor.readOnly())
             let key99 = try #require(try targetMap.getCursor(hashInt("key-99")))
             #expect(try key99.readUint() == 99)
             #expect(try targetMap.getCursor(hashInt("key-25")) == nil)
@@ -475,7 +475,7 @@ import Testing
         let subject = try StorageUnderTest(kind)
         let db = try Database(storage: subject.storage, hashSize: 20)
 
-        let history = try ArrayList<ReadWrite>(db.rootCursor())
+        let history = try ArrayList<ReadWrite>(db.rootCursor)
         try history.append(.uint(1))
         try history.append(.uint(2))
         #expect(try history.count() == 2)
@@ -485,9 +485,9 @@ import Testing
         #expect(iterCount == 2)
 
         // initializing an initialized root doesn't start a transaction
-        let size = try db.committedSize()
-        _ = try ArrayList<ReadWrite>(db.rootCursor())
-        #expect(try db.committedSize() == size)
+        let size = try db.committedSize
+        _ = try ArrayList<ReadWrite>(db.rootCursor)
+        #expect(try db.committedSize == size)
     }
 
     /// test.zig 4279-4313: "a scalar root".
@@ -496,11 +496,11 @@ import Testing
         let subject = try StorageUnderTest(kind)
         let db = try Database(storage: subject.storage, hashSize: 20)
 
-        let retained = db.rootCursor()
-        var root = db.rootCursor()
+        let retained = db.rootCursor
+        var root = db.rootCursor
         try root.write(.uint(42))
         #expect(try root.readUint() == 42)
-        #expect(try db.rootCursor().readUint() == 42)
+        #expect(try db.rootCursor.readUint() == 42)
 
         // a root cursor kept from before the write sees the new root
         // everywhere it reads its slot, not just in typed reads
@@ -513,17 +513,17 @@ import Testing
 
         // the cursor stays a root cursor, so it can keep writing
         try root.write(.bytes(utf8("this is too long to fit in a slot")))
-        #expect(try db.rootCursor().readBytesAlloc(maxSize: 64) == utf8("this is too long to fit in a slot"))
+        #expect(try db.rootCursor.readBytesAlloc(maxSize: 64) == utf8("this is too long to fit in a slot"))
 
         // bytes can't be streamed into the root
         #expect(throws: XitDBError.cursorNotWritable) { try root.writer { _ in } }
 
         // a scalar root can't be initialized as a collection
-        #expect(throws: XitDBError.unexpectedTag) { _ = try HashMap<ReadWrite>(db.rootCursor()) }
+        #expect(throws: XitDBError.unexpectedTag) { _ = try HashMap<ReadWrite>(db.rootCursor) }
 
         // but once it is cleared, it can
         try root.write(.slot(nil))
-        let map = try HashMap<ReadWrite>(db.rootCursor())
+        let map = try HashMap<ReadWrite>(db.rootCursor)
         try map.put(hashInt("foo"), .uint(1))
         let foo = try #require(try map.getCursor(hashInt("foo")))
         #expect(try foo.readUint() == 1)
@@ -535,7 +535,7 @@ import Testing
         let subject = try StorageUnderTest(kind)
         let db = try Database(storage: subject.storage, hashSize: 20)
 
-        let set = try HashSet<ReadWrite>(db.rootCursor())
+        let set = try HashSet<ReadWrite>(db.rootCursor)
         try set.put(hashInt("a"), .bytes(utf8("a")))
         try set.put(hashInt("a"), .bytes(utf8("a")))
         try set.put(hashInt("b"), .bytes(utf8("b")))
@@ -551,7 +551,7 @@ import Testing
         let subject = try StorageUnderTest(kind)
         let db = try Database(storage: subject.storage, hashSize: 20)
 
-        let map = try SortedMap<ReadWrite>(db.rootCursor())
+        let map = try SortedMap<ReadWrite>(db.rootCursor)
         try map.put(utf8("b"), .uint(2))
         try map.put(utf8("a"), .uint(1))
         try map.put(utf8("c"), .uint(3))
@@ -561,9 +561,9 @@ import Testing
         let a = try #require(try map.getCursor(utf8("a")))
         #expect(try a.readUint() == 1)
 
-        let size = try db.committedSize()
-        _ = try SortedMap<ReadWrite>(db.rootCursor())
-        #expect(try db.committedSize() == size)
+        let size = try db.committedSize
+        _ = try SortedMap<ReadWrite>(db.rootCursor)
+        #expect(try db.committedSize == size)
     }
 
     /// test.zig 4348-4365: "a linked array list root".
@@ -572,7 +572,7 @@ import Testing
         let subject = try StorageUnderTest(kind)
         let db = try Database(storage: subject.storage, hashSize: 20)
 
-        let list = try LinkedArrayList<ReadWrite>(db.rootCursor())
+        let list = try LinkedArrayList<ReadWrite>(db.rootCursor)
         try list.append(.uint(1))
         try list.append(.uint(3))
         try list.insert(1, .uint(2))
@@ -583,8 +583,8 @@ import Testing
         let first = try #require(try list.getCursor(0))
         #expect(try first.readUint() == 2)
 
-        let size = try db.committedSize()
-        _ = try LinkedArrayList<ReadWrite>(db.rootCursor())
-        #expect(try db.committedSize() == size)
+        let size = try db.committedSize
+        _ = try LinkedArrayList<ReadWrite>(db.rootCursor)
+        #expect(try db.committedSize == size)
     }
 }

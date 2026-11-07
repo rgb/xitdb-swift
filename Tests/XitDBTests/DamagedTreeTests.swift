@@ -22,7 +22,7 @@ import Testing
             database = try Database(
                 storage: subject.storage, hashSize: 20, hashID: nil, fileID: 6,
                 random: FixedRandom((1...50).map { UInt64($0) }))
-            try database.runContext { cursor in
+            try database.withTransaction { cursor in
                 let map = try HashMap(cursor)
                 let list = try LinkedArrayList(try map.putCursor(sha1("list").bytes))
                 for index in 0..<40 {
@@ -31,7 +31,7 @@ import Testing
                 let short = try LinkedArrayList(try map.putCursor(sha1("short").bytes))
                 try short.append(.uint(100))
             }
-            let slot = try #require(try database.rootCursor().readPathSlot([.hashMapGet(.value, sha1("list"))]))
+            let slot = try #require(try database.rootCursor.readPathSlot([.hashMapGet(.value, sha1("list"))]))
             headerPtr = slot.value
             rootPtr = try database.reader.bTreeHeader(at: headerPtr).rootPtr
             #expect(try database.reader.bTreeNode(at: rootPtr).num == 4)
@@ -58,7 +58,7 @@ import Testing
             _ name: String, _ body: (LinkedArrayList<ReadWrite>, LinkedArrayList<ReadWrite>) throws -> Void
         ) {
             do {
-                try database.runContext { cursor in
+                try database.withTransaction { cursor in
                     let map = try HashMap(cursor)
                     let list = try LinkedArrayList(try map.putCursor(sha1("list").bytes))
                     let short = try LinkedArrayList(try map.putCursor(sha1("short").bytes))
@@ -112,7 +112,7 @@ import Testing
     func theSoundListRaisesNothing(kind: StorageKind) throws {
         let subject = try Subject(kind)
         var count = 0
-        try subject.database.runContext { cursor in
+        try subject.database.withTransaction { cursor in
             let list = try LinkedArrayList(try HashMap(cursor).putCursor(sha1("list").bytes))
             #expect(try list.count() == 40)
             #expect(throws: XitDBError.keyNotFound) { try list.put(50, .uint(1)) }
@@ -214,7 +214,7 @@ import Testing
         let database = try Database(
             storage: subject.storage, hashSize: 20, hashID: nil, fileID: 6,
             random: FixedRandom((1...50).map { UInt64($0) }))
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let map = try HashMap(cursor)
             let list = try LinkedArrayList(try map.putCursor(sha1("list").bytes))
             for index in 0..<1500 {
@@ -223,7 +223,7 @@ import Testing
             let short = try LinkedArrayList(try map.putCursor(sha1("short").bytes))
             try short.append(.uint(100))
         }
-        let slot = try #require(try database.rootCursor().readPathSlot([.hashMapGet(.value, sha1("list"))]))
+        let slot = try #require(try database.rootCursor.readPathSlot([.hashMapGet(.value, sha1("list"))]))
         let rootPtr = try database.reader.bTreeHeader(at: slot.value).rootPtr
         #expect(try database.reader.bTreeHeight(rootPtr: rootPtr) == 3)
         let root = try database.reader.bTreeNode(at: rootPtr)
@@ -240,7 +240,7 @@ import Testing
             let damaged = try Database(
                 storage: subject.storage, hashSize: 20, hashID: nil, fileID: nil, random: FixedRandom([9]))
             var reported = false
-            try damaged.runContext { cursor in
+            try damaged.withTransaction { cursor in
                 let map = try HashMap(cursor)
                 let list = try LinkedArrayList(try map.putCursor(sha1("list").bytes))
                 let short = try LinkedArrayList(try map.putCursor(sha1("short").bytes))

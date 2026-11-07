@@ -28,7 +28,7 @@ import Testing
             fileID: 0x0011_2233_4455_6677,
             random: FixedRandom([1, 2, 3])
         )
-        _ = try database.rootCursor().writePath([.arrayListInit, .arrayListAppend, .hashMapInit(), .ctx]) { cursor in
+        _ = try database.rootCursor.writePath([.arrayListInit, .arrayListAppend, .hashMapInit(), .ctx]) { cursor in
             let moment = try HashMap(cursor)
             let a = try LinkedArrayList(try moment.putCursor(sha1("a").bytes))
             for value in 0..<16 {
@@ -77,7 +77,7 @@ import Testing
     @Test func aSliceAtTheBounds() throws {
         let database = try Database(
             storage: MemoryStorage(), hashSize: 20, hashID: nil, fileID: 6, random: FixedRandom([1, 2, 3]))
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let list = try LinkedArrayList(cursor)
             for value in 0..<40 {
                 try list.append(.uint(UInt64(value)))
@@ -105,7 +105,7 @@ import Testing
         let storage = FaultInjectingStorage(MemoryStorage())
         let database = try Database(
             storage: storage, hashSize: 20, hashID: nil, fileID: 6, random: FixedRandom([1, 2, 3]))
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let list = try LinkedArrayList(try HashMap(cursor).putCursor(sha1("list").bytes))
             for value in 0..<40 {
                 try list.append(.uint(UInt64(value)))
@@ -116,7 +116,7 @@ import Testing
             try list.put(39, .uint(98))
             #expect(storage.writeCount == writes + 2)
         }
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let list = try LinkedArrayList(try HashMap(cursor).putCursor(sha1("list").bytes))
             let writes = storage.writeCount
             try list.put(3, .uint(97))

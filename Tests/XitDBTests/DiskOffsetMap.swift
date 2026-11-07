@@ -24,7 +24,7 @@ final class DiskOffsets {
     /// Runs `body` with the map inside one transaction of its database.
     func use<Result>(_ body: (inout DiskOffsetMap) throws -> Result) throws -> Result {
         var result: Result?
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             var map = DiskOffsetMap(map: try HashMap(cursor))
             result = try body(&map)
         }

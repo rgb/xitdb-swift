@@ -17,7 +17,7 @@
 /// tree: a view of the other kind reads the same entries, and writing
 /// through it makes the slot its own kind.
 ///
-/// Writing needs a transaction: see ``Database/runContext(_:)``. A set at
+/// Writing needs a transaction: see ``Database/withTransaction(_:)``. A set at
 /// the root of the database is the exception: there, every write is a
 /// transaction of its own.
 public struct SortedSet<Access: CursorAccess> {

@@ -26,7 +26,7 @@ import Testing
         let storage = MemoryStorage()
         let database = try Database(
             storage: storage, hashSize: 20, hashID: nil, fileID: 0xC0FFEE, random: FixedRandom([1, 2]))
-        let root = database.rootCursor()
+        let root = database.rootCursor
         _ = try root.writePath([.arrayListInit, .arrayListAppend, .hashMapInit(), .ctx]) { cursor in
             _ = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(1))])
             _ = try cursor.writePath([.hashMapGet(.key, sha1("a")), .write(.bytes(Array("a".utf8)))])
@@ -108,11 +108,11 @@ import Testing
             guard let database = opened else { continue }
 
             // reads
-            tolerating { _ = try database.committedSize() }
-            tolerating { _ = try database.rootCursor().count() }
+            tolerating { _ = try database.committedSize }
+            tolerating { _ = try database.rootCursor.count() }
             for index in [Int64(0), -1, 2, .min] {
                 var found: Cursor<ReadOnly>?
-                tolerating { found = try database.rootCursor().readPath([.arrayListGet(index)]) }
+                tolerating { found = try database.rootCursor.readPath([.arrayListGet(index)]) }
                 guard let moment = found else { continue }
                 tolerating { _ = try moment.count() }
                 for key in ["a", "long", "list", "counted", "linked", "b", "missing"] {
@@ -162,9 +162,9 @@ import Testing
 
             // writes: one transaction that goes on after each part that
             // fails, so that every kind of write meets the damage
-            tolerating { _ = try database.rootCursor().writePath([.arrayListInit]) }
+            tolerating { _ = try database.rootCursor.writePath([.arrayListInit]) }
             tolerating {
-                let root = database.rootCursor()
+                let root = database.rootCursor
                 let last = try root.readPathSlot([.arrayListGet(-1)])
                 _ = try root.writePath([.arrayListInit, .arrayListAppend, .write(.slot(last)), .hashMapInit(), .ctx]) {
                     cursor in
@@ -189,7 +189,7 @@ import Testing
                 }
             }
             tolerating {
-                try database.runContext { cursor in
+                try database.withTransaction { cursor in
                     let list: [PathPart] = [
                         .arrayListGet(0), .hashMapInit(), .hashMapGet(.value, sha1("list")), .arrayListInit,
                     ]
@@ -203,7 +203,7 @@ import Testing
             }
             // the linked array list: every operation, through the collection
             tolerating {
-                try database.runContext { cursor in
+                try database.withTransaction { cursor in
                     let map = try HashMap(try cursor.writePath([.arrayListGet(0)]))
                     var linked = try LinkedArrayList(try map.putCursor(sha1("linked").bytes))
                     self.tolerating { try linked.append(.uint(20)) }
@@ -216,7 +216,7 @@ import Testing
                     self.tolerating { try self.drain(try linked.iterator()) }
                 }
             }
-            tolerating { _ = try database.rootCursor().writePath([.write(.uint(1))]) }
+            tolerating { _ = try database.rootCursor.writePath([.write(.uint(1))]) }
             // Nothing here writes more than a few kilobytes. A storage that
             // grew out of all proportion was sent a write it should not get.
             #expect(storage.bytes.count < bytes.count + 100_000)
@@ -227,8 +227,8 @@ import Testing
         let bytes = Self.sound
         try #require(bytes.count > 1500)
         let database = try Database(storage: MemoryStorage(bytes: bytes), hashSize: 20)
-        #expect(try database.rootCursor().count() == 2)
-        let moment = try #require(try database.rootCursor().readPath([.arrayListGet(-1)]))
+        #expect(try database.rootCursor.count() == 2)
+        let moment = try #require(try database.rootCursor.readPath([.arrayListGet(-1)]))
         #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("list"))])).count() == 20)
         #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("counted"))])).count() == 2)
         // and the exercise works on it as it is
@@ -324,7 +324,7 @@ import Testing
         first[0] = 0x10
         second[0] = 0x20
 
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let map = try cursor.writePath([.hashMapInit(counted: true)])
             _ = try map.writePath([.hashMapGet(.value, KeyHash(first)), .write(.uint(1))])
             _ = try map.writePath([.hashMapGet(.value, KeyHash(second)), .write(.uint(2))])
@@ -332,7 +332,7 @@ import Testing
         // 4,095 index blocks below the root block were needed to tell the two apart
         #expect(storage.bytes.count > 4095 * 144)
 
-        let root = database.rootCursor()
+        let root = database.rootCursor
         #expect(try root.count() == 2)
         #expect(try #require(try root.readPath([.hashMapGet(.value, KeyHash(first))])).readUint() == 1)
         #expect(try #require(try root.readPath([.hashMapGet(.value, KeyHash(second))])).readUint() == 2)
@@ -348,7 +348,7 @@ import Testing
 
         // a later transaction copies the whole chain on its way down, and a
         // removal walks it both ways
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             _ = try cursor.writePath([.hashMapGet(.value, KeyHash(second)), .write(.uint(3))])
             _ = try cursor.writePath([.hashMapRemove(KeyHash(first))])
             #expect(throws: XitDBError.keyNotFound) { try cursor.writePath([.hashMapRemove(KeyHash(first))]) }
@@ -366,7 +366,7 @@ import Testing
     @Test func aTrieThatPointsAtItselfEnds() throws {
         var bytes = Self.sound
         let database = try Database(storage: MemoryStorage(bytes: bytes), hashSize: 20)
-        let moment = try #require(try database.rootCursor().readPath([.arrayListGet(-1)]))
+        let moment = try #require(try database.rootCursor.readPath([.arrayListGet(-1)]))
         let mapPosition = Int(try moment.slot().value)
         // every slot of the map's root block now points back at the block
         for slot in 0..<16 {
@@ -377,7 +377,7 @@ import Testing
         }
         // The last trailer does not cover the block, so the file still opens.
         let looped = try Database(storage: MemoryStorage(bytes: bytes), hashSize: 20)
-        let loopedMoment = try #require(try looped.rootCursor().readPath([.arrayListGet(-1)]))
+        let loopedMoment = try #require(try looped.rootCursor.readPath([.arrayListGet(-1)]))
         #expect(throws: XitDBError.keyOffsetExceeded) { try loopedMoment.readPath([.hashMapGet(.value, sha1("a"))]) }
         // and so does an iterator: forty levels of blocks, then the error
         var iterator = try loopedMoment.iterator()
@@ -392,7 +392,7 @@ import Testing
     @Test func aListDeeperThanItsSizeAllowsEndsItsIterator() throws {
         var bytes = Self.sound
         let database = try Database(storage: MemoryStorage(bytes: bytes), hashSize: 20)
-        let moment = try #require(try database.rootCursor().readPath([.arrayListGet(-1)]))
+        let moment = try #require(try database.rootCursor.readPath([.arrayListGet(-1)]))
         let list = try #require(try moment.readPath([.hashMapGet(.value, sha1("list"))]))
         // twenty elements: a root block whose first two slots point at
         // blocks of elements. The second element block now points at the
@@ -403,7 +403,7 @@ import Testing
         bytes.replaceSubrange(
             (secondBlock + 18)..<(secondBlock + 27), with: slotBytes(Slot(value: firstBlock, tag: .index)))
         let damaged = try Database(storage: MemoryStorage(bytes: bytes), hashSize: 20)
-        let damagedMoment = try #require(try damaged.rootCursor().readPath([.arrayListGet(-1)]))
+        let damagedMoment = try #require(try damaged.rootCursor.readPath([.arrayListGet(-1)]))
         let damagedList = try #require(try damagedMoment.readPath([.hashMapGet(.value, sha1("list"))]))
         var iterator = try damagedList.iterator()
         var seen: [UInt64] = []
@@ -427,7 +427,7 @@ import Testing
         upper.replaceSubrange(
             Int(header.ptr + 9)..<Int(header.ptr + 18), with: slotBytes(Slot(value: 7, tag: .uint)))
         let damagedUpper = try Database(storage: MemoryStorage(bytes: upper), hashSize: 20)
-        let upperMoment = try #require(try damagedUpper.rootCursor().readPath([.arrayListGet(-1)]))
+        let upperMoment = try #require(try damagedUpper.rootCursor.readPath([.arrayListGet(-1)]))
         let upperList = try #require(try upperMoment.readPath([.hashMapGet(.value, sha1("list"))]))
         #expect(throws: XitDBError.unexpectedTag) { try upperList.iterator(fromArrayListIndex: 17) }
         var fromStart = try upperList.iterator(fromArrayListIndex: 15)
@@ -441,12 +441,12 @@ import Testing
     @Test func aValueLongerThanTheFileEndsItsStream() throws {
         var bytes = Self.sound
         let database = try Database(storage: MemoryStorage(bytes: bytes), hashSize: 20)
-        let moment = try #require(try database.rootCursor().readPath([.arrayListGet(-1)]))
+        let moment = try #require(try database.rootCursor.readPath([.arrayListGet(-1)]))
         let long = try #require(try moment.readPath([.hashMapGet(.value, sha1("long"))]))
         let record = Int(try long.slot().value)
         bytes.replaceSubrange(record..<(record + 8), with: bigEndianBytes(1 << 40))
         let damaged = try Database(storage: MemoryStorage(bytes: bytes), hashSize: 20)
-        let damagedMoment = try #require(try damaged.rootCursor().readPath([.arrayListGet(-1)]))
+        let damagedMoment = try #require(try damaged.rootCursor.readPath([.arrayListGet(-1)]))
         let damagedLong = try #require(try damagedMoment.readPath([.hashMapGet(.value, sha1("long"))]))
         var reader = try damagedLong.reader()
         #expect(reader.size == 1 << 40)

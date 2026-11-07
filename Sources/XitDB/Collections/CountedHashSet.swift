@@ -14,7 +14,7 @@
 /// write makes the slot a set if it holds nothing, and readies it for
 /// this transaction's writes.
 ///
-/// Writing needs a transaction: see ``Database/runContext(_:)``. A set at
+/// Writing needs a transaction: see ``Database/withTransaction(_:)``. A set at
 /// the root of the database is the exception: there, every write is a
 /// transaction of its own.
 public struct CountedHashSet<Access: CursorAccess> {

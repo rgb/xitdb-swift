@@ -120,7 +120,7 @@ import Testing
     private func makeHistory(_ kind: StorageKind) throws -> (subject: StorageUnderTest, history: ArrayList<ReadWrite>) {
         let subject = try StorageUnderTest(kind)
         let database = try Database(storage: subject.storage, hashSize: 20)
-        return (subject, try ArrayList<ReadWrite>(database.rootCursor()))
+        return (subject, try ArrayList<ReadWrite>(database.rootCursor))
     }
 
     /// test.zig 3953-3984: a list that is initialized again is a copy of the one before the freeze, and a slot

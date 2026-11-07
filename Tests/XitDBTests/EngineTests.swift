@@ -39,9 +39,9 @@ import Testing
         #expect(database.header.hashSize == 20)
         #expect(database.header.hashID == HashID(rawValue: 0))
         #expect(database.header.fileID == 0x0102_0304_0506_0708)
-        #expect(try database.committedSize() == 62)
-        #expect(try database.rootCursor().slot().isEmpty)
-        #expect(try database.rootCursor().count() == 0)
+        #expect(try database.committedSize == 62)
+        #expect(try database.rootCursor.slot().isEmpty)
+        #expect(try database.rootCursor.count() == 0)
     }
 
     /// Creating a database asks the random source for nothing when the file
@@ -64,18 +64,31 @@ import Testing
 
     /// R15: a new database needs a hash size; an existing one is opened with
     /// the size in its header unless one is stated, and a disagreement is an
-    /// error.
+    /// error. Opening never creates: an empty storage is not a database.
     @Test func theHashSizeIsRequiredToCreateAndCheckedToOpen() throws {
-        #expect(throws: XitDBError.invalidHashSize) { try Database(storage: MemoryStorage()) }
+        #expect(throws: XitDBError.invalidDatabase) { try Database(opening: MemoryStorage()) }
+        #expect(throws: XitDBError.invalidDatabase) { try Database(opening: MemoryStorage(), hashSize: 20) }
 
         let storage = MemoryStorage()
-        _ = try Database(storage: storage, hashSize: 32, hashID: "sha2")
-        let reopened = try Database(storage: storage)
+        _ = try Database(creating: storage, hashSize: 32, hashID: "sha2")
+        let reopened = try Database(opening: storage)
         #expect(reopened.header.hashSize == 32)
         #expect(reopened.header.hashID == "sha2")
-        #expect(try Database(storage: storage, hashSize: 32).header.hashSize == 32)
-        #expect(throws: XitDBError.invalidHashSize) { try Database(storage: storage, hashSize: 20) }
-        // a hash ID or file ID given when opening is not written anywhere
+        #expect(try Database(opening: storage, hashSize: 32).header.hashSize == 32)
+        #expect(throws: XitDBError.invalidHashSize) { try Database(opening: storage, hashSize: 20) }
+        #expect(storage.bytes.count == 62)
+        // creating never opens: a storage with bytes is refused, whatever
+        // they are, and so is a hash size the header cannot hold
+        #expect(throws: XitDBError.storageNotEmpty) { try Database(creating: storage, hashSize: 32) }
+        #expect(throws: XitDBError.storageNotEmpty) {
+            try Database(creating: MemoryStorage(bytes: [1]), hashSize: 20)
+        }
+        #expect(throws: XitDBError.invalidHashSize) { try Database(creating: MemoryStorage(), hashSize: 0) }
+        #expect(throws: XitDBError.invalidHashSize) { try Database(creating: MemoryStorage(), hashSize: 65536) }
+        #expect(throws: XitDBError.invalidHashSize) { try Database(creating: MemoryStorage(), hashSize: -1) }
+        #expect(try Database(creating: MemoryStorage(), hashSize: 65535).header.hashSize == 65535)
+        // the Zig-shaped init of the ported tests opens or creates
+        #expect(throws: XitDBError.invalidHashSize) { try Database(storage: MemoryStorage(), hashSize: nil) }
         let ignored = try Database(storage: storage, hashSize: nil, hashID: HashID(rawValue: 1), fileID: 2)
         #expect(ignored.header.hashID == reopened.header.hashID)
         #expect(ignored.header.fileID == reopened.header.fileID)
@@ -83,25 +96,25 @@ import Testing
     }
 
     @Test func aStorageThatIsNotADatabaseIsRejected() throws {
-        #expect(throws: XitDBError.endOfStream) { try Database(storage: MemoryStorage(bytes: [1, 2, 3])) }
+        #expect(throws: XitDBError.endOfStream) { try Database(opening: MemoryStorage(bytes: [1, 2, 3])) }
         #expect(throws: XitDBError.invalidDatabase) {
-            try Database(storage: MemoryStorage(bytes: [UInt8](repeating: 0, count: 62)))
+            try Database(opening: MemoryStorage(bytes: [UInt8](repeating: 0, count: 62)))
         }
 
         let good = MemoryStorage()
-        _ = try Database(storage: good, hashSize: 20)
+        _ = try Database(creating: good, hashSize: 20)
         // a header and no root header
         #expect(throws: XitDBError.endOfStream) {
-            try Database(storage: MemoryStorage(bytes: Array(good.bytes[..<30])))
+            try Database(opening: MemoryStorage(bytes: Array(good.bytes[..<30])))
         }
         // the last byte of the trailer is missing
         #expect(throws: XitDBError.truncatedDatabase) {
-            try Database(storage: MemoryStorage(bytes: Array(good.bytes.dropLast())))
+            try Database(opening: MemoryStorage(bytes: Array(good.bytes.dropLast())))
         }
         // a trailer that does not check out
         var corrupt = good.bytes
         corrupt[61] ^= 0x01
-        #expect(throws: XitDBError.invalidDatabase) { try Database(storage: MemoryStorage(bytes: corrupt)) }
+        #expect(throws: XitDBError.invalidDatabase) { try Database(opening: MemoryStorage(bytes: corrupt)) }
     }
 }
 
@@ -116,7 +129,7 @@ import Testing
     }
 
     private func moment(_ index: Int64) throws -> Cursor<ReadOnly> {
-        try #require(try database.rootCursor().readPath([.arrayListGet(index)]))
+        try #require(try database.rootCursor.readPath([.arrayListGet(index)]))
     }
 
     private func value(_ cursor: Cursor<ReadOnly>, _ key: String) throws -> Cursor<ReadOnly> {
@@ -130,14 +143,14 @@ import Testing
     @Test func theDatabaseOpensAndHasTwoMoments() throws {
         #expect(database.header.hashSize == 20)
         #expect(database.header.fileID == 0x172A_756F_2208_A5EC)
-        #expect(try database.committedSize() == 8550)
-        #expect(try database.rootCursor().slot() == Slot(value: 4847, tag: .arrayList))
-        #expect(try database.rootCursor().count() == 2)
-        #expect(try database.rootCursor().readPath([.arrayListGet(2)]) == nil)
-        #expect(try database.rootCursor().readPath([.arrayListGet(-3)]) == nil)
+        #expect(try database.committedSize == 8550)
+        #expect(try database.rootCursor.slot() == Slot(value: 4847, tag: .arrayList))
+        #expect(try database.rootCursor.count() == 2)
+        #expect(try database.rootCursor.readPath([.arrayListGet(2)]) == nil)
+        #expect(try database.rootCursor.readPath([.arrayListGet(-3)]) == nil)
         // the last moment by a negative index
-        #expect(try #require(try database.rootCursor().readPath([.arrayListGet(-1)])).slot() == (try moment(1).slot()))
-        #expect(try #require(try database.rootCursor().readPath([.arrayListGet(-2)])).slot() == (try moment(0).slot()))
+        #expect(try #require(try database.rootCursor.readPath([.arrayListGet(-1)])).slot() == (try moment(1).slot()))
+        #expect(try #require(try database.rootCursor.readPath([.arrayListGet(-2)])).slot() == (try moment(0).slot()))
     }
 
     @Test func theFirstMoment() throws {
@@ -299,7 +312,7 @@ import Testing
     @Test func aThirdMomentCanBeAppended() throws {
         let storage = MemoryStorage(bytes: try FixtureTests.load())
         let database = try Database(storage: storage, hashSize: 20, hashID: nil, fileID: nil, random: FixedRandom([7]))
-        let root = database.rootCursor()
+        let root = database.rootCursor
         let last = try root.readPathSlot([.arrayListGet(-1)])
         _ = try root.writePath([.arrayListInit, .arrayListAppend, .write(.slot(last)), .hashMapInit(), .ctx]) {
             cursor in
@@ -309,11 +322,11 @@ import Testing
         #expect(Array(storage.bytes[37..<8550]) == Array(try FixtureTests.load()[37...]))
 
         let reopened = try Database(storage: storage, hashSize: 20)
-        let third = try #require(try reopened.rootCursor().readPath([.arrayListGet(2)]))
+        let third = try #require(try reopened.rootCursor.readPath([.arrayListGet(2)]))
         #expect(
             try #require(try third.readPath([.hashMapGet(.value, sha1("foo"))])).readBytesAlloc()
                 == Array("changed".utf8))
-        let second = try #require(try reopened.rootCursor().readPath([.arrayListGet(1)]))
+        let second = try #require(try reopened.rootCursor.readPath([.arrayListGet(1)]))
         #expect(
             try #require(try second.readPath([.hashMapGet(.value, sha1("foo"))])).readBytesAlloc() == Array("foo".utf8))
         #expect(try #require(try third.readPath([.hashMapGet(.value, sha1("fruits"))])).count() == 2)
@@ -330,7 +343,7 @@ import Testing
         let database = try Database(storage: storage, hashSize: 20)
 
         // HashMap.init on a root cursor
-        let map = try database.rootCursor().writePath([.hashMapInit(counted: false, set: false)])
+        let map = try database.rootCursor.writePath([.hashMapInit(counted: false, set: false)])
         // map.put
         _ = try map.writePath([.hashMapGet(.value, sha1("foo")), .write(.bytes(Array("foo".utf8)))])
         _ = try map.writePath([.hashMapGet(.value, sha1("bar")), .write(.bytes(Array("bar".utf8)))])
@@ -343,7 +356,7 @@ import Testing
         }
 
         // not in the Zig test: what was written reads back
-        let root = database.rootCursor()
+        let root = database.rootCursor
         #expect(
             try #require(try root.readPath([.hashMapGet(.value, sha1("foo"))])).readBytesAlloc() == Array("foo".utf8))
         #expect(
@@ -355,7 +368,7 @@ import Testing
         let storage = MemoryStorage(maxSize: 50000)
         let database = try Database(storage: storage, hashSize: 20)
 
-        let list = try LinkedArrayList<ReadWrite>(database.rootCursor())
+        let list = try LinkedArrayList<ReadWrite>(database.rootCursor)
         try list.append(.uint(1))
         #expect(try list.count() == 1)
     }
@@ -374,7 +387,7 @@ import Testing
     /// value, no position to write through, and no hash.
     @Test func bytesReadAsAKeyOnlyEntry() throws {
         let database = try makeDatabase()
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             _ = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("short")), .write(.bytes([1, 2, 3]))])
             _ = try cursor.writePath([
                 .hashMapGet(.value, sha1("long")), .write(.bytes([UInt8](repeating: 9, count: 30))),
@@ -400,7 +413,7 @@ import Testing
     /// record is made by hand here.
     @Test func aSortedPairReadsWithoutAHash() throws {
         let database = try makeDatabase()
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             _ = try cursor.writePath([.hashMapInit()])
             // eighteen bytes: a key slot (short bytes "k") and a value slot (uint 7)
             let record =
@@ -428,7 +441,7 @@ import Testing
 
     @Test func removingAMissingKeyLeavesACountedMapsCount() throws {
         let database = try makeDatabase()
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let map = try cursor.writePath([.hashMapInit(counted: true)])
             _ = try map.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(1))])
             _ = try map.writePath([.hashMapGet(.value, sha1("b")), .write(.uint(2))])
@@ -446,15 +459,15 @@ import Testing
             #expect(throws: XitDBError.keyNotFound) { try map.writePath([.hashMapRemove(sha1("a"))]) }
             #expect(try map.count() == 1)
         }
-        #expect(try database.rootCursor().count() == 1)
+        #expect(try database.rootCursor.count() == 1)
         // an init of the other kind is refused
         #expect(throws: XitDBError.unexpectedTag) {
-            try database.rootCursor().writePath([.hashMapInit(), .write(.uint(1))])
+            try database.rootCursor.writePath([.hashMapInit(), .write(.uint(1))])
         }
         #expect(throws: XitDBError.unexpectedTag) {
-            try database.rootCursor().writePath([.arrayListInit, .arrayListAppend])
+            try database.rootCursor.writePath([.arrayListInit, .arrayListAppend])
         }
-        #expect(try database.rootCursor().count() == 1)
+        #expect(try database.rootCursor.count() == 1)
     }
 
     /// A transaction on a root that is a sorted map or set runs that
@@ -465,24 +478,24 @@ import Testing
     func aTransactionOnARootThatIsASortedMapCopiesItsHeader(tag: Slot.Tag) throws {
         let storage = MemoryStorage()
         let database = try makeDatabase(storage)
-        _ = try database.rootCursor().writePath([
+        _ = try database.rootCursor.writePath([
             .sortedMapInit(set: tag == .sortedSet), .sortedMapGet(.value, SortedKey([1])), .write(.uint(1)),
         ])
-        let before = try database.rootCursor().slot()
+        let before = try database.rootCursor.slot()
         #expect(before.tag == tag)
-        #expect(try database.rootCursor().count() == 1)
+        #expect(try database.rootCursor.count() == 1)
 
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             #expect(try cursor.slot().tag == tag)
             #expect(try cursor.slot().value != before.value)
             _ = try cursor.writePath([.sortedMapGet(.value, SortedKey([2])), .write(.uint(2))])
         }
-        #expect(try database.rootCursor().count() == 2)
+        #expect(try database.rootCursor.count() == 2)
         // the moment before still has its own header and one entry
         #expect(try database.reader.bTreeHeader(at: before.value).size == 1)
         // an init of the other kind is refused
         #expect(throws: XitDBError.unexpectedTag) {
-            try database.rootCursor().writePath([.hashMapInit(), .write(.uint(1))])
+            try database.rootCursor.writePath([.hashMapInit(), .write(.uint(1))])
         }
     }
 
@@ -494,7 +507,7 @@ import Testing
         let storage = MemoryStorage()
         let database = try makeDatabase(storage)
         var listPosition: UInt64 = 0
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let list = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("list")), .arrayListInit])
             _ = try list.writePath([.arrayListAppend, .write(.uint(1))])
             listPosition = try list.slot().value
@@ -506,7 +519,7 @@ import Testing
         let damaged = MemoryStorage(bytes: bytes)
         let reopened = try makeDatabase(damaged)
 
-        try reopened.runContext { cursor in
+        try reopened.withTransaction { cursor in
             // without the init part, the element's slot is where the header says: at the root header
             #expect(throws: XitDBError.invalidDatabase) {
                 try cursor.writePath([.hashMapGet(.value, sha1("list")), .arrayListGet(0), .write(.uint(9))])
@@ -515,7 +528,7 @@ import Testing
         // the root header was not written to
         #expect(Array(damaged.bytes[20..<29]) != slotBytes(Slot(value: 9, tag: .uint)))
         // and a read there just reads the root again
-        let list = try #require(try reopened.rootCursor().readPath([.hashMapGet(.value, sha1("list"))]))
+        let list = try #require(try reopened.rootCursor.readPath([.hashMapGet(.value, sha1("list"))]))
         #expect(try list.readPath([.arrayListGet(0)]) != nil)
     }
 
@@ -562,7 +575,7 @@ import Testing
             }
         }
 
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let map = try cursor.writePath([.hashMapInit()])
             for key in keys {
                 _ = try map.writePath([.hashMapGet(.value, key.hash), .write(.uint(key.value))])
@@ -589,7 +602,7 @@ import Testing
             #expect(try depthOfBase(map) == 127)
         }
         // committed, and read back through a new database on the same bytes
-        let moment = database.rootCursor()
+        let moment = database.rootCursor
         #expect(try moment.readPath([.hashMapGet(.value, keys[4].hash)])?.readUint() == 50)
         #expect(try moment.readPath([.hashMapGet(.value, keys[2].hash)]) == nil)
     }
@@ -642,7 +655,7 @@ import Testing
         #expect(throws: XitDBError.invalidDatabase) {
             let database = try Database(
                 storage: MemoryStorage(bytes: bytes), hashSize: 20, hashID: nil, fileID: nil, random: FixedRandom([1]))
-            _ = try database.committedSize()
+            _ = try database.committedSize
         }
     }
 
@@ -659,7 +672,7 @@ import Testing
         let database = try makeDatabase(storage)
         let kept = Kept()
         let first: [UInt8] = [1, 2, 3]
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let slot = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("bytes"))])
             var writer = try ByteRecordWriter(database: database, at: slot.slotPointer)
             try writer.write(first.span)
@@ -697,7 +710,7 @@ import Testing
         // differ in the next four
         let first = KeyHash([UInt8](repeating: 0xAA, count: 19) + [0x00])
         let second = KeyHash([UInt8](repeating: 0xBB, count: 19) + [0x10])
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let map = try cursor.writePath([.hashMapInit()])
             _ = try map.writePath([.hashMapGet(.value, first), .write(.uint(1))])
             _ = try map.writePath([.hashMapGet(.value, second), .write(.uint(2))])
@@ -736,7 +749,7 @@ import Testing
     /// than the freeze, and is changed in place.
     @Test func dataMadeRightAtACursorsFreezePointIsNotCopied() throws {
         let database = try makeDatabase()
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             var slot = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("list"))])
             try slot.freeze()
             let frozenAt = UInt64(storage.bytes.count)
@@ -753,7 +766,7 @@ import Testing
     /// belongs to the transaction.
     @Test func dataMadeRightAfterTheDatabaseIsFrozenIsNotCopied() throws {
         let database = try makeDatabase()
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let slot = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("list"))])
             let before = try slot.writePath([.arrayListInit])
             try database.freeze()
@@ -775,7 +788,7 @@ import Testing
     /// callback too.
     @Test func aCallbacksCursorInheritsTheFreezePoint() throws {
         let database = try makeDatabase()
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             var slot = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("list"))])
             let original = try slot.writePath([.arrayListInit])
             try slot.freeze()
@@ -800,7 +813,7 @@ import Testing
     /// roots are written to directly, so it is copied first.
     @Test func aSliceThatMakesTheListShallowerLeavesThePastAlone() throws {
         let database = try makeDatabase()
-        let root = database.rootCursor()
+        let root = database.rootCursor
         _ = try root.writePath([.arrayListInit, .arrayListAppend, .arrayListInit, .ctx]) { list in
             for index in 0..<20 {
                 _ = try list.writePath([.arrayListAppend, .write(.uint(UInt64(index)))])
@@ -826,7 +839,7 @@ import Testing
 
     @Test func aSliceToTheCurrentSizeChangesNothingAndALargerOneFails() throws {
         let database = try makeDatabase()
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let list = try cursor.writePath([.arrayListInit])
             for index in 0..<3 {
                 _ = try list.writePath([.arrayListAppend, .write(.uint(UInt64(index)))])
@@ -848,17 +861,17 @@ import Testing
     @Test func aTransactionThatWritesNothingKeepsTheRoot() throws {
         let database = try makeDatabase()
         // on an empty root
-        try database.runContext { _ in }
-        #expect(try database.rootCursor().slot().isEmpty)
-        #expect(try database.committedSize() == 62 + 9 + 25)
+        try database.withTransaction { _ in }
+        #expect(try database.rootCursor.slot().isEmpty)
+        #expect(try database.committedSize == 62 + 9 + 25)
 
         // on a root that is a plain value
-        var root = database.rootCursor()
+        var root = database.rootCursor
         try root.write(.uint(5))
-        let size = try database.committedSize()
-        try database.runContext { _ in }
-        #expect(try database.rootCursor().readUint() == 5)
-        #expect(try database.committedSize() == size + 9 + 25)
+        let size = try database.committedSize
+        try database.withTransaction { _ in }
+        #expect(try database.rootCursor.readUint() == 5)
+        #expect(try database.committedSize == size + 9 + 25)
     }
 
     static let initParts: [PathPart] = [
@@ -876,38 +889,38 @@ import Testing
     func initialisingAnInitialisedRootIsFreeForEveryCollection(partIndex: Int) throws {
         let part = Self.initParts[partIndex]
         let database = try makeDatabase()
-        let created = try database.rootCursor().writePath([part])
+        let created = try database.rootCursor.writePath([part])
         let tag = try created.slot().tag
         #expect(tag == part.initTag)
-        let size = try database.committedSize()
+        let size = try database.committedSize
         let drawn = random.remaining
 
-        let again = try database.rootCursor().writePath([part])
+        let again = try database.rootCursor.writePath([part])
         #expect(try again.slot() == (try created.slot()))
-        #expect(try database.committedSize() == size)
+        #expect(try database.committedSize == size)
         #expect(random.remaining == drawn)
 
         // a transaction on it: the root is copied by its own init part, and
         // stays the kind of collection it was
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             if tag == .arrayList {
                 _ = try cursor.writePath([.arrayListAppend, .write(.uint(1))])
             } else {
                 _ = try cursor.writePath([.hashMapGet(.key, sha1("k")), .write(.uint(1))])
             }
         }
-        #expect(try database.rootCursor().slot().tag == tag)
+        #expect(try database.rootCursor.slot().tag == tag)
         #expect(random.remaining == drawn - 1)
         if tag != .hashMap && tag != .hashSet {
-            #expect(try database.rootCursor().count() == 1)
+            #expect(try database.rootCursor.count() == 1)
         }
 
         // any other init is a transaction, and is refused or changes the root
         let other = Self.initParts[(partIndex + 1) % 5]
-        let before = try database.committedSize()
-        _ = try? database.rootCursor().writePath([other])
-        if try database.committedSize() != before {
-            #expect(try database.rootCursor().slot().tag == other.initTag)
+        let before = try database.committedSize
+        _ = try? database.rootCursor.writePath([other])
+        if try database.committedSize != before {
+            #expect(try database.rootCursor.slot().tag == other.initTag)
         }
     }
 
@@ -915,7 +928,7 @@ import Testing
     /// transaction left after the committed size, without committing.
     @Test func aFreeInitDiscardsLeftoverBytes() throws {
         let database = try makeDatabase()
-        _ = try database.rootCursor().writePath([.arrayListInit, .arrayListAppend, .write(.uint(1))])
+        _ = try database.rootCursor.writePath([.arrayListInit, .arrayListAppend, .write(.uint(1))])
         let committed = storage.bytes
 
         let leftover = MemoryStorage(bytes: committed + [UInt8](repeating: 0xAB, count: 40))
@@ -923,7 +936,7 @@ import Testing
         let drawn = random.remaining
         #expect(leftover.bytes.count == committed.count + 40)
 
-        _ = try reopened.rootCursor().writePath([.arrayListInit])
+        _ = try reopened.rootCursor.writePath([.arrayListInit])
         #expect(leftover.bytes == committed)
         #expect(random.remaining == drawn)
     }
@@ -934,30 +947,30 @@ import Testing
     /// trailer of the commit it was read from.
     @Test func aCursorReadFromTheRootIsAtTheTrailersSlot() throws {
         let database = try makeDatabase()
-        _ = try database.rootCursor().writePath([.hashMapInit(), .hashMapGet(.value, sha1("a")), .write(.uint(1))])
-        let pinned = try #require(try database.rootCursor().readPath([]))
+        _ = try database.rootCursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("a")), .write(.uint(1))])
+        let pinned = try #require(try database.rootCursor.readPath([]))
         let position = try #require(pinned.slotPointer.position)
-        #expect(position == (try database.committedSize()) - 25)
+        #expect(position == (try database.committedSize) - 25)
         #expect(try database.reader.slot(at: position) == (try pinned.slot()))
 
         // a later commit does not move it
-        _ = try database.rootCursor().writePath([.hashMapInit(), .hashMapGet(.value, sha1("b")), .write(.uint(2))])
+        _ = try database.rootCursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("b")), .write(.uint(2))])
         #expect(try pinned.readPath([.hashMapGet(.value, sha1("b"))]) == nil)
-        #expect(try database.rootCursor().readPath([.hashMapGet(.value, sha1("b"))]) != nil)
+        #expect(try database.rootCursor.readPath([.hashMapGet(.value, sha1("b"))]) != nil)
     }
 
     /// A cursor at an entry of a map is at the slot of the map's trie that
     /// points at the entry, in a read path and in a write path.
     @Test func aCursorAtAnEntryIsAtTheTriesSlot() throws {
         let database = try makeDatabase()
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             _ = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("a")), .write(.uint(1))])
             let written = try cursor.writePath([.hashMapGet(.kvPair, sha1("a"))])
             let writtenPosition = try #require(written.slotPointer.position)
             #expect(try database.reader.slot(at: writtenPosition) == (try written.slot()))
             #expect(try written.slot().tag == .kvPair)
         }
-        let read = try #require(try database.rootCursor().readPath([.hashMapGet(.kvPair, sha1("a"))]))
+        let read = try #require(try database.rootCursor.readPath([.hashMapGet(.kvPair, sha1("a"))]))
         let readPosition = try #require(read.slotPointer.position)
         #expect(try database.reader.slot(at: readPosition) == (try read.slot()))
     }
@@ -966,29 +979,29 @@ import Testing
     /// at what the cursor saw when it was made.
     @Test func writeIfEmptyOnARootCursorSeesTheCurrentRoot() throws {
         let database = try makeDatabase()
-        var kept = database.rootCursor()
-        var other = database.rootCursor()
+        var kept = database.rootCursor
+        var other = database.rootCursor
         try other.write(.uint(1))
 
         try kept.writeIfEmpty(.uint(2))
-        #expect(try database.rootCursor().readUint() == 1)
+        #expect(try database.rootCursor.readUint() == 1)
     }
 
     @Test func aHashOfTheWrongSizeIsRefused() throws {
         let database = try makeDatabase()
         let short = KeyHash([1, 2, 3])
         let long = KeyHash([UInt8](repeating: 1, count: 21))
-        _ = try database.rootCursor().writePath([.hashMapInit(counted: true)])
+        _ = try database.rootCursor.writePath([.hashMapInit(counted: true)])
         for hash in [short, long] {
             #expect(throws: XitDBError.invalidHashSize) {
-                try database.rootCursor().readPath([.hashMapGet(.value, hash)])
+                try database.rootCursor.readPath([.hashMapGet(.value, hash)])
             }
             #expect(throws: XitDBError.invalidHashSize) {
-                try database.rootCursor().writePath([.hashMapGet(.value, hash), .write(.uint(1))])
+                try database.rootCursor.writePath([.hashMapGet(.value, hash), .write(.uint(1))])
             }
-            #expect(throws: XitDBError.invalidHashSize) { try database.rootCursor().writePath([.hashMapRemove(hash)]) }
+            #expect(throws: XitDBError.invalidHashSize) { try database.rootCursor.writePath([.hashMapRemove(hash)]) }
         }
-        #expect(try database.rootCursor().count() == 0)
+        #expect(try database.rootCursor.count() == 0)
     }
 
     // MARK: Counts that cannot be right
@@ -999,7 +1012,7 @@ import Testing
         let database = try makeDatabase()
         var mapPosition = 0
         var listPosition = 0
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let map = try cursor.writePath([
                 .hashMapInit(), .hashMapGet(.value, sha1("map")), .hashMapInit(counted: true),
             ])
@@ -1020,21 +1033,21 @@ import Testing
 
         // a counted map that says it is full to the last number
         let full = try damaged(at: mapPosition, .max)
-        try full.runContext { cursor in
+        try full.withTransaction { cursor in
             #expect(throws: XitDBError.invalidDatabase) {
                 try cursor.writePath(countedMap + [.hashMapGet(.value, sha1("new")), .write(.uint(2))])
             }
         }
         // and one that says it is empty, with an entry in it
         let empty = try damaged(at: mapPosition, 0)
-        try empty.runContext { cursor in
+        try empty.withTransaction { cursor in
             #expect(throws: XitDBError.invalidDatabase) {
                 try cursor.writePath(countedMap + [.hashMapRemove(sha1("a"))])
             }
         }
         // a list that says it has as many elements as there are numbers
         let endless = try damaged(at: listPosition, .max)
-        try endless.runContext { cursor in
+        try endless.withTransaction { cursor in
             #expect(throws: XitDBError.self) {
                 try cursor.writePath([.hashMapGet(.value, sha1("list")), .arrayListInit, .arrayListAppend])
             }

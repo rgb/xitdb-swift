@@ -11,7 +11,7 @@ import Testing
 
     /// Two commits to start from.
     static func populate(_ database: Database) throws {
-        let root = database.rootCursor()
+        let root = database.rootCursor
         _ = try root.writePath([.arrayListInit, .arrayListAppend, .hashMapInit(), .ctx]) { cursor in
             _ = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(1))])
             _ = try cursor.writePath([
@@ -32,7 +32,7 @@ import Testing
     /// a new moment cloned from the last, new and changed entries, a removal,
     /// a long value, and a nested list.
     static func transaction(_ database: Database) throws {
-        let root = database.rootCursor()
+        let root = database.rootCursor
         let last = try root.readPathSlot([.arrayListGet(-1)])
         _ = try root.writePath([.arrayListInit, .arrayListAppend, .write(.slot(last)), .hashMapInit(), .ctx]) {
             cursor in
@@ -55,8 +55,8 @@ import Testing
     /// Checks that the database holds the two commits of `populate` and
     /// nothing of `transaction`.
     static func expectLastCommit(_ database: Database) throws {
-        #expect(try database.rootCursor().count() == 2)
-        let moment = try #require(try database.rootCursor().readPath([.arrayListGet(-1)]))
+        #expect(try database.rootCursor.count() == 2)
+        let moment = try #require(try database.rootCursor.readPath([.arrayListGet(-1)]))
         #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("a"))])).readUint() == 1)
         #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("c"))])).readInt() == -3)
         #expect(try moment.readPath([.hashMapGet(.value, sha1("b"))]) != nil)
@@ -65,8 +65,8 @@ import Testing
     }
 
     static func expectTransaction(_ database: Database) throws {
-        #expect(try database.rootCursor().count() == 3)
-        let moment = try #require(try database.rootCursor().readPath([.arrayListGet(-1)]))
+        #expect(try database.rootCursor.count() == 3)
+        let moment = try #require(try database.rootCursor.readPath([.arrayListGet(-1)]))
         #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("a"))])).readUint() == 2)
         #expect(try moment.readPath([.hashMapGet(.value, sha1("b"))]) == nil)
         #expect(try #require(try moment.readPath([.hashMapGet(.value, sha1("list"))])).count() == 2)
@@ -153,7 +153,7 @@ import Testing
             faulty.faults = [.failWrite(faulty.writeCount + failing)]
             #expect(throws: FaultInjectingStorage.failure, "write \(failing)") { try Self.transaction(database) }
 
-            #expect(try database.committedSize() == UInt64(golden.base.count), "write \(failing)")
+            #expect(try database.committedSize == UInt64(golden.base.count), "write \(failing)")
             #expect(try stored(subject) == golden.base, "write \(failing)")
             try Self.expectLastCommit(database)
             // another database on the same storage sees the same
@@ -180,7 +180,7 @@ import Testing
             faulty.faults = [.cutWriteShort(faulty.writeCount + failing, keeping: 1)]
             #expect(throws: FaultInjectingStorage.failure, "write \(failing)") { try Self.transaction(database) }
 
-            #expect(try database.committedSize() == UInt64(golden.base.count), "write \(failing)")
+            #expect(try database.committedSize == UInt64(golden.base.count), "write \(failing)")
             var bytes = try stored(subject)
             if failing == golden.writes {
                 // the root header's cached slot
@@ -204,7 +204,7 @@ import Testing
         faulty.faults = [.failSync(faulty.syncCount + 1)]
         #expect(throws: FaultInjectingStorage.failure) { try Self.transaction(database) }
 
-        #expect(try database.committedSize() == UInt64(golden.base.count))
+        #expect(try database.committedSize == UInt64(golden.base.count))
         #expect(try stored(subject) == golden.base)
         try Self.expectLastCommit(try Self.open(subject.storage, FixedRandom()))
 
@@ -223,7 +223,7 @@ import Testing
         faulty.faults = [.failSync(faulty.syncCount + 2)]
         #expect(throws: FaultInjectingStorage.failure) { try Self.transaction(database) }
 
-        #expect(try database.committedSize() == UInt64(golden.final.count))
+        #expect(try database.committedSize == UInt64(golden.final.count))
         try Self.expectTransaction(database)
         #expect(firstDifference(try stored(subject), golden.final) == nil)
         try Self.expectTransaction(try Self.open(subject.storage, FixedRandom()))
@@ -243,7 +243,7 @@ import Testing
         var midTransaction: [UInt8] = []
         struct Died: Error {}
         #expect(throws: Died.self) {
-            try database.runContext { cursor in
+            try database.withTransaction { cursor in
                 _ = try cursor.writePath([
                     .arrayListAppend, .hashMapInit(), .hashMapGet(.value, sha1("x")), .write(.uint(9)),
                 ])
@@ -256,7 +256,7 @@ import Testing
 
         let storage = MemoryStorage(bytes: midTransaction)
         let reopened = try Self.open(storage, FixedRandom([Self.commitIDs[2]]))
-        #expect(try reopened.committedSize() == UInt64(golden.base.count))
+        #expect(try reopened.committedSize == UInt64(golden.base.count))
         try Self.expectLastCommit(reopened)
         // opening and reading remove nothing
         #expect(storage.bytes == midTransaction)
@@ -289,6 +289,6 @@ import Testing
 
         #expect(Array(memory.bytes[29..<37]) == bigEndianBytes(tornSize))
         #expect(throws: XitDBError.self) { try Self.open(memory, FixedRandom()) }
-        #expect(throws: XitDBError.self) { try database.committedSize() }
+        #expect(throws: XitDBError.self) { try database.committedSize }
     }
 }

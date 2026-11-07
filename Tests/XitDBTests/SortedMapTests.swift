@@ -100,7 +100,7 @@ import Testing
     /// test.zig 3403-3584: `Ctx`, the first moment, with the map and the set made and checked inside the
     /// transaction. Its blocks are the methods it calls, in order.
     private func writesTheFirstMoment(_ database: Database) throws {
-        let rootCursor = database.rootCursor()
+        let rootCursor = database.rootCursor
 
         _ = try rootCursor.writePath([
             .arrayListInit,
@@ -350,7 +350,7 @@ import Testing
     /// test.zig 3586-3601: the committed moment, read through a read-only map.
     private func theMapPersistsInTheCommittedMoment(_ database: Database) throws {
         // the map persists in the committed moment
-        let history = try ArrayList<ReadOnly>(database.rootCursor().readOnly())
+        let history = try ArrayList<ReadOnly>(database.rootCursor.readOnly())
         let moment = try #require(try history.getCursor(-1))
         let mapCursor = try #require(
             try moment.readPath([
@@ -369,7 +369,7 @@ import Testing
 
     /// test.zig 3603-3638: `Ctx2`, a second moment that changes the map, and the two moments afterwards.
     private func aSecondMomentInheritsAndMutatesTheMap(_ database: Database) throws {
-        let rootCursor = database.rootCursor()
+        let rootCursor = database.rootCursor
 
         // a second moment that inherits and mutates the map must not disturb the first
         // (copy-on-write immutability across transactions)
@@ -386,7 +386,7 @@ import Testing
             try map.put(utf8("k0001"), .uint(7))  // not in moment 0
         }
         do {
-            let history = try ArrayList<ReadOnly>(database.rootCursor().readOnly())
+            let history = try ArrayList<ReadOnly>(database.rootCursor.readOnly())
 
             // moment 0 (original) is unchanged: k0001 still present with value 1
             let m0 = try #require(try history.getCursor(0))

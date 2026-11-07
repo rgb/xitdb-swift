@@ -40,7 +40,7 @@ import Testing
         let database = try Database(storage: subject.storage, hashSize: 20)
         // put in an order that is not the sorted one
         let shapes = Self.shapes.enumerated().sorted { ($0.offset * 7) % 12 < ($1.offset * 7) % 12 }
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let map = try SortedMap(try HashMap(cursor).putCursor(sha1("map").bytes))
             for (index, shape) in shapes {
                 try map.put(shape.key, .uint(UInt64(index)))
@@ -48,7 +48,7 @@ import Testing
             #expect(try map.count() == 12)
         }
 
-        let root = try HashMap(database.rootCursor().readOnly())
+        let root = try HashMap(database.rootCursor.readOnly())
         let map = try SortedMap(try #require(try root.getCursor(sha1("map").bytes)))
         let ordered = Self.ordered(Self.shapes.map(\.key))
         var seen: [[UInt8]] = []
@@ -82,13 +82,13 @@ import Testing
     func absentKeysRankAmongThePresent(kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let database = try Database(storage: subject.storage, hashSize: 20)
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let map = try SortedMap(try HashMap(cursor).putCursor(sha1("map").bytes))
             for shape in Self.shapes {
                 try map.put(shape.key, .uint(1))
             }
         }
-        let root = try HashMap(database.rootCursor().readOnly())
+        let root = try HashMap(database.rootCursor.readOnly())
         let map = try SortedMap(try #require(try root.getCursor(sha1("map").bytes)))
         let ordered = Self.ordered(Self.shapes.map(\.key))
         let absent: [[UInt8]] = [
@@ -132,7 +132,7 @@ import Testing
 
         let subject = try StorageUnderTest(kind)
         let database = try Database(storage: subject.storage, hashSize: 20)
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let map = try SortedMap(try HashMap(cursor).putCursor(sha1("map").bytes))
             for (index, key) in scrambled.enumerated() {
                 try map.put(key, .uint(UInt64(index)))
@@ -146,7 +146,7 @@ import Testing
             }
             return seen
         }
-        let root = try HashMap(database.rootCursor().readOnly())
+        let root = try HashMap(database.rootCursor.readOnly())
         let map = try SortedMap(try #require(try root.getCursor(sha1("map").bytes)))
         #expect(try map.count() == 500)
         #expect(try walked(map) == ordered)
@@ -163,7 +163,7 @@ import Testing
             #expect(try #require(try map.getIndexKeyValuePair(Int64(index) - 500)).keyCursor.readBytesAlloc() == key)
         }
 
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let map = try SortedMap(try HashMap(cursor).putCursor(sha1("map").bytes))
             for (index, key) in ordered.enumerated() where index % 2 == 1 {
                 #expect(try map.remove(key))
@@ -171,7 +171,7 @@ import Testing
             #expect(try map.count() == 250)
         }
         let after = try SortedMap(
-            try #require(try HashMap(database.rootCursor().readOnly()).getCursor(sha1("map").bytes)))
+            try #require(try HashMap(database.rootCursor.readOnly()).getCursor(sha1("map").bytes)))
         let kept = ordered.enumerated().filter { $0.offset % 2 == 0 }.map(\.element)
         #expect(try walked(after) == kept)
         for (index, key) in kept.enumerated() where index % 23 == 0 {

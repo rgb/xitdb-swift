@@ -90,12 +90,7 @@ struct Keys {
 }
 
 func newDatabase(_ storage: any WritableStorage) throws -> Database {
-    try Database(
-        storage: storage,
-        hashSize: 20,
-        hashID: "sha1" as HashID,
-        fileID: 0x0011_2233_4455_6677
-    )
+    try Database(creating: storage, hashSize: 20, hashID: "sha1", fileID: 0x0011_2233_4455_6677)
 }
 
 func milliseconds(_ body: () throws -> Void) rethrows -> Double {
@@ -107,7 +102,7 @@ func milliseconds(_ body: () throws -> Void) rethrows -> Double {
 /// The last moment of the list at the root.
 func lastMoment(_ database: Database) throws -> Cursor<ReadOnly> {
     let path: InlineArray<1, PathPart> = [.arrayListGet(-1)]
-    guard let moment = try database.rootCursor().readPath(path.span) else {
+    guard let moment = try database.rootCursor.readPath(path.span) else {
         throw BenchmarkFailure(description: "the database has no moment")
     }
     return moment
@@ -220,7 +215,7 @@ func mapInsert(_ size: Int, kinds: [StorageKind]) -> Workload {
     Workload(name: "map_insert", size: size, kinds: kinds, keyKind: .hashes, keyCount: size) { database, keys in
         let hashes = keys.hashes
         let path: InlineArray<4, PathPart> = [.arrayListInit, .arrayListAppend, .hashMapInit(), .ctx]
-        _ = try database.rootCursor().writePath(path.span) { cursor in
+        _ = try database.rootCursor.writePath(path.span) { cursor in
             for index in hashes.indices {
                 let put: InlineArray<2, PathPart> = [.hashMapGet(.value, hashes[index]), .write(.uint(UInt64(index)))]
                 _ = try cursor.writePath(put.span)
@@ -236,7 +231,7 @@ func mapInsert(_ size: Int, kinds: [StorageKind]) -> Workload {
 func listAppend(_ size: Int, kinds: [StorageKind]) -> Workload {
     Workload(name: "list_append", size: size, kinds: kinds, keyKind: .none, keyCount: 0) { database, _ in
         let path: InlineArray<4, PathPart> = [.arrayListInit, .arrayListAppend, .arrayListInit, .ctx]
-        _ = try database.rootCursor().writePath(path.span) { cursor in
+        _ = try database.rootCursor.writePath(path.span) { cursor in
             for index in 0..<size {
                 let append: InlineArray<2, PathPart> = [.arrayListAppend, .write(.uint(UInt64(index)))]
                 _ = try cursor.writePath(append.span)
@@ -271,11 +266,11 @@ func writeTransactions(_ transactions: Int, into database: Database, _ keys: Key
     let hashes = keys.hashes
     for transaction in first..<(first + transactions) {
         let lastPath: InlineArray<1, PathPart> = [.arrayListGet(-1)]
-        let last = try database.rootCursor().readPathSlot(lastPath.span)
+        let last = try database.rootCursor.readPathSlot(lastPath.span)
         let path: InlineArray<5, PathPart> = [
             .arrayListInit, .arrayListAppend, .write(.slot(last)), .hashMapInit(), .ctx,
         ]
-        _ = try database.rootCursor().writePath(path.span) { cursor in
+        _ = try database.rootCursor.writePath(path.span) { cursor in
             for index in (transaction * 10)..<(transaction * 10 + 10) {
                 let put: InlineArray<2, PathPart> = [
                     .hashMapGet(.value, hashes[index]), .write(.uint(UInt64(index))),
@@ -353,7 +348,7 @@ final class ReplicationRun {
         sourceStorage = try RunStorage(storage.kind)
         source = try newDatabase(sourceStorage.storage)
         try writeTransactions(transactions, into: source, keys)
-        sizeAfterFirst = try source.committedSize()
+        sizeAfterFirst = try source.committedSize
         try writeTransactions(10, into: source, keys, from: transactions)
         replica = try newDatabase(storage.storage)
     }
@@ -374,8 +369,8 @@ func replicate(_ transactions: Int, kinds: [StorageKind]) -> Workload {
         return run.replica
     } read: { replica, _, prepared in
         let run = prepared as! ReplicationRun
-        run.start = try run.source.replicationStart(try replica.replicaState())
-        run.end = try run.source.committedSize()
+        run.start = try run.source.replicationStart(for: try replica.replicaState)
+        run.end = try run.source.committedSize
         try run.source.readCommitted(from: run.start, to: run.end, into: &run.incrementalSync)
         try replica.applyReplicated(at: run.start, bytes: run.incrementalSync)
     } iterate: { replica, keys, _ in
@@ -383,7 +378,7 @@ func replicate(_ transactions: Int, kinds: [StorageKind]) -> Workload {
     }
     workload.afterWrite = { replica, prepared in
         let run = prepared as! ReplicationRun
-        guard try replica.committedSize() == run.sizeAfterFirst else {
+        guard try replica.committedSize == run.sizeAfterFirst else {
             throw BenchmarkFailure(description: "the full sync did not bring the replica to the source's size")
         }
     }
@@ -392,7 +387,7 @@ func replicate(_ transactions: Int, kinds: [StorageKind]) -> Workload {
         guard run.start == run.sizeAfterFirst else {
             throw BenchmarkFailure(description: "the replica is not a prefix of the source")
         }
-        guard try replica.committedSize() == run.end else {
+        guard try replica.committedSize == run.end else {
             throw BenchmarkFailure(description: "the incremental sync did not bring the replica to the source's size")
         }
     }
@@ -404,7 +399,7 @@ func replicate(_ transactions: Int, kinds: [StorageKind]) -> Workload {
 func linkedAppend(_ size: Int, kinds: [StorageKind]) -> Workload {
     Workload(name: "linked_append", size: size, kinds: kinds, keyKind: .none, keyCount: 0) { database, _ in
         let path: InlineArray<4, PathPart> = [.arrayListInit, .arrayListAppend, .linkedArrayListInit, .ctx]
-        _ = try database.rootCursor().writePath(path.span) { cursor in
+        _ = try database.rootCursor.writePath(path.span) { cursor in
             for index in 0..<size {
                 let append: InlineArray<2, PathPart> = [.linkedArrayListAppend, .write(.uint(UInt64(index)))]
                 _ = try cursor.writePath(append.span)
@@ -438,7 +433,7 @@ func sortedInsert(_ size: Int, kinds: [StorageKind]) -> Workload {
     Workload(name: "sorted_insert", size: size, kinds: kinds, keyKind: .texts, keyCount: size) { database, keys in
         let sortedKeys = keys.sortedKeys
         let path: InlineArray<4, PathPart> = [.arrayListInit, .arrayListAppend, .sortedMapInit(), .ctx]
-        _ = try database.rootCursor().writePath(path.span) { cursor in
+        _ = try database.rootCursor.writePath(path.span) { cursor in
             for index in sortedKeys.indices {
                 let put: InlineArray<2, PathPart> = [
                     .sortedMapGet(.value, sortedKeys[index]), .write(.uint(UInt64(index))),

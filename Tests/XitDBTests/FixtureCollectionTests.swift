@@ -19,7 +19,7 @@ import Testing
     }
 
     private func history() throws -> ArrayList<ReadOnly> {
-        try ArrayList<ReadOnly>(database.rootCursor().readOnly())
+        try ArrayList<ReadOnly>(database.rootCursor.readOnly())
     }
 
     private func moment(_ index: Int64) throws -> HashMap<ReadOnly> {
@@ -67,9 +67,9 @@ import Testing
     @Test func theDatabaseOpensAndHasTwoMoments() throws {
         #expect(database.header.hashSize == 20)
         #expect(database.header.fileID == 0x172A_756F_2208_A5EC)
-        #expect(try database.committedSize() == 8550)
+        #expect(try database.committedSize == 8550)
 
-        let history = try ArrayList<ReadOnly>(database.rootCursor().readOnly())
+        let history = try ArrayList<ReadOnly>(database.rootCursor.readOnly())
         #expect(try history.slot() == Slot(value: 4847, tag: .arrayList))
         #expect(try history.count() == 2)
         #expect(try history.getCursor(2) == nil)
@@ -90,7 +90,7 @@ import Testing
         #expect(try fromLast.next() == nil)
 
         // the root holds a list, not a map
-        #expect(throws: XitDBError.unexpectedTag) { try HashMap<ReadOnly>(database.rootCursor().readOnly()) }
+        #expect(throws: XitDBError.unexpectedTag) { try HashMap<ReadOnly>(database.rootCursor.readOnly()) }
     }
 
     @Test func theFirstMoment() throws {
@@ -376,7 +376,7 @@ import Testing
     @Test func aThirdMomentCanBeAppended() throws {
         let storage = MemoryStorage(bytes: try FixtureTests.load())
         let database = try Database(storage: storage, hashSize: 20)
-        let history = try ArrayList<ReadWrite>(database.rootCursor())
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
         try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
             try moment.put(hash("foo"), .bytes(Array("changed".utf8)))
@@ -385,7 +385,7 @@ import Testing
         #expect(Array(storage.bytes[37..<8550]) == Array(try FixtureTests.load()[37...]))
 
         let reopened = try Database(storage: storage, hashSize: 20)
-        let reopenedHistory = try ArrayList<ReadOnly>(reopened.rootCursor().readOnly())
+        let reopenedHistory = try ArrayList<ReadOnly>(reopened.rootCursor.readOnly())
         let third = try HashMap<ReadOnly>(try #require(try reopenedHistory.getCursor(2)))
         #expect(try text(try value(third, "foo")) == "changed")
         let second = try HashMap<ReadOnly>(try #require(try reopenedHistory.getCursor(1)))

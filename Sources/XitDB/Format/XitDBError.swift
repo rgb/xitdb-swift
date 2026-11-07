@@ -66,6 +66,9 @@ public enum XitDBError: Error, Sendable {
     /// The target of a compaction already contains data.
     case targetNotEmpty
 
+    /// The storage a database was to be created in already contains data.
+    case storageNotEmpty
+
     /// A hash trie is deeper than a hash of the database's hash size allows.
     case keyOffsetExceeded
 

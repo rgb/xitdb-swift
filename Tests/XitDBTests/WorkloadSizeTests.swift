@@ -33,20 +33,20 @@ import Testing
     }
 
     private func lastMoment(_ database: Database) throws -> Cursor<ReadOnly> {
-        try #require(try database.rootCursor().readPath([.arrayListGet(-1)]))
+        try #require(try database.rootCursor.readPath([.arrayListGet(-1)]))
     }
 
     @Test(arguments: [(1, 438), (17, 1478), (300, 26344), (1000, 92112)], StorageKind.allCases)
     func mapInsert(workload: (count: Int, size: UInt64), kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let database = try makeDatabase(subject.storage)
-        _ = try database.rootCursor().writePath([.arrayListInit, .arrayListAppend, .hashMapInit(), .ctx]) { cursor in
+        _ = try database.rootCursor.writePath([.arrayListInit, .arrayListAppend, .hashMapInit(), .ctx]) { cursor in
             for index in 0..<workload.count {
                 _ = try cursor.writePath([.hashMapGet(.value, key(index)), .write(.uint(UInt64(index)))])
             }
         }
         #expect(try subject.storage.length == workload.size)
-        #expect(try database.committedSize() == workload.size)
+        #expect(try database.committedSize == workload.size)
 
         let moment = try lastMoment(database)
         for index in 0..<workload.count {
@@ -58,7 +58,7 @@ import Testing
     func listAppend(workload: (count: Int, size: UInt64), kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let database = try makeDatabase(subject.storage)
-        _ = try database.rootCursor().writePath([.arrayListInit, .arrayListAppend, .arrayListInit, .ctx]) { cursor in
+        _ = try database.rootCursor.writePath([.arrayListInit, .arrayListAppend, .arrayListInit, .ctx]) { cursor in
             for index in 0..<workload.count {
                 _ = try cursor.writePath([.arrayListAppend, .write(.uint(UInt64(index)))])
             }
@@ -77,7 +77,7 @@ import Testing
         let subject = try StorageUnderTest(kind)
         let database = try makeDatabase(subject.storage)
         for transaction in 0..<workload.count {
-            let root = database.rootCursor()
+            let root = database.rootCursor
             let last = try root.readPathSlot([.arrayListGet(-1)])
             _ = try root.writePath([.arrayListInit, .arrayListAppend, .write(.slot(last)), .hashMapInit(), .ctx]) {
                 cursor in

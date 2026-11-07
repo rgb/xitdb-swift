@@ -291,7 +291,7 @@ final class ScriptRunner {
     func committedSize(of name: String? = nil) throws -> UInt64? {
         guard let place = databases[name ?? current] else { throw ScriptFailure("no database called '\(name ?? "")'") }
         guard let database = place.database else { return nil }
-        return try? database.committedSize()
+        return try? database.committedSize
     }
 
     /// Everything in a database's storage as it is now.
@@ -323,8 +323,8 @@ final class ScriptRunner {
         }
         scriptHashID = hashID
         database = try Database(
-            storage: try storage.openStorage(readOnly: false),
-            hashSize: hashSize,
+            creating: try storage.openStorage(readOnly: false),
+            hashSize: Int(hashSize),
             hashID: hashID,
             fileID: try fileID(document.fields["file_id"]),
             random: random
@@ -560,7 +560,7 @@ final class ScriptRunner {
     private func bound(_ name: String) throws -> Value {
         if name == "root" {
             guard let database else { throw ScriptFailure("the database is closed") }
-            return .readWrite(database.rootCursor())
+            return .readWrite(database.rootCursor)
         }
         guard let value = names[name] else { throw ScriptFailure("the name '\(name)' is not bound") }
         return value
@@ -619,6 +619,8 @@ final class ScriptRunner {
         case .invalidRange: "InvalidRange"
         case .invalidLength: "InvalidLength"
         case .targetNotEmpty: "TargetNotEmpty"
+        // No script creates a database in a storage that holds bytes.
+        case .storageNotEmpty: "StorageNotEmpty"
         case .keyOffsetExceeded: "KeyOffsetExceeded"
         case .maxShiftExceeded: "MaxShiftExceeded"
         case .maxSizeExceeded: "MaxSizeExceeded"
@@ -725,8 +727,8 @@ final class ScriptRunner {
             }
             let place = ScriptDatabase(storage: try ScriptStorage(storage.kind))
             place.database = try Database(
-                storage: try place.storage.openStorage(readOnly: false),
-                hashSize: hashSize,
+                creating: try place.storage.openStorage(readOnly: false),
+                hashSize: Int(hashSize),
                 hashID: hashID,
                 fileID: try fileID(op.fields["file_id"]),
                 random: random
@@ -766,8 +768,8 @@ final class ScriptRunner {
                 }
                 let place = ScriptDatabase(storage: try ScriptStorage(storage.kind))
                 target = try Database(
-                    storage: try place.storage.openStorage(readOnly: false),
-                    hashSize: hashSize,
+                    creating: try place.storage.openStorage(readOnly: false),
+                    hashSize: Int(hashSize),
                     hashID: hashID,
                     fileID: try fileID(op.fields["file_id"]),
                     random: random
@@ -851,7 +853,7 @@ final class ScriptRunner {
             try op.allow("op", "note", "expect_error", "ctx")
             let context = try ScriptObject(op.fields["ctx"], "ctx")
             try context.allow("as", "ops")
-            try openDatabase("run_context").runContext { cursor in try self.callback(context, &cursor) }
+            try openDatabase("run_context").withTransaction { cursor in try self.callback(context, &cursor) }
 
         case "fail":
             try op.allow("op", "note")
@@ -1104,7 +1106,7 @@ final class ScriptRunner {
 
         case "replica_state":
             try op.allow("op", "note", "expect_error", "as")
-            let state = try openDatabase("replica_state").replicaState()
+            let state = try openDatabase("replica_state").replicaState
             try bind(try op.string("as"), .replicaState(state))
 
         case "replication_start":
@@ -1113,7 +1115,7 @@ final class ScriptRunner {
             guard case .replicaState(let state) = try bound(stateName) else {
                 throw ScriptFailure("'\(stateName)' does not hold a replica's state")
             }
-            let start = try openDatabase("replication_start").replicationStart(state)
+            let start = try openDatabase("replication_start").replicationStart(for: state)
             if op.has("expect"), try number(op.fields["expect"], "expect") != start {
                 throw ScriptFailure("replication_start gave \(start)")
             }
@@ -1121,7 +1123,7 @@ final class ScriptRunner {
 
         case "committed_size":
             try op.allow("op", "note", "expect_error", "as", "expect")
-            let size = try openDatabase("committed_size").committedSize()
+            let size = try openDatabase("committed_size").committedSize
             if op.has("expect"), try number(op.fields["expect"], "expect") != size {
                 throw ScriptFailure("committed_size gave \(size)")
             }
@@ -1170,7 +1172,7 @@ final class ScriptRunner {
             let size = op.has("hash_size") ? UInt16(try op.unsigned("hash_size")) : hashSize
             let opened = try storage.openStorage(readOnly: try op.bool("read_only", default: false))
             do {
-                database = try Database(storage: opened, hashSize: size, hashID: nil, fileID: nil, random: random)
+                database = try Database(opening: opened, hashSize: Int(size), random: random)
             } catch {
                 // A failed reopen leaves the database closed.
                 storage.close()

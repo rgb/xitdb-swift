@@ -20,7 +20,7 @@ import Testing
     /// every collection; anything else is only its own kind.
     @Test func aReadOnlyViewChecksTheSlot() throws {
         let database = try makeDatabase()
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             _ = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("list")), .arrayListInit])
             _ = try cursor.writePath([.hashMapGet(.value, sha1("map")), .hashMapInit()])
             _ = try cursor.writePath([.hashMapGet(.value, sha1("set")), .hashMapInit(set: true)])
@@ -29,7 +29,7 @@ import Testing
             _ = try cursor.writePath([.hashMapGet(.value, sha1("number")), .write(.uint(1))])
             _ = try cursor.writePath([.hashMapGet(.value, sha1("none")), .write(.slot(nil))])
         }
-        let moment = database.rootCursor().readOnly()
+        let moment = database.rootCursor.readOnly()
         func at(_ name: String) throws -> Cursor<ReadOnly> {
             try #require(try moment.readPath([.hashMapGet(.value, sha1(name))]))
         }
@@ -82,7 +82,7 @@ import Testing
     /// kinds refuse the slot afterwards.
     @Test func aWritingViewMakesTheCollection() throws {
         let database = try makeDatabase()
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let map = try HashMap(cursor)
             #expect(try map.slot().tag == .hashMap)
             #expect(try cursor.slot().tag == .none, "the view's cursor is a new one; the caller's is unchanged")
@@ -116,7 +116,7 @@ import Testing
             #expect(try countedSet.readOnly().count() == 0)
             #expect(try map.readOnly().getCursor(key("list"))?.slot().tag == .arrayList)
         }
-        #expect(try database.rootCursor().slot().tag == .hashMap)
+        #expect(try database.rootCursor.slot().tag == .hashMap)
     }
 
     /// The methods that take a hash accept it as an array and as a span,
@@ -125,7 +125,7 @@ import Testing
         let database = try makeDatabase()
         let hash = key("k")
         let wrong = [UInt8](repeating: 1, count: 19)
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let map = try HashMap(cursor)
             try map.put(hash.span, .uint(1))
             try map.putKey(hash, .bytes(Array("k".utf8)))
@@ -211,7 +211,7 @@ import Testing
     /// an index that names nothing.
     @Test func aListsEdges() throws {
         let database = try makeDatabase()
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let list = try ArrayList(cursor)
             #expect(throws: XitDBError.keyNotFound) { try list.put(0, .uint(1)) }
             #expect(throws: XitDBError.keyNotFound) { try list.putCursor(-1) }
@@ -247,7 +247,7 @@ import Testing
     /// alone, and each view checks the slot's tag.
     @Test func eachCollectionsIteratorStartIsItsOwn() throws {
         let database = try Database(storage: MemoryStorage(bytes: try FixtureTests.load()), hashSize: 20)
-        let moment = try #require(try database.rootCursor().readPath([.arrayListGet(-1)]))
+        let moment = try #require(try database.rootCursor.readPath([.arrayListGet(-1)]))
         let todos = try #require(try moment.readPath([.hashMapGet(.value, sha1("todos"))]))
         #expect(try todos.slot().tag == .linkedArrayList)
         #expect(throws: XitDBError.unexpectedTag) { try todos.iterator(fromArrayListIndex: 0) }

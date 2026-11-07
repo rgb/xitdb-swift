@@ -17,7 +17,7 @@ import Testing
 // `source.compact(target_db_kind, target_opts, offset_map)`, which opens the target over the target's options, is
 // `source.compact(into: targetStorage, offsetMap: &offsetMap)`. Zig's `source.core.length` is the source
 // storage's `length()`. Zig's `DiskOffsets` (lines 2874 to 2891) is `DiskOffsetMap` in `DiskOffsetMap.swift`, and
-// its `Ctx.run` under `offsets_db.runContext` (lines 2911 to 2933) is `DiskOffsets.use`. Zig's allocator arguments
+// its `Ctx.run` under `offsets_db.withTransaction` (lines 2911 to 2933) is `DiskOffsets.use`. Zig's allocator arguments
 // and `defer allocator.free` lines have no counterpart.
 //
 // Every assertion Zig makes in those lines is here. Left out:
@@ -94,7 +94,7 @@ import Testing
         let targetSubject = try StorageUnderTest(targetKind)
         let source = try Database(storage: sourceSubject.storage, hashSize: 20)
         let compacted = try source.compact(into: targetSubject.storage, offsetMap: &offsetMap)
-        #expect(try compacted.rootCursor().slot().isEmpty)
+        #expect(try compacted.rootCursor.slot().isEmpty)
     }
 
     /// test.zig 2976-3207: "basic compaction with various data types": three moments, the third with a map that
@@ -111,7 +111,7 @@ import Testing
 
         // moment 1
         do {
-            let history = try ArrayList<ReadWrite>(source.rootCursor())
+            let history = try ArrayList<ReadWrite>(source.rootCursor)
             try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
                 try moment.put(hashInt("key1"), .bytes(utf8("value1")))
@@ -121,7 +121,7 @@ import Testing
 
         // moment 2
         do {
-            let history = try ArrayList<ReadWrite>(source.rootCursor())
+            let history = try ArrayList<ReadWrite>(source.rootCursor)
             try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
                 try moment.put(hashInt("key1"), .bytes(utf8("updated_value1")))
@@ -187,7 +187,7 @@ import Testing
 
         // moment 3
         do {
-            let history = try ArrayList<ReadWrite>(source.rootCursor())
+            let history = try ArrayList<ReadWrite>(source.rootCursor)
             try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
                 try moment.put(hashInt("key1"), .bytes(utf8("final_value")))
@@ -217,7 +217,7 @@ import Testing
         #expect(targetSize < sourceSize)
 
         // target should have exactly 1 moment
-        let history = try ArrayList<ReadOnly>(compacted.rootCursor().readOnly())
+        let history = try ArrayList<ReadOnly>(compacted.rootCursor.readOnly())
         #expect(try history.count() == 1)
 
         // verify all data from latest moment is correct
@@ -342,7 +342,7 @@ import Testing
 
         // moment 1: create many keys
         do {
-            let history = try ArrayList<ReadWrite>(source.rootCursor())
+            let history = try ArrayList<ReadWrite>(source.rootCursor)
             try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
                 for i in 0..<20 {
@@ -353,7 +353,7 @@ import Testing
 
         // moments 2-5: change only one key each time
         for round in 0..<4 {
-            let history = try ArrayList<ReadWrite>(source.rootCursor())
+            let history = try ArrayList<ReadWrite>(source.rootCursor)
             try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
                 try moment.put(hashInt("changing_key"), .uint(UInt64(round) + 100))
@@ -362,7 +362,7 @@ import Testing
 
         let compacted = try source.compact(into: targetSubject.storage, offsetMap: &offsetMap)
 
-        let history = try ArrayList<ReadOnly>(compacted.rootCursor().readOnly())
+        let history = try ArrayList<ReadOnly>(compacted.rootCursor.readOnly())
         #expect(try history.count() == 1)
 
         let momentCursor = try #require(try history.getCursor(0))
@@ -396,7 +396,7 @@ import Testing
 
         // write some data
         do {
-            let history = try ArrayList<ReadWrite>(source.rootCursor())
+            let history = try ArrayList<ReadWrite>(source.rootCursor)
             try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
                 try moment.put(hashInt("persist"), .bytes(utf8("persistent_value")))
@@ -410,7 +410,7 @@ import Testing
         // re-open the target
         let reopened = try Database(storage: targetSubject.storage, hashSize: 20)
 
-        let history = try ArrayList<ReadOnly>(reopened.rootCursor().readOnly())
+        let history = try ArrayList<ReadOnly>(reopened.rootCursor.readOnly())
         #expect(try history.count() == 1)
 
         let momentCursor = try #require(try history.getCursor(0))
@@ -434,7 +434,7 @@ import Testing
 
         // write initial data
         do {
-            let history = try ArrayList<ReadWrite>(source.rootCursor())
+            let history = try ArrayList<ReadWrite>(source.rootCursor)
             try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
                 try moment.put(hashInt("original"), .bytes(utf8("original_data")))
@@ -446,7 +446,7 @@ import Testing
 
         // add new moment to compacted DB
         do {
-            let history = try ArrayList<ReadWrite>(compacted.rootCursor())
+            let history = try ArrayList<ReadWrite>(compacted.rootCursor)
             try history.appendContext(.slot(try history.getSlot(-1))) { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
                 try moment.put(hashInt("new_key"), .bytes(utf8("new_data")))
@@ -454,7 +454,7 @@ import Testing
         }
 
         // verify both old and new data
-        let history = try ArrayList<ReadOnly>(compacted.rootCursor().readOnly())
+        let history = try ArrayList<ReadOnly>(compacted.rootCursor.readOnly())
         #expect(try history.count() == 2)
 
         // moment 0 (compacted original)

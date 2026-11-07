@@ -34,7 +34,7 @@ import Testing
             path.append(.arrayListAppend)
         }
         path.append(.write(.uint(7)))
-        _ = try source.rootCursor().writePath(path)
+        _ = try source.rootCursor.writePath(path)
 
         let targetSubject = try StorageUnderTest(kind)
         var map = MemoryOffsetMap()
@@ -46,10 +46,10 @@ import Testing
         for _ in 0..<depth {
             down.append(.arrayListGet(0))
         }
-        let bottom = try #require(try target.rootCursor().readPath(down))
+        let bottom = try #require(try target.rootCursor.readPath(down))
         #expect(try bottom.readUint() == 7)
-        #expect(try target.rootCursor().count() == 1)
-        #expect(try target.committedSize() == (try targetSubject.storage.length))
+        #expect(try target.rootCursor.count() == 1)
+        #expect(try target.committedSize == (try targetSubject.storage.length))
     }
 
     /// A source with every kind of object a damage can be put in, as a
@@ -62,7 +62,7 @@ import Testing
         init(_ kind: StorageKind, makeDatabase: (StorageUnderTest) throws -> Database) throws {
             subject = try StorageUnderTest(kind)
             database = try makeDatabase(subject)
-            try ArrayList(database.rootCursor()).appendContext(.slot(nil)) { cursor in
+            try ArrayList(database.rootCursor).appendContext(.slot(nil)) { cursor in
                 let map = try HashMap(cursor)
                 try map.put(sha1("bytes").bytes, .bytes(Array("a value long enough for a record".utf8)))
                 let list = try ArrayList(try map.putCursor(sha1("list").bytes))
@@ -76,7 +76,7 @@ import Testing
                 let inner = try HashMap(try map.putCursor(sha1("map").bytes))
                 try inner.put(sha1("k").bytes, .uint(9))
             }
-            moment = try #require(try database.rootCursor().readPath([.arrayListGet(-1)]))
+            moment = try #require(try database.rootCursor.readPath([.arrayListGet(-1)]))
         }
 
         func slot(_ name: String) throws -> Slot {
@@ -103,8 +103,8 @@ import Testing
         do throws(XitDBError) {
             try subject.database.compact(into: target, offsetMap: &map)
         } catch {
-            #expect(try target.rootCursor().slot().isEmpty)
-            #expect(try targetSubject.storage.length == (try target.committedSize()))
+            #expect(try target.rootCursor.slot().isEmpty)
+            #expect(try targetSubject.storage.length == (try target.committedSize))
             return (error, target, targetSubject)
         }
         return (nil, target, targetSubject)
@@ -116,7 +116,7 @@ import Testing
         let subject = try Subject(kinds.0, makeDatabase: makeDatabase)
         let (error, target, _) = try compacting(subject, into: kinds.1)
         #expect(error == nil)
-        let moment = try #require(try target.rootCursor().readPath([.arrayListGet(-1)]))
+        let moment = try #require(try target.rootCursor.readPath([.arrayListGet(-1)]))
         #expect(
             try #require(try moment.readPath([.hashMapGet(.value, sha1("map")), .hashMapGet(.value, sha1("k"))]))
                 .readUint() == 9)
@@ -181,7 +181,7 @@ import Testing
         try subject.damage(slotBytes(Slot(value: block, tag: .index)), at: block + 15 * 9)
         let (error, target, _) = try compacting(subject, into: kind)
         #expect(error == nil)
-        let moment = try #require(try target.rootCursor().readPath([.arrayListGet(-1)]))
+        let moment = try #require(try target.rootCursor.readPath([.arrayListGet(-1)]))
         let copied = try #require(try moment.readPathSlot([.hashMapGet(.value, sha1("map"))]))
         let slots = try target.reader.indexBlock(at: copied.value)
         #expect(slots.slots[15] == Slot(value: copied.value, tag: .index))
@@ -218,21 +218,21 @@ import Testing
         let keys = (0..<40).map { Array("a key long enough for a record \($0 < 10 ? "0" : "")\($0)".utf8) }
         let subject = try StorageUnderTest(kind)
         let source = try makeDatabase(subject)
-        try source.runContext { cursor in
+        try source.withTransaction { cursor in
             let map = try SortedMap(try HashMap(cursor).putCursor(sha1("sorted").bytes))
             for (index, key) in keys.enumerated() {
                 try map.put(key, .uint(UInt64(index)))
             }
         }
         let sourceHeader = try source.reader.bTreeHeader(
-            at: try #require(try source.rootCursor().readPathSlot([.hashMapGet(.value, sha1("sorted"))])).value)
+            at: try #require(try source.rootCursor.readPathSlot([.hashMapGet(.value, sha1("sorted"))])).value)
         #expect(try source.reader.sortedNode(at: sourceHeader.rootPtr).kind == .branch)
 
         let targetSubject = try StorageUnderTest(kind)
         var map = MemoryOffsetMap()
         let target = try source.compact(into: targetSubject.storage, fileID: 8, offsetMap: &map)
         let copied = try SortedMap(
-            try #require(try HashMap(target.rootCursor().readOnly()).getCursor(sha1("sorted").bytes)))
+            try #require(try HashMap(target.rootCursor.readOnly()).getCursor(sha1("sorted").bytes)))
         for (index, key) in keys.enumerated() {
             #expect(try #require(try copied.getCursor(key)).readUint() == UInt64(index))
             #expect(try copied.rank(key) == UInt64(index))
@@ -268,24 +268,24 @@ import Testing
             try source.compact(into: target, offsetMap: &map)
             let after = try readBytes(targetSubject.storage, at: 0, count: Int(try targetSubject.storage.length))
             #expect(after == before)
-            #expect(try target.rootCursor().slot().isEmpty)
+            #expect(try target.rootCursor.slot().isEmpty)
         }
         // an empty source
         try compactingLeavesUntouched { _ in }
         // a history with no moments
         try compactingLeavesUntouched { source in
-            _ = try source.rootCursor().writePath([.arrayListInit])
-            #expect(try source.rootCursor().count() == 0)
+            _ = try source.rootCursor.writePath([.arrayListInit])
+            #expect(try source.rootCursor.count() == 0)
         }
         // a history whose last moment was never written
         try compactingLeavesUntouched { source in
-            _ = try source.rootCursor().writePath([.arrayListInit, .arrayListAppend])
-            #expect(try source.rootCursor().count() == 1)
+            _ = try source.rootCursor.writePath([.arrayListInit, .arrayListAppend])
+            #expect(try source.rootCursor.count() == 1)
         }
         // but a root set to nothing is copied, as a commit
         let subject = try StorageUnderTest(kind)
         let source = try makeDatabase(subject)
-        var root = source.rootCursor()
+        var root = source.rootCursor
         try root.write(.slot(nil))
         let targetSubject = try StorageUnderTest(kind)
         let target = try Database(storage: targetSubject.storage, hashSize: 20, fileID: 8)
@@ -293,7 +293,7 @@ import Testing
         var map = MemoryOffsetMap()
         try source.compact(into: target, offsetMap: &map)
         #expect(try targetSubject.storage.length > lengthBefore)
-        #expect(try target.rootCursor().slot() == Slot(value: 0, tag: .none, full: true))
+        #expect(try target.rootCursor.slot() == Slot(value: 0, tag: .none, full: true))
     }
 
     /// A tree branch whose child points back at its root: the memo ends the
@@ -303,7 +303,7 @@ import Testing
     func aTreeThatPointsAtItselfEnds(kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let source = try makeDatabase(subject)
-        try source.runContext { cursor in
+        try source.withTransaction { cursor in
             let map = try HashMap(cursor)
             let linked = try LinkedArrayList(try map.putCursor(sha1("linked").bytes))
             for index in 0..<40 {
@@ -317,7 +317,7 @@ import Testing
         // the last child of each root points at the root
         for name in ["linked", "sorted"] {
             let header = try source.reader.bTreeHeader(
-                at: try #require(try source.rootCursor().readPathSlot([.hashMapGet(.value, sha1(name))])).value)
+                at: try #require(try source.rootCursor.readPathSlot([.hashMapGet(.value, sha1(name))])).value)
             let num = try source.reader.sortedNode(at: header.rootPtr).num
             try writeBytes(
                 subject.storage, slotBytes(Slot(value: header.rootPtr, tag: .index)),
@@ -328,7 +328,7 @@ import Testing
         let target = try source.compact(into: targetSubject.storage, fileID: 8, offsetMap: &map)
         for name in ["linked", "sorted"] {
             let header = try target.reader.bTreeHeader(
-                at: try #require(try target.rootCursor().readPathSlot([.hashMapGet(.value, sha1(name))])).value)
+                at: try #require(try target.rootCursor.readPathSlot([.hashMapGet(.value, sha1(name))])).value)
             let root = try target.reader.sortedNode(at: header.rootPtr)
             #expect(root.children[Int(root.num) - 1] == Slot(value: header.rootPtr, tag: .index))
             #expect(root.children[0].tag == .index)

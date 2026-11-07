@@ -13,8 +13,8 @@ A database keeps its bytes in a storage. ``BufferedFileStorage`` keeps them in a
 for a database on disk. ``MemoryStorage`` keeps them in memory. ``FileStorage`` reads and writes a file
 without buffering.
 
-Reading and writing start at ``Database/rootCursor()``. A ``Cursor`` is a position in the database: it reads
-the value there, and inside a transaction it writes one. ``Database/runContext(_:)`` runs a transaction.
+Reading and writing start at ``Database/rootCursor``. A ``Cursor`` is a position in the database: it reads
+the value there, and inside a transaction it writes one. ``Database/withTransaction(_:)`` runs a transaction.
 
 The collections are views of a cursor's slot. ``ArrayList`` is a list indexed by position.
 ``LinkedArrayList`` is a list that can also be changed anywhere: elements inserted and removed at any
@@ -35,7 +35,7 @@ at it. The copy remembers where things went in an ``OffsetMap``; ``MemoryOffsetM
 
 Committed bytes never change except for the root header, so a replica is brought up to date by copying the
 bytes it does not have. A replica describes itself with a ``ReplicaState``; the source answers with
-``Database/replicationStart(_:)``, sends with ``Database/readCommitted(from:to:into:)-(_,_,Sink)`` into a ``ByteSink``,
+``Database/replicationStart(for:)``, sends with ``Database/readCommitted(from:to:into:)-(_,_,Sink)`` into a ``ByteSink``,
 and the replica takes the bytes with ``Database/applyReplicated(at:from:count:)`` from a ``ByteSource``.
 
 ## Topics

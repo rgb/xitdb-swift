@@ -237,7 +237,7 @@ import Testing
     func arrayListOfHashMaps(kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let database = try Database(storage: subject.storage, hashSize: 20)
-        let rootCursor = database.rootCursor()
+        let rootCursor = database.rootCursor
 
         // write foo -> bar with a writer
         let fooKey = sha1("foo")
@@ -253,7 +253,7 @@ import Testing
             try cursor.writer { writer in
                 try writer.write(utf8("bar"))
             }
-            let root = cursor.database.rootCursor()
+            let root = cursor.database.rootCursor
             #expect(throws: XitDBError.nestedTopLevelWrite) {
                 try root.writePath([.arrayListAppend])
             }
@@ -268,10 +268,10 @@ import Testing
             // so the top-level write inside it is a nested one
             #expect(throws: XitDBError.nestedTopLevelWrite) {
                 try rootCursor.writePath([.ctx]) { (cursor: inout Cursor<ReadWrite>) in
-                    _ = try cursor.database.rootCursor().writePath([.arrayListAppend])
+                    _ = try cursor.database.rootCursor.writePath([.arrayListAppend])
                 }
             }
-            #expect(try database.rootCursor().count() == 1)
+            #expect(try database.rootCursor.count() == 1)
         }
 
         // read foo
@@ -403,7 +403,7 @@ import Testing
             #expect(sizeAfter == 1212)  // as in a run of the Zig test
 
             // appending must clear the failed moment's slot, including its stored value
-            let history = try PathArrayList(database.rootCursor())
+            let history = try PathArrayList(database.rootCursor)
             let countBefore = try history.count()
             #expect(try history.appendCursor().slot().isEmpty)
             #expect(try history.getSlot(-1) == nil)
@@ -1086,7 +1086,7 @@ import Testing
     func appendsToTheTopLevelArrayListUntilTheRootOverflows(kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let database = try Database(storage: subject.storage, hashSize: 20)
-        let rootCursor = database.rootCursor()
+        let rootCursor = database.rootCursor
 
         let watKey = sha1("wat")
         for i in 0..<(slotCount + 1) {
@@ -1197,7 +1197,7 @@ import Testing
     func appendsToAnInnerArrayListUntilTheRootOverflows(kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let database = try Database(storage: subject.storage, hashSize: 20)
-        let rootCursor = database.rootCursor()
+        let rootCursor = database.rootCursor
 
         for i in 0..<(slotCount + 1) {
             let value = "wat\(i)"
@@ -1320,7 +1320,7 @@ import Testing
     func iteratesOverAnInnerArrayList(kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let database = try Database(storage: subject.storage, hashSize: 20)
-        let rootCursor = database.rootCursor()
+        let rootCursor = database.rootCursor
 
         // add wats
         for i in 0..<10 {
@@ -1424,7 +1424,7 @@ import Testing
     func iteratesOverAnInnerHashMap(kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let database = try Database(storage: subject.storage, hashSize: 20)
-        let rootCursor = database.rootCursor()
+        let rootCursor = database.rootCursor
 
         // add wats
         for i in 0..<10 {
@@ -1532,7 +1532,7 @@ import Testing
     func concatsALinkedArrayListMultipleTimes(kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let database = try Database(storage: subject.storage, hashSize: 20)
-        let rootCursor = database.rootCursor()
+        let rootCursor = database.rootCursor
 
         _ = try rootCursor.writePath([
             .arrayListInit,
@@ -1627,7 +1627,7 @@ import Testing
     func appendsItemsToALinkedArrayListWithoutSettingTheirValue(kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let database = try Database(storage: subject.storage, hashSize: 20)
-        let rootCursor = database.rootCursor()
+        let rootCursor = database.rootCursor
 
         // appending without setting any value should work
         for _ in 0..<8 {
@@ -1661,7 +1661,7 @@ import Testing
     func insertsAtTheBeginningOfALinkedArrayListManyTimes(kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let database = try Database(storage: subject.storage, hashSize: 20)
-        let rootCursor = database.rootCursor()
+        let rootCursor = database.rootCursor
 
         _ = try rootCursor.writePath([
             .arrayListInit,
@@ -1692,7 +1692,7 @@ import Testing
     func insertsAtTheEndOfALinkedArrayListManyTimes(kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let database = try Database(storage: subject.storage, hashSize: 20)
-        let rootCursor = database.rootCursor()
+        let rootCursor = database.rootCursor
 
         _ = try rootCursor.writePath([
             .arrayListInit,

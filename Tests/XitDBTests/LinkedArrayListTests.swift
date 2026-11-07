@@ -89,7 +89,7 @@ import Testing
     func slice(kind: StorageKind, testCase: SliceCase) throws {
         let subject = try StorageUnderTest(kind)
         let database = try Database(storage: subject.storage, hashSize: 20)
-        let rootCursor = database.rootCursor()
+        let rootCursor = database.rootCursor
 
         let originalSize = testCase.originalSize
         let sliceOffset = testCase.sliceOffset
@@ -206,7 +206,7 @@ import Testing
     func concat(kind: StorageKind, testCase: ConcatCase) throws {
         let subject = try StorageUnderTest(kind)
         let database = try Database(storage: subject.storage, hashSize: 20)
-        let rootCursor = database.rootCursor()
+        let rootCursor = database.rootCursor
 
         let listASize = testCase.listASize
         let listBSize = testCase.listBSize
@@ -323,7 +323,7 @@ import Testing
     func insertAndRemove(kind: StorageKind, testCase: InsertCase) throws {
         let subject = try StorageUnderTest(kind)
         let database = try Database(storage: subject.storage, hashSize: 20)
-        let rootCursor = database.rootCursor()
+        let rootCursor = database.rootCursor
 
         let originalSize = testCase.originalSize
         let insertIndex = testCase.insertIndex

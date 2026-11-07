@@ -18,7 +18,7 @@ public enum ReadWrite: CursorAccess {}
 /// cursor was made, or when something was last written through it. Reads go
 /// by that snapshot, and do not notice if the slot has been written through
 /// another cursor since. The exception is a cursor at the root of the
-/// database, from ``Database/rootCursor()``: every read through it looks up
+/// database, from ``Database/rootCursor``: every read through it looks up
 /// the root of the last commit.
 ///
 /// Writing is only possible inside a transaction. A write through a root
@@ -30,7 +30,9 @@ public struct Cursor<Access: CursorAccess> {
     /// slot cannot be written through this cursor.
     var slotPointer: SlotPointer
 
-    let database: Database
+    /// The database the cursor reads from and writes to: where a helper
+    /// given only a cursor reaches the root, or freezes.
+    public let database: Database
 
     /// The freeze point: writes through this cursor copy any data written
     /// before this position, even data from the current transaction. Zero
@@ -535,8 +537,18 @@ extension Database {
     ///
     /// Everything read through it comes from the last commit, whichever
     /// that is at the time of the read. Every write through it is a
-    /// transaction.
-    public func rootCursor() -> Cursor<ReadWrite> {
+    /// transaction. Each access gives a new cursor, which costs one read of
+    /// the root header.
+    ///
+    /// The cursor is read-write on every storage, as in Zig. A reader opens
+    /// its storage with ``FileAccess/readOnly`` and wraps ``Cursor/readOnly()``
+    /// in the read-only collections, or gives the cursor to their read-only
+    /// inits; a write through the root cursor on a read-only storage fails
+    /// with the storage's write error and truncates nothing. Two processes
+    /// on one file use the file's lock: a reader that opened read-write is a
+    /// second writer, and starting a write-mode collection on its root cursor
+    /// discards whatever the other process's transaction has written so far.
+    public var rootCursor: Cursor<ReadWrite> {
         // The cursor only holds a snapshot of the root slot, and everything
         // that starts at it reads the root again. If this read fails, the
         // cursor looks empty and the next operation reports the error.
@@ -545,7 +557,7 @@ extension Database {
     }
 
     /// Runs `body` as one transaction, with a cursor at the root to write
-    /// through.
+    /// through, and gives what it returns.
     ///
     /// The transaction commits when `body` returns. If `body` throws,
     /// everything it wrote is discarded and the database is as it was.
@@ -554,12 +566,20 @@ extension Database {
     /// a hash map: without it, each write through a root cursor is a
     /// transaction of its own.
     ///
+    /// The result may be ignored: a transaction is often run for its writes
+    /// alone, with a body whose one expression happens to have a value.
+    ///
     /// - Parameter body: Does the writing, through the cursor it is given.
     /// - Throws: ``XitDBError/nestedTopLevelWrite`` if a transaction is
     ///   already in progress, ``XitDBError/storageFailure(errno:)`` if the
     ///   storage fails, and whatever `body` throws.
-    public func runContext(_ body: (inout Cursor<ReadWrite>) throws -> Void) throws {
+    @discardableResult
+    public func withTransaction<Result>(_ body: (inout Cursor<ReadWrite>) throws -> Result) throws -> Result {
         let path: InlineArray<1, PathPart> = [.ctx]
-        _ = try rootCursor().writePath(path.span, body)
+        var result: Result?
+        _ = try rootCursor.writePath(path.span) { cursor in result = try body(&cursor) }
+        // A write path that ends in `.ctx` runs the body or throws.
+        guard let result else { preconditionFailure("the transaction's body was not run") }
+        return result
     }
 }

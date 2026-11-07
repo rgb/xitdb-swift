@@ -11,19 +11,19 @@ import Testing
     private func makeDatabase(_ storage: any WritableStorage = MemoryStorage()) throws -> Database {
         let database = try Database(
             storage: storage, hashSize: 20, hashID: nil, fileID: 7, random: FixedRandom((1...200).map { UInt64($0) }))
-        _ = try database.rootCursor().writePath([.hashMapInit()])
+        _ = try database.rootCursor.writePath([.hashMapInit()])
         return database
     }
 
     /// Writes `data` under a key in the root map, in a transaction.
     private func put(_ database: Database, _ key: String, _ data: WritableData) throws {
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             _ = try cursor.writePath([.hashMapGet(.value, sha1(key)), .write(data)])
         }
     }
 
     private func get(_ database: Database, _ key: String) throws -> Cursor<ReadOnly> {
-        try #require(try database.rootCursor().readPath([.hashMapGet(.value, sha1(key))]))
+        try #require(try database.rootCursor.readPath([.hashMapGet(.value, sha1(key))]))
     }
 
     // MARK: Numbers
@@ -64,8 +64,8 @@ import Testing
             var span = buffer.mutableSpan
             return try uint.readBytes(into: &span)
         }
-        #expect(throws: XitDBError.unexpectedTag) { try database.rootCursor().readUint() }
-        #expect(throws: XitDBError.unexpectedTag) { try database.rootCursor().count() }
+        #expect(throws: XitDBError.unexpectedTag) { try database.rootCursor.readUint() }
+        #expect(throws: XitDBError.unexpectedTag) { try database.rootCursor.count() }
     }
 
     // MARK: Bytes
@@ -259,7 +259,7 @@ import Testing
 
     @Test func theWriterAlwaysMakesARecordAndCanSeek() throws {
         let database = try makeDatabase()
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             var short = try cursor.writePath([.hashMapGet(.value, sha1("short"))])
             try short.writer { writer in try writer.write([1, 2, 3]) }
             #expect(try short.slot().tag == .bytes)
@@ -312,7 +312,7 @@ import Testing
     @Test func aWriterWhoseBodyThrowsLeavesTheSlotAsItWas() throws {
         struct Cancel: Error {}
         let database = try makeDatabase()
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             var value = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(1))])
             #expect(throws: Cancel.self) {
                 try value.writer { writer in
@@ -327,13 +327,13 @@ import Testing
 
     @Test func theWriterNeedsATransactionAndASlotBelowTheRoot() throws {
         let database = try makeDatabase()
-        var root = database.rootCursor()
+        var root = database.rootCursor
         #expect(throws: XitDBError.cursorNotWritable) { try root.writer { _ in } }
 
         var kept: Cursor<ReadWrite>?
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             kept = try cursor.writePath([.hashMapGet(.value, sha1("a"))])
-            var inner = database.rootCursor()
+            var inner = database.rootCursor
             #expect(throws: XitDBError.cursorNotWritable) { try inner.writer { _ in } }
         }
         var outside = try #require(kept)
@@ -346,7 +346,7 @@ import Testing
     /// A byte array can only grow while it is the last thing in the file.
     @Test func aWriterCannotGrowOnceSomethingElseWasWritten() throws {
         let database = try makeDatabase()
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             var value = try cursor.writePath([.hashMapGet(.value, sha1("a"))])
             var other = try cursor.writePath([.hashMapGet(.value, sha1("b"))])
             #expect(throws: XitDBError.unexpectedWriterPosition) {
@@ -375,7 +375,7 @@ import Testing
 
     @Test func writeIfEmptyGoesByTheSnapshot() throws {
         let database = try makeDatabase()
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             var first = try cursor.writePath([.hashMapGet(.value, sha1("a"))])
             var stale = first
             try first.writeIfEmpty(.uint(1))
@@ -394,14 +394,14 @@ import Testing
     @Test func aReadOnlyCopyReadsTheSameSlot() throws {
         let database = try makeDatabase()
         try put(database, "a", .uint(5))
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let value = try cursor.writePath([.hashMapGet(.value, sha1("a"))])
             let readOnly = value.readOnly()
             #expect(try readOnly.readUint() == 5)
             #expect(try readOnly.slot() == (try value.slot()))
         }
         // a read-only copy of a root cursor still follows the root
-        let root = database.rootCursor().readOnly()
+        let root = database.rootCursor.readOnly()
         let before = try root.slot()
         try put(database, "b", .uint(6))
         #expect(try root.slot() != before)
@@ -409,11 +409,11 @@ import Testing
 
     @Test func aKeyValuePairGivesItsKeyValueAndHash() throws {
         let database = try makeDatabase()
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             _ = try cursor.writePath([.hashMapGet(.key, sha1("k")), .write(.bytes(Array("k".utf8)))])
             _ = try cursor.writePath([.hashMapGet(.value, sha1("k")), .write(.uint(9))])
         }
-        let entry = try #require(try database.rootCursor().readPath([.hashMapGet(.kvPair, sha1("k"))]))
+        let entry = try #require(try database.rootCursor.readPath([.hashMapGet(.kvPair, sha1("k"))]))
         #expect(try entry.slot().tag == .kvPair)
         let pair = try entry.readKeyValuePair()
         #expect(pair.hash == sha1("k").bytes)
@@ -421,7 +421,7 @@ import Testing
         #expect(try pair.valueCursor.readUint() == 9)
 
         // through a read-write cursor the two cursors can be written
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             let entry = try cursor.writePath([.hashMapGet(.kvPair, sha1("k"))])
             var pair = try entry.readKeyValuePair()
             try pair.valueCursor.write(.uint(10))
@@ -431,7 +431,7 @@ import Testing
 
     @Test func countReadsHeadersOnly() throws {
         let database = try makeDatabase()
-        try database.runContext { cursor in
+        try database.withTransaction { cursor in
             _ = try cursor.writePath([.hashMapGet(.value, sha1("list")), .arrayListInit, .arrayListAppend])
             _ = try cursor.writePath([.hashMapGet(.value, sha1("list")), .arrayListAppend])
             _ = try cursor.writePath([
@@ -450,7 +450,7 @@ import Testing
         #expect(try get(database, "countedSet").count() == 1)
         #expect(throws: XitDBError.unexpectedTag) { try get(database, "plain").count() }
         #expect(throws: XitDBError.unexpectedTag) { try get(database, "set").count() }
-        #expect(try database.rootCursor().readPath([.hashMapGet(.value, sha1("missing"))]) == nil)
+        #expect(try database.rootCursor.readPath([.hashMapGet(.value, sha1("missing"))]) == nil)
     }
 }
 

@@ -17,9 +17,9 @@ import Testing
             random: random
         )
         #expect(storage.bytes.count == 62)
-        #expect(try database.committedSize() == 62)
+        #expect(try database.committedSize == 62)
 
-        _ = try database.rootCursor().writePath([
+        _ = try database.rootCursor.writePath([
             .arrayListInit,
             .arrayListAppend,
             .hashMapInit(),
@@ -27,7 +27,7 @@ import Testing
             .write(.uint(42)),
         ])
 
-        #expect(try database.committedSize() == 438)
+        #expect(try database.committedSize == 438)
         #expect(random.remaining == 0)
         #expect(!random.exhausted)
         return (storage.bytes, database)
@@ -57,11 +57,11 @@ import Testing
 
     @Test func readsBack() throws {
         let (_, database) = try run(commitID: 1)
-        let moment = try #require(try database.rootCursor().readPath([.arrayListGet(-1)]))
+        let moment = try #require(try database.rootCursor.readPath([.arrayListGet(-1)]))
         let value = try #require(try moment.readPath([.hashMapGet(.value, sha1("foo"))]))
         #expect(try value.readUint() == 42)
         #expect(try moment.readPath([.hashMapGet(.value, sha1("bar"))]) == nil)
-        #expect(try database.rootCursor().count() == 1)
-        #expect(try database.rootCursor().slot() == Slot(value: 71, tag: .arrayList))
+        #expect(try database.rootCursor.count() == 1)
+        #expect(try database.rootCursor.slot() == Slot(value: 71, tag: .arrayList))
     }
 }

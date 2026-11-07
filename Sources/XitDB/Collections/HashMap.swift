@@ -14,7 +14,7 @@
 /// write makes the slot a map if it holds nothing, and readies it for
 /// this transaction's writes.
 ///
-/// Writing needs a transaction: see ``Database/runContext(_:)``. A map at
+/// Writing needs a transaction: see ``Database/withTransaction(_:)``. A map at
 /// the root of the database is the exception: there, every write is a
 /// transaction of its own.
 public struct HashMap<Access: CursorAccess> {

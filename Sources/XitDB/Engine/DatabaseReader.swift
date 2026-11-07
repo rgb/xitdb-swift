@@ -153,8 +153,10 @@ struct DatabaseReader {
     }
 
     /// The number of bytes that belong to committed transactions.
-    func committedSize() throws(XitDBError) -> UInt64 {
-        try rootHeader().fileSize
+    var committedSize: UInt64 {
+        get throws(XitDBError) {
+            try rootHeader().fileSize
+        }
     }
 
     /// The most recently committed root slot.

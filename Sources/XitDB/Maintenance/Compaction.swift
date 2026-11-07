@@ -54,11 +54,11 @@ extension Database {
         // the target must be a new or empty database, because compaction
         // writes to it with ordinary transactions. this also rejects
         // compacting a database into its own file.
-        guard try target.rootCursor().slot().isEmpty else { throw .targetNotEmpty }
+        guard try target.rootCursor.slot().isEmpty else { throw .targetNotEmpty }
 
         // an empty root compacts to a new database. a root explicitly set
         // to nothing isn't empty, so it is remapped below.
-        let sourceRoot = try rootCursor().slot()
+        let sourceRoot = try rootCursor.slot()
         if sourceRoot.isEmpty { return }
 
         // the target is written as one ordinary transaction, so it is
@@ -70,16 +70,16 @@ extension Database {
             // an array list root is a history, and its latest moment
             // becomes the only moment of a new one
             let last: InlineArray<1, PathPart> = [.arrayListGet(-1)]
-            if let lastMoment = try rootCursor().readPathSlot(last.span) {
+            if let lastMoment = try rootCursor.readPathSlot(last.span) {
                 let path: InlineArray<3, PathPart> = [.arrayListInit, .arrayListAppend, .ctx]
-                _ = try target.rootCursor().writePath(path.span) { (cursor) throws(XitDBError) in
+                _ = try target.rootCursor.writePath(path.span) { (cursor) throws(XitDBError) in
                     try cursor.write(.slot(try compactor.remap(lastMoment, offsetMap: &offsetMap)))
                 }
             }
         default:
             // any other root is remapped whole
             let path: InlineArray<1, PathPart> = [.ctx]
-            _ = try target.rootCursor().writePath(path.span) { (cursor) throws(XitDBError) in
+            _ = try target.rootCursor.writePath(path.span) { (cursor) throws(XitDBError) in
                 try cursor.write(.slot(try compactor.remap(sourceRoot, offsetMap: &offsetMap)))
             }
         }

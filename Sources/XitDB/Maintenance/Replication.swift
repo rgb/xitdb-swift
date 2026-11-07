@@ -5,7 +5,7 @@
 // Zig's replicaState, replicationStart, readCommitted and applyReplicated.
 
 /// What a replica sends its source, so that the source knows which bytes
-/// to send back: see ``Database/replicationStart(_:)``. Zig's `ReplicaState`.
+/// to send back: see ``Database/replicationStart(for:)``. Zig's `ReplicaState`.
 public struct ReplicaState: Sendable, Equatable {
     /// The replica's committed size.
     public var committedSize: UInt64
@@ -90,12 +90,14 @@ extension Database {
     /// This database's ``ReplicaState``: its committed size and the
     /// checksum of the trailer that ends it. Zig's `replicaState`.
     ///
-    /// - Throws: What ``committedSize()`` throws: the database must check
+    /// - Throws: What ``committedSize`` throws: the database must check
     ///   out to have a state.
-    public func replicaState() throws(XitDBError) -> ReplicaState {
-        let committedSize = try reader.committedSize()
-        return ReplicaState(
-            committedSize: committedSize, checksum: try reader.rootTrailer(endingAt: committedSize).checksum)
+    public var replicaState: ReplicaState {
+        get throws(XitDBError) {
+            let committedSize = try reader.committedSize
+            return ReplicaState(
+                committedSize: committedSize, checksum: try reader.rootTrailer(endingAt: committedSize).checksum)
+        }
     }
 
     /// Where to start sending committed bytes to a replica in `state`: its
@@ -106,9 +108,9 @@ extension Database {
     /// A state is never an error: a size beyond this database's, or one
     /// where no trailer with that checksum ends, gives 0.
     ///
-    /// - Throws: What ``committedSize()`` throws, and the storage's errors.
-    public func replicationStart(_ state: ReplicaState) throws(XitDBError) -> UInt64 {
-        if state.committedSize > (try reader.committedSize()) { return 0 }
+    /// - Throws: What ``committedSize`` throws, and the storage's errors.
+    public func replicationStart(for state: ReplicaState) throws(XitDBError) -> UInt64 {
+        if state.committedSize > (try reader.committedSize) { return 0 }
         let trailer: RootTrailer
         do throws(XitDBError) {
             trailer = try reader.rootTrailer(endingAt: state.committedSize)
@@ -124,8 +126,8 @@ extension Database {
     /// Writes the committed bytes from `start` up to `end` to `sink`, a
     /// chunk at a time: Zig's `readCommitted`.
     ///
-    /// `start` is usually from ``replicationStart(_:)``, and `end` cannot
-    /// be past ``committedSize()``. Committed bytes never change except for
+    /// `start` is usually from ``replicationStart(for:)``, and `end` cannot
+    /// be past ``committedSize``. Committed bytes never change except for
     /// the root header, so from 0 a root header that matches `end` is
     /// written in place of the file's, which makes the bytes a complete
     /// database by themselves. From anywhere else the bytes are sent as
@@ -140,7 +142,7 @@ extension Database {
     public func readCommitted<Sink: ByteSink>(from start: UInt64, to end: UInt64, into sink: inout Sink)
         throws(XitDBError)
     {
-        let committedSize = try reader.committedSize()
+        let committedSize = try reader.committedSize
         if start > end || end > committedSize { throw .invalidRange }
         if start > 0 && start < RootHeader.endPosition { throw .invalidRange }
         if start == 0 {
@@ -162,7 +164,7 @@ extension Database {
     ///
     /// - Throws: What ``readCommitted(from:to:into:)-(_,_,Sink)`` throws.
     public func readCommitted(from start: UInt64, to end: UInt64, into bytes: inout [UInt8]) throws(XitDBError) {
-        let committedSize = try reader.committedSize()
+        let committedSize = try reader.committedSize
         if start > end || end > committedSize { throw .invalidRange }
         if start > 0 && start < RootHeader.endPosition { throw .invalidRange }
         let trailer = start == 0 ? try reader.rootTrailer(endingAt: end) : nil
@@ -197,7 +199,7 @@ extension Database {
     /// they end with a trailer. At 0 this database is replaced by them: the
     /// file is emptied first, and the bytes are a different database, whose
     /// header is read afterwards and becomes this one's. Otherwise `start`
-    /// must be this database's ``committedSize()``: anything past the
+    /// must be this database's ``committedSize``: anything past the
     /// committed bytes, such as what an interrupted sync left, is
     /// discarded, the bytes are written, and the root header is set from
     /// the trailer that ends them.
@@ -209,7 +211,7 @@ extension Database {
     /// with a trailer, or a source that ends short, leave what was written
     /// past the committed size, which the next sync or transaction
     /// discards. A failure at 0 leaves no database: the file was emptied
-    /// first, so ``committedSize()`` and ``replicaState()`` raise from then
+    /// first, so ``committedSize`` and ``replicaState`` raise from then
     /// on, until a sync at 0 succeeds.
     ///
     /// - Throws: ``XitDBError/invalidRange`` for a `start` that is neither
@@ -264,7 +266,7 @@ extension Database {
     private func beginApplying(at start: UInt64) throws(XitDBError) {
         if start == 0 {
             try storage.truncate(to: 0)
-        } else if start == (try reader.committedSize()) {
+        } else if start == (try reader.committedSize) {
             // discard anything past the committed bytes, such as the remains
             // of an interrupted sync
             try truncate()
@@ -286,7 +288,7 @@ extension Database {
             let newHeader = try DatabaseHeader(decoding: bytes.span.extracting(0..<read))
             guard newHeader.hashSize == header.hashSize else { throw .invalidHashSize }
             become(newHeader)
-            _ = try reader.committedSize()
+            _ = try reader.committedSize
         } else if count > 0 {
             // the bytes must end with a trailer. update the root header to
             // match it.

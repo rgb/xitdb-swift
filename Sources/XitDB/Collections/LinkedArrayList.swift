@@ -16,7 +16,7 @@
 /// makes the slot a list if it holds nothing, and readies it for this
 /// transaction's writes.
 ///
-/// Writing needs a transaction: see ``Database/runContext(_:)``. A list at
+/// Writing needs a transaction: see ``Database/withTransaction(_:)``. A list at
 /// the root of the database is the exception: there, every write is a
 /// transaction of its own.
 ///

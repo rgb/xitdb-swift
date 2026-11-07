@@ -63,7 +63,7 @@ struct CollectingSink: ByteSink {
         let subject = try StorageUnderTest(kind)
         let source = try makeDatabase(subject, fileID: fileID)
         for moment in 1...2 {
-            try ArrayList(source.rootCursor()).appendContext(.slot(try ArrayList(source.rootCursor()).getSlot(-1))) {
+            try ArrayList(source.rootCursor).appendContext(.slot(try ArrayList(source.rootCursor).getSlot(-1))) {
                 cursor in
                 try HashMap(cursor).put(sha1("moment").bytes, .uint(UInt64(moment)))
             }
@@ -77,19 +77,21 @@ struct CollectingSink: ByteSink {
     @Test(arguments: StorageKind.allCases)
     func anyStateHasAStart(kind: StorageKind) throws {
         let (_, source) = try makeSource(kind)
-        let committed = try source.committedSize()
-        let state = try source.replicaState()
+        let committed = try source.committedSize
+        let state = try source.replicaState
         #expect(state.committedSize == committed)
-        #expect(try source.replicationStart(state) == committed)
+        #expect(try source.replicationStart(for: state) == committed)
         for size in [UInt64(0), 1, 24, 25, 36, 37, 61, 62, committed - 1, committed + 1, UInt64.max - 1, UInt64.max] {
-            #expect(try source.replicationStart(ReplicaState(committedSize: size, checksum: state.checksum)) == 0)
-            #expect(try source.replicationStart(ReplicaState(committedSize: size, checksum: 0)) == 0)
-            #expect(try source.replicationStart(ReplicaState(committedSize: size, checksum: .max)) == 0)
+            #expect(try source.replicationStart(for: ReplicaState(committedSize: size, checksum: state.checksum)) == 0)
+            #expect(try source.replicationStart(for: ReplicaState(committedSize: size, checksum: 0)) == 0)
+            #expect(try source.replicationStart(for: ReplicaState(committedSize: size, checksum: .max)) == 0)
         }
-        #expect(try source.replicationStart(ReplicaState(committedSize: committed, checksum: state.checksum &+ 1)) == 0)
+        #expect(
+            try source.replicationStart(for: ReplicaState(committedSize: committed, checksum: state.checksum &+ 1)) == 0
+        )
         // the first commit, of the empty database, is a prefix too
         let first = try source.reader.rootTrailer(endingAt: 62)
-        #expect(try source.replicationStart(ReplicaState(committedSize: 62, checksum: first.checksum)) == 62)
+        #expect(try source.replicationStart(for: ReplicaState(committedSize: 62, checksum: first.checksum)) == 62)
     }
 
     /// Every edge of a range: the root header's bytes cannot be a start,
@@ -98,7 +100,7 @@ struct CollectingSink: ByteSink {
     @Test(arguments: StorageKind.allCases)
     func readCommittedAtEveryEdge(kind: StorageKind) throws {
         let (_, source) = try makeSource(kind)
-        let committed = try source.committedSize()
+        let committed = try source.committedSize
         let whole = try readCommitted(source, from: 0, to: committed)
         #expect(whole.count == Int(committed))
         #expect(try readCommitted(source, from: committed, to: committed) == [])
@@ -134,14 +136,14 @@ struct CollectingSink: ByteSink {
     @Test(arguments: StorageKind.allCases)
     func applyReplicatedThatFails(kind: StorageKind) throws {
         let (_, source) = try makeSource(kind)
-        let committed = try source.committedSize()
+        let committed = try source.committedSize
         let whole = try readCommitted(source, from: 0, to: committed)
         let tail = try readCommitted(source, from: 62, to: committed)
 
         let replicaSubject = try StorageUnderTest(kind)
         let replica = try makeDatabase(replicaSubject, fileID: 7)
         try replica.applyReplicated(at: 0, bytes: try readCommitted(source, from: 0, to: 62))
-        #expect(try replica.committedSize() == 62)
+        #expect(try replica.committedSize == 62)
         #expect(replica.header.fileID == 6)
 
         // a start that is neither 0 nor the committed size changes nothing
@@ -156,33 +158,33 @@ struct CollectingSink: ByteSink {
         #expect(throws: XitDBError.endOfStream) {
             try replica.applyReplicated(at: 62, from: &short, count: UInt64(tail.count))
         }
-        #expect(try replica.committedSize() == 62)
+        #expect(try replica.committedSize == 62)
         #expect(try replicaSubject.storage.length == 72)
 
         // bytes that do not end with a trailer: the same
         #expect(throws: XitDBError.invalidDatabase) {
             try replica.applyReplicated(at: 62, bytes: Array(tail.dropLast()))
         }
-        #expect(try replica.committedSize() == 62)
+        #expect(try replica.committedSize == 62)
         #expect(try replicaSubject.storage.length == 62 + UInt64(tail.count - 1))
 
         // a trailer whose checksum is for another file
         let (_, other) = try makeSource(kind, fileID: 9)
-        let otherTail = try readCommitted(other, from: 62, to: try other.committedSize())
+        let otherTail = try readCommitted(other, from: 62, to: try other.committedSize)
         #expect(throws: XitDBError.invalidDatabase) { try replica.applyReplicated(at: 62, bytes: otherTail) }
-        #expect(try replica.committedSize() == 62)
+        #expect(try replica.committedSize == 62)
 
         // a count of 0 at the committed size does nothing, and clears what
         // the failures left
         try replica.applyReplicated(at: 62, bytes: [])
-        #expect(try replica.committedSize() == 62)
+        #expect(try replica.committedSize == 62)
         #expect(try replicaSubject.storage.length == 62)
 
         // the right bytes, after all that
         try replica.applyReplicated(at: 62, bytes: tail)
-        #expect(try replica.committedSize() == committed)
+        #expect(try replica.committedSize == committed)
         #expect(try readCommitted(replica, from: 0, to: committed) == whole)
-        #expect(try replica.replicaState() == (try source.replicaState()))
+        #expect(try replica.replicaState == (try source.replicaState))
     }
 
     /// The streaming sync, from a source, at 0: a source that ends short is
@@ -194,7 +196,7 @@ struct CollectingSink: ByteSink {
     @Test(arguments: StorageKind.allCases)
     func aStreamingSyncAtZeroThatEndsShort(kind: StorageKind) throws {
         let (_, source) = try makeSource(kind)
-        let committed = try source.committedSize()
+        let committed = try source.committedSize
         let whole = try readCommitted(source, from: 0, to: committed)
         let replicaSubject = try StorageUnderTest(kind)
         let replica = try makeDatabase(replicaSubject, fileID: 7)
@@ -205,7 +207,7 @@ struct CollectingSink: ByteSink {
         #expect(throws: XitDBError.endOfStream) { try replica.applyReplicated(at: 0, from: &short, count: 62) }
         #expect(replica.header.fileID == 7)
         #expect(try replicaSubject.storage.length == 40)
-        #expect(throws: XitDBError.truncatedDatabase) { try replica.committedSize() }
+        #expect(throws: XitDBError.truncatedDatabase) { try replica.committedSize }
 
         var overstating = OverstatingSource()
         #expect(throws: XitDBError.endOfStream) {
@@ -217,9 +219,9 @@ struct CollectingSink: ByteSink {
         var all = ArrayByteSource(whole)
         try replica.applyReplicated(at: 0, from: &all, count: committed)
         #expect(replica.header.fileID == 6)
-        #expect(try replica.committedSize() == committed)
+        #expect(try replica.committedSize == committed)
         #expect(try readCommitted(replica, from: 0, to: committed) == whole)
-        #expect(try replica.replicaState() == (try source.replicaState()))
+        #expect(try replica.replicaState == (try source.replicaState))
     }
 
     /// A sync at 0 that fails leaves no database: the file was emptied
@@ -228,7 +230,7 @@ struct CollectingSink: ByteSink {
     @Test(arguments: StorageKind.allCases)
     func aFailedSyncAtZeroLeavesNoDatabase(kind: StorageKind) throws {
         let (_, source) = try makeSource(kind)
-        let committed = try source.committedSize()
+        let committed = try source.committedSize
         let whole = try readCommitted(source, from: 0, to: committed)
         let replicaSubject = try StorageUnderTest(kind)
         let replica = try makeDatabase(replicaSubject, fileID: 7)
@@ -239,36 +241,36 @@ struct CollectingSink: ByteSink {
             try replica.applyReplicated(at: 0, bytes: Array(whole.dropLast()))
         }
         #expect(replica.header.fileID == 6)
-        #expect(throws: XitDBError.truncatedDatabase) { try replica.committedSize() }
-        #expect(throws: XitDBError.truncatedDatabase) { try replica.replicaState() }
-        #expect(throws: XitDBError.truncatedDatabase) { try replica.replicationStart(try source.replicaState()) }
+        #expect(throws: XitDBError.truncatedDatabase) { try replica.committedSize }
+        #expect(throws: XitDBError.truncatedDatabase) { try replica.replicaState }
+        #expect(throws: XitDBError.truncatedDatabase) { try replica.replicationStart(for: try source.replicaState) }
         #expect(throws: XitDBError.truncatedDatabase) { try readCommitted(replica, from: 0, to: 62) }
         #expect(throws: XitDBError.truncatedDatabase) { try replica.applyReplicated(at: committed, bytes: []) }
         // not even the header
         #expect(throws: XitDBError.endOfStream) { try replica.applyReplicated(at: 0, bytes: Array(whole[0..<10])) }
-        #expect(throws: XitDBError.endOfStream) { try replica.committedSize() }
+        #expect(throws: XitDBError.endOfStream) { try replica.committedSize }
         // a trailer that does not check
         var damaged = whole
         damaged[damaged.count - 1] ^= 0xFF
         #expect(throws: XitDBError.invalidDatabase) { try replica.applyReplicated(at: 0, bytes: damaged) }
-        #expect(throws: XitDBError.invalidDatabase) { try replica.committedSize() }
+        #expect(throws: XitDBError.invalidDatabase) { try replica.committedSize }
         // a database of another hash size is not adopted
         let otherSubject = try StorageUnderTest(kind)
         let other = try Database(
             storage: otherSubject.storage, hashSize: 8, hashID: nil, fileID: 3, random: FixedRandom([1]))
         #expect(throws: XitDBError.invalidHashSize) {
-            try replica.applyReplicated(at: 0, bytes: try readCommitted(other, from: 0, to: try other.committedSize()))
+            try replica.applyReplicated(at: 0, bytes: try readCommitted(other, from: 0, to: try other.committedSize))
         }
         #expect(replica.header.fileID == 6)
         #expect(replica.header.hashSize == 20)
 
         // a whole one puts it right
         try replica.applyReplicated(at: 0, bytes: whole)
-        #expect(try replica.committedSize() == committed)
+        #expect(try replica.committedSize == committed)
         #expect(replica.header.fileID == 6)
-        #expect(try replica.replicaState() == (try source.replicaState()))
+        #expect(try replica.replicaState == (try source.replicaState))
         #expect(
-            try #require(try replica.rootCursor().readPath([.arrayListGet(-1), .hashMapGet(.value, sha1("moment"))]))
+            try #require(try replica.rootCursor.readPath([.arrayListGet(-1), .hashMapGet(.value, sha1("moment"))]))
                 .readUint() == 2)
     }
 
@@ -277,18 +279,18 @@ struct CollectingSink: ByteSink {
     @Test(arguments: StorageKind.allCases)
     func aRootHeaderThatClaimsTooMuch(kind: StorageKind) throws {
         let (subject, source) = try makeSource(kind)
-        let committed = try source.committedSize()
+        let committed = try source.committedSize
         try writeBytes(subject.storage, bigEndianBytes(committed + 1), at: RootHeader.fileSizePosition)
-        #expect(throws: XitDBError.truncatedDatabase) { try source.committedSize() }
-        #expect(throws: XitDBError.truncatedDatabase) { try source.replicaState() }
+        #expect(throws: XitDBError.truncatedDatabase) { try source.committedSize }
+        #expect(throws: XitDBError.truncatedDatabase) { try source.replicaState }
         #expect(throws: XitDBError.truncatedDatabase) {
-            try source.replicationStart(ReplicaState(committedSize: 62, checksum: 0))
+            try source.replicationStart(for: ReplicaState(committedSize: 62, checksum: 0))
         }
         #expect(throws: XitDBError.truncatedDatabase) { try readCommitted(source, from: 0, to: 62) }
         // and one that claims less than a database can be
         try writeBytes(subject.storage, bigEndianBytes(24), at: RootHeader.fileSizePosition)
-        #expect(throws: XitDBError.invalidDatabase) { try source.committedSize() }
-        #expect(throws: XitDBError.invalidDatabase) { try source.replicaState() }
+        #expect(throws: XitDBError.invalidDatabase) { try source.committedSize }
+        #expect(throws: XitDBError.invalidDatabase) { try source.replicaState }
     }
 
     /// On the plain file at full durability, a sync at the committed size
@@ -296,7 +298,7 @@ struct CollectingSink: ByteSink {
     /// that order; a sync at 0 writes the bytes and syncs once.
     @Test func aSyncOnThePlainFileSyncsAroundTheRootHeader() throws {
         let (_, source) = try makeSource(.memory)
-        let committed = try source.committedSize()
+        let committed = try source.committedSize
         let directory = try TemporaryDirectory()
         let file = try FileStorage(path: directory.path(), access: .create, durability: .full)
         let recorder = SyncRecorder()
@@ -321,7 +323,7 @@ struct CollectingSink: ByteSink {
             events.take() == [
                 .write(at: 62, count: tail.count), .sync(.barrier), .write(at: 20, count: 17), .sync(.full),
             ])
-        #expect(try replica.committedSize() == committed)
+        #expect(try replica.committedSize == committed)
     }
 
     /// The writes and syncs a file storage makes, in order.

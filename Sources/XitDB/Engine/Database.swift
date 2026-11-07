@@ -7,7 +7,7 @@
 /// to point at it. Everything committed before stays readable, which is what
 /// makes every past state of a database available and copying one free.
 ///
-/// Reading and writing start from ``rootCursor()``.
+/// Reading and writing start from ``rootCursor``.
 ///
 /// A database is not `Sendable`. It belongs to one thread or task at a time.
 /// Only one database at a time may write to a storage; any number may read
@@ -45,74 +45,110 @@ public final class Database {
     /// The source of the file ID of a new database and of every commit ID.
     private var random: any RandomNumberGenerator
 
-    /// Opens the database in a storage, or creates one if the storage is
-    /// empty.
+    /// Opens the database in a storage.
     ///
     /// - Parameters:
-    ///   - storage: Where the database's bytes are kept. The database
-    ///     becomes the only writer to it.
+    ///   - storage: Where the database's bytes are. The database becomes
+    ///     the only writer to it.
+    ///   - hashSize: The size in bytes the database's hashes must have, or
+    ///     `nil` to take whatever the database records. Give it when the
+    ///     keys come from one algorithm, such as 20 for SHA-1, so that a
+    ///     database hashed another way is refused at once.
+    /// - Throws: ``XitDBError/invalidDatabase`` if the storage is empty or
+    ///   does not hold a database, or the database's last commit does not
+    ///   check out; ``XitDBError/invalidVersion`` if it was written in a
+    ///   version of the format this implementation does not read;
+    ///   ``XitDBError/invalidHashSize`` if `hashSize` was given and is not
+    ///   the database's; ``XitDBError/truncatedDatabase`` if the storage is
+    ///   shorter than the database says it is; ``XitDBError/endOfStream``
+    ///   if it is too short to hold a header; and
+    ///   ``XitDBError/storageFailure(errno:)`` if the storage fails.
+    public convenience init(opening storage: any WritableStorage, hashSize: Int? = nil) throws(XitDBError) {
+        try self.init(opening: storage, hashSize: hashSize, random: SystemRandomNumberGenerator())
+    }
+
+    /// Creates a database in an empty storage.
+    ///
+    /// - Parameters:
+    ///   - storage: Where the database's bytes go. It must be empty, and
+    ///     the database becomes the only writer to it.
     ///   - hashSize: The size in bytes of every hash in the database, such
-    ///     as 20 for SHA-1. It is required to create a database. To open
-    ///     one it can be left out, in which case the size recorded in the
-    ///     database is used.
-    ///   - hashID: For a new database, an identifier of the hash algorithm
-    ///     to record in its header. XitDB never interprets it.
-    ///   - fileID: For a new database, its file ID. Left out, a random one
-    ///     is chosen, which is what a database should normally have.
-    /// - Throws: For an empty storage, ``XitDBError/invalidHashSize`` if no
-    ///   hash size was given. For an existing database,
-    ///   ``XitDBError/invalidDatabase`` if the storage does not hold a
-    ///   database or its last commit does not check out,
-    ///   ``XitDBError/invalidVersion`` if it was written in a version of the
-    ///   format this implementation does not read,
-    ///   ``XitDBError/invalidHashSize`` if `hashSize` was given and differs
-    ///   from the database's, ``XitDBError/truncatedDatabase`` if the
-    ///   storage is shorter than the database says it is, and
-    ///   ``XitDBError/endOfStream`` if it is too short to hold a header.
-    ///   Either way, ``XitDBError/storageFailure(errno:)`` if the storage
-    ///   fails.
+    ///     as 20 for SHA-1: from 1 to 65535.
+    ///   - hashID: An identifier of the hash algorithm, recorded in the
+    ///     header for whoever reads the file. XitDB never interprets it.
+    ///   - fileID: The database's file ID. Left out, a random one is chosen,
+    ///     which is what a database should normally have.
+    /// - Throws: ``XitDBError/storageNotEmpty`` if the storage holds any
+    ///   bytes; ``XitDBError/invalidHashSize`` if `hashSize` is 0 or more
+    ///   than 65535; and ``XitDBError/storageFailure(errno:)`` if the
+    ///   storage fails.
     public convenience init(
-        storage: any WritableStorage,
-        hashSize: UInt16? = nil,
+        creating storage: any WritableStorage,
+        hashSize: Int,
         hashID: HashID? = nil,
         fileID: UInt64? = nil
     ) throws(XitDBError) {
         try self.init(
-            storage: storage,
-            hashSize: hashSize,
-            hashID: hashID,
-            fileID: fileID,
-            random: SystemRandomNumberGenerator()
-        )
+            creating: storage, hashSize: hashSize, hashID: hashID, fileID: fileID,
+            random: SystemRandomNumberGenerator())
     }
 
-    /// Opens or creates a database with a given source of randomness, so
-    /// that tests can fix the file ID and the commit IDs and compare whole
-    /// files.
-    package init(
+    /// Opens or creates a database, as Zig's `DB.init` does: a hash size on
+    /// an empty storage creates. For the ported tests, which follow Zig's
+    /// shape, and with a source of randomness of the caller's, so that a
+    /// test can fix the file ID and the commit IDs and compare whole files.
+    package convenience init(
         storage: any WritableStorage,
         hashSize: UInt16?,
+        hashID: HashID? = nil,
+        fileID: UInt64? = nil,
+        random: any RandomNumberGenerator = SystemRandomNumberGenerator()
+    ) throws(XitDBError) {
+        if try storage.length == 0 {
+            guard let hashSize else { throw .invalidHashSize }
+            try self.init(creating: storage, hashSize: Int(hashSize), hashID: hashID, fileID: fileID, random: random)
+        } else {
+            try self.init(opening: storage, hashSize: hashSize.map { Int($0) }, random: random)
+        }
+    }
+
+    /// Opens a database with a given source of randomness for its commit
+    /// IDs.
+    package init(opening storage: any WritableStorage, hashSize: Int?, random: any RandomNumberGenerator)
+        throws(XitDBError)
+    {
+        var buffer = InlineArray<20, UInt8>(repeating: 0)
+        var span = buffer.mutableSpan
+        let read = try storage.read(into: &span, at: 0)
+        if read == 0 { throw .invalidDatabase }
+        let header = try DatabaseHeader(decoding: buffer.span.extracting(0..<read))
+        if let hashSize, Int(header.hashSize) != hashSize { throw .invalidHashSize }
+
+        self.storage = storage
+        identity = DatabaseIdentity(header: header)
+        self.reader = DatabaseReader(storage: storage, identity: identity)
+        self.transactionStart = nil
+        self.random = random
+        _ = try reader.committedSize
+    }
+
+    /// Creates a database with a given source of randomness for its file ID
+    /// and commit IDs.
+    package init(
+        creating storage: any WritableStorage,
+        hashSize: Int,
         hashID: HashID?,
         fileID: UInt64?,
         random: any RandomNumberGenerator
     ) throws(XitDBError) {
         var random = random
-        let isNew = try storage.length == 0
-        let header: DatabaseHeader
-        if isNew {
-            guard let hashSize else { throw .invalidHashSize }
-            header = DatabaseHeader(
-                fileID: fileID ?? random.next(),
-                hashID: hashID ?? HashID(rawValue: 0),
-                hashSize: hashSize
-            )
-        } else {
-            var buffer = InlineArray<20, UInt8>(repeating: 0)
-            var span = buffer.mutableSpan
-            let read = try storage.read(into: &span, at: 0)
-            header = try DatabaseHeader(decoding: buffer.span.extracting(0..<read))
-            if let hashSize, header.hashSize != hashSize { throw .invalidHashSize }
-        }
+        guard try storage.length == 0 else { throw .storageNotEmpty }
+        guard let hashSize = UInt16(exactly: hashSize), hashSize > 0 else { throw .invalidHashSize }
+        let header = DatabaseHeader(
+            fileID: fileID ?? random.next(),
+            hashID: hashID ?? HashID(rawValue: 0),
+            hashSize: hashSize
+        )
 
         self.storage = storage
         identity = DatabaseIdentity(header: header)
@@ -120,22 +156,18 @@ public final class Database {
         self.transactionStart = nil
         self.random = random
 
-        if isNew {
-            let headerBytes = InlineArray<20, UInt8> { (output: inout OutputSpan<UInt8>) in
-                header.encode(into: &output)
-            }
-            try storage.write(headerBytes.span, at: 0)
-            // The root header, and a commit of an empty root, so that the
-            // file ends with a trailer as it does after any transaction.
-            let emptyRootHeader = InlineArray<17, UInt8>(repeating: 0)
-            try storage.write(emptyRootHeader.span, at: RootHeader.position)
-            // The first commit's ID is zero, so a new database's bytes
-            // depend only on its header.
-            try commitRoot(Slot(), commitID: 0)
-            try storage.sync(.afterRootHeader)
-        } else {
-            _ = try reader.committedSize()
+        let headerBytes = InlineArray<20, UInt8> { (output: inout OutputSpan<UInt8>) in
+            header.encode(into: &output)
         }
+        try storage.write(headerBytes.span, at: 0)
+        // The root header, and a commit of an empty root, so that the
+        // file ends with a trailer as it does after any transaction.
+        let emptyRootHeader = InlineArray<17, UInt8>(repeating: 0)
+        try storage.write(emptyRootHeader.span, at: RootHeader.position)
+        // The first commit's ID is zero, so a new database's bytes
+        // depend only on its header.
+        try commitRoot(Slot(), commitID: 0)
+        try storage.sync(.afterRootHeader)
     }
 
     /// The number of bytes that belong to committed transactions.
@@ -147,8 +179,10 @@ public final class Database {
     ///   ``XitDBError/truncatedDatabase`` or
     ///   ``XitDBError/storageFailure(errno:)`` if the storage no longer
     ///   holds a database that checks out.
-    public func committedSize() throws(XitDBError) -> UInt64 {
-        try reader.committedSize()
+    public var committedSize: UInt64 {
+        get throws(XitDBError) {
+            try reader.committedSize
+        }
     }
 
     /// Makes everything the transaction in progress has written so far
@@ -208,7 +242,7 @@ public final class Database {
     /// Discards whatever lies beyond the committed size: what a transaction
     /// that failed, or a process that died, left behind.
     func truncate() throws(XitDBError) {
-        let committedSize = try reader.committedSize()
+        let committedSize = try reader.committedSize
         if try storage.length > committedSize {
             try storage.truncate(to: committedSize)
         }
