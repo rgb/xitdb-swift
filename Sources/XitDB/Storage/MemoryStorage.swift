@@ -45,6 +45,14 @@ struct MemoryBuffer {
         guard !overflow, let endIndex = Int(exactly: end) else { throw .maxSizeExceeded }
         if endIndex > oldCount {
             if let maxSize, end > maxSize { throw .maxSizeExceeded }
+            // A write that makes the array grow leaves room for more: the
+            // double the array would take for a small write, and half as
+            // much again for a large one, such as a replica's full sync,
+            // which would otherwise fit exactly and make the next write
+            // copy everything.
+            if endIndex > bytes.capacity {
+                bytes.reserveCapacity(max(endIndex + endIndex / 2, bytes.capacity * 2))
+            }
             if offset == UInt64(oldCount) {
                 // The write starts at the end, as nearly every write of a
                 // transaction does: append the bytes themselves.

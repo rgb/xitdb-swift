@@ -142,6 +142,32 @@ extension Database {
         }
     }
 
+    /// Appends the committed bytes from `start` up to `end` to `bytes`:
+    /// ``readCommitted(from:to:into:)`` for an array, which knows how many
+    /// bytes are coming, makes room for them once, and has them read
+    /// straight into it, in one copy.
+    ///
+    /// - Throws: What ``readCommitted(from:to:into:)`` throws.
+    public func readCommitted(from start: UInt64, to end: UInt64, into bytes: inout [UInt8]) throws(XitDBError) {
+        let committedSize = try reader.committedSize()
+        if start > end || end > committedSize { throw .invalidRange }
+        if start > 0 && start < RootHeader.endPosition { throw .invalidRange }
+        let trailer = start == 0 ? try reader.rootTrailer(endingAt: end) : nil
+
+        let first = bytes.count
+        bytes.append(contentsOf: repeatElement(0, count: Int(end - start)))
+        var span = bytes.mutableSpan
+        let read = try storage.read(into: &span, range: first..<(first + Int(end - start)), at: start)
+        guard read == Int(end - start) else { throw .endOfStream }
+        if let trailer {
+            // the root header that matches `end`, in place of the file's
+            let rootHeader = RootHeader(root: trailer.root, fileSize: end)
+            let header = InlineArray<17, UInt8> { (output: inout OutputSpan<UInt8>) in rootHeader.encode(into: &output)
+            }
+            span.copyBytes(from: header.span, count: 17, to: first + Int(RootHeader.position))
+        }
+    }
+
     /// The committed bytes from `start` up to `end`, in memory.
     ///
     /// - Throws: What ``readCommitted(from:to:into:)`` throws.
@@ -183,15 +209,7 @@ extension Database {
     public func applyReplicated<Source: ByteSource>(at start: UInt64, from source: inout Source, count: UInt64)
         throws(XitDBError)
     {
-        if start == 0 {
-            try storage.setLength(0)
-        } else if start == (try reader.committedSize()) {
-            // discard anything past the committed bytes, such as the remains
-            // of an interrupted sync
-            try truncate()
-        } else {
-            throw .invalidRange
-        }
+        try beginApplying(at: start)
 
         // the source fills a buffer of up to a chunk at a time, no more
         // than what remains
@@ -210,6 +228,41 @@ extension Database {
             remaining -= UInt64(read)
         }
 
+        try endApplying(at: start, count: count)
+    }
+
+    /// Writes bytes held in memory at `start` and commits them:
+    /// ``applyReplicated(at:from:count:)`` for an array, whose bytes go to
+    /// the storage straight from it, in one copy and one write.
+    ///
+    /// - Throws: What ``applyReplicated(at:from:count:)`` throws.
+    public func applyReplicated(at start: UInt64, bytes: [UInt8]) throws(XitDBError) {
+        try beginApplying(at: start)
+        if !bytes.isEmpty {
+            try storage.write(bytes.span, at: start)
+        }
+        try endApplying(at: start, count: UInt64(bytes.count))
+    }
+
+    /// What a sync does before the bytes are written: empties the file at
+    /// 0, discards what lies past the committed bytes at the committed
+    /// size, and refuses any other start.
+    private func beginApplying(at start: UInt64) throws(XitDBError) {
+        if start == 0 {
+            try storage.setLength(0)
+        } else if start == (try reader.committedSize()) {
+            // discard anything past the committed bytes, such as the remains
+            // of an interrupted sync
+            try truncate()
+        } else {
+            throw .invalidRange
+        }
+    }
+
+    /// What a sync does after `count` bytes were written at `start`: takes
+    /// the new header at 0, or sets the root header from the trailer that
+    /// ends the bytes, with the syncs of a commit.
+    private func endApplying(at start: UInt64, count: UInt64) throws(XitDBError) {
         if start == 0 {
             // the bytes are a different database, with its own header
             try storage.sync(.afterRootHeader)
@@ -223,24 +276,16 @@ extension Database {
         } else if count > 0 {
             // the bytes must end with a trailer. update the root header to
             // match it.
-            let trailer = try reader.rootTrailer(endingAt: position)
+            let trailer = try reader.rootTrailer(endingAt: try start.offset(by: count))
             try storage.sync(.beforeRootHeader)
             try writeRootHeader(trailer.root)
             try storage.sync(.afterRootHeader)
         }
     }
 
-    /// Writes bytes held in memory at `start` and commits them:
-    /// ``applyReplicated(at:from:count:)`` over an ``ArrayByteSource``.
-    ///
-    /// - Throws: What ``applyReplicated(at:from:count:)`` throws.
-    public func applyReplicated(at start: UInt64, bytes: [UInt8]) throws(XitDBError) {
-        var source = ArrayByteSource(bytes)
-        try applyReplicated(at: start, from: &source, count: UInt64(bytes.count))
-    }
-
-    /// The size of the chunks the streams move.
-    private static let streamChunk = 64 * 1024
+    /// The size of the chunks the streams move: large enough that a file is
+    /// read or written in few calls, small enough to sit in a buffer.
+    private static let streamChunk = 256 * 1024
 
     /// Streams the storage's bytes from `start` up to `end` into `sink`.
     ///
