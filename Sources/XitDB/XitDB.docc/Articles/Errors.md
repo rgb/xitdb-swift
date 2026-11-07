@@ -22,7 +22,8 @@ These mean the code asked for something it should not have. Most are worth fixin
 - ``XitDBError/nestedTopLevelWrite``: A write through the root, or a new transaction, while one is running.
 - ``XitDBError/cursorNotWritable``: ``Cursor/writeBytes(formatTag:_:)`` at the root.
 - ``XitDBError/streamTooLong``: A value larger than the limit or the buffer it was read with.
-- ``XitDBError/unexpectedWriterPosition``: Something else was written while a byte array was being written.
+- ``XitDBError/unexpectedWriterPosition``: Something else was written while a byte array was being written, or a seek went
+  beyond any position a storage can have.
 - ``XitDBError/storageNotEmpty``: Creating a database in a storage that has bytes.
 - ``XitDBError/targetNotEmpty``: Compacting into a database whose root holds something.
 - ``XitDBError/invalidRange``: A range of committed bytes that makes no sense: past the committed size, starting inside the root header, or a replica's start that is neither 0 nor its size.
@@ -40,6 +41,7 @@ been damaged.
 - ``XitDBError/invalidEnumTag``: A slot's tag is not a known one.
 - ``XitDBError/invalidBTreeNode``: A tree node, or a tree's header, does not hold what it should.
 - ``XitDBError/invalidBTreeNodeKind``: A tree node is neither a leaf nor a branch.
+- ``XitDBError/invalidCount``: A counted map or set records a count that disagrees with its tree.
 - ``XitDBError/keyOffsetExceeded``: A hash map goes deeper than its hashes allow.
 - ``XitDBError/maxShiftExceeded``: A list goes deeper than the format allows.
 
@@ -59,8 +61,8 @@ func open(_ storage: any WritableStorage) throws -> Database? {
 
 ### The storage
 
-- ``XitDBError/storageFailure(errno:)``: The system refused: `ENOENT` for a missing file, `EWOULDBLOCK` for a lock that is held, `EBADF` for a write to a read-only file, `ENOSPC` for a full disk. The number is what the system reported.
-- ``XitDBError/maxSizeExceeded``: A write would pass a memory storage's limit.
+- ``XitDBError/storageFailure(errno:)``: The system refused: `ENOENT` for a missing file, `EWOULDBLOCK` for a lock that is held, `EBADF` for a write to a read-only file, `ENOSPC` for a full disk, `EINVAL` for a path with a NUL byte in it. The number is what the system reported, except that last.
+- ``XitDBError/maxSizeExceeded``: A write would pass a memory storage's limit, or what an array can hold if it has none.
 
 A transaction that fails this way rolls back like any other. The exception is the second sync of a commit, which comes after the
 root header has been rewritten. If that one fails, the call throws, and the commit is in the file but may not survive a power loss.

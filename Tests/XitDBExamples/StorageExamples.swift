@@ -46,6 +46,14 @@ import XitDB
         #expect(try emptied.length == 0)
     }
 
+    @Test func aPathWithANulByteIsRefused() throws {
+        let scratch = ScratchDirectory()
+        defer { scratch.remove() }
+        #expect(throws: XitDBError.storageFailure(errno: EINVAL)) {
+            try FileStorage(path: scratch.path("main.db") + "\0.txt", access: .create)
+        }
+    }
+
     @Test func openingAndCreatingAreDifferent() throws {
         let storage = MemoryStorage()
         #expect(throws: XitDBError.invalidDatabase) {

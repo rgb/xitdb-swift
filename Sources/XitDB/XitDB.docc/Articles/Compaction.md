@@ -64,8 +64,8 @@ Its root has to be empty and its hash size the same as the source's. Otherwise t
 ``XitDBError/targetNotEmpty`` or ``XitDBError/invalidHashSize``. The first of these is also what stops you compacting a
 database into itself.
 
-A compaction is one ordinary transaction on the target. If it fails, it leaves what any failed transaction leaves: nothing
-reachable, and bytes that the next transaction discards.
+A compaction is one ordinary transaction on the target. If it fails, what it wrote is discarded at once, as after any
+transaction that fails, and nothing of it is reachable.
 
 ### The offset map
 

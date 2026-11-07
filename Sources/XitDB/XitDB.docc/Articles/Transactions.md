@@ -125,7 +125,7 @@ There is no journal and no write-ahead log. A transaction goes like this:
 4. It syncs the storage.
 5. It rewrites the root header, 17 bytes at offset 20, with the new root and the new committed size. This is the
    moment the transaction takes effect.
-6. It syncs the storage again.
+6. It syncs the storage again. If this one fails, the call throws, but the commit stands.
 
 A reader looks only at the root header. It reads the committed size there and takes the root from the trailer
 that ends at that size, whose checksum it checks. So a transaction's bytes are invisible until step 5, and a

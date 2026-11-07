@@ -78,8 +78,9 @@ struct StorageSource: ByteSource {
 }
 ```
 
-A source returns fewer bytes than the buffer holds only when they are about to run out, and zero when they have. An error thrown
-by a sink or a source comes out of the call as ``XitDBError/callerError(_:)``, with your error inside it.
+A source fills the buffer with as many bytes as it has at hand, which may be fewer than the buffer holds, as a socket gives them, and
+returns zero only when they have run out. An error thrown by a sink or a source comes out of the call as
+``XitDBError/callerError(_:)``, with your error inside it.
 
 ### The full sync at 0
 
@@ -126,7 +127,7 @@ if start == 0 {
 A failed ``Database/applyReplicated(at:from:count:)`` can also mean the bytes were not what they should be:
 
 - ``XitDBError/invalidRange``: a start that is neither 0 nor the replica's committed size. Nothing has changed.
-- ``XitDBError/endOfStream``: the source gave fewer bytes than the count.
+- ``XitDBError/endOfStream``: the source ran out before the count, or claimed to have given more than its buffer holds.
 - ``XitDBError/invalidDatabase``: the bytes do not end with a trailer that checks, or at 0 do not hold a database.
 - ``XitDBError/truncatedDatabase``: at 0, the bytes stop short of the committed size they record.
 - ``XitDBError/invalidHashSize``: at 0, a database with another hash size.

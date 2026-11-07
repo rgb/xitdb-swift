@@ -76,7 +76,9 @@ try cursor.writeBytes { writer in
 }
 ```
 
-Seeking beyond what has been written leaves zeros in between.
+Seeking beyond what has been written leaves zeros in between. The next write grows the array, and the storage with it, to
+where the position reaches, and the array stays that long. A position beyond any a storage can have throws
+``XitDBError/unexpectedWriterPosition`` from that write.
 
 ### Reading a part at a time
 

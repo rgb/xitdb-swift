@@ -112,6 +112,19 @@ import XitDB
         #expect(record == [0, 7] + Array("payload".utf8))
     }
 
+    @Test func aSeekBeyondAnyPosition() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        try database.withTransaction { cursor in
+            var value = try HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("value"))
+            #expect(throws: XitDBError.unexpectedWriterPosition) {
+                try value.writeBytes { writer in
+                    writer.seek(to: UInt64.max - 1)
+                    try writer.write([1, 2, 3, 4])
+                }
+            }
+        }
+    }
+
     @Test func nothingElseWhileWriting() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         try database.withTransaction { cursor in
