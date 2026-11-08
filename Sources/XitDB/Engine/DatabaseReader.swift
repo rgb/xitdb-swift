@@ -37,7 +37,13 @@ final class DatabaseIdentity {
 ///
 /// Code that only reads depends on this and not on ``Database``, so that the
 /// same code can later read a snapshot of committed data from any thread.
-struct DatabaseReader {
+///
+/// A class and not a struct: as a struct of three fields over
+/// ``BuiltInStorage`` the optimiser compiled its methods with `self` taken
+/// apart into those fields, and the sorted map paid about an eighth of its
+/// read time for it (decision D23); a reference is passed whole. There is
+/// no state to copy either way, since every field is a `let`.
+final class DatabaseReader {
     /// The bytes, as the engine holds a storage. Only its reads are used
     /// here.
     let storage: BuiltInStorage
