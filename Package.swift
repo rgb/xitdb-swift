@@ -48,6 +48,14 @@ let package = Package(
             dependencies: ["XitDB"],
             swiftSettings: languageSettings
         ),
+        // The corruption fuzzer, which checks that a damaged file gives an error
+        // and never a trap or a hang (R23): a tool for the gate and for
+        // `scripts/fuzz.sh`, and no more meant for a client than the benchmark.
+        .executableTarget(
+            name: "XitDBFuzz",
+            dependencies: ["XitDB"],
+            swiftSettings: languageSettings
+        ),
         .testTarget(
             name: "XitDBTests",
             dependencies: ["XitDB"],
