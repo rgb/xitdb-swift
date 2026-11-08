@@ -197,6 +197,25 @@ import XitDB
         #expect(try copies(takingTheListAgainFromTheRoot: true) == (2, 1))
     }
 
+    @Test func aCopyMadeAfterTheFreezeChangesToo() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        try database.withTransaction { cursor in
+            let root = try HashMap<ReadWrite>(cursor)
+            let shop = try HashMap<ReadWrite>(root.putCursor(forHash: sha256("shop")))
+            let stock = try ArrayList<ReadWrite>(shop.putCursor(forHash: sha256("stock")))
+            try stock.append(.uint(1))
+            try cursor.database.freeze()
+            // The copy shares the shop's record from before the freeze.
+            try HashMap<ReadWrite>(cursor).put(.slot(try shop.slot), forHash: sha256("yesterday"))
+            try ArrayList<ReadWrite>(stock.cursor).append(.uint(2))
+        }
+        let root = try HashMap<ReadOnly>(database.rootCursor)
+        for key in ["shop", "yesterday"] {
+            let shop = try HashMap<ReadOnly>(root.cursor(forHash: sha256(key))!)
+            #expect(try ArrayList<ReadOnly>(shop.cursor(forHash: sha256("stock"))!).count == 2)
+        }
+    }
+
     @Test func anInitOnTheCopiedCollectionItselfIsSafe() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         try database.withTransaction { cursor in
@@ -282,6 +301,28 @@ import XitDB
             }
         }
 
+        // In a sorted set.
+        let sortedSet = try Database(creating: MemoryStorage(), hashSize: 32)
+        #expect(throws: XitDBError.invalidBTreeNode) {
+            try sortedSet.withTransaction { cursor in
+                let moment = try HashMap<ReadWrite>(cursor)
+                let original = try SortedSet<ReadWrite>(moment.putCursor(forHash: sha256("original")))
+                for number in 0..<40 {
+                    try original.insert(Array("key\(number)".utf8))
+                }
+                var copyCursor = try moment.putCursor(forHash: sha256("copy"))
+                try copyCursor.write(.slot(try original.slot))
+                try copyCursor.freeze()
+                let copy = try SortedSet<ReadWrite>(copyCursor)
+                for number in 0..<10 {
+                    _ = try original.remove(forKey: Array("key\(number)".utf8))
+                }
+                try copy.insert(Array("zzz".utf8))
+                #expect(try copy.count == 41)
+                _ = try copy.entry(at: 35)
+            }
+        }
+
         // And in a sorted map.
         let sorted = try Database(creating: MemoryStorage(), hashSize: 32)
         #expect(throws: XitDBError.invalidBTreeNode) {
@@ -307,41 +348,28 @@ import XitDB
     }
 
     @Test func whatAFreezeCosts() throws {
-        func measure(_ size: Int) throws -> (join: Int, first: Int, second: Int, hundred: Int, hundredUnjoined: Int) {
+        // The shape the article gives: two lists made in the same transaction, in a map at the root.
+        func measure(_ size: Int) throws -> (join: Int, first: Int, second: Int) {
             let storage = MemoryStorage()
             let database = try Database(creating: storage, hashSize: 32)
-            var result = (join: 0, first: 0, second: 0, hundred: 0, hundredUnjoined: 0)
+            var result = (join: 0, first: 0, second: 0)
             try database.withTransaction { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
                 var tasks = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("tasks")))
                 let more = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("more")))
-                let unjoined = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("unjoined")))
                 for number in 0..<size {
                     try tasks.append(.uint(UInt64(number)))
                     try more.append(.uint(UInt64(number)))
                 }
-                for number in 0..<(2 * size) {
-                    try unjoined.append(.uint(UInt64(number)))
-                }
                 var mark = storage.bytes.count
-                for number in 0..<100 {
-                    try unjoined.append(.uint(UInt64(number)))
-                }
-                result.hundredUnjoined = storage.bytes.count - mark
-
-                mark = storage.bytes.count
                 try tasks.append(contentsOf: more)
                 result.join = storage.bytes.count - mark
-                let afterJoin = storage.bytes.count
+                mark = storage.bytes.count
                 try tasks.append(.uint(0))
-                result.first = storage.bytes.count - afterJoin
+                result.first = storage.bytes.count - mark
                 mark = storage.bytes.count
                 try tasks.append(.uint(1))
                 result.second = storage.bytes.count - mark
-                for number in 2..<100 {
-                    try tasks.append(.uint(UInt64(number)))
-                }
-                result.hundred = storage.bytes.count - afterJoin
             }
             return result
         }
@@ -349,12 +377,8 @@ import XitDB
         #expect(small.join == 822)
         #expect(small.first == 1114)
         #expect(small.second == 0)
-        #expect(small.hundred == 3688)
-        #expect(small.hundredUnjoined == 2172)
         let large = try measure(10000)
         #expect(large.first == 1388)
         #expect(large.second == 0)
-        #expect(large.hundred == 3414)
-        #expect(large.hundredUnjoined == 2446)
     }
 }

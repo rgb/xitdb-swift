@@ -27,7 +27,7 @@ and 644, 1,032 and 1,420 (one moment each).
 - **In a file with no commit to go back to.** If the file does not start with a database's header, or no trailer in it verifies,
   opening throws ``XitDBError/invalidDatabase``, as there is nothing to recover to. A damaged file ID in the header does that too,
   since every trailer's checksum covers it, even with every commit intact. A file too short for its headers throws
-  ``XitDBError/endOfStream``.
+  ``XitDBError/endOfStream``, and an empty one ``XitDBError/invalidDatabase``.
 
 The trailers are checksummed and the data is not. A changed byte in a value, with the root header and the trailers intact, opens
 without an error and reads back wrong. Recovery does not help there, and nothing detects it: see <doc:Errors>.
@@ -85,7 +85,7 @@ data it ends, and recovering keeps that commit with whatever the missing bytes r
 ### A replica after a failed sync at 0
 
 A sync at 0 empties the replica first and writes the source's file from its start, so one that fails partway leaves the start of
-the source's file, and no database: ``Database/replicaState`` throws, usually ``XitDBError/truncatedDatabase``. If what arrived reaches past
+the source's file, and no database: ``Database/replicaState`` throws ``XitDBError/truncatedDatabase``, or ``XitDBError/endOfStream`` if not even the first 37 bytes, the headers, arrived. If what arrived reaches past
 the end of one of the source's commits, it holds that commit whole, and recovering keeps the last such commit. The source can then
 send only the rest:
 

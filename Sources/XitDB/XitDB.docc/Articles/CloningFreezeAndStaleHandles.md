@@ -14,7 +14,7 @@ affordable. A copy of such data is a second name for one mutable thing. ``Databa
 committed kind for the rest of the transaction, so a copy made before the freeze stays as it was.
 
 A freeze also changes the handles you hold. Every cursor and collection made before it can still read, and is refused if it
-tries to write. The rest of this article is about what to do instead.
+tries to write, except to make a collection again from it. The rest of this article is about what to do instead.
 
 ### A copy of committed data
 
@@ -100,7 +100,8 @@ freeze, and a write through either is refused.
 After ``Database/freeze()``, every cursor and collection made before it in the transaction is stale:
 
 - **A write through it is refused** with ``XitDBError/staleCursor``. The guard runs before anything is written, so the
-  transaction is not harmed and goes on. That covers every write: a value, an append, a `putCursor`, a byte array.
+  transaction is not poisoned (see <doc:Transactions>) and goes on. That covers every write but the one in the last bullet: a
+  value, an append, a ``HashMap/putCursor(forHash:)-(Sequence<UInt8>)``, a byte array.
 - **A read through it works**, and reads what the handle points at, which the freeze keeps as it is. It does not see what
   fresh handles write afterwards, since they write copies, unless a collection is made again from a cursor held below it,
   which writes in place: see below.
@@ -112,13 +113,15 @@ The safe way on is the one in step 3: start from the cursor the body was given, 
 transaction writes, and make each collection again on the way down to where you write.
 
 A cursor from an earlier transaction is stale for writing in the same way, and stays so: no initialiser makes it fresh,
-because there it would write into committed bytes. Take a new one from the root.
+because there it would write into committed bytes. Take a new one from the root. What reads through such a cursor give is in
+<doc:ConcurrencyAndSnapshots>.
 
 ### A collection made again from a cursor you held
 
 Making the collection again from the cursor you already hold also works, and is shorter: `ArrayList<ReadWrite>(stock.cursor)`.
 What it costs is less obvious. The initialiser writes the cursor's own slot, in place, to point at the copy it makes. That slot
-is in a record made before the freeze, and if a copy made before the freeze shares that record, the copy changes with it.
+is in a record made before the freeze, and anything else that shares the record changes with it: a copy of a collection that
+contains the slot, whether the copy was made before the freeze or after.
 
 Here a whole map is copied, and a list inside it is then written through a cursor held from before the freeze:
 
@@ -147,9 +150,9 @@ try ArrayList<ReadWrite>(shopAgain.putCursor(forHash: sha256("stock"))).append(.
 ```
 
 So a collection made again from a held cursor is safe in two cases: the cursor is at the copied collection itself, whose slot is
-its own (making "shop" again from `shop.cursor` leaves "yesterday" alone), or nothing that contains its slot was copied in this
-transaction. The engine cannot tell a shared record from one that is not, so nothing refuses the other case. When in doubt, go
-from the root.
+its own (making "shop" again from `shop.cursor` leaves "yesterday" alone), or nothing that contains its slot has been copied in
+this transaction, before the freeze or after. The engine cannot tell a shared record from one that is not, so nothing refuses
+the other case. When in doubt, go from the root.
 
 ### A join freezes too
 
@@ -194,10 +197,12 @@ stale, and the guard does not count it. The port does what the original does her
 A freeze writes nothing. Its cost comes at the first write after it, which copies what lies on the way to the place it changes,
 as a write to committed data does. Writes after that, to places already copied, are in place again.
 
-Measured with two linked lists of 1,000 elements, made in the same transaction in a map at the root and then joined: the join
-wrote 822 bytes. The first append after it copied 1,114 bytes, and the second wrote none. A hundred appends after the join wrote
-3,688 bytes, against 2,172 for a hundred appends to a list of 2,000 that was never joined. With lists of 10,000, the first append
-copied 1,388 bytes. The path, and so the cost, grows with the logarithm of the size.
+The numbers depend on the shape. Here it is two linked lists of 1,000 elements, made in the same transaction in a map at the
+root, and then joined. The join appended 822 bytes to the file. The first append after it appended 1,114, copying its way down
+to the list's last leaf, and the second appended nothing: it wrote in place, as writes to what the transaction has made since
+the freeze do. With lists of 10,000 elements the first append appended 1,388. The path, and so the cost, grows with the
+logarithm of the size. The package measured another shape, a list of 16 joined with one built in the same transaction: 840 to
+1,662 bytes for lists of 1,000 to 100,000 elements.
 
 ### Where this is going
 
@@ -210,6 +215,7 @@ take themselves again after a freeze, so that freezing and joining need nothing 
 - <doc:MomentsAndHistory>
 - <doc:Transactions>
 - <doc:TheCollections>
+- <doc:ConcurrencyAndSnapshots>
 - ``Database/freeze()``
 - ``Cursor/freeze()``
 - ``XitDBError/staleCursor``

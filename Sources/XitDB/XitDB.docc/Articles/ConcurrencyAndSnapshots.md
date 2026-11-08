@@ -6,7 +6,9 @@ transaction reads.
 ## Overview
 
 The rule is the original's: each thread or task uses a ``Database`` of its own, and writes come from one of them at a time.
-Readers need no lock and can read while the writer commits, because a commit never changes bytes that are already committed.
+Readers need no lock and can read while the writer commits. A commit changes one thing in place, the root header, and a reader
+takes only the committed size from it: the root comes from the trailer at that size, once its checksum checks, and that trailer
+and everything before it never change.
 
 ### What can cross between tasks
 
@@ -41,8 +43,10 @@ let first = try moment.cursor(forHash: sha256("first"))!.readUInt64()
 let second = try moment.cursor(forHash: sha256("second"))!.readUInt64()
 ```
 
-In the test behind these lines, two readers on other tasks read the last moment while a writer committed a hundred more, each
-writing the same number under both keys, and no reader ever found the two different.
+In the test behind these lines, a writer on a task of its own, with a buffered file storage, the exclusive lock and
+``Durability/none`` to keep the test quick, committed a hundred moments, each with the same number under both keys. Two readers
+on other tasks read the last moment meanwhile, and none ever found the two numbers different, or a moment older than one it had
+already read.
 
 The lock, the read-only access mode and why a reader that opened the file read-write is a second writer are in <doc:Storage>.
 
@@ -62,8 +66,8 @@ A cursor belongs to the transaction it was made in, and to the ``Database`` that
   try map.put(.uint(2), forHash: sha256("count"))
   ```
 
-  `count` still reads 1. A write through such a cursor is refused with ``XitDBError/staleCursor``: see
-  <doc:CloningFreezeAndStaleHandles>.
+  `count` still reads 1. A write through a read-write cursor kept this way throws ``XitDBError/expectedTxStart`` with no
+  transaction running, and ``XitDBError/staleCursor`` during a later one: see <doc:CloningFreezeAndStaleHandles>.
 - **If it did not commit**, its bytes were cut off and the next transaction writes in their place, so a read through it is
   refused with ``XitDBError/staleCursor`` too, and so is a read through an iterator or a byte reader made from it before the
   rollback. Only its ``Cursor/slot``, which touches no bytes, still reads.

@@ -70,6 +70,10 @@ import XitDB
             try Database(opening: MemoryStorage(bytes: torn))
         }
 
+        // An empty storage, and one too short for its headers.
+        #expect(throws: XitDBError.invalidDatabase) { try Database(opening: MemoryStorage()) }
+        #expect(throws: XitDBError.endOfStream) { try Database(opening: MemoryStorage(bytes: Array(good[..<30]))) }
+
         // Not a database, and no trailer that verifies.
         var notADatabase = good
         notADatabase[0] ^= 0xFF
@@ -222,6 +226,7 @@ import XitDB
         #expect(throws: XitDBError.self) {
             try another.applyReplicated(at: 0, from: &early, count: UInt64(good.count))
         }
+        #expect(throws: XitDBError.endOfStream) { try another.replicaState }
         #expect(throws: XitDBError.endOfStream) { try Database.recover(empty) }
     }
 }

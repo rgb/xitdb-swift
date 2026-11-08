@@ -60,6 +60,8 @@ branch of the original first, and the port's files are compared with that branch
   ``WritableStorage/truncate(to:)`` only shortens, on every storage.
 - **A read-only file** fails at the first write in the original's plain file kind, and only at the commit in its buffered kind.
   The port fails at once on both.
+- **Parts of a path after a remove** are ignored by the original. The port's path API refuses them, and since that API is internal,
+  only the package's own code can meet this.
 - **The original syncs after every write outside a transaction**, including ones that commit nothing. The port syncs after a
   commit.
 - **Reading committed bytes into a writer with no buffer** panics on the original's buffered file. The port has no such writer:
@@ -81,15 +83,15 @@ branch of the original first, and the port's files are compared with that branch
 - **A freeze of one cursor**, ``Cursor/freeze()``, protects the data from writes through that cursor and from nothing else. The
   port does what the original does, except that where the original can crash it throws an error. Whether it should do more is not
   decided.
-- **A collection made again from a held cursor after a freeze** writes that cursor's slot in place, so a copy made before the freeze
-  of anything that contains the slot changes with it. The original does the same, and nothing can tell a shared record from one that
+- **A collection made again from a held cursor after a freeze** writes that cursor's slot in place, so a copy of anything that
+  contains the slot, made in the same transaction before the freeze or after, changes with it. The original does the same, and nothing can tell a shared record from one that
   is not. Take the collections again from the root instead.
 - **Writing a slot set to nothing** writes the value bits it carries, which mean nothing, in both. A client of the port cannot
   make a slot, so it cannot choose them.
-- **Three of the original's hazards need its raw path API**, which the port does not make public: parts after a remove, which the
-  original ignores and the port's internal API refuses; a path that skips a collection's initialiser, which writes into committed
-  data; and a freeze inside a callback, which does not carry out of it. A fourth, a sorted lookup in a write path that turns a set's
-  key-only entry into a pair, is wasteful and not wrong, and it stays, since changing it would change bytes.
+- **Two of the original's hazards need its raw path API**, which the port does not make public: a path that skips a collection's
+  initialiser, which writes into committed data, and a freeze inside a callback, which does not carry out of it. A third, a sorted
+  lookup in a write path that turns a set's key-only entry into a pair, is wasteful and not wrong, and it stays, since changing it
+  would change bytes.
 
 ### Differences that are only the API
 
