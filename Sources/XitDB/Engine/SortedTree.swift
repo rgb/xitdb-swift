@@ -113,54 +113,86 @@ extension DatabaseReader {
             let count = ByteArrayFormat.shortByteCount(of: keySlot)
             return Self.order(bytes.span.extracting(0..<count), target)
         case .bytes:
-            var chunk = InlineArray<256, UInt8>(repeating: 0)
-            func fill(at position: UInt64) throws(XitDBError) -> Int {
-                var span = chunk.mutableSpan
-                return try storage.read(into: &span, at: position)
-            }
-            var read = try fill(at: keySlot.value)
+            // The length and the start of the key in one small read, which
+            // decides most comparisons: zeroing and filling a chunk of 256
+            // bytes for every one cost a twentieth of a sorted write (brief
+            // package-21). A key that would have fitted the chunk is still
+            // read whole before it is compared, so that a file ending inside
+            // it is reported first, as it was; a longer key goes on in
+            // chunks of 256, read as the comparison needs them.
+            let lengthBytes = Int(ByteArrayFormat.lengthByteCount)
+            var head = InlineArray<64, UInt8>(repeating: 0)
+            var headSpan = head.mutableSpan
+            let headRead = try storage.read(into: &headSpan, at: keySlot.value)
             // A storage may give fewer bytes than the length itself takes,
             // at the end of the file or short of what its length promises;
             // either way there is no record to compare.
-            guard read >= Int(ByteArrayFormat.lengthByteCount) else { throw .endOfStream }
-            var remaining: UInt64 = chunk.span.bigEndian(at: 0)
-            // A length that reaches past the file is a damaged record: it
-            // is reported before any of it is compared. For a key that fits
-            // the first chunk, the chunk itself says whether the bytes are
-            // there; asking the storage for its length, which is a system
-            // call on a file, is kept for the longer keys.
-            var position = try keySlot.value.offset(by: ByteArrayFormat.lengthByteCount)
-            let firstChunk = UInt64(read - Int(ByteArrayFormat.lengthByteCount))
-            if remaining > firstChunk {
-                if remaining <= UInt64(chunk.count - Int(ByteArrayFormat.lengthByteCount)) {
-                    // the whole key would have fitted: the file ended inside it
-                    throw .endOfStream
-                }
-                let length = try storage.length
-                guard position <= length, remaining <= length - position else { throw .endOfStream }
+            guard headRead >= lengthBytes else { throw .endOfStream }
+            let length: UInt64 = head.span.bigEndian(at: 0)
+            let position = try keySlot.value.offset(by: ByteArrayFormat.lengthByteCount)
+            let inHead = Int(min(UInt64(headRead - lengthBytes), length))
+            let headKey = head.span.extracting(lengthBytes..<(lengthBytes + inHead))
+
+            /// The rest of a key of at most a chunk, read whole: Zig reads such
+            /// a key in one chunk and reports the file ending inside it before
+            /// it compares anything.
+            func compareFitting() throws(XitDBError) -> KeyOrder {
+                var chunk = InlineArray<256, UInt8>(repeating: 0)
+                let rest = Int(length) - inHead
+                var span = chunk.mutableSpan
+                let read = try storage.read(into: &span, range: 0..<rest, at: try position.offset(by: UInt64(inHead)))
+                guard read == rest else { throw .endOfStream }
+                let order = Self.order(headKey, target.extracting(0..<min(inHead, target.count)))
+                if order != .equal { return order }
+                let targetCount = min(rest, target.count - inHead)
+                return Self.order(chunk.span.extracting(0..<rest), target.extracting(inHead..<(inHead + targetCount)))
             }
 
-            var storedStart = Int(ByteArrayFormat.lengthByteCount)
-            var targetStart = 0
-            while true {
-                let available = read - storedStart
-                let n = Int(min(UInt64(available), remaining))
-                let targetCount = min(n, target.count - targetStart)
-                let order = Self.order(
-                    chunk.span.extracting(storedStart..<(storedStart + n)),
-                    target.extracting(targetStart..<(targetStart + targetCount))
-                )
-                if order != .equal { return order }
-                targetStart += n
-                remaining -= UInt64(n)
-                if remaining == 0 { return targetStart < target.count ? .less : .equal }
-                position = try position.offset(by: UInt64(available))
-                read = try fill(at: position)
-                // The length promised the bytes; a storage that does not
-                // give them is reported rather than asked again.
-                guard read > 0 else { throw .endOfStream }
-                storedStart = 0
+            /// A long key: the part past the head, a chunk at a time, the
+            /// chunks at the record offsets the one-chunk reads had, so that
+            /// a storage ending or failing inside the key is met where it was.
+            func compareLong(from start: Int) throws(XitDBError) -> KeyOrder {
+                var chunk = InlineArray<256, UInt8>(repeating: 0)
+                var targetStart = start
+                var remaining = length - UInt64(start)
+                var position = try position.offset(by: UInt64(start))
+                // the rest of the first chunk, then whole ones
+                var count = chunk.count - lengthBytes - start
+                while true {
+                    var span = chunk.mutableSpan
+                    let read = try storage.read(into: &span, range: 0..<count, at: position)
+                    count = chunk.count
+                    // The length promised the bytes; a storage that does not
+                    // give them is reported rather than asked again.
+                    guard read > 0 else { throw .endOfStream }
+                    let n = Int(min(UInt64(read), remaining))
+                    let targetCount = min(n, target.count - targetStart)
+                    let order = Self.order(
+                        chunk.span.extracting(0..<n),
+                        target.extracting(targetStart..<(targetStart + targetCount))
+                    )
+                    if order != .equal { return order }
+                    targetStart += n
+                    remaining -= UInt64(n)
+                    if remaining == 0 { return targetStart < target.count ? .less : .equal }
+                    position = try position.offset(by: UInt64(read))
+                }
             }
+
+            if length > UInt64(inHead) {
+                if length <= UInt64(256 - lengthBytes) {
+                    // the whole key would have fitted a chunk
+                    return try compareFitting()
+                }
+                // A length that reaches past the file is a damaged record,
+                // reported before any of it is compared.
+                let storageLength = try storage.length
+                guard position <= storageLength, length <= storageLength - position else { throw .endOfStream }
+            }
+            let order = Self.order(headKey, target.extracting(0..<min(inHead, target.count)))
+            if order != .equal { return order }
+            if length == UInt64(inHead) { return inHead < target.count ? .less : .equal }
+            return try compareLong(from: inHead)
         default:
             throw .unexpectedTag
         }
