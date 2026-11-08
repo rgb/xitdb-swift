@@ -131,7 +131,10 @@ final class FileDescriptor: Sendable {
 /// The storage owns its file descriptor and closes it when the storage and
 /// every ``Snapshot`` of a database in it have gone, which also releases
 /// its lock: a snapshot reads through the same descriptor, so the file stays
-/// open, and any lock held, until the last snapshot is released.
+/// open, and any lock held, until the last snapshot is released. A snapshot
+/// is told of a rewrite of the file below its committed size through this
+/// storage object only; a second storage on the same path, or another
+/// process, rewrites it unseen.
 public final class FileStorage: WritableStorage {
     let descriptor: FileDescriptor
 

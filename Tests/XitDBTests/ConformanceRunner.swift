@@ -642,6 +642,7 @@ final class ScriptRunner {
         case .immutableBytes: "ImmutableBytes"
         case .byteWriterOpen: "ByteWriterOpen"
         case .snapshotOverwritten: "SnapshotOverwritten"
+        case .subCollectionSnapshot: "SubCollectionSnapshot"
         case .structuralSlot: "StructuralSlot"
         case .poisonedTransaction: "PoisonedTransaction"
         case .untrustedRootHeader: "UntrustedRootHeader"

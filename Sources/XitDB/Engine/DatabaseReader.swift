@@ -56,14 +56,22 @@ final class DatabaseReader {
     /// database, whose root header is read at every use.
     let pinnedRoot: RootHeader?
 
+    /// For a snapshot's database, the commit's own root slot, which the
+    /// pinned root is unless the snapshot is of a sub-collection.
+    let pinnedCommitRoot: Slot?
+
     /// The file ID, which the trailers' checksums cover.
     var fileID: UInt64 { identity.header.fileID }
 
-    init(storage: BuiltInStorage, identity: DatabaseIdentity, pinnedRoot: RootHeader? = nil) {
+    init(
+        storage: BuiltInStorage, identity: DatabaseIdentity, pinnedRoot: RootHeader? = nil,
+        pinnedCommitRoot: Slot? = nil
+    ) {
         self.storage = storage
         hashSize = identity.header.hashSize
         self.identity = identity
         self.pinnedRoot = pinnedRoot
+        self.pinnedCommitRoot = pinnedCommitRoot
     }
 
     // MARK: Records

@@ -186,8 +186,17 @@ public enum XitDBError: Error, Sendable {
     /// truncation through the caller's own reference to the storage. Every
     /// read through the snapshot reports this from then on, the one under
     /// way included; take a new snapshot. A snapshot of a database in memory
-    /// keeps the commit's bytes and never reports it.
+    /// keeps the commit's bytes and never reports it. Only a rewrite through
+    /// the storage object the snapshot was taken from is seen: one through
+    /// another storage on the same path, or by another process, is not.
     case snapshotOverwritten
+
+    /// The database reads a snapshot of one collection, made with
+    /// ``Snapshot/init(_:)`` from a cursor inside a commit, and the
+    /// operation needs the whole commit: compacting such a database is
+    /// refused before anything is written to the target. Its replication
+    /// reads serve the whole commit's bytes, the file being the unit.
+    case subCollectionSnapshot
 
     /// A slot whose tag is `index`, `kvPair` or `sortedKvPair` was given to
     /// write as a value. Those tags are the trees' own; such a slot in a

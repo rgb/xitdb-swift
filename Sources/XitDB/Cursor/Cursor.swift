@@ -605,6 +605,7 @@ extension Cursor where Access == ReadWrite {
         // cursors included; outside one, a slot that is not empty is left
         // alone without an error, as it always was, and an empty one gets
         // the write's expectedTxStart.
+        if database.readsSnapshot { throw .cursorNotWritable }
         let path: InlineArray<1, PathPart> = [.write(data)]
         if database.transactionStart != nil {
             try checkWritable(path.span)

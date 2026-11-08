@@ -6,23 +6,36 @@ import Synchronization
 ///
 /// The storage trips it before the write or truncation that invalidates
 /// them and then starts a new fence for the snapshots taken afterwards; a
-/// snapshot checks it after every read of the file. The order matters: a
-/// read that saw any byte of the new contents was made after the
-/// truncation, which was made after the fence was tripped, so it finds the
-/// fence tripped.
+/// snapshot checks it after every read of the file.
+///
+/// What the atomics prove is their own order: a load that comes after the
+/// store sees the fence tripped, and the full fences around both put every
+/// memory access of the thread on the same side as its store or load. That
+/// a read which saw any byte of the new contents loads the fence after the
+/// store rests on the kernel ordering the file calls, the truncation after
+/// the store and the read before the load, which XNU and Linux do through
+/// locks of their own and which no sanitizer checks; the fences leave
+/// nothing to the language model on this side of the calls.
+///
+/// The fence belongs to one storage object. A rewrite of the file through
+/// another storage object on the same path, or by another process, trips
+/// nothing.
 final class SnapshotFence: Sendable {
     private let overwritten = Atomic<Bool>(false)
 
     init() {}
 
-    /// Marks every snapshot holding this fence as overwritten.
+    /// Marks every snapshot holding this fence as overwritten, before the
+    /// write or truncation that does it.
     func trip() {
         overwritten.store(true, ordering: .sequentiallyConsistent)
+        atomicMemoryFence(ordering: .sequentiallyConsistent)
     }
 
-    /// Whether the fence was tripped.
+    /// Whether the fence was tripped, read after the file was.
     var isTripped: Bool {
-        overwritten.load(ordering: .sequentiallyConsistent)
+        atomicMemoryFence(ordering: .sequentiallyConsistent)
+        return overwritten.load(ordering: .sequentiallyConsistent)
     }
 }
 
