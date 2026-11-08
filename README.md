@@ -162,6 +162,8 @@ runner at every push and pull request; its job for the Linux runner is disabled 
 from the conformance repository at a stated commit, runs the seven workloads at full size, three passes of each,
 alternated, and writes the table of medians and ratios to the job's summary. It is a report, not a check.
 A runner needs Xcode 27.2 for the gate, and Zig 0.17.1 on its PATH as well for the benchmark.
+Pull requests from forks run on the same runners, so a public repository should be set to require approval for all
+outside collaborators before their workflows run.
 `scripts/bench-compare.py` runs the same comparison by hand.
 
 ## Credit
