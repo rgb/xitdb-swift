@@ -1,0 +1,364 @@
+{
+  "format": "xitdb-script/1",
+  "description": "held-init-after-root-copy with what the port does. After a freeze, an init through a cursor held from before it is refused with StaleCursor (D24), which is what would have lost its write. The way on is through a cursor made since the freeze from the transaction's body, or from the body itself, and what that writes is there when the transaction commits: y in the first, and x's second element in the second. What the port writes is what Zig writes for this script.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f0000000000024",
+  "ops": [
+    {
+      "op": "write_path",
+      "on": "root",
+      "path": [
+        {
+          "hash_map_init": {}
+        },
+        {
+          "ctx": {
+            "as": "m",
+            "ops": [
+              {
+                "op": "write_path",
+                "on": "m",
+                "path": [
+                  {
+                    "hash_map_get": {
+                      "value": {
+                        "sha1": "a"
+                      }
+                    }
+                  },
+                  {
+                    "hash_map_init": {}
+                  },
+                  {
+                    "hash_map_get": {
+                      "value": {
+                        "sha1": "x"
+                      }
+                    }
+                  },
+                  {
+                    "write": {
+                      "uint": 1
+                    }
+                  }
+                ]
+              },
+              {
+                "op": "write_path",
+                "on": "m",
+                "path": [
+                  {
+                    "hash_map_get": {
+                      "value": {
+                        "sha1": "a"
+                      }
+                    }
+                  }
+                ],
+                "as": "held"
+              },
+              {
+                "op": "db_freeze"
+              },
+              {
+                "op": "write_path",
+                "on": "m",
+                "path": [
+                  {
+                    "hash_map_init": {}
+                  },
+                  {
+                    "hash_map_get": {
+                      "value": {
+                        "sha1": "a"
+                      }
+                    }
+                  }
+                ],
+                "as": "a_from_root",
+                "note": "a path from the root: the init copies the root's record, and the get a's entry"
+              },
+              {
+                "op": "write_path",
+                "on": "held",
+                "path": [
+                  {
+                    "hash_map_init": {}
+                  },
+                  {
+                    "hash_map_get": {
+                      "value": {
+                        "sha1": "y"
+                      }
+                    }
+                  },
+                  {
+                    "write": {
+                      "uint": 2
+                    }
+                  }
+                ],
+                "note": "an init through a cursor from before the freeze, whose slot is in the record the root no longer reaches",
+                "expect_error": "StaleCursor"
+              },
+              {
+                "op": "write_path",
+                "on": "a_from_root",
+                "path": [
+                  {
+                    "hash_map_init": {}
+                  },
+                  {
+                    "hash_map_get": {
+                      "value": {
+                        "sha1": "y"
+                      }
+                    }
+                  },
+                  {
+                    "write": {
+                      "uint": 2
+                    }
+                  }
+                ],
+                "note": "the way on: through the cursor made from the body since the freeze"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "op": "read_path",
+      "on": "root",
+      "path": [
+        {
+          "hash_map_get": {
+            "value": {
+              "sha1": "a"
+            }
+          }
+        },
+        {
+          "hash_map_get": {
+            "value": {
+              "sha1": "y"
+            }
+          }
+        }
+      ],
+      "note": "y is there",
+      "as": "y_now"
+    },
+    {
+      "op": "read_uint",
+      "on": "y_now",
+      "expect": 2
+    },
+    {
+      "op": "read_path",
+      "on": "root",
+      "path": [
+        {
+          "hash_map_get": {
+            "value": {
+              "sha1": "a"
+            }
+          }
+        },
+        {
+          "hash_map_get": {
+            "value": {
+              "sha1": "x"
+            }
+          }
+        }
+      ],
+      "as": "x_now"
+    },
+    {
+      "op": "read_uint",
+      "on": "x_now",
+      "expect": 1
+    },
+    {
+      "op": "write_path",
+      "on": "root",
+      "path": [
+        {
+          "hash_map_init": {}
+        },
+        {
+          "ctx": {
+            "as": "n",
+            "ops": [
+              {
+                "op": "write_path",
+                "on": "n",
+                "path": [
+                  {
+                    "hash_map_get": {
+                      "value": {
+                        "sha1": "b"
+                      }
+                    }
+                  },
+                  {
+                    "hash_map_init": {}
+                  },
+                  {
+                    "hash_map_get": {
+                      "value": {
+                        "sha1": "x"
+                      }
+                    }
+                  },
+                  "array_list_init",
+                  "array_list_append",
+                  {
+                    "write": {
+                      "uint": 1
+                    }
+                  }
+                ]
+              },
+              {
+                "op": "write_path",
+                "on": "n",
+                "path": [
+                  {
+                    "hash_map_get": {
+                      "value": {
+                        "sha1": "b"
+                      }
+                    }
+                  }
+                ],
+                "as": "held_b"
+              },
+              {
+                "op": "write_path",
+                "on": "n",
+                "path": [
+                  {
+                    "hash_map_get": {
+                      "value": {
+                        "sha1": "b"
+                      }
+                    }
+                  },
+                  {
+                    "hash_map_get": {
+                      "value": {
+                        "sha1": "x"
+                      }
+                    }
+                  }
+                ],
+                "as": "held_x"
+              },
+              {
+                "op": "db_freeze"
+              },
+              {
+                "op": "write_path",
+                "on": "held_b",
+                "path": [
+                  {
+                    "hash_map_init": {}
+                  },
+                  {
+                    "hash_map_get": {
+                      "value": {
+                        "sha1": "x"
+                      }
+                    }
+                  }
+                ],
+                "note": "an init through a cursor from before the freeze",
+                "expect_error": "StaleCursor"
+              },
+              {
+                "op": "write_path",
+                "on": "held_x",
+                "path": [
+                  "array_list_init",
+                  "array_list_append",
+                  {
+                    "write": {
+                      "uint": 2
+                    }
+                  }
+                ],
+                "note": "and through another",
+                "expect_error": "StaleCursor"
+              },
+              {
+                "op": "write_path",
+                "on": "n",
+                "path": [
+                  {
+                    "hash_map_init": {}
+                  },
+                  {
+                    "hash_map_get": {
+                      "value": {
+                        "sha1": "b"
+                      }
+                    }
+                  },
+                  {
+                    "hash_map_init": {}
+                  },
+                  {
+                    "hash_map_get": {
+                      "value": {
+                        "sha1": "x"
+                      }
+                    }
+                  },
+                  "array_list_init",
+                  "array_list_append",
+                  {
+                    "write": {
+                      "uint": 2
+                    }
+                  }
+                ],
+                "note": "the way on: from the body"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "op": "read_path",
+      "on": "root",
+      "path": [
+        {
+          "hash_map_get": {
+            "value": {
+              "sha1": "b"
+            }
+          }
+        },
+        {
+          "hash_map_get": {
+            "value": {
+              "sha1": "x"
+            }
+          }
+        }
+      ],
+      "as": "b_x"
+    },
+    {
+      "op": "count",
+      "on": "b_x",
+      "expect": 2,
+      "note": "and so is x's second element"
+    }
+  ]
+}

@@ -1,0 +1,268 @@
+{
+  "format": "xitdb-script/1",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f000000000000a",
+  "description": "overwriting-committed-bytes-linked with what the port does. A path that skips the init part would write into the committed linked list in place, which the port refuses with ImmutableBytes, at that write (D24). Through a cursor made at the committed collection, nothing is written before the refused write, so the transaction goes on, and with the init the same write goes into a copy. Through the moment's map, as in the original, the get copies the entry's record first, and a copy is a write, so the refusal poisons the transaction, which is rolled back. What the port writes is what Zig writes without the refused op, or with that transaction made to fail.",
+  "ops": [
+    {
+      "op": "write_path",
+      "on": "root",
+      "path": [
+        "array_list_init",
+        "array_list_append",
+        {
+          "hash_map_init": {}
+        },
+        {
+          "ctx": {
+            "as": "m",
+            "ops": [
+              {
+                "op": "write_path",
+                "on": "m",
+                "path": [
+                  {
+                    "hash_map_get": {
+                      "value": {
+                        "sha1": "c"
+                      }
+                    }
+                  },
+                  "linked_array_list_init",
+                  "linked_array_list_append",
+                  {
+                    "write": {
+                      "uint": 1
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "op": "read_path",
+      "on": "root",
+      "path": [
+        {
+          "array_list_get": 0
+        }
+      ],
+      "as": "moment0"
+    },
+    {
+      "op": "read_path_slot",
+      "on": "root",
+      "path": [
+        {
+          "array_list_get": -1
+        }
+      ],
+      "as": "last"
+    },
+    {
+      "op": "write_path",
+      "on": "root",
+      "path": [
+        "array_list_init",
+        "array_list_append",
+        {
+          "write": {
+            "slot": {
+              "var": "last"
+            }
+          }
+        },
+        {
+          "hash_map_init": {}
+        },
+        {
+          "ctx": {
+            "as": "m",
+            "ops": [
+              {
+                "op": "write_path",
+                "on": "m",
+                "path": [
+                  {
+                    "hash_map_get": {
+                      "value": {
+                        "sha1": "c"
+                      }
+                    }
+                  }
+                ],
+                "as": "committed",
+                "note": "a fresh cursor at c's slot, whose collection is committed"
+              },
+              {
+                "op": "write_path",
+                "on": "committed",
+                "path": [
+                  "linked_array_list_append",
+                  {
+                    "write": {
+                      "uint": 2
+                    }
+                  }
+                ],
+                "expect_error": "ImmutableBytes",
+                "note": "no init: it would write into the committed collection, and it's refused before anything is written"
+              },
+              {
+                "op": "write_path",
+                "on": "m",
+                "path": [
+                  {
+                    "hash_map_get": {
+                      "value": {
+                        "sha1": "c"
+                      }
+                    }
+                  },
+                  "linked_array_list_init",
+                  "linked_array_list_append",
+                  {
+                    "write": {
+                      "uint": 2
+                    }
+                  }
+                ],
+                "note": "nothing was written, so this goes on. With the init, it's copied into this transaction"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "op": "read_path",
+      "on": "moment0",
+      "path": [
+        {
+          "hash_map_get": {
+            "value": {
+              "sha1": "c"
+            }
+          }
+        }
+      ],
+      "as": "c"
+    },
+    {
+      "op": "count",
+      "on": "c",
+      "expect": 1,
+      "note": "the earlier moment is as it was"
+    },
+    {
+      "op": "read_path",
+      "on": "root",
+      "path": [
+        {
+          "array_list_get": -1
+        },
+        {
+          "hash_map_get": {
+            "value": {
+              "sha1": "c"
+            }
+          }
+        }
+      ],
+      "as": "now"
+    },
+    {
+      "op": "count",
+      "on": "now",
+      "expect": 2
+    },
+    {
+      "op": "read_path_slot",
+      "on": "root",
+      "path": [
+        {
+          "array_list_get": -1
+        }
+      ],
+      "as": "last_again"
+    },
+    {
+      "op": "write_path",
+      "on": "root",
+      "path": [
+        "array_list_init",
+        "array_list_append",
+        {
+          "write": {
+            "slot": {
+              "var": "last_again"
+            }
+          }
+        },
+        {
+          "hash_map_init": {}
+        },
+        {
+          "ctx": {
+            "as": "m3",
+            "ops": [
+              {
+                "op": "write_path",
+                "on": "m3",
+                "path": [
+                  {
+                    "hash_map_get": {
+                      "value": {
+                        "sha1": "c"
+                      }
+                    }
+                  },
+                  "linked_array_list_append",
+                  {
+                    "write": {
+                      "uint": 2
+                    }
+                  }
+                ],
+                "expect_error": "ImmutableBytes",
+                "note": "as in the original: the get copies c's record, which is a write, and then the skip is refused"
+              },
+              {
+                "op": "write_path",
+                "on": "m3",
+                "path": [
+                  {
+                    "hash_map_get": {
+                      "value": {
+                        "sha1": "e"
+                      }
+                    }
+                  },
+                  {
+                    "write": {
+                      "uint": 1
+                    }
+                  }
+                ],
+                "expect_error": "PoisonedTransaction",
+                "note": "so the transaction is poisoned, and every write after it raises this"
+              }
+            ]
+          }
+        }
+      ],
+      "expect_error": "PoisonedTransaction",
+      "note": "and so does its end, so it's rolled back"
+    },
+    {
+      "op": "count",
+      "on": "root",
+      "expect": 2,
+      "note": "no third moment"
+    }
+  ]
+}
