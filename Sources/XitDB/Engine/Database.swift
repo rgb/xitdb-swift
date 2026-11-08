@@ -320,27 +320,24 @@ public final class Database {
     /// original; <doc:CloningFreezeAndStaleHandles> says what it does not
     /// protect.
     ///
-    /// The caller's part: finish any ``Cursor/writeBytes(formatTag:_:)``
-    /// before freezing, since a byte array grows only while it is the last
-    /// thing written. Afterwards every cursor and collection made before
-    /// the freeze is stale: it still points into data that is now frozen,
-    /// so a write through it is refused with ``XitDBError/staleCursor``
-    /// before anything is written, while its reads go on working. To go
-    /// on writing, use the transaction's cursor, the one
-    /// ``withTransaction(_:)`` or a history append handed the body, or any
-    /// cursor at the same slot, such as the cursor of a collection made
-    /// from it: a path that begins with an init part is allowed through
-    /// it, so a
-    /// collection made again from it is fresh, and so is every cursor
-    /// taken from it; its slot is the engine's own record, which nothing
+    /// The caller's part: finish any ``Cursor/writeBytes(formatTag:_:)`` before
+    /// freezing, since a byte array grows only while it is the last thing
+    /// written. Afterwards every cursor and collection made before the freeze
+    /// is stale: it still points into data that is now frozen, so a write
+    /// through it is refused with ``XitDBError/staleCursor`` before anything is
+    /// written, while its reads go on working. To go on writing, use the
+    /// transaction's cursor, the one ``withTransaction(_:)`` or a history
+    /// append handed the body, or any cursor at the same slot, such as the
+    /// cursor of a collection made from it: making a collection from it is
+    /// allowed, so a collection made again from it is fresh, and so is every
+    /// cursor taken from it; its slot is the engine's own record, which nothing
     /// inside the transaction can copy, and every write re-reads it. Every
-    /// other cursor from before the freeze is refused for every write,
-    /// inits included: a held handle's init would rewrite its slot in a
-    /// record that a copy may have left behind, which lost writes silently.
-    /// ``LinkedArrayList/append(contentsOf:)-(Slot)`` freezes the same way
-    /// and stales its own list too. Finish any
-    /// ``Cursor/writeBytes(formatTag:_:)`` first: a freeze while a byte
-    /// writer's body runs is refused.
+    /// other cursor from before the freeze is refused for every write, inits
+    /// included: a held handle's init would rewrite its slot in a record that a
+    /// copy may have left behind, which lost writes silently.
+    /// ``LinkedArrayList/append(contentsOf:)-(Slot)`` freezes the same way and
+    /// stales its own list too. Finish any ``Cursor/writeBytes(formatTag:_:)``
+    /// first: a freeze while a byte writer's body runs is refused.
     ///
     /// - Throws: ``XitDBError/expectedTxStart`` outside a transaction,
     ///   ``XitDBError/byteWriterOpen`` while a byte writer's body is

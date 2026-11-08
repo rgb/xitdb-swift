@@ -637,11 +637,11 @@ extension Cursor where Access == ReadWrite {
     /// A value written this way always gets a record of its own, however
     /// short it is.
     ///
-    /// Nothing else may be written to the database while `body` runs, since
-    /// the array can only grow while it is the last thing in it, and nothing
-    /// may be frozen: ``Database/freeze()`` and a concat are refused inside
-    /// `body` with ``XitDBError/byteWriterOpen``, since the record being
-    /// filled would fall below the freeze.
+    /// Nothing else may be written to the database while `body` runs, since the
+    /// array can only grow while it is the last thing in it, and nothing may be
+    /// frozen: ``Database/freeze()`` and a join are refused inside `body` with
+    /// ``XitDBError/byteWriterOpen``, since the record being filled would fall
+    /// below the freeze.
     ///
     /// - Parameters:
     ///   - formatTag: A format tag to store with the bytes, or `nil` for
@@ -656,7 +656,7 @@ extension Cursor where Access == ReadWrite {
     ///   transaction failed after writing;
     ///   ``XitDBError/unexpectedWriterPosition`` if something else was
     ///   written while `body` ran; ``XitDBError/byteWriterOpen`` from a
-    ///   freeze or a concat inside `body`, which `body` passes on, so that
+    ///   freeze or a join inside `body`, which `body` passes on, so that
     ///   the transaction is poisoned; and whatever else `body` throws.
     public mutating func writeBytes(
         formatTag: FormatTag? = nil,
@@ -797,20 +797,18 @@ extension Database {
     /// commit, the error is thrown, but the commit stands, as in the
     /// original.
     ///
-    /// An operation in `body` that fails after it has written to the
-    /// storage poisons the transaction: every further write and the commit
-    /// are refused with ``XitDBError/poisonedTransaction``, and the
-    /// transaction rolls back when `body` returns. An operation that fails
-    /// before writing anything, a refused guard included, leaves the
-    /// transaction as it was. The cursor `body` is given is the
-    /// transaction's cursor: after a freeze, ``Database/freeze()`` or a
-    /// concat, it is the one place from before the freeze that a path
-    /// beginning with an init part may go through, it or any cursor at the
+    /// An operation in `body` that fails after it has written to the storage
+    /// poisons the transaction: every further write and the commit are refused
+    /// with ``XitDBError/poisonedTransaction``, and the transaction rolls back
+    /// when `body` returns. An operation that fails before writing anything, a
+    /// refused guard included, leaves the transaction as it was. The cursor
+    /// `body` is given is the transaction's cursor: after a freeze,
+    /// ``Database/freeze()`` or a join, it is the one place from before the
+    /// freeze that making a collection may go through, it or any cursor at the
     /// same slot, such as the cursor of a collection made from it, so a
     /// collection made again from either is fresh. It and every cursor and
-    /// collection made
-    /// from it belong to this transaction: a write through one of them
-    /// after `body` returns is refused with ``XitDBError/staleCursor``.
+    /// collection made from it belong to this transaction: a write through one
+    /// of them after `body` returns is refused with ``XitDBError/staleCursor``.
     ///
     /// Use this to group writes to a root that is not an array list, such as
     /// a hash map: without it, each write through a root cursor is a

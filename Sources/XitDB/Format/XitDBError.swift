@@ -147,36 +147,36 @@ public enum XitDBError: Error, Sendable {
     /// a freeze is the transaction's cursor, the one
     /// ``Database/withTransaction(_:)`` or a history append hands its body, or
     /// any cursor at the same slot, such as the cursor of a collection made
-    /// from it: a path that begins with a collection's init part is allowed
-    /// through it, since its slot is the engine's own record that nothing
-    /// inside the transaction can copy, and every cursor taken from it is
-    /// fresh. Through any other cursor from before the freeze every write is
-    /// refused, inits included: an init through a held cursor rewrites its slot
-    /// in place, in a record a copy may have left behind, and lost writes
-    /// silently. A write that would land below the freeze by any other route is
+    /// from it: making a collection from it is allowed, since its slot is the
+    /// engine's own record that nothing inside the transaction can copy, and
+    /// every cursor taken from it is fresh. Through any other cursor from
+    /// before the freeze every write is refused, making a collection included:
+    /// made from a held cursor, the collection would rewrite its slot in place,
+    /// in a record a copy may have left behind, and lose writes silently. A
+    /// write that would land below the freeze by any other route is
     /// ``immutableBytes``, refused before that write; a write the operation
     /// made before it, as a hash map's get makes a new entry's record, poisons
     /// the transaction. <doc:CloningFreezeAndStaleHandles> has the whole of it.
     case staleCursor
 
-    /// A write would change committed or frozen bytes in place: its position
-    /// is below the transaction's frozen point, where every byte is either
-    /// committed or was written before the last freeze and may be shared
-    /// by a clone or another handle. The engine refuses it before it
-    /// writes. A path that skips a collection's init part and writes into
-    /// an old block reports this; a cursor from before the freeze reports
-    /// ``staleCursor`` first. Through the public API nothing reaches it:
-    /// the collections run their init parts, and a freeze inside a byte
-    /// writer's body is ``byteWriterOpen``.
+    /// A write would change committed or frozen bytes in place: its position is
+    /// below the transaction's frozen point, where every byte is either
+    /// committed or was written before the last freeze and may be shared by a
+    /// clone or another handle. The engine refuses it before it writes. A write
+    /// into an old block that does not make its collection first reports this;
+    /// a cursor from before the freeze reports ``staleCursor`` first. Through
+    /// the public API nothing reaches it: the collections' initialisers make
+    /// them first, and a freeze inside a byte writer's body is
+    /// ``byteWriterOpen``.
     case immutableBytes
 
-    /// ``Database/freeze()`` or a concat was called while a byte writer's
-    /// body was running, which would move the frozen point past the record
-    /// the writer is filling and leave its completion nowhere to write. The
-    /// freeze is refused before it moves anything; the body then ends with
-    /// this error, and the transaction is poisoned as after any body that
-    /// throws, since the writer had appended before the body ran. Finish
-    /// byte writers before freezing.
+    /// ``Database/freeze()`` or a join was called while a byte writer's body
+    /// was running, which would move the frozen point past the record the
+    /// writer is filling and leave its completion nowhere to write. The freeze
+    /// is refused before it moves anything; the body then ends with this error,
+    /// and the transaction is poisoned as after any body that throws, since the
+    /// writer had appended before the body ran. Finish byte writers before
+    /// freezing.
     case byteWriterOpen
 
     /// The file a ``Snapshot`` reads was rewritten below the snapshot's

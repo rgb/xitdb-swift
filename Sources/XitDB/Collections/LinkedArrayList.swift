@@ -169,8 +169,9 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   ``XitDBError/nestedTopLevelWrite`` if `cursor` is the root cursor and
     ///   one is, ``XitDBError/cursorNotWritable`` if `cursor` has no position,
     ///   as the key cursor of a sorted map's entry has not,
-    ///   ``XitDBError/staleCursor`` if `cursor` is from an earlier transaction
-    ///   (one from before a freeze of this transaction is allowed here),
+    ///   ``XitDBError/staleCursor`` if `cursor` is from an earlier transaction,
+    ///   or from before the last freeze or join of this one unless it is at
+    ///   the slot of the transaction's cursor,
     ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
     ///   transaction failed after writing, or an error of the storage or of a
     ///   damaged file.
@@ -279,8 +280,10 @@ extension LinkedArrayList where Access == ReadWrite {
     /// Appends an element, writes it, runs `body` with a cursor at it, and
     /// gives what `body` returns.
     ///
-    /// If `body` throws, the error is rethrown; what was appended is
-    /// discarded only if this call started the transaction.
+    /// If `body` throws, the error is rethrown; what was appended is discarded
+    /// if this call started the transaction. Inside a transaction the
+    /// transaction is poisoned instead, since the element was appended before
+    /// `body` ran: it can only roll back. See <doc:Transactions>.
     ///
     /// The result may be ignored: the call is often made for its writes
     /// alone, with a body whose one expression happens to have a value.

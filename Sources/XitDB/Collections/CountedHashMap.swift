@@ -305,8 +305,9 @@ extension CountedHashMap where Access == ReadWrite {
     ///   ``XitDBError/nestedTopLevelWrite`` if `cursor` is the root cursor and
     ///   one is, ``XitDBError/cursorNotWritable`` if `cursor` has no position,
     ///   as the key cursor of a sorted map's entry has not,
-    ///   ``XitDBError/staleCursor`` if `cursor` is from an earlier transaction
-    ///   (one from before a freeze of this transaction is allowed here),
+    ///   ``XitDBError/staleCursor`` if `cursor` is from an earlier transaction,
+    ///   or from before the last freeze or join of this one unless it is at
+    ///   the slot of the transaction's cursor,
     ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
     ///   transaction failed after writing, or an error of the storage or of a
     ///   damaged file.
