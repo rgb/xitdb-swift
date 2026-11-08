@@ -7,7 +7,7 @@
 #   3. import check for Sources/XitDB
 #   4. formatting check
 #   5. documentation build
-#   6. compile-only build for iOS (on macOS)
+#   6. compile-only build for iOS, and the tests on an iOS simulator (on macOS)
 #
 # It runs on macOS and on Linux and stops at the first failure and exits non-zero.
 
@@ -172,6 +172,43 @@ if [ "$platform" = Darwin ]; then
         -derivedDataPath .build/xcodebuild \
         SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
     echo "ok"
+
+    # The tests on an iOS simulator: the release tests with the snapshot proof, as the
+    # release step above runs them, and the snapshot concurrency suite under the thread
+    # sanitizer, as the sanitizer step does. The simulator is the first plain iPhone that
+    # the installed runtimes offer; a machine without one skips the step and says so. The
+    # fixtures reach the simulator in the test bundle; the file storages write in the
+    # simulator's temporary directory. The scheme is the package's, the one Xcode makes
+    # with every target and test target in it, and testability is switched on for the
+    # release configuration so that the tests reach internal declarations as they do under
+    # `swift test -c release`.
+    step "iOS simulator tests"
+    simulator=$(xcrun simctl list devices available 2>/dev/null \
+        | grep -E '^ +iPhone [0-9]+ \(' | head -1 | sed -E 's/^ *(iPhone [0-9]+) .*/\1/')
+    if [ -z "$simulator" ]; then
+        echo "skipped: no iPhone simulator is available on this machine"
+    else
+        echo "simulator: $simulator, $(xcrun simctl list runtimes 2>/dev/null | grep -E '^iOS' | head -1 | cut -d' ' -f1-2)"
+        # xcodebuild prints every compiler call; only the test summaries and the failures
+        # are kept (pipefail carries xcodebuild's own status through the pipe).
+        summary() { grep -E "Test run with|TEST (SUCCEEDED|FAILED)|error:|✘ Test " || true; }
+        xcodebuild test \
+            -scheme xitdb-swift-Package \
+            -destination "platform=iOS Simulator,name=$simulator" \
+            -derivedDataPath .build/xcodebuild-ios \
+            -configuration Release \
+            ENABLE_TESTABILITY=YES \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES 2>&1 | summary
+        xcodebuild test \
+            -scheme xitdb-swift-Package \
+            -destination "platform=iOS Simulator,name=$simulator" \
+            -derivedDataPath .build/xcodebuild-ios-tsan \
+            -enableThreadSanitizer YES \
+            -only-testing:XitDBTests/SnapshotConcurrencyTests \
+            '-only-testing:XitDBTests/SnapshotTests/tasksReadOneSnapshotWhileTheWriterCommits(kind:)' \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES 2>&1 | summary
+        echo "ok"
+    fi
 fi
 
 printf '\n==> Gate passed\n'

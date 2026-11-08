@@ -34,10 +34,9 @@ Not there yet, and planned in this order:
 
 - a hashing target and a more Swift-flavoured layer over the API shown here (string keys, typed values);
 - a tool that shows what a file holds, and tests that check random sequences of operations against Swift's own
-  collections;
-- testing on an iOS simulator.
+  collections.
 
-It builds for macOS 26, iOS 26 and Linux, and is tested on macOS and Linux.
+It builds for macOS 26, iOS 26 and Linux, and is tested on macOS, on Linux and on an iOS simulator.
 
 ## How it is tested
 
@@ -177,15 +176,16 @@ The preview is then at <http://localhost:8000/documentation/xitdb/>.
 
 `scripts/check.sh` is the gate: the debug and release builds and tests with warnings as errors, a smoke run of the
 benchmark and of the corruption fuzzer, the import check, the formatting check, the documentation build and a
-compile check for iOS. On macOS it runs on one toolchain, Xcode 27.2's Swift 6.4.2, and refuses any other; on Linux it
-runs on any Swift 6.4.x and skips the iOS step.
+compile check for iOS and the tests on an iOS simulator. On macOS it runs on one toolchain, Xcode 27.2's Swift 6.4.2,
+and refuses any other; on Linux it runs on any Swift 6.4.x and skips the iOS steps.
 
 Two GitHub Actions workflows run on self-hosted runners. `.github/workflows/gate.yml` runs the gate on the macOS
 and the Linux runner at every push and pull request.
 `.github/workflows/benchmark.yml` is started by hand: it builds the benchmark in release and the original's `bench`
 from the conformance repository at a stated commit, runs the seven workloads at full size, three passes of each,
 alternated, and writes the table of medians and ratios to the job's summary. It is a report, not a check.
-The macOS runner needs Xcode 27.2 for the gate, and Zig 0.17.1 on its PATH as well for the benchmark; the Linux runner
+The macOS runner needs Xcode 27.2 with an iOS simulator runtime for the gate, and Zig 0.17.1 on its PATH as well for
+the benchmark; the Linux runner
 needs a Swift 6.4.x toolchain, through swiftly or on its PATH.
 Pull requests from forks run on the same runners, so a public repository should be set to require approval for all
 outside collaborators before their workflows run.
