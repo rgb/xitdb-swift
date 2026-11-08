@@ -136,8 +136,8 @@ package-level path API:
 - ``XitDBError/immutableBytes``, a write that would change committed or frozen bytes in place. It is a second check under
   ``XitDBError/staleCursor`` and ``XitDBError/byteWriterOpen``, which refuse every public route to such a write first.
 
-A `switch` over ``XitDBError`` still has to handle them, so give it a `default`. New cases may be added in minor versions, so a
-`switch` over the enum keeps its `default`.
+A `switch` over ``XitDBError`` still has to handle them, so give it a `default` and keep it: new cases may be added in
+minor versions.
 
 ### What does stop the program
 
