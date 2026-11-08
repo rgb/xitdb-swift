@@ -11,6 +11,10 @@ on:
   push:
   pull_request:
 
+# The token can read the repository and nothing more.
+permissions:
+  contents: read
+
 # A new push to the same branch or pull request cancels the run before it.
 concurrency:
   group: gate-${{ github.ref }}
@@ -19,6 +23,9 @@ concurrency:
 jobs:
   macos:
     name: Gate on macOS
+    # A self-hosted runner never runs a fork's code unasked: pushes, and pull requests whose
+    # head is in this repository. A fork's pull request waits for a maintainer.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, macOS]
     timeout-minutes: 45
     defaults:
