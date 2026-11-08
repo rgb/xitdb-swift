@@ -35,8 +35,9 @@ branch of the original first, and the port's files are compared with that branch
   of 64. The port refuses it with ``XitDBError/structuralSlot``.
 - **A sorted map's key.** The original lets a key be overwritten through the key cursor of an entry, which leaves the map out of
   order. In the port an ``Entry`` is read-only, and the engine refuses the write as well.
-- **Compacting a list whose last element is empty.** The original gives an empty database, losing the list and every element
-  before the empty one. The port refuses with ``XitDBError/emptyLastMoment``, before writing anything: see <doc:Compaction>.
+- **Compacting an array list at the root whose last element is empty.** The original gives an empty database, losing the list
+  and every element before the empty one. The port refuses with ``XitDBError/emptyLastMoment``, before writing anything: see
+  <doc:Compaction>.
 
 ### An error or a sensible result where the original crashes or disagrees
 

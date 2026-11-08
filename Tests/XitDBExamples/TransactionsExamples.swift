@@ -203,6 +203,8 @@ import XitDB
             let entry = try iterator.next()!
             var copy = try map.putCursor(forHash: sha256("copy"))
             #expect(throws: XitDBError.structuralSlot) { try copy.write(.slot(try entry.slot)) }
+            #expect(throws: XitDBError.structuralSlot) { try map.put(.slot(try entry.slot), forHash: sha256("new")) }
+            #expect(throws: XitDBError.structuralSlot) { try list.append(.slot(try entry.slot)) }
             try list.append(.uint(1))
         }
         let map = try HashMap<ReadOnly>(database.rootCursor)

@@ -77,11 +77,15 @@ import XitDB
         struct NotNow: Error {}
 
         var unfinished: Cursor<ReadOnly>?
+        var keptReader: ByteReader?
+        var keptIterator: CollectionIterator?
         do {
             try database.withTransaction { cursor in
                 let map = try HashMap<ReadWrite>(cursor)
                 try map.put(.bytes(Array("a value long enough for a record".utf8)), forHash: sha256("note"))
                 unfinished = try map.cursor(forHash: sha256("note"))
+                keptReader = try unfinished!.reader()
+                keptIterator = try map.iterator()
                 throw NotNow()
             }
         } catch is NotNow {}
@@ -89,6 +93,9 @@ import XitDB
         // Its bytes were cut off, and the next transaction reuses their place.
         #expect(throws: XitDBError.staleCursor) { try unfinished!.readBytes() }
         #expect(throws: XitDBError.staleCursor) { try unfinished!.reader() }
+        // So are an iterator and a byte reader made from it before the rollback.
+        #expect(throws: XitDBError.staleCursor) { try keptIterator!.next() }
+        #expect(throws: XitDBError.staleCursor) { try keptReader!.readRemaining() }
         // Its snapshot of the slot touches no bytes, and stays readable.
         #expect(try unfinished!.slot.tag == .bytes)
     }
