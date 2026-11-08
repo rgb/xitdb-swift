@@ -53,15 +53,21 @@ jobs:
 
   # The same gate on the Linux runner, in the official Swift container: the image is the
   # toolchain pin, Swift 6.4.2 on Ubuntu, and check.sh accepts any 6.4.x and prints the one
-  # it has. The image has git for actions/checkout and everything check.sh calls, and the
-  # runner brings its own node. A container job runs as root, which may write a read-only
-  # file, so the one test that expects the system to refuse that skips itself under root;
-  # the rest runs as it would under any user. check.sh skips the iOS step on Linux.
+  # it has. The image is named by its digest as well as its tag, so that a tag pushed again
+  # cannot change what runs here; a newer image comes in a commit. The image has git for
+  # actions/checkout and everything check.sh calls. The runner brings its own node, which
+  # on the NixOS runner is a link into /nix, so /nix is mounted read-only for it; without
+  # the mount the checkout fails, unable to find /__e/node24/bin/node. A container job runs
+  # as root, which may write a read-only file, so the one test that expects the system to
+  # refuse that skips itself under root; the rest runs as it would under any user. check.sh
+  # skips the iOS step on Linux.
   linux:
     name: Gate on Linux
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux]
-    container: swift:6.4.2
+    container:
+      image: swift:6.4.2@sha256:119ff7d833ea622851b459513333bb4bda5ebb32b7acd05dd05077d5b0383129
+      options: --volume /nix:/nix:ro
     timeout-minutes: 60
     defaults:
       run:
