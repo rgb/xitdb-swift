@@ -1,8 +1,9 @@
 // The sample database the fuzzer damages: a history of three moments, each
 // a map that holds every kind of collection and values of every kind. It is
-// built in memory at every start from the same operations, so that the
-// undamaged file has the same layout from one run to the next; only the
-// commit IDs of its trailers differ, which the database draws at random.
+// built in memory at every start from the same operations, with a fixed
+// file ID and commit IDs drawn from the fuzzer's own generator at a fixed
+// seed, so that the undamaged file is the same bytes from one run to the
+// next and a seed names the same damaged file, byte for byte, everywhere.
 
 import CryptoKit
 import XitDB
@@ -18,14 +19,21 @@ func hash(_ text: String, _ size: Int) -> [UInt8] {
 /// The keys of each moment's map, which the read walk looks up by hash.
 let keyNames = ["n", "short", "long", "a", "aa", "l", "hs", "cm", "cs", "sm", "ss"]
 
+/// The seed of the generator the sample's commit IDs are drawn from. Any
+/// constant does; changing it changes the commit ID and checksum of the
+/// sample's trailers, and with them every file a seed names.
+let sampleSeed = 7
+
 /// Builds the sample database with hashes of `hashSize` bytes and returns
-/// its bytes.
+/// its bytes: the same bytes at every call, since the file ID is fixed and
+/// the commit IDs come from ``SeededGenerator`` at ``sampleSeed``.
 ///
 /// - Throws: What the library throws while building it, which for a hash
 ///   size from 1 to 65535 is nothing.
 func buildSample(hashSize: Int) throws -> [UInt8] {
     let storage = MemoryStorage()
-    let database = try Database(creating: storage, hashSize: hashSize, fileID: 7)
+    let database = try Database(
+        creating: storage, hashSize: hashSize, hashID: nil, fileID: 7, random: SeededGenerator(seed: sampleSeed))
     let history = try ArrayList<ReadWrite>(database.rootCursor)
     for round in 0..<3 {
         try history.append(.slot(try history.slot(at: -1))) { cursor in

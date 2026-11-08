@@ -180,7 +180,9 @@ public struct Cursor<Access: CursorAccess> {
 
     /// Reads the slot's value as an unsigned 64-bit integer.
     ///
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot does not hold one.
+    /// - Throws: ``XitDBError/unexpectedTag`` if the slot does not hold one,
+    ///   or ``XitDBError/staleCursor`` if the cursor is not a root cursor and
+    ///   is from a transaction that did not commit.
     public func readUInt64() throws(XitDBError) -> UInt64 {
         try checkReadable()
         let slot = try resolved().slot
@@ -190,7 +192,9 @@ public struct Cursor<Access: CursorAccess> {
 
     /// Reads the slot's value as a signed 64-bit integer.
     ///
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot does not hold one.
+    /// - Throws: ``XitDBError/unexpectedTag`` if the slot does not hold one,
+    ///   or ``XitDBError/staleCursor`` if the cursor is not a root cursor and
+    ///   is from a transaction that did not commit.
     public func readInt64() throws(XitDBError) -> Int64 {
         try checkReadable()
         let slot = try resolved().slot
@@ -200,7 +204,9 @@ public struct Cursor<Access: CursorAccess> {
 
     /// Reads the slot's value as a 64-bit floating-point number.
     ///
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot does not hold one.
+    /// - Throws: ``XitDBError/unexpectedTag`` if the slot does not hold one,
+    ///   or ``XitDBError/staleCursor`` if the cursor is not a root cursor and
+    ///   is from a transaction that did not commit.
     public func readDouble() throws(XitDBError) -> Double {
         try checkReadable()
         let slot = try resolved().slot
@@ -216,8 +222,9 @@ public struct Cursor<Access: CursorAccess> {
     ///   limit.
     /// - Throws: ``XitDBError/streamTooLong`` if the value is larger than
     ///   `maxCount`, ``XitDBError/unexpectedTag`` if the slot does not hold
-    ///   bytes, or ``XitDBError/endOfStream`` if the database ends before
-    ///   the value does.
+    ///   bytes, ``XitDBError/endOfStream`` if the database ends before the
+    ///   value does, or ``XitDBError/staleCursor`` if the cursor is not a
+    ///   root cursor and is from a transaction that did not commit.
     public func readBytes(maxCount: Int? = nil) throws(XitDBError) -> [UInt8] {
         try readBytesWithFormatTag(maxCount: maxCount).value
     }
@@ -230,8 +237,9 @@ public struct Cursor<Access: CursorAccess> {
     ///   limit.
     /// - Throws: ``XitDBError/streamTooLong`` if the value is larger than
     ///   `maxCount`, ``XitDBError/unexpectedTag`` if the slot does not hold
-    ///   bytes, or ``XitDBError/endOfStream`` if the database ends before
-    ///   the value does.
+    ///   bytes, ``XitDBError/endOfStream`` if the database ends before the
+    ///   value does, or ``XitDBError/staleCursor`` if the cursor is not a
+    ///   root cursor and is from a transaction that did not commit.
     public func readBytesWithFormatTag(maxCount: Int? = nil) throws(XitDBError) -> Bytes {
         try checkReadable()
         return try database.reader.bytesObject(try resolved().slot, maxSize: maxCount)
@@ -247,8 +255,9 @@ public struct Cursor<Access: CursorAccess> {
     /// - Returns: The number of bytes read.
     /// - Throws: ``XitDBError/streamTooLong`` if the value does not fit in
     ///   `buffer`, ``XitDBError/unexpectedTag`` if the slot does not hold
-    ///   bytes, or ``XitDBError/endOfStream`` if the database ends before
-    ///   the value does.
+    ///   bytes, ``XitDBError/endOfStream`` if the database ends before the
+    ///   value does, or ``XitDBError/staleCursor`` if the cursor is not a
+    ///   root cursor and is from a transaction that did not commit.
     public func readBytes(into buffer: inout MutableSpan<UInt8>) throws(XitDBError) -> Int {
         try readBytesWithFormatTag(into: &buffer).count
     }
@@ -264,8 +273,9 @@ public struct Cursor<Access: CursorAccess> {
     ///   has one.
     /// - Throws: ``XitDBError/streamTooLong`` if the value does not fit in
     ///   `buffer`, ``XitDBError/unexpectedTag`` if the slot does not hold
-    ///   bytes, or ``XitDBError/endOfStream`` if the database ends before
-    ///   the value does.
+    ///   bytes, ``XitDBError/endOfStream`` if the database ends before the
+    ///   value does, or ``XitDBError/staleCursor`` if the cursor is not a
+    ///   root cursor and is from a transaction that did not commit.
     public func readBytesWithFormatTag(
         into buffer: inout MutableSpan<UInt8>
     ) throws(XitDBError) -> (count: Int, formatTag: FormatTag?) {
@@ -279,16 +289,18 @@ public struct Cursor<Access: CursorAccess> {
     /// The cursor should be at an entry: one obtained by asking a map for an
     /// entry, or by iterating over a map or set. Any slot that holds bytes
     /// is read as a key on its own, which is what a sorted set's entry is,
-    /// so on a cursor at a byte value this succeeds, as Zig's does: the
-    /// key cursor is at the bytes, the value is empty and the hash is
-    /// zeros. Nothing tells such a value from a set's key.
+    /// so on a cursor at a byte value this succeeds, as the original's
+    /// does: the key cursor is at the bytes, the value is empty and the
+    /// hash is zeros. Nothing tells such a value from a set's key.
     ///
     /// The entry is read-only whatever this cursor is: an entry's key is
     /// what the collection is ordered or indexed by, and is changed only
     /// through the collection.
     ///
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds anything
-    ///   else: a number, a collection, or nothing.
+    ///   else: a number, a collection, or nothing; ``XitDBError/staleCursor``
+    ///   if the cursor is not a root cursor and is from a transaction that
+    ///   did not commit.
     public func readEntry() throws(XitDBError) -> Entry {
         try checkReadable()
         let entry = try resolved().slot
@@ -324,7 +336,8 @@ public struct Cursor<Access: CursorAccess> {
     ///
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   that has no count: a number, or a hash map or set that does not
-    ///   keep one.
+    ///   keep one; ``XitDBError/staleCursor`` if the cursor is not a root
+    ///   cursor and is from a transaction that did not commit.
     public var count: UInt64 {
         get throws(XitDBError) {
             try checkReadable()
@@ -523,8 +536,11 @@ extension Cursor where Access == ReadWrite {
     ///   cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is a root cursor and one
     ///   is, ``XitDBError/cursorNotWritable`` if the slot has no position
-    ///   to write to, or ``XitDBError/storageFailure(errno:)`` if the
-    ///   storage fails.
+    ///   to write to, ``XitDBError/staleCursor`` if the cursor is from
+    ///   before the last freeze of this transaction or from an earlier
+    ///   transaction, ``XitDBError/poisonedTransaction`` if an earlier
+    ///   operation of the transaction failed after writing, or
+    ///   ``XitDBError/storageFailure(errno:)`` if the storage fails.
     public mutating func write(_ data: WritableData) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.write(data)]
         update(to: try writePath(path.span))
@@ -588,6 +604,10 @@ extension Cursor where Access == ReadWrite {
     /// - Throws: ``XitDBError/cursorNotWritable`` on a root cursor, to
     ///   which bytes are written with ``write(_:)``, or if the slot has no
     ///   position; ``XitDBError/expectedTxStart`` outside a transaction;
+    ///   ``XitDBError/staleCursor`` if the cursor is from before the last
+    ///   freeze of this transaction or from an earlier transaction;
+    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
+    ///   transaction failed after writing;
     ///   ``XitDBError/unexpectedWriterPosition`` if something else was
     ///   written while `body` ran; and whatever `body` throws.
     public mutating func writeBytes(

@@ -33,9 +33,10 @@ public struct HashSet<Access: CursorAccess> {
     /// The order is that of the hashes' last bits, which has nothing to do
     /// with the order of insertion.
     ///
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
-    ///   that is not a collection, or an error of the storage or of a
-    ///   damaged file.
+    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something that
+    ///   is not a collection, ``XitDBError/staleCursor`` if the set is not at
+    ///   the root and its cursor is from a transaction that did not commit, or
+    ///   an error of the storage or of a damaged file.
     public func iterator() throws(XitDBError) -> CollectionIterator {
         try cursor.iterator()
     }
@@ -46,11 +47,12 @@ public struct HashSet<Access: CursorAccess> {
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
     ///   size.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
-    ///   bytes as the database's hash size, once the slot holds a map or
-    ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
-    ///   something other than a hash map or set, or an error of the storage
-    ///   or of a damaged file.
+    ///   bytes as the database's hash size, once the slot holds a map or set (a
+    ///   slot that holds nothing checks no hash and has no entry for it, as in
+    ///   the original), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   something other than a hash map or set, ``XitDBError/staleCursor`` if
+    ///   the set is not at the root and its cursor is from a transaction that
+    ///   did not commit, or an error of the storage or of a damaged file.
     public func cursor(forHash hash: Span<UInt8>) throws(XitDBError) -> Cursor<ReadOnly>? {
         let path: InlineArray<1, PathPart> = [.hashMapGet(.key, KeyHash(hash))]
         return try cursor.readPath(path.span)
@@ -64,11 +66,12 @@ public struct HashSet<Access: CursorAccess> {
     ///   slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
     ///   already borrowed.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
-    ///   bytes as the database's hash size, once the slot holds a map or
-    ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
-    ///   something other than a hash map or set, or an error of the storage
-    ///   or of a damaged file.
+    ///   bytes as the database's hash size, once the slot holds a map or set (a
+    ///   slot that holds nothing checks no hash and has no entry for it, as in
+    ///   the original), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   something other than a hash map or set, ``XitDBError/staleCursor`` if
+    ///   the set is not at the root and its cursor is from a transaction that
+    ///   did not commit, or an error of the storage or of a damaged file.
     @inlinable
     public func cursor(forHash hash: some Sequence<UInt8>) throws(XitDBError) -> Cursor<ReadOnly>? {
         let bytes = Array(hash)
@@ -81,11 +84,12 @@ public struct HashSet<Access: CursorAccess> {
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
     ///   size.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
-    ///   bytes as the database's hash size, once the slot holds a map or
-    ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
-    ///   something other than a hash map or set, or an error of the storage
-    ///   or of a damaged file.
+    ///   bytes as the database's hash size, once the slot holds a map or set (a
+    ///   slot that holds nothing checks no hash and has no entry for it, as in
+    ///   the original), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   something other than a hash map or set, ``XitDBError/staleCursor`` if
+    ///   the set is not at the root and its cursor is from a transaction that
+    ///   did not commit, or an error of the storage or of a damaged file.
     public func slot(forHash hash: Span<UInt8>) throws(XitDBError) -> Slot? {
         let path: InlineArray<1, PathPart> = [.hashMapGet(.key, KeyHash(hash))]
         return try cursor.readPathSlot(path.span)
@@ -99,11 +103,12 @@ public struct HashSet<Access: CursorAccess> {
     ///   slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
     ///   already borrowed.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
-    ///   bytes as the database's hash size, once the slot holds a map or
-    ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
-    ///   something other than a hash map or set, or an error of the storage
-    ///   or of a damaged file.
+    ///   bytes as the database's hash size, once the slot holds a map or set (a
+    ///   slot that holds nothing checks no hash and has no entry for it, as in
+    ///   the original), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   something other than a hash map or set, ``XitDBError/staleCursor`` if
+    ///   the set is not at the root and its cursor is from a transaction that
+    ///   did not commit, or an error of the storage or of a damaged file.
     @inlinable
     public func slot(forHash hash: some Sequence<UInt8>) throws(XitDBError) -> Slot? {
         let bytes = Array(hash)
@@ -119,11 +124,12 @@ public struct HashSet<Access: CursorAccess> {
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
     ///   size.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
-    ///   bytes as the database's hash size, once the slot holds a map or
-    ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
-    ///   something other than a hash map or set, or an error of the storage
-    ///   or of a damaged file.
+    ///   bytes as the database's hash size, once the slot holds a map or set (a
+    ///   slot that holds nothing checks no hash and has no entry for it, as in
+    ///   the original), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   something other than a hash map or set, ``XitDBError/staleCursor`` if
+    ///   the set is not at the root and its cursor is from a transaction that
+    ///   did not commit, or an error of the storage or of a damaged file.
     public func contains(hash: Span<UInt8>) throws(XitDBError) -> Bool {
         try slot(forHash: hash) != nil
     }
@@ -139,11 +145,12 @@ public struct HashSet<Access: CursorAccess> {
     ///   slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
     ///   already borrowed.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
-    ///   bytes as the database's hash size, once the slot holds a map or
-    ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
-    ///   something other than a hash map or set, or an error of the storage
-    ///   or of a damaged file.
+    ///   bytes as the database's hash size, once the slot holds a map or set (a
+    ///   slot that holds nothing checks no hash and has no entry for it, as in
+    ///   the original), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   something other than a hash map or set, ``XitDBError/staleCursor`` if
+    ///   the set is not at the root and its cursor is from a transaction that
+    ///   did not commit, or an error of the storage or of a damaged file.
     @inlinable
     public func contains(hash: some Sequence<UInt8>) throws(XitDBError) -> Bool {
         let bytes = Array(hash)
@@ -191,21 +198,25 @@ extension HashSet where Access == ReadWrite {
     /// copied, so that writing to it leaves earlier moments as they were.
     ///
     /// **A hash map becomes a hash set.** A map and a set that keep no
-    /// count are one kind to the slot, as in Zig: the slot's tag is written
-    /// as a set and the entries stay, values included, though a set reads
-    /// only their keys. On the root, where this is a transaction of its
-    /// own, a map is a set from then on; a map is opened with ``HashMap``.
+    /// count are one kind to the slot, as in the original: the slot's tag
+    /// is written as a set and the entries stay, values included, though a
+    /// set reads only their keys. On the root, where this is a transaction
+    /// of its own, a map is a set from then on; a map is opened with
+    /// ``HashMap``.
     ///
     /// On the root cursor this is a transaction of its own, unless the root
     /// is such a set already, in which case nothing is written.
     ///
     /// - Parameter cursor: A cursor at the slot.
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
-    ///   other than a hash map or set that keeps no count,
-    ///   ``XitDBError/expectedTxStart`` if no transaction is in progress
-    ///   and `cursor` is not the root cursor,
-    ///   ``XitDBError/nestedTopLevelWrite`` if `cursor` is the root cursor
-    ///   and one is, or an error of the storage or of a damaged file.
+    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something other
+    ///   than a hash map or set that keeps no count,
+    ///   ``XitDBError/expectedTxStart`` if no transaction is in progress and
+    ///   `cursor` is not the root cursor, ``XitDBError/nestedTopLevelWrite`` if
+    ///   `cursor` is the root cursor and one is, ``XitDBError/staleCursor`` if
+    ///   `cursor` is from an earlier transaction (one from before a freeze of
+    ///   this transaction is allowed here), ``XitDBError/poisonedTransaction``
+    ///   if an earlier operation of the transaction failed after writing, or an
+    ///   error of the storage or of a damaged file.
     public init(_ cursor: Cursor<ReadWrite>) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.hashMapInit(counted: false, set: true)]
         self.cursor = try cursor.writePath(path.span)
@@ -222,13 +233,16 @@ extension HashSet where Access == ReadWrite {
     /// - Parameters:
     ///   - key: The key.
     ///   - hash: The key's hash, as many bytes as the database's hash size.
-    /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not
-    ///   the root cursor and no transaction is in progress,
+    /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not the
+    ///   root cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/invalidHashSize`` if `hash` does not have as many
-    ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
-    ///   the slot no longer holds a hash map or set, or an error of the
-    ///   storage or of a damaged file.
+    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
+    ///   this transaction or from an earlier transaction,
+    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
+    ///   transaction failed after writing, ``XitDBError/invalidHashSize`` if
+    ///   `hash` does not have as many bytes as the database's hash size,
+    ///   ``XitDBError/unexpectedTag`` if the slot no longer holds a hash map or
+    ///   set, or an error of the storage or of a damaged file.
     public func insert(_ key: WritableData, forHash hash: Span<UInt8>) throws(XitDBError) {
         let path: InlineArray<2, PathPart> = [.hashMapGet(.key, KeyHash(hash)), .ctx]
         _ = try cursor.writePath(
@@ -247,13 +261,16 @@ extension HashSet where Access == ReadWrite {
     ///     in any sequence of bytes: an array, a CryptoKit digest, a slice,
     ///     `Data`, a string's `utf8`. The `Span` overload takes bytes already
     ///     borrowed.
-    /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not
-    ///   the root cursor and no transaction is in progress,
+    /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not the
+    ///   root cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/invalidHashSize`` if `hash` does not have as many
-    ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
-    ///   the slot no longer holds a hash map or set, or an error of the
-    ///   storage or of a damaged file.
+    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
+    ///   this transaction or from an earlier transaction,
+    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
+    ///   transaction failed after writing, ``XitDBError/invalidHashSize`` if
+    ///   `hash` does not have as many bytes as the database's hash size,
+    ///   ``XitDBError/unexpectedTag`` if the slot no longer holds a hash map or
+    ///   set, or an error of the storage or of a damaged file.
     @inlinable
     public func insert(_ key: WritableData, forHash hash: some Sequence<UInt8>) throws(XitDBError) {
         let bytes = Array(hash)
@@ -270,13 +287,16 @@ extension HashSet where Access == ReadWrite {
     ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
     ///   size.
-    /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not
-    ///   the root cursor and no transaction is in progress,
+    /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not the
+    ///   root cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/invalidHashSize`` if `hash` does not have as many
-    ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
-    ///   the slot no longer holds a hash map or set, or an error of the
-    ///   storage or of a damaged file.
+    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
+    ///   this transaction or from an earlier transaction,
+    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
+    ///   transaction failed after writing, ``XitDBError/invalidHashSize`` if
+    ///   `hash` does not have as many bytes as the database's hash size,
+    ///   ``XitDBError/unexpectedTag`` if the slot no longer holds a hash map or
+    ///   set, or an error of the storage or of a damaged file.
     public func insertCursor(forHash hash: Span<UInt8>) throws(XitDBError) -> Cursor<ReadWrite> {
         let path: InlineArray<1, PathPart> = [.hashMapGet(.key, KeyHash(hash))]
         return try cursor.writePath(path.span)
@@ -294,13 +314,16 @@ extension HashSet where Access == ReadWrite {
     ///   size, in any sequence of bytes: an array, a CryptoKit digest, a
     ///   slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
     ///   already borrowed.
-    /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not
-    ///   the root cursor and no transaction is in progress,
+    /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not the
+    ///   root cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/invalidHashSize`` if `hash` does not have as many
-    ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
-    ///   the slot no longer holds a hash map or set, or an error of the
-    ///   storage or of a damaged file.
+    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
+    ///   this transaction or from an earlier transaction,
+    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
+    ///   transaction failed after writing, ``XitDBError/invalidHashSize`` if
+    ///   `hash` does not have as many bytes as the database's hash size,
+    ///   ``XitDBError/unexpectedTag`` if the slot no longer holds a hash map or
+    ///   set, or an error of the storage or of a damaged file.
     @inlinable
     public func insertCursor(forHash hash: some Sequence<UInt8>) throws(XitDBError) -> Cursor<ReadWrite> {
         let bytes = Array(hash)
@@ -312,13 +335,16 @@ extension HashSet where Access == ReadWrite {
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
     ///   size.
     /// - Returns: Whether there was an entry to remove.
-    /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not
-    ///   the root cursor and no transaction is in progress,
+    /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not the
+    ///   root cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/invalidHashSize`` if `hash` does not have as many
-    ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
-    ///   the slot no longer holds a hash map or set, or an error of the
-    ///   storage or of a damaged file.
+    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
+    ///   this transaction or from an earlier transaction,
+    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
+    ///   transaction failed after writing, ``XitDBError/invalidHashSize`` if
+    ///   `hash` does not have as many bytes as the database's hash size,
+    ///   ``XitDBError/unexpectedTag`` if the slot no longer holds a hash map or
+    ///   set, or an error of the storage or of a damaged file.
     @discardableResult
     public func remove(forHash hash: Span<UInt8>) throws(XitDBError) -> Bool {
         let path: InlineArray<1, PathPart> = [.hashMapRemove(KeyHash(hash))]
@@ -338,13 +364,16 @@ extension HashSet where Access == ReadWrite {
     ///   slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
     ///   already borrowed.
     /// - Returns: Whether there was an entry to remove.
-    /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not
-    ///   the root cursor and no transaction is in progress,
+    /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not the
+    ///   root cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/invalidHashSize`` if `hash` does not have as many
-    ///   bytes as the database's hash size, ``XitDBError/unexpectedTag`` if
-    ///   the slot no longer holds a hash map or set, or an error of the
-    ///   storage or of a damaged file.
+    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
+    ///   this transaction or from an earlier transaction,
+    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
+    ///   transaction failed after writing, ``XitDBError/invalidHashSize`` if
+    ///   `hash` does not have as many bytes as the database's hash size,
+    ///   ``XitDBError/unexpectedTag`` if the slot no longer holds a hash map or
+    ///   set, or an error of the storage or of a damaged file.
     @discardableResult
     @inlinable
     public func remove(forHash hash: some Sequence<UInt8>) throws(XitDBError) -> Bool {
