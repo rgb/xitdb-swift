@@ -82,7 +82,7 @@ public struct ByteReader {
             }
         } else {
             let offset = try startPosition.offset(by: position)
-            let read = try database.storage.read(into: &buffer, range: 0..<count, at: offset)
+            let read = try database.reader.storage.read(into: &buffer, range: 0..<count, at: offset)
             guard read == count else { throw .endOfStream }
         }
         position += UInt64(count)
@@ -125,7 +125,7 @@ public struct ByteReader {
             // A size that the storage cannot hold comes from a damaged file.
             // It must not be allocated.
             let start = try startPosition.offset(by: position)
-            let length = try database.storage.length
+            let length = try database.reader.storage.length
             guard start <= length, remaining <= length - start else { throw .endOfStream }
         }
         guard let count = Int(exactly: remaining) else { throw .endOfStream }

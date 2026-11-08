@@ -24,7 +24,10 @@ public enum XitDBError: Error, Sendable {
     case writeNotAllowed
 
     /// The cursor has no position in the file, so nothing can be written
-    /// through it.
+    /// through it; or its database reads a ``Snapshot``, which nothing
+    /// writes to. Every write through such a database is refused with this
+    /// before anything is done, ``Database/applyReplicated(at:bytes:)`` on
+    /// it included.
     case cursorNotWritable
 
     /// A write below the root was attempted outside a transaction.
@@ -175,6 +178,16 @@ public enum XitDBError: Error, Sendable {
     /// throws, since the writer had appended before the body ran. Finish
     /// byte writers before freezing.
     case byteWriterOpen
+
+    /// The file a ``Snapshot`` reads was rewritten below the snapshot's
+    /// committed size, so that its bytes are no longer the commit's: a
+    /// replication from zero through the database that writes the file,
+    /// ``Database/applyReplicated(at:bytes:)`` at 0, or a write or a
+    /// truncation through the caller's own reference to the storage. Every
+    /// read through the snapshot reports this from then on, the one under
+    /// way included; take a new snapshot. A snapshot of a database in memory
+    /// keeps the commit's bytes and never reports it.
+    case snapshotOverwritten
 
     /// A slot whose tag is `index`, `kvPair` or `sortedKvPair` was given to
     /// write as a value. Those tags are the trees' own; such a slot in a

@@ -128,10 +128,20 @@ final class FileDescriptor: Sendable {
 /// storage for a database that is written to. ``BufferedFileStorage`` is the
 /// one to use for that. A file storage suits a database that is only read.
 ///
-/// The storage owns its file descriptor and closes it when the storage goes
-/// away, which also releases its lock.
+/// The storage owns its file descriptor and closes it when the storage and
+/// every ``Snapshot`` of a database in it have gone, which also releases
+/// its lock: a snapshot reads through the same descriptor, so the file stays
+/// open, and any lock held, until the last snapshot is released.
 public final class FileStorage: WritableStorage {
     let descriptor: FileDescriptor
+
+    /// The largest committed size that a snapshot of this storage reads up
+    /// to. A write below it outside the root header, or a truncation below
+    /// it, trips the fence first.
+    private(set) var pinnedSize: UInt64 = 0
+
+    /// The fence the snapshots taken so far check; replaced once tripped.
+    private(set) var fence = SnapshotFence()
 
     /// How the file was opened.
     public let access: FileAccess
@@ -182,6 +192,33 @@ public final class FileStorage: WritableStorage {
         if case .readOnly = access { true } else { false }
     }
 
+    /// What a snapshot of the file's first `size` bytes reads through: the
+    /// storage's descriptor and the fence it checks. From now on the storage
+    /// trips that fence before it changes any of those bytes outside the
+    /// root header, or cuts the file below them.
+    func snapshotSource(upTo size: UInt64) -> (descriptor: FileDescriptor, fence: SnapshotFence) {
+        pinnedSize = max(pinnedSize, size)
+        return (descriptor, fence)
+    }
+
+    /// Trips the fence of every snapshot taken so far, before a write or a
+    /// truncation changes bytes they read, and starts a new fence for the
+    /// snapshots that come after.
+    private func invalidateSnapshots() {
+        fence.trip()
+        fence = SnapshotFence()
+        pinnedSize = 0
+    }
+
+    /// Whether a write of `count` bytes at `offset` changes bytes a
+    /// snapshot reads: any below the pinned size except the root header,
+    /// which every commit rewrites and no snapshot reads from the file.
+    private func overwritesSnapshot(_ count: Int, at offset: UInt64) -> Bool {
+        guard offset < pinnedSize else { return false }
+        let end = offset &+ UInt64(count)
+        return offset < RootHeader.position || end > RootHeader.endPosition
+    }
+
     /// Reads the bytes of the file that start at `offset` into a part of
     /// `buffer`, as many as fit there.
     ///
@@ -222,6 +259,7 @@ public final class FileStorage: WritableStorage {
     public func write(_ bytes: Span<UInt8>, at offset: UInt64) throws(XitDBError) {
         guard bytes.count > 0 else { return }
         try checkWritable(bytes, at: offset)
+        if overwritesSnapshot(bytes.count, at: offset) { invalidateSnapshots() }
         try calls.write(descriptor.rawValue, bytes, offset)
     }
 
@@ -258,6 +296,7 @@ public final class FileStorage: WritableStorage {
     /// become part of the file.
     func resize(to length: UInt64) throws(XitDBError) {
         if isReadOnly { return }
+        if length < pinnedSize { invalidateSnapshots() }
         try calls.setLength(descriptor.rawValue, length)
     }
 

@@ -31,6 +31,11 @@ enum BuiltInStorage {
     case bufferedFile(BufferedFileStorage)
     /// A storage of the caller's own, called through the protocol.
     case custom(any WritableStorage)
+    /// The read half of one commit, which a database made with
+    /// ``Database/init(reading:)`` reads. Its writes are refused with
+    /// ``XitDBError/cursorNotWritable``, though nothing reaches them: the
+    /// cursor's write check and the replication refuse first.
+    case snapshot(SnapshotStorage)
 
     /// Wraps a storage: a built-in one by its class, any other as custom.
     init(_ storage: any WritableStorage) {
@@ -54,6 +59,7 @@ enum BuiltInStorage {
         case .file(let storage): try storage.read(into: &buffer, range: range, at: offset)
         case .bufferedFile(let storage): try storage.read(into: &buffer, range: range, at: offset)
         case .custom(let storage): try storage.read(into: &buffer, range: range, at: offset)
+        case .snapshot(let storage): try storage.read(into: &buffer, range: range, at: offset)
         }
     }
 
@@ -71,6 +77,7 @@ enum BuiltInStorage {
             case .file(let storage): try storage.length
             case .bufferedFile(let storage): try storage.length
             case .custom(let storage): try storage.length
+            case .snapshot(let storage): try storage.length
             }
         }
     }
@@ -84,6 +91,7 @@ enum BuiltInStorage {
         case .file(let storage): try storage.write(bytes, at: offset)
         case .bufferedFile(let storage): try storage.write(bytes, at: offset)
         case .custom(let storage): try storage.write(bytes, at: offset)
+        case .snapshot: throw .cursorNotWritable
         }
     }
 
@@ -94,6 +102,7 @@ enum BuiltInStorage {
         case .file(let storage): try storage.truncate(to: length)
         case .bufferedFile(let storage): try storage.truncate(to: length)
         case .custom(let storage): try storage.truncate(to: length)
+        case .snapshot: throw .cursorNotWritable
         }
     }
 
@@ -104,6 +113,7 @@ enum BuiltInStorage {
         case .file(let storage): try storage.flush()
         case .bufferedFile(let storage): try storage.flush()
         case .custom(let storage): try storage.flush()
+        case .snapshot: throw .cursorNotWritable
         }
     }
 
@@ -114,6 +124,7 @@ enum BuiltInStorage {
         case .file(let storage): try storage.sync(point)
         case .bufferedFile(let storage): try storage.sync(point)
         case .custom(let storage): try storage.sync(point)
+        case .snapshot: throw .cursorNotWritable
         }
     }
 }

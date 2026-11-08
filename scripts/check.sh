@@ -38,6 +38,12 @@ step "Debug build and tests"
 swift build "${strict[@]}"
 swift test "${strict[@]}"
 
+# The snapshot concurrency suite under the thread sanitizer, in a build of its
+# own: a race in a snapshot's read half would be a wrong read that no plain run
+# shows. The sanitizer slows the suite a great deal, so only that suite runs.
+step "Thread sanitizer: snapshot concurrency"
+swift test --sanitize=thread --scratch-path .build/tsan --filter SnapshotConcurrencyTests "${strict[@]}"
+
 # The plain release build is what a client compiles. `swift test` then rebuilds the
 # library with testing enabled so that the tests can reach internal declarations.
 step "Release build and tests"

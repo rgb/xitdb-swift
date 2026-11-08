@@ -263,6 +263,30 @@ public final class Database {
         try storage.sync(.afterRootHeader)
     }
 
+    /// Opens a read-only database over a snapshot, at no I/O cost.
+    ///
+    /// The database reads the snapshot's commit, whatever the writer has
+    /// done since; every write through it is refused with
+    /// ``XitDBError/cursorNotWritable`` before anything is done, and its
+    /// ``snapshot()`` gives the same snapshot back. Like every database it
+    /// belongs to one thread or task at a time: each task that reads a
+    /// snapshot opens a database of its own over it, which costs a few small
+    /// objects and no read.
+    ///
+    /// - Parameter snapshot: The commit to read.
+    public init(reading snapshot: Snapshot) {
+        let storage = BuiltInStorage.snapshot(snapshot.storage)
+        self.storage = storage
+        identity = DatabaseIdentity(header: snapshot.header)
+        reader = DatabaseReader(
+            storage: storage,
+            identity: identity,
+            pinnedRoot: RootHeader(root: snapshot.root, fileSize: snapshot.committedSize)
+        )
+        transactionStart = nil
+        random = RandomSource(SystemRandomNumberGenerator())
+    }
+
     /// The number of bytes that belong to committed transactions.
     ///
     /// Bytes beyond this, if the storage has any, are what an unfinished

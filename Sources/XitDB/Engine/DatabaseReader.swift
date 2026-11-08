@@ -51,13 +51,19 @@ final class DatabaseReader {
     let hashSize: UInt16
     private let identity: DatabaseIdentity
 
+    /// The root header of the one commit a snapshot's database reads, which
+    /// ``rootHeader()`` returns instead of reading one; `nil` for a live
+    /// database, whose root header is read at every use.
+    let pinnedRoot: RootHeader?
+
     /// The file ID, which the trailers' checksums cover.
     var fileID: UInt64 { identity.header.fileID }
 
-    init(storage: BuiltInStorage, identity: DatabaseIdentity) {
+    init(storage: BuiltInStorage, identity: DatabaseIdentity, pinnedRoot: RootHeader? = nil) {
         self.storage = storage
         hashSize = identity.header.hashSize
         self.identity = identity
+        self.pinnedRoot = pinnedRoot
     }
 
     // MARK: Records
@@ -146,13 +152,15 @@ final class DatabaseReader {
     ///
     /// Only the size is read from the root header. The root slot beside it
     /// is a cache that a concurrent commit may be halfway through
-    /// rewriting, so it is never looked at.
+    /// rewriting, so it is never looked at. A snapshot's reader has its
+    /// commit pinned and reads nothing here.
     ///
     /// - Throws: `invalidDatabase` if the size is too small to hold a
     ///   database or the trailer's checksum does not match,
     ///   `truncatedDatabase` if the storage is shorter than the size, or
     ///   `endOfStream` if the storage ends inside the root header.
     func rootHeader() throws(XitDBError) -> RootHeader {
+        if let pinnedRoot { return pinnedRoot }
         let fileSize = try uint64(at: RootHeader.fileSizePosition)
         if fileSize < RootHeader.minimumFileSize { throw .invalidDatabase }
         if try storage.length < fileSize { throw .truncatedDatabase }
