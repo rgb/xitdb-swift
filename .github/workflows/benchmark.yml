@@ -3,7 +3,9 @@
 # original, three passes of each, alternated, and each job's table in its summary. The two
 # run at once on different machines, so each table compares Swift with Zig on one machine;
 # the tables are not meant to be compared with each other. It is a report and not a check:
-# there are no thresholds, and a job fails only when a build or a benchmark does.
+# there are no thresholds, and a job fails only when a build or a benchmark does. Each job
+# also keeps its summary and every pass's lines (bench-compare.py --raw) as an artifact of
+# the run, benchmark-macos and benchmark-linux, which `gh run download` fetches.
 #
 # The macOS runner needs Xcode 27.2 (Swift 6.4.2) and Zig 0.17.1, on the PATH the runner's
 # service has, which is short: put Zig's folder in the runner's .path file, or link zig into
@@ -106,6 +108,8 @@ jobs:
       - name: Run both, three passes alternated
         working-directory: xitdb-swift/package
         run: |
+          out="$GITHUB_WORKSPACE/results"
+          mkdir -p "$out"
           {
             echo "## Benchmark: Swift against Zig"
             echo
@@ -113,8 +117,19 @@ jobs:
             echo "- Zig: \`rgb/xitdb-conformance\` at \`${CONFORMANCE_COMMIT}\` against \`xit-vcs/xitdb\` at \`${XITDB_COMMIT}\`, Zig $(zig version), ReleaseFast"
             echo "- Runner: $(uname -m), macOS $(sw_vers -productVersion)"
             echo
-          } >> "$GITHUB_STEP_SUMMARY"
-          scripts/bench-compare.py ../conformance/out/release/bin/bench .build/release/XitDBBenchmark --passes 3 >> "$GITHUB_STEP_SUMMARY"
+          } | tee "$out/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          scripts/bench-compare.py ../conformance/out/release/bin/bench .build/release/XitDBBenchmark --passes 3 --raw "$out/raw" \
+            | tee -a "$out/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      # The summary and every pass's lines, kept with the run: `gh run download <run>` or the
+      # run's page fetches them. Kept when the benchmark fails too, with what it got to.
+      - name: Keep the results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-macos
+          path: results/
+          if-no-files-found: ignore
 
   compare-linux:
     name: Swift against Zig on Linux
@@ -196,6 +211,8 @@ jobs:
         working-directory: xitdb-swift/package
         run: |
           os=$(. /etc/os-release && echo "$PRETTY_NAME")
+          out="$GITHUB_WORKSPACE/results"
+          mkdir -p "$out"
           {
             echo "## Benchmark on Linux: Swift against Zig"
             echo
@@ -203,5 +220,14 @@ jobs:
             echo "- Zig: \`rgb/xitdb-conformance\` at \`${CONFORMANCE_COMMIT}\` against \`xit-vcs/xitdb\` at \`${XITDB_COMMIT}\`, Zig $(zig version), ReleaseFast"
             echo "- Runner: $(uname -m), ${os} in a container, $(nproc) CPUs"
             echo
-          } >> "$GITHUB_STEP_SUMMARY"
-          python3 scripts/bench-compare.py ../conformance/out/release/bin/bench .build/release/XitDBBenchmark --passes 3 >> "$GITHUB_STEP_SUMMARY"
+          } | tee "$out/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/bench-compare.py ../conformance/out/release/bin/bench .build/release/XitDBBenchmark --passes 3 --raw "$out/raw" \
+            | tee -a "$out/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-linux
+          path: results/
+          if-no-files-found: ignore
