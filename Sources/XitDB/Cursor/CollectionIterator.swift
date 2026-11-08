@@ -71,8 +71,8 @@ extension Cursor {
         try checkReadable()
         let slot = try resolved().slot
         return CollectionIterator(
-            slots: try SlotIterator(reader: database.reader, collection: slot),
-            database: database,
+            slots: try SlotIterator(reader: engine.reader, collection: slot),
+            database: engine,
             frozenAt: frozenAt,
             transaction: isRoot ? 0 : transaction
         )
@@ -84,8 +84,8 @@ extension Cursor {
         try checkReadable()
         let slot = try resolved().slot
         return CollectionIterator(
-            slots: try SlotIterator(reader: database.reader, arrayList: slot, from: index),
-            database: database,
+            slots: try SlotIterator(reader: engine.reader, arrayList: slot, from: index),
+            database: engine,
             frozenAt: frozenAt,
             transaction: isRoot ? 0 : transaction
         )
@@ -97,8 +97,8 @@ extension Cursor {
         try checkReadable()
         let slot = try resolved().slot
         return CollectionIterator(
-            slots: try SlotIterator(reader: database.reader, linkedArrayList: slot, from: index),
-            database: database,
+            slots: try SlotIterator(reader: engine.reader, linkedArrayList: slot, from: index),
+            database: engine,
             frozenAt: frozenAt,
             transaction: isRoot ? 0 : transaction
         )
@@ -110,8 +110,8 @@ extension Cursor {
         try checkReadable()
         let slot = try resolved().slot
         return CollectionIterator(
-            slots: try SlotIterator(reader: database.reader, sortedMap: slot, from: index),
-            database: database,
+            slots: try SlotIterator(reader: engine.reader, sortedMap: slot, from: index),
+            database: engine,
             frozenAt: frozenAt,
             transaction: isRoot ? 0 : transaction
         )
@@ -123,8 +123,8 @@ extension Cursor {
         try checkReadable()
         let slot = try resolved().slot
         return CollectionIterator(
-            slots: try SlotIterator(reader: database.reader, sortedMap: slot, fromKey: key),
-            database: database,
+            slots: try SlotIterator(reader: engine.reader, sortedMap: slot, fromKey: key),
+            database: engine,
             frozenAt: frozenAt,
             transaction: isRoot ? 0 : transaction
         )

@@ -160,19 +160,19 @@ extension Cursor {
         let slot = try resolved().slot
         switch slot.tag {
         case .none:
-            return ByteReader(database: database, transaction: isRoot ? 0 : transaction, startPosition: 0, size: 0)
+            return ByteReader(database: engine, transaction: isRoot ? 0 : transaction, startPosition: 0, size: 0)
         case .bytes:
-            let size = try database.reader.uint64(at: slot.value)
+            let size = try engine.reader.uint64(at: slot.value)
             let start = try slot.value.offset(by: ByteArrayFormat.lengthByteCount)
             return ByteReader(
-                database: database, transaction: isRoot ? 0 : transaction, startPosition: start, size: size)
+                database: engine, transaction: isRoot ? 0 : transaction, startPosition: start, size: size)
         case .shortBytes:
             // The value is in the slot, so it is read from there, whether
             // or not the slot has a position. Zig reads it from the slot's
             // position in the file, which fails for a slot without one and
             // gives other bytes once the slot has been overwritten.
             return ByteReader(
-                database: database,
+                database: engine,
                 transaction: isRoot ? 0 : transaction,
                 shortBytes: ByteArrayFormat.valueBytes(of: slot),
                 size: ByteArrayFormat.shortByteCount(of: slot)

@@ -4,15 +4,14 @@
 /// verified once by ``Database/snapshot()``, and the bytes below that size,
 /// which a database never changes except for its root header. It is a few
 /// words and `Sendable`; what it is not is a database. Where it is used,
-/// ``rootCursor`` or ``Database/init(reading:)`` makes a read-only database
+/// ``rootCursor`` or ``SnapshotDatabase/init(_:)`` makes a reading database
 /// over it at no I/O cost, and that database, its cursors and collections
 /// belong to the task that made them, as every database does. Two tasks
 /// reading one snapshot share nothing but the snapshot.
 ///
-/// Every write through a snapshot's database is refused with
-/// ``XitDBError/cursorNotWritable`` before anything is done. Nothing read
-/// from one is ever stale in the sense of ``XitDBError/staleCursor``: a
-/// snapshot's database has no transactions.
+/// A ``SnapshotDatabase`` has no writing members: nothing writes through a
+/// snapshot, by type. Nothing read from one is ever stale in the sense of
+/// ``XitDBError/staleCursor``: a snapshot's database has no transactions.
 ///
 /// What a snapshot costs depends on the storage. In a ``MemoryStorage`` it
 /// shares the array, and the writer copies the array once at its next write
@@ -34,9 +33,10 @@
 /// opener of this process or another out while the snapshot lives.
 ///
 /// A database made over a snapshot serves replication as the file is the
-/// unit: ``Database/replicaState`` and ``Database/readCommitted(from:to:)``
-/// give the whole commit's bytes, for a snapshot of a sub-collection too.
-/// Compaction from a sub-collection snapshot is refused with
+/// unit: its ``ReadableDatabase/replicaState`` and
+/// ``ReadableDatabase/readCommitted(from:to:)`` give the whole commit's
+/// bytes, for a snapshot of a sub-collection too. Compaction from a
+/// sub-collection snapshot is refused with
 /// ``XitDBError/subCollectionSnapshot``; from a whole one it compacts the
 /// commit.
 ///
@@ -68,6 +68,20 @@ extension Database {
         reader.pinnedRoot != nil
     }
 
+    /// The snapshot an engine under a ``SnapshotDatabase`` reads, rebuilt
+    /// from what the engine holds: the same value ``snapshot()`` gives, with
+    /// no reading and no throwing, for the engine's owner.
+    ///
+    /// - Precondition: The engine reads a snapshot.
+    func snapshotOfEngine() -> Snapshot {
+        guard let pinned = reader.pinnedRoot, case .snapshot(let storage) = storage else {
+            preconditionFailure("not an engine under a snapshot database")
+        }
+        return Snapshot(
+            header: header, committedSize: pinned.fileSize, root: pinned.root,
+            commitRoot: reader.pinnedCommitRoot ?? pinned.root, storage: storage)
+    }
+
     /// Whether this database reads a snapshot of a sub-collection, whose
     /// root is not the commit's.
     var readsSubCollection: Bool {
@@ -79,9 +93,7 @@ extension Database {
     /// read and verified once, and the bytes below that size.
     ///
     /// Called inside a transaction, this pins the last commit, not the
-    /// transaction's work. Called on a database made with
-    /// ``init(reading:)``, it gives that database's snapshot back without
-    /// reading anything.
+    /// transaction's work.
     ///
     /// On a ``MemoryStorage`` this is one retain of the array, and the next
     /// write to the database copies the array while the snapshot lives. On

@@ -31,10 +31,10 @@ enum BuiltInStorage {
     case bufferedFile(BufferedFileStorage)
     /// A storage of the caller's own, called through the protocol.
     case custom(any WritableStorage)
-    /// The read half of one commit, which a database made with
-    /// ``Database/init(reading:)`` reads. Its writes are refused with
-    /// ``XitDBError/cursorNotWritable``, though nothing reaches them: the
-    /// cursor's write check and the replication refuse first.
+    /// The read half of one commit, which the engine under a
+    /// ``SnapshotDatabase`` reads. Its writes refuse with
+    /// ``XitDBError/cursorNotWritable`` as a backstop that nothing public
+    /// reaches: that type has no writing members.
     case snapshot(SnapshotStorage)
 
     /// Wraps a storage: a built-in one by its class, any other as custom.

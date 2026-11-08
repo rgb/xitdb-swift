@@ -1,6 +1,6 @@
 extension Snapshot {
-    /// A read-only cursor at the snapshot's root, on a fresh database made
-    /// with ``Database/init(reading:)``.
+    /// A read-only cursor at the snapshot's root, on a fresh
+    /// ``SnapshotDatabase``.
     ///
     /// Each access makes a new database and costs no read. The cursor, and
     /// every collection, iterator and byte reader made from it, belongs to
@@ -20,7 +20,7 @@ extension Snapshot {
     /// of that database first and pins the cursor's slot under it, which is
     /// right for a cursor at committed data, made outside a transaction or
     /// in one, since that data is in the commit the snapshot pins and stays
-    /// so for as long as the file holds that database. The test is on what
+    /// so for as long as the file holds that engine. The test is on what
     /// the slot points at, not on where the slot was read from: a slot
     /// pointing at or past the running transaction's start names the
     /// transaction's own work, which is in no commit yet, and is refused;
@@ -32,24 +32,24 @@ extension Snapshot {
     ///
     /// - Throws: ``XitDBError/staleCursor`` for a cursor from a transaction
     ///   that did not commit or at the work of the one under way, and what
-    ///   ``Database/snapshot()`` throws for a cursor of a live database.
+    ///   ``Database/snapshot()`` throws for a cursor of a live engine.
     public init(_ cursor: Cursor<ReadOnly>) throws(XitDBError) {
-        let database = cursor.database
-        if database.readsSnapshot, case .snapshot(let storage) = database.storage {
+        let engine = cursor.engine
+        if engine.readsSnapshot, case .snapshot(let storage) = engine.storage {
             let root = try cursor.resolved().slot
             self.init(
-                header: database.header, committedSize: storage.committedSize, root: root,
-                commitRoot: database.reader.pinnedCommitRoot ?? root, storage: storage)
+                header: engine.header, committedSize: storage.committedSize, root: root,
+                commitRoot: engine.reader.pinnedCommitRoot ?? root, storage: storage)
             return
         }
         try cursor.checkReadable()
-        let whole = try database.snapshot()
+        let whole = try engine.snapshot()
         // The root header is read once, in the snapshot: a root cursor's
         // slot is that commit's root, not a second read's.
         let root = cursor.isRoot ? whole.root : try cursor.resolved().slot
         // The transaction under way wrote everything at or past its start;
         // a slot pointing there names work no commit holds yet.
-        if let start = database.transactionStart, cursor.transaction == database.transactionNumber,
+        if let start = engine.transactionStart, cursor.transaction == engine.transactionNumber,
             !root.holdsValue, root.value >= start
         {
             throw .staleCursor

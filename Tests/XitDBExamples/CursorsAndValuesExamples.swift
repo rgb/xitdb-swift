@@ -318,7 +318,7 @@ import XitDB
     @Test func aHelperGivenACursorReachesTheDatabase() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         func hashSize(of cursor: Cursor<some CursorAccess>) -> UInt16 {
-            cursor.database.header.hashSize
+            cursor.readOnly.database.header.hashSize
         }
         #expect(hashSize(of: database.rootCursor) == 32)
     }

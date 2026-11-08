@@ -54,7 +54,7 @@ final class WrappedStorage: WritableStorage {
 
     /// Opens a database of its own over the snapshot and reads the value.
     private static func value(_ key: String, readingFresh snapshot: Snapshot) throws -> UInt64? {
-        try HashMap<ReadOnly>(Database(reading: snapshot).rootCursor).cursor(forHash: sha1(key).bytes)?.readUInt64()
+        try HashMap<ReadOnly>(SnapshotDatabase(snapshot).rootCursor).cursor(forHash: sha1(key).bytes)?.readUInt64()
     }
 
     func requireSendable<T: Sendable>(_: T.Type) {}
@@ -90,11 +90,16 @@ final class WrappedStorage: WritableStorage {
         #expect(try Self.value("a", readingFresh: snapshot) == 1)
         #expect(snapshot.committedSize == size)
 
-        // Its database has the pinned size and says so without reading.
-        let reading = Database(reading: snapshot)
-        #expect(try reading.committedSize == size)
-        #expect(try reading.snapshot().committedSize == size)
-        #expect(try Self.value("b", in: try reading.snapshot()) == 2)
+        // Its database has the pinned size and says so without reading, and
+        // a cursor read from it names it as its database; a read-only cursor
+        // of the live database names that.
+        let reading = SnapshotDatabase(snapshot)
+        #expect(reading.committedSize == size)
+        #expect(reading.snapshot().committedSize == size)
+        #expect(try Self.value("b", in: reading.snapshot()) == 2)
+        #expect(reading.rootCursor.database === reading)
+        #expect(fixture.database.rootCursor.readOnly.database === fixture.database)
+        #expect(try reading.rootCursor.database.committedSize == size)
     }
 
     @Test(arguments: storageKinds)
@@ -149,36 +154,22 @@ final class WrappedStorage: WritableStorage {
     // MARK: What it refuses
 
     @Test(arguments: storageKinds)
-    func everyWriteThroughASnapshotsDatabaseIsRefusedBeforeAnythingIsDone(kind: StorageKind) throws {
+    func aSnapshotDatabaseHasNoWritesAndItsEngineRefusesOne(kind: StorageKind) throws {
         let fixture = try Fixture(kind)
         try fixture.put("a", 1)
         let snapshot = try fixture.database.snapshot()
         let before = try wholeStorage(fixture.subject.storage)
-        let reading = Database(reading: snapshot)
+        let reading = SnapshotDatabase(snapshot)
 
-        func transaction(_ cursor: inout Cursor<ReadWrite>) throws {
-            _ = try cursor.writePath([.hashMapInit()])
-        }
-        #expect(throws: XitDBError.cursorNotWritable) { try reading.withTransaction(transaction) }
-        #expect(throws: XitDBError.cursorNotWritable) { try reading.rootCursor.writePath([.hashMapInit()]) }
-        #expect(throws: XitDBError.cursorNotWritable) { try HashMap<ReadWrite>(reading.rootCursor) }
-        #expect(throws: XitDBError.cursorNotWritable) { try ArrayList<ReadWrite>(reading.rootCursor) }
+        // Nothing public writes through a snapshot database: it has no
+        // transaction, no freeze, no replication onto it and no write
+        // through its cursors, which are read-only. Inside the module the
+        // storage's snapshot case refuses a write as a backstop, before
+        // anything is done.
         #expect(throws: XitDBError.cursorNotWritable) {
-            var root = reading.rootCursor
-            try root.writeBytes { writer in try writer.write([1, 2, 3]) }
+            try reading.engine.rootCursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("z")), .write(.uint(1))])
         }
-        #expect(throws: XitDBError.cursorNotWritable) { try reading.applyReplicated(at: 0, bytes: [1, 2, 3]) }
-        #expect(throws: XitDBError.cursorNotWritable) {
-            try reading.applyReplicated(at: try reading.committedSize, bytes: [1, 2, 3])
-        }
-        #expect(throws: XitDBError.cursorNotWritable) { try reading.freeze() }
-
-        // The write-mode collections can be wrapped around a read cursor
-        // and refuse at their first write too.
-        let value = try #require(try HashMap<ReadOnly>(snapshot.rootCursor).cursor(forHash: sha1("a").bytes))
-        #expect(throws: XitDBError.cursorNotWritable) {
-            try Cursor<ReadWrite>(viewing: value).writePath([.write(.uint(2))])
-        }
+        #expect(throws: XitDBError.cursorNotWritable) { try reading.engine.applyReplicated(at: 0, bytes: [1, 2, 3]) }
 
         #expect(try wholeStorage(fixture.subject.storage) == before)
         #expect(try Self.value("a", in: snapshot) == 1)
@@ -208,7 +199,7 @@ final class WrappedStorage: WritableStorage {
         #expect(second.committedSize == snapshot.committedSize)
         #expect(try Self.value("value", in: second) == 2)
         // Reading nothing, it cannot fail; a snapshot of it is itself.
-        #expect(try Database(reading: second).snapshot().committedSize == second.committedSize)
+        #expect(SnapshotDatabase(second).snapshot().committedSize == second.committedSize)
 
         // The writer goes on; the sub-collection snapshot does not move.
         func body(_ cursor: inout Cursor<ReadWrite>) throws {
@@ -288,7 +279,7 @@ final class WrappedStorage: WritableStorage {
         }
         try history.append(.slot(nil), body)
 
-        let reading = Database(reading: snapshot)
+        let reading = SnapshotDatabase(snapshot)
         #expect(try reading.readCommitted(from: 0, to: snapshot.committedSize) == committed)
         #expect(try reading.replicaState == state)
 
@@ -300,26 +291,57 @@ final class WrappedStorage: WritableStorage {
         #expect(compactedWalk.contains("uint(3)"))
         #expect(!compactedWalk.contains("uint(99)"))
 
-        // A compaction into a snapshot's database is refused first.
-        var more = MemoryOffsetMap()
-        #expect(throws: XitDBError.cursorNotWritable) { try database.compact(into: reading, offsetMap: &more) }
-
         // A sub-collection snapshot serves the commit's bytes to replication
         // and refuses compaction.
         let moments = try ArrayList<ReadOnly>(snapshot.rootCursor)
         let second = try Snapshot(try #require(try moments.cursor(at: 1)))
-        let partial = Database(reading: second)
+        let partial = SnapshotDatabase(second)
         #expect(try partial.readCommitted(from: 0, to: second.committedSize) == committed)
         #expect(try partial.replicaState == state)
         var third = MemoryOffsetMap()
         #expect(throws: XitDBError.subCollectionSnapshot) {
             try partial.compact(into: MemoryStorage(), offsetMap: &third)
         }
-        #expect(throws: XitDBError.cursorNotWritable) { try partial.freeze() }
-        #expect(throws: XitDBError.cursorNotWritable) {
-            var root = partial.rootCursor
-            try root.writeIfEmpty(.uint(1))
+    }
+
+    @Test(arguments: storageKinds)
+    func compactionFromASnapshotGivesTheBytesCompactionFromTheLiveDatabaseGave(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let database = try Database(
+            storage: subject.storage, hashSize: 20, hashID: nil, fileID: 7,
+            random: FixedRandom((1...400).map { UInt64($0) }))
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
+        for moment in 1...3 {
+            func body(_ cursor: inout Cursor<ReadWrite>) throws {
+                let map = try HashMap<ReadWrite>(cursor)
+                try map.put(.uint(UInt64(moment)), forHash: sha1("value").bytes)
+                try map.put(.bytes(Array(repeating: UInt8(moment), count: 40)), forHash: sha1("blob").bytes)
+                try map.put(.slot(try cursor.slot), forHash: sha1("self").bytes)
+            }
+            try history.append(.slot(nil), body)
         }
+        // Two targets alike in everything, their commit IDs included.
+        func target() throws -> (MemoryStorage, Database) {
+            let storage = MemoryStorage()
+            let target = try Database(
+                storage: storage, hashSize: 20, hashID: nil, fileID: 9, random: FixedRandom([77, 78, 79]))
+            return (storage, target)
+        }
+        let snapshot = try database.snapshot()
+        let (liveStorage, liveTarget) = try target()
+        var liveOffsets = MemoryOffsetMap()
+        try database.compact(into: liveTarget, offsetMap: &liveOffsets)
+
+        // The live database goes on; the snapshot still compacts its commit.
+        func body(_ cursor: inout Cursor<ReadWrite>) throws {
+            try HashMap<ReadWrite>(cursor).put(.uint(99), forHash: sha1("value").bytes)
+        }
+        try history.append(.slot(nil), body)
+        let (snapshotStorage, snapshotTarget) = try target()
+        var snapshotOffsets = MemoryOffsetMap()
+        try SnapshotDatabase(snapshot).compact(into: snapshotTarget, offsetMap: &snapshotOffsets)
+        #expect(snapshotStorage.bytes == liveStorage.bytes)
+        #expect(try StructureWalk.describe(snapshotTarget.rootCursor.readOnly).contains("uint(3)"))
     }
 
     @Test(arguments: [StorageKind.file, .bufferedFile])

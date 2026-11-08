@@ -449,7 +449,7 @@ import Testing
             #expect(pair.key.slotPointer.position == nil)
             #expect(pair.value.slotPointer.position == pairPosition + 9)
             var value = Cursor<ReadWrite>(
-                slotPointer: pair.value.slotPointer, database: pair.value.database, frozenAt: pair.value.frozenAt)
+                slotPointer: pair.value.slotPointer, database: pair.value.engine, frozenAt: pair.value.frozenAt)
             try value.write(.uint(8))
             #expect(try entry.readEntry().value.readUInt64() == 8)
             #expect(try holder.readBytes() == Array(record[..<9]) + slotBytes(Slot(value: 8, tag: .uint)))

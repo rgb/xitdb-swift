@@ -96,14 +96,14 @@ func runBattery(on bytes: [UInt8]) {
 
     // read everything reachable from the root
     var budget = 3000
-    walk(database.rootCursor, depth: 0, budget: &budget)
+    walk(database.rootCursor, hashSize: Int(database.header.hashSize), depth: 0, budget: &budget)
 
     // compact into memory, the target capped at 256 MiB, and read the result
     var offsets = MemoryOffsetMap()
     let target = MemoryStorage(maxSize: 1 << 28)
     if let compacted = try? database.compact(into: target, offsetMap: &offsets) {
         var compactedBudget = 2000
-        walk(compacted.rootCursor, depth: 0, budget: &compactedBudget)
+        walk(compacted.rootCursor, hashSize: Int(compacted.header.hashSize), depth: 0, budget: &compactedBudget)
     }
 
     // replicate: the state, the committed bytes, and applying the file to a
