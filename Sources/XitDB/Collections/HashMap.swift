@@ -7,7 +7,7 @@
 ///
 /// A hash cannot be turned back into its key. To be able to read the keys
 /// of a map, for instance when iterating over it, store each key beside its
-/// value with `putKey`.
+/// value with ``putKey(_:forHash:)-(_,Sequence<UInt8>)``.
 ///
 /// A map is a view of a slot. Making one that can only read checks that
 /// the slot holds a map of this kind, or nothing. Making one that can
