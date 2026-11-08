@@ -605,8 +605,16 @@ extension Cursor where Access == ReadWrite {
     /// refers to, and before wrapping the cursor in a collection: a
     /// collection keeps its own copy of the cursor, freeze point included,
     /// so freezing the cursor after wrapping it changes nothing the
-    /// collection does. Other cursors keep writing in place;
-    /// ``Database/freeze()`` does the same for all of them.
+    /// collection does.
+    ///
+    /// No other handle is affected. Cursors and collections made earlier
+    /// keep writing in place, none of them becomes stale, and the guard
+    /// that refuses writes through a cursor from before a freeze does not
+    /// count this one. So it protects the data from writes through this
+    /// cursor only: a write through a handle that pointed at the data
+    /// first still changes it, and the change shows through this cursor.
+    /// When both sides are written in the same transaction, use
+    /// ``Database/freeze()``, which holds for every handle.
     ///
     /// - Throws: ``XitDBError/expectedTxStart`` outside a transaction.
     public mutating func freeze() throws(XitDBError) {
@@ -694,7 +702,18 @@ extension Database {
     /// The transaction commits when `body` returns. If `body` throws,
     /// everything it wrote is discarded and the database is as it was. One
     /// error is not a rollback: if the storage fails in the sync after the
-    /// commit, the error is thrown, but the commit stands, as in Zig.
+    /// commit, the error is thrown, but the commit stands, as in the
+    /// original.
+    ///
+    /// An operation in `body` that fails after it has written to the
+    /// storage poisons the transaction: every further write and the commit
+    /// are refused with ``XitDBError/poisonedTransaction``, and the
+    /// transaction rolls back when `body` returns. An operation that fails
+    /// before writing anything, a refused guard included, leaves the
+    /// transaction as it was. The cursor `body` is given, and every cursor
+    /// and collection made from it, belong to this transaction: a write
+    /// through one of them after `body` returns is refused with
+    /// ``XitDBError/staleCursor``.
     ///
     /// Use this to group writes to a root that is not an array list, such as
     /// a hash map: without it, each write through a root cursor is a
@@ -705,8 +724,10 @@ extension Database {
     ///
     /// - Parameter body: Does the writing, through the cursor it is given.
     /// - Throws: ``XitDBError/nestedTopLevelWrite`` if a transaction is
-    ///   already in progress, ``XitDBError/storageFailure(errno:)`` if the
-    ///   storage fails, and whatever `body` throws.
+    ///   already in progress, ``XitDBError/poisonedTransaction`` in place of
+    ///   the commit if an operation in `body` poisoned it,
+    ///   ``XitDBError/storageFailure(errno:)`` if the storage fails, and
+    ///   whatever `body` throws.
     @discardableResult
     public func withTransaction<Result>(_ body: (inout Cursor<ReadWrite>) throws -> Result) throws -> Result {
         let path: InlineArray<1, PathPart> = [.ctx]

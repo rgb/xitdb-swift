@@ -85,12 +85,13 @@ public final class Database {
     ///     `nil` to take whatever the database records. Give it when the
     ///     keys come from one algorithm, such as 20 for SHA-1, so that a
     ///     database hashed another way is refused at once.
+    ///
     /// Opening reads and checks the header and then the root header, in
     /// that order, and writes nothing. A root header that cannot be
     /// trusted, because its committed size is past the end of the storage,
     /// smaller than a database can be, or not at a trailer whose checksum
-    /// verifies, is refused with the position of the last commit that does
-    /// verify; ``recover(_:)`` cuts the storage back to it. Nothing is
+    /// verifies, is refused with the position after the last trailer that
+    /// does verify; ``recover(_:)`` cuts the storage back to it. Nothing is
     /// dropped by opening.
     ///
     /// - Throws: ``XitDBError/invalidDatabase`` if the storage is empty or
@@ -269,16 +270,20 @@ public final class Database {
     /// name the same data, and a change through one shows through the
     /// other. Freezing after the copy makes them independent.
     ///
-    /// The caller's part, as in Zig: finish any
-    /// ``Cursor/writeBytes(formatTag:_:)`` before freezing, since a byte
-    /// array grows only while it is the last thing written; and afterwards
-    /// make writable collections again, and take nested write cursors
-    /// again from the transaction's root cursor, before writing through
-    /// them. A collection or cursor made before the freeze still points
-    /// into data that is now frozen, and a write through it changes that
-    /// data in place, as if nothing had been frozen: it is a collection's
-    /// init that copies its header or first block into the transaction,
-    /// and the path from the root that copies the blocks on the way.
+    /// The caller's part: finish any ``Cursor/writeBytes(formatTag:_:)``
+    /// before freezing, since a byte array grows only while it is the last
+    /// thing written. Afterwards every cursor and collection made before
+    /// the freeze is stale: it still points into data that is now frozen,
+    /// so a write through it is refused with ``XitDBError/staleCursor``
+    /// before anything is written, while its reads go on working. To go
+    /// on writing, run the collection's init on the cursor you hold, by
+    /// making the collection again from it, or take a new cursor from the
+    /// transaction's root cursor: a path that begins with an init part is
+    /// allowed through a stale cursor of the same transaction, because the
+    /// init copies the collection's header or first block into the
+    /// transaction, and the cursor and collection it gives are fresh.
+    /// ``LinkedArrayList/append(contentsOf:)-(Slot)`` freezes the same
+    /// way, and refreshes the list that called it.
     ///
     /// - Throws: ``XitDBError/expectedTxStart`` outside a transaction.
     public func freeze() throws(XitDBError) {

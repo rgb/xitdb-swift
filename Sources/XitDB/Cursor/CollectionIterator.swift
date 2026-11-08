@@ -12,8 +12,9 @@
 ///
 /// The iterator goes through the collection as it was when the iterator was
 /// made, unless the collection is being changed in place in the same
-/// transaction, in which case what it gives is not defined. The elements are
-/// read-only whatever the collection's cursor was, so one type serves both.
+/// transaction, in which case it can give a mix of old and new elements, or
+/// throw an error; it does not stop the program. The elements are read-only
+/// whatever the collection's cursor was, so one type serves both.
 public struct CollectionIterator {
     private var slots: SlotIterator
     private let database: Database

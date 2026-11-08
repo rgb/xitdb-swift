@@ -23,10 +23,11 @@
 /// **Appending another list freezes the transaction.** The joined tree
 /// shares nodes with both lists, so after ``append(contentsOf:)-(Slot)``
 /// every write in the transaction copies what was written before it, as
-/// after ``Database/freeze()``, with the same part for the caller:
-/// collections made before the call, other than the list that made it,
-/// are made again afterwards, from the transaction's root cursor, before
-/// anything is written through them.
+/// after ``Database/freeze()``, with the same part for the caller: the
+/// list that made the call is refreshed, and every other collection or
+/// cursor made before it is stale, refused with ``XitDBError/staleCursor``
+/// at its next write until the collection is made again from the cursor
+/// it holds, or a new cursor is taken from the transaction's root cursor.
 public struct LinkedArrayList<Access: CursorAccess> {
     /// The cursor at the slot that holds the list.
     /// The cursor the list is a view of. ``append(contentsOf:)-(Slot)``
@@ -305,11 +306,15 @@ extension LinkedArrayList where Access == ReadWrite {
 
     /// Appends every element of another linked array list to this one. The
     /// other list is unchanged, and the result shares nodes with both. This
-    /// list is refreshed by the call: it reads and writes the joined list.
+    /// list is refreshed by the call: it reads and writes the joined list,
+    /// and appending to it afterwards works.
     ///
     /// This freezes the transaction: every write after it copies what was
-    /// written before it, as after ``Database/freeze()``. Other collections
-    /// made before the call should be made again from their cursors.
+    /// written before it, as after ``Database/freeze()``, and every other
+    /// collection or cursor made before the call is stale, refused with
+    /// ``XitDBError/staleCursor`` at its next write until the collection is
+    /// made again from the cursor it holds, or a new cursor is taken from
+    /// the transaction's root cursor.
     ///
     /// - Parameter list: The other list, which may be one that can only
     ///   read.
@@ -318,7 +323,9 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   ``XitDBError/expectedTxStart`` if the list's cursor is not the root
     ///   cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/invalidBTreeNode`` if either tree does not hold
+    ///   is, ``XitDBError/staleCursor`` if this list was made before the
+    ///   last freeze or in an earlier transaction,
+    ///   ``XitDBError/invalidBTreeNode`` if either tree does not hold
     ///   what its header says, or an error of the storage or of a damaged
     ///   file.
     public mutating func append(contentsOf list: LinkedArrayList<some CursorAccess>) throws(XitDBError) {
@@ -327,11 +334,15 @@ extension LinkedArrayList where Access == ReadWrite {
 
     /// Appends every element of another linked array list to this one. The
     /// other list is unchanged, and the result shares nodes with both. This
-    /// list is refreshed by the call: it reads and writes the joined list.
+    /// list is refreshed by the call: it reads and writes the joined list,
+    /// and appending to it afterwards works.
     ///
     /// This freezes the transaction: every write after it copies what was
-    /// written before it, as after ``Database/freeze()``. Other collections
-    /// made before the call should be made again from their cursors.
+    /// written before it, as after ``Database/freeze()``, and every other
+    /// collection or cursor made before the call is stale, refused with
+    /// ``XitDBError/staleCursor`` at its next write until the collection is
+    /// made again from the cursor it holds, or a new cursor is taken from
+    /// the transaction's root cursor.
     ///
     /// - Parameter list: The slot of the other list, from its ``slot``,
     ///   in this database.
@@ -340,7 +351,9 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   ``XitDBError/expectedTxStart`` if the list's cursor is not the root
     ///   cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/invalidBTreeNode`` if either tree does not hold
+    ///   is, ``XitDBError/staleCursor`` if this list was made before the
+    ///   last freeze or in an earlier transaction,
+    ///   ``XitDBError/invalidBTreeNode`` if either tree does not hold
     ///   what its header says, or an error of the storage or of a damaged
     ///   file.
     public mutating func append(contentsOf list: Slot) throws(XitDBError) {

@@ -84,7 +84,8 @@ extension HashID: CustomStringConvertible {
 
 /// The header at the start of every database file.
 ///
-/// It is written once, when the database is created, and never changes.
+/// It is written when the database is created, and only a replication from
+/// zero, which replaces the database, changes it.
 public struct DatabaseHeader: Hashable, Sendable {
     /// A random identifier given to the file when it was created.
     ///
