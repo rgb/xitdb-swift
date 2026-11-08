@@ -3,7 +3,7 @@
 # The gate. Run it from anywhere; it must pass at every commit offered for review.
 #
 #   1. debug build and tests
-#   2. release build and tests
+#   2. release build and tests, a smoke run of the benchmark and the corruption fuzzer
 #   3. import check for Sources/XitDB
 #   4. formatting check
 #   5. documentation build
@@ -40,6 +40,17 @@ swift test -c release "${strict[@]}"
 step "Benchmark smoke run"
 .build/release/XitDBBenchmark --divide 100 > /dev/null
 echo "ok"
+
+# R23: a damaged file gives an error, never a trap or a hang. The fuzzer, the
+# release build's third product, runs the damaged files that once trapped and then
+# fresh damage from fixed seed ranges, so that the gate is reproducible. It runs
+# directly and not through the restarting driver, so that a trap fails the gate;
+# each file has twenty seconds before the tool's alarm ends it.
+step "Corruption fuzzer"
+.build/release/XitDBFuzz check scripts/fuzz-regressions/*.db
+.build/release/XitDBFuzz run 32 1 2001 targeted
+.build/release/XitDBFuzz run 2 1 1001 targeted
+.build/release/XitDBFuzz run 65 1 501 targeted
 
 # R5: Sources/XitDB may import the standard library, Synchronization and the platform C
 # library, and nothing else. The platform C library is imported in exactly one file,
