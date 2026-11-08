@@ -303,11 +303,13 @@ extension CountedHashMap where Access == ReadWrite {
     ///   than a counted hash map or set, ``XitDBError/expectedTxStart`` if no
     ///   transaction is in progress and `cursor` is not the root cursor,
     ///   ``XitDBError/nestedTopLevelWrite`` if `cursor` is the root cursor and
-    ///   one is, ``XitDBError/staleCursor`` if `cursor` is from an earlier
-    ///   transaction (one from before a freeze of this transaction is allowed
-    ///   here), ``XitDBError/poisonedTransaction`` if an earlier operation of
-    ///   the transaction failed after writing, or an error of the storage or of
-    ///   a damaged file.
+    ///   one is, ``XitDBError/cursorNotWritable`` if `cursor` has no position,
+    ///   as the key cursor of a sorted map's entry has not,
+    ///   ``XitDBError/staleCursor`` if `cursor` is from an earlier transaction
+    ///   (one from before a freeze of this transaction is allowed here),
+    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
+    ///   transaction failed after writing, or an error of the storage or of a
+    ///   damaged file.
     public init(_ cursor: Cursor<ReadWrite>) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.hashMapInit(counted: true, set: false)]
         self.cursor = try cursor.writePath(path.span)

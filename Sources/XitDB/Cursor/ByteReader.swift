@@ -126,10 +126,12 @@ extension Cursor {
     /// written afterwards, the reader does not notice. A slot set to nothing
     /// reads as no bytes, as it does with ``readBytes(maxCount:)``.
     ///
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot does not hold
-    ///   bytes, or ``XitDBError/endOfStream`` if the database ends where the
-    ///   value's length should be.
+    /// - Throws: ``XitDBError/unexpectedTag`` if the slot does not hold bytes,
+    ///   ``XitDBError/endOfStream`` if the database ends where the value's
+    ///   length should be, or ``XitDBError/staleCursor`` if the cursor is not a
+    ///   root cursor and is from a transaction that did not commit.
     public func reader() throws(XitDBError) -> ByteReader {
+        try checkReadable()
         let slot = try resolved().slot
         switch slot.tag {
         case .none:
