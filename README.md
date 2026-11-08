@@ -150,6 +150,20 @@ python3 -m http.server --directory .build/docs-site
 
 The preview is then at <http://localhost:8000/documentation/xitdb/>.
 
+## Developing
+
+`scripts/check.sh` is the gate: the debug and release builds and tests with warnings as errors, a smoke run of the
+benchmark and of the corruption fuzzer, the import check, the formatting check, the documentation build and a
+compile check for iOS. It runs on one toolchain, Xcode 27.2's Swift 6.4.2, and refuses any other.
+
+Two GitHub Actions workflows run on self-hosted runners. `.github/workflows/gate.yml` runs the gate on the macOS
+runner at every push and pull request; its job for the Linux runner is disabled until the package builds on Linux.
+`.github/workflows/benchmark.yml` is started by hand: it builds the benchmark in release and the original's `bench`
+from the conformance repository at a stated commit, runs the seven workloads at full size, three passes of each,
+alternated, and writes the table of medians and ratios to the job's summary. It is a report, not a check.
+A runner needs Xcode 27.2 for the gate, and Zig 0.17.1 on its PATH as well for the benchmark.
+`scripts/bench-compare.py` runs the same comparison by hand.
+
 ## Credit
 
 This package is a port of the original xitdb at <https://github.com/xit-vcs/xitdb>, which was made for the
