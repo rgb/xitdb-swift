@@ -114,11 +114,14 @@ public struct SortedSet<Access: CursorAccess> {
     /// not be there: the position it has, or would have.
     ///
     /// - Parameter key: The key's bytes.
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
-    ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
-    ///   the tree does not hold what its header or its branches say, or an
-    ///   error of the storage or of a damaged file.
+    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something other
+    ///   than a sorted map or set, ``XitDBError/invalidBTreeNode`` if the tree
+    ///   does not hold what its header or its branches say,
+    ///   ``XitDBError/staleCursor`` if the set is not at the root and its
+    ///   cursor is from a transaction that did not commit, or an error of the
+    ///   storage or of a damaged file.
     public func rank(of key: Span<UInt8>) throws(XitDBError) -> UInt64 {
+        try cursor.checkReadable()
         let slot = try cursor.resolved().slot
         if slot.tag == .none { return 0 }
         let header = try cursor.database.reader.sortedMapHeader(slot)
@@ -134,10 +137,12 @@ public struct SortedSet<Access: CursorAccess> {
     /// - Parameter key: The key's bytes, in any sequence of bytes: an array,
     ///   a slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
     ///   already borrowed.
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
-    ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if
-    ///   the tree does not hold what its header or its branches say, or an
-    ///   error of the storage or of a damaged file.
+    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something other
+    ///   than a sorted map or set, ``XitDBError/invalidBTreeNode`` if the tree
+    ///   does not hold what its header or its branches say,
+    ///   ``XitDBError/staleCursor`` if the set is not at the root and its
+    ///   cursor is from a transaction that did not commit, or an error of the
+    ///   storage or of a damaged file.
     @inlinable
     public func rank(of key: some Sequence<UInt8>) throws(XitDBError) -> UInt64 {
         let bytes = Array(key)
@@ -248,11 +253,13 @@ extension SortedSet where Access == ReadWrite {
     ///   than a sorted map or set, ``XitDBError/expectedTxStart`` if no
     ///   transaction is in progress and `cursor` is not the root cursor,
     ///   ``XitDBError/nestedTopLevelWrite`` if `cursor` is the root cursor and
-    ///   one is, ``XitDBError/staleCursor`` if `cursor` is from an earlier
-    ///   transaction (one from before a freeze of this transaction is allowed
-    ///   here), ``XitDBError/poisonedTransaction`` if an earlier operation of
-    ///   the transaction failed after writing, or an error of the storage or of
-    ///   a damaged file.
+    ///   one is, ``XitDBError/cursorNotWritable`` if `cursor` has no position,
+    ///   as the key cursor of a sorted map's entry has not,
+    ///   ``XitDBError/staleCursor`` if `cursor` is from an earlier transaction
+    ///   (one from before a freeze of this transaction is allowed here),
+    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
+    ///   transaction failed after writing, or an error of the storage or of a
+    ///   damaged file.
     public init(_ cursor: Cursor<ReadWrite>) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.sortedMapInit(set: true)]
         self.cursor = try cursor.writePath(path.span)

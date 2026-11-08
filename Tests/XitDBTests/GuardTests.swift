@@ -712,6 +712,176 @@ import Testing
         expectAllRefused("after a later transaction reused the offsets")
     }
 
+    /// Every public read, through a cursor from a transaction that did not
+    /// commit, is `staleCursor`: the cursor's own reads, its reader and its
+    /// iterator, the read-only view, and every read of every read-only
+    /// collection made from it, before and after a later transaction has
+    /// reused the offsets. The table names each entry point, so that a new
+    /// one is added here and not forgotten; the two that escaped the check
+    /// before this test (`reader()`, `rank(of:)`) are in it.
+    @Test(arguments: storageKinds)
+    func everyReadThroughARolledBackCursorIsRefused(kind: StorageKind) throws {
+        struct Cancel: Error {}
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        let hash = sha1("k").bytes
+        let key = utf8("k")
+        var kept: [String: Cursor<ReadWrite>] = [:]
+        let outcome = Result { () throws -> Void in
+            try database.withTransaction { cursor in
+                kept["number"] = try cursor.writePath([.hashMapGet(.value, sha1("number")), .write(.uint(7))])
+                kept["bytes"] = try cursor.writePath([
+                    .hashMapGet(.value, sha1("bytes")), .write(.bytes(utf8("a value too long for a slot"))),
+                ])
+                let list = try ArrayList<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("list"))]))
+                try list.append(.uint(1))
+                kept["list"] = list.cursor
+                let linked = try LinkedArrayList<ReadWrite>(
+                    try cursor.writePath([.hashMapGet(.value, sha1("linked"))]))
+                try linked.append(.uint(1))
+                kept["linked"] = linked.cursor
+                let map = try HashMap<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("map"))]))
+                try map.put(.uint(1), forHash: hash)
+                kept["map"] = map.cursor
+                let set = try HashSet<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("set"))]))
+                try set.insert(.uint(1), forHash: hash)
+                kept["set"] = set.cursor
+                let counted = try CountedHashMap<ReadWrite>(
+                    try cursor.writePath([.hashMapGet(.value, sha1("counted"))]))
+                try counted.put(.uint(1), forHash: hash)
+                kept["counted"] = counted.cursor
+                let countedSet = try CountedHashSet<ReadWrite>(
+                    try cursor.writePath([.hashMapGet(.value, sha1("countedSet"))]))
+                try countedSet.insert(.uint(1), forHash: hash)
+                kept["countedSet"] = countedSet.cursor
+                let sorted = try SortedMap<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("sorted"))]))
+                try sorted.put(.uint(1), forKey: key)
+                kept["sorted"] = sorted.cursor
+                let sortedSet = try SortedSet<ReadWrite>(
+                    try cursor.writePath([.hashMapGet(.value, sha1("sortedSet"))]))
+                try sortedSet.insert(key)
+                kept["sortedSet"] = sortedSet.cursor
+                throw Cancel()
+            }
+        }
+        #expect(throws: Cancel.self) { try outcome.get() }
+        func stale(_ name: String) throws -> Cursor<ReadWrite> {
+            guard let cursor = kept[name] else {
+                Issue.record("no cursor was kept under \(name)")
+                throw Cancel()
+            }
+            return cursor
+        }
+        let number = try stale("number")
+        let bytes = try stale("bytes")
+        let list = try ArrayList<ReadOnly>(try stale("list"))
+        let linked = try LinkedArrayList<ReadOnly>(try stale("linked"))
+        let map = try HashMap<ReadOnly>(try stale("map"))
+        let set = try HashSet<ReadOnly>(try stale("set"))
+        let counted = try CountedHashMap<ReadOnly>(try stale("counted"))
+        let countedSet = try CountedHashSet<ReadOnly>(try stale("countedSet"))
+        let sorted = try SortedMap<ReadOnly>(try stale("sorted"))
+        let sortedSet = try SortedSet<ReadOnly>(try stale("sortedSet"))
+
+        let reads: [(String, () throws -> Void)] = [
+            ("Cursor.count", { _ = try list.cursor.count }),
+            ("Cursor.readUInt64", { _ = try number.readUInt64() }),
+            ("Cursor.readInt64", { _ = try number.readInt64() }),
+            ("Cursor.readDouble", { _ = try number.readDouble() }),
+            ("Cursor.readBytes", { _ = try bytes.readBytes() }),
+            ("Cursor.readBytes(maxCount:)", { _ = try bytes.readBytes(maxCount: 4) }),
+            (
+                "Cursor.readBytes(into:)",
+                {
+                    var buffer = [UInt8](repeating: 0, count: 64)
+                    var span = buffer.mutableSpan
+                    _ = try bytes.readBytes(into: &span)
+                }
+            ),
+            ("Cursor.readBytesWithFormatTag", { _ = try bytes.readBytesWithFormatTag() }),
+            (
+                "Cursor.readBytesWithFormatTag(into:)",
+                {
+                    var buffer = [UInt8](repeating: 0, count: 64)
+                    var span = buffer.mutableSpan
+                    _ = try bytes.readBytesWithFormatTag(into: &span)
+                }
+            ),
+            ("Cursor.reader", { _ = try bytes.reader() }),
+            ("Cursor.readEntry", { _ = try map.cursor.readEntry() }),
+            ("Cursor.iterator", { _ = try list.cursor.iterator() }),
+            ("Cursor.readPath", { _ = try map.cursor.readPath([.hashMapGet(.value, sha1("k"))]) }),
+            ("Cursor.readPathSlot", { _ = try map.cursor.readPathSlot([.hashMapGet(.value, sha1("k"))]) }),
+            ("Cursor.readOnly.readUInt64", { _ = try number.readOnly.readUInt64() }),
+            ("Cursor.readOnly.reader", { _ = try bytes.readOnly.reader() }),
+            ("ArrayList.count", { _ = try list.count }),
+            ("ArrayList.iterator", { _ = try list.iterator() }),
+            ("ArrayList.iterator(fromIndex:)", { _ = try list.iterator(fromIndex: 0) }),
+            ("ArrayList.cursor(at:)", { _ = try list.cursor(at: 0) }),
+            ("ArrayList.slot(at:)", { _ = try list.slot(at: 0) }),
+            ("LinkedArrayList.count", { _ = try linked.count }),
+            ("LinkedArrayList.iterator", { _ = try linked.iterator() }),
+            ("LinkedArrayList.iterator(fromIndex:)", { _ = try linked.iterator(fromIndex: 0) }),
+            ("LinkedArrayList.cursor(at:)", { _ = try linked.cursor(at: 0) }),
+            ("LinkedArrayList.slot(at:)", { _ = try linked.slot(at: 0) }),
+            ("HashMap.iterator", { _ = try map.iterator() }),
+            ("HashMap.cursor(forHash:)", { _ = try map.cursor(forHash: hash) }),
+            ("HashMap.slot(forHash:)", { _ = try map.slot(forHash: hash) }),
+            ("HashMap.keyCursor(forHash:)", { _ = try map.keyCursor(forHash: hash) }),
+            ("HashMap.keySlot(forHash:)", { _ = try map.keySlot(forHash: hash) }),
+            ("HashMap.entry(forHash:)", { _ = try map.entry(forHash: hash) }),
+            ("HashSet.iterator", { _ = try set.iterator() }),
+            ("HashSet.cursor(forHash:)", { _ = try set.cursor(forHash: hash) }),
+            ("HashSet.slot(forHash:)", { _ = try set.slot(forHash: hash) }),
+            ("HashSet.contains(hash:)", { _ = try set.contains(hash: hash) }),
+            ("CountedHashMap.count", { _ = try counted.count }),
+            ("CountedHashMap.iterator", { _ = try counted.iterator() }),
+            ("CountedHashMap.cursor(forHash:)", { _ = try counted.cursor(forHash: hash) }),
+            ("CountedHashMap.slot(forHash:)", { _ = try counted.slot(forHash: hash) }),
+            ("CountedHashMap.keyCursor(forHash:)", { _ = try counted.keyCursor(forHash: hash) }),
+            ("CountedHashMap.keySlot(forHash:)", { _ = try counted.keySlot(forHash: hash) }),
+            ("CountedHashMap.entry(forHash:)", { _ = try counted.entry(forHash: hash) }),
+            ("CountedHashSet.count", { _ = try countedSet.count }),
+            ("CountedHashSet.iterator", { _ = try countedSet.iterator() }),
+            ("CountedHashSet.cursor(forHash:)", { _ = try countedSet.cursor(forHash: hash) }),
+            ("CountedHashSet.slot(forHash:)", { _ = try countedSet.slot(forHash: hash) }),
+            ("CountedHashSet.contains(hash:)", { _ = try countedSet.contains(hash: hash) }),
+            ("SortedMap.count", { _ = try sorted.count }),
+            ("SortedMap.iterator", { _ = try sorted.iterator() }),
+            ("SortedMap.iterator(fromIndex:)", { _ = try sorted.iterator(fromIndex: 0) }),
+            ("SortedMap.iterator(fromKey:)", { _ = try sorted.iterator(fromKey: key) }),
+            ("SortedMap.rank(of:)", { _ = try sorted.rank(of: key) }),
+            ("SortedMap.entry(at:)", { _ = try sorted.entry(at: 0) }),
+            ("SortedMap.cursor(forKey:)", { _ = try sorted.cursor(forKey: key) }),
+            ("SortedMap.slot(forKey:)", { _ = try sorted.slot(forKey: key) }),
+            ("SortedMap.entry(forKey:)", { _ = try sorted.entry(forKey: key) }),
+            ("SortedSet.count", { _ = try sortedSet.count }),
+            ("SortedSet.iterator", { _ = try sortedSet.iterator() }),
+            ("SortedSet.iterator(fromIndex:)", { _ = try sortedSet.iterator(fromIndex: 0) }),
+            ("SortedSet.iterator(fromKey:)", { _ = try sortedSet.iterator(fromKey: key) }),
+            ("SortedSet.rank(of:)", { _ = try sortedSet.rank(of: key) }),
+            ("SortedSet.entry(at:)", { _ = try sortedSet.entry(at: 0) }),
+            ("SortedSet.contains", { _ = try sortedSet.contains(key) }),
+        ]
+        func expectAllRefused(_ when: String) {
+            for (name, read) in reads {
+                #expect(throws: XitDBError.staleCursor, "\(name), \(when)") { try read() }
+            }
+        }
+        expectAllRefused("before the offsets are reused")
+
+        try database.withTransaction { cursor in
+            _ = try cursor.writePath([
+                .hashMapGet(.value, sha1("other")), .write(.bytes(utf8("other bytes, long enough for a record"))),
+            ])
+            for name in ["x", "y", "z", "w"] {
+                let other = try HashMap<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1(name))]))
+                try other.put(.uint(2), forHash: hash)
+            }
+        }
+        expectAllRefused("after a later transaction reused the offsets")
+    }
+
 }
 
 /// Every byte of a storage, read through the storage protocol: its length,
