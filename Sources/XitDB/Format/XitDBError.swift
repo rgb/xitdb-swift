@@ -151,8 +151,9 @@ public enum XitDBError: Error, Sendable {
     /// refused, inits included: an init through a held cursor rewrites its slot
     /// in place, in a record a copy may have left behind, and lost writes
     /// silently. A write that would land below the freeze by any other route is
-    /// ``immutableBytes``, refused before anything is written.
-    /// <doc:CloningFreezeAndStaleHandles> has the whole of it.
+    /// ``immutableBytes``, refused before that write; a write the operation
+    /// made before it, as a hash map's get makes a new entry's record, poisons
+    /// the transaction. <doc:CloningFreezeAndStaleHandles> has the whole of it.
     case staleCursor
 
     /// A write would change committed or frozen bytes in place: its position
