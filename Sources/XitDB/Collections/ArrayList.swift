@@ -150,8 +150,9 @@ extension ArrayList where Access == ReadWrite {
     ///   ``XitDBError/nestedTopLevelWrite`` if `cursor` is the root cursor and
     ///   one is, ``XitDBError/cursorNotWritable`` if `cursor` has no position,
     ///   as the key cursor of a sorted map's entry has not,
-    ///   ``XitDBError/staleCursor`` if `cursor` is from an earlier transaction
-    ///   (one from before a freeze of this transaction is allowed here),
+    ///   ``XitDBError/staleCursor`` if `cursor` is from an earlier transaction,
+    ///   or from before the last freeze or join of this one unless it is at
+    ///   the slot of the transaction's cursor,
     ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
     ///   transaction failed after writing, or an error of the storage or of a
     ///   damaged file.
@@ -257,14 +258,15 @@ extension ArrayList where Access == ReadWrite {
     /// Appends an element, writes it, runs `body` with a cursor at it, and
     /// gives what `body` returns.
     ///
-    /// On a list at the root of the database this is how a transaction is
-    /// run: `value` is usually the slot of the last element, so that the new
-    /// element starts as a copy of the last moment, and `body` makes the
-    /// changes. The transaction commits when `body` returns. If `body`
-    /// throws, the error is rethrown; what was appended is discarded only
-    /// if this call started the transaction, as it does on the root. Inside
-    /// a transaction the element stays, with what `body` wrote before it
-    /// threw, as a ``LinkedArrayList``'s does.
+    /// On a list at the root of the database this is how a transaction is run:
+    /// `value` is usually the slot of the last element, so that the new element
+    /// starts as a copy of the last moment, and `body` makes the changes. The
+    /// transaction commits when `body` returns. If `body` throws, the error is
+    /// rethrown; what was appended is discarded if this call started the
+    /// transaction, as it does on the root. Inside a transaction the
+    /// transaction is poisoned instead, since the element was appended before
+    /// `body` ran: it can only roll back, as a ``LinkedArrayList``'s does. See
+    /// <doc:Transactions>.
     ///
     /// The result may be ignored: a transaction is often run for its writes
     /// alone, with a body whose one expression happens to have a value.
