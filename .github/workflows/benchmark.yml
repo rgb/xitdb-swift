@@ -1,0 +1,106 @@
+# The benchmark, started by hand (workflow_dispatch) on a self-hosted macOS runner: the seven
+# workloads at full size, the Swift package against the Zig original, three passes of each,
+# alternated, and the table in the job's summary. It is a report and not a check: there are
+# no thresholds, and the job fails only when a build or a benchmark does.
+#
+# The runner needs Xcode 27.2 (Swift 6.4.2) and Zig 0.17.1, on the PATH the runner's service
+# has, which is short: put Zig's folder in the runner's .path file, or link zig into
+# /usr/local/bin.
+#
+# The Zig side is the conformance repository's `bench`, built against the original xitdb,
+# which its build.zig.zon takes from ../../xitdb. So the three repositories are checked out
+# as they sit in the development workspace: xitdb-swift/package (this one),
+# xitdb-swift/conformance and xitdb. The two commits are inputs with defaults, so that a
+# run can take a newer harness or a newer original without a change here.
+name: Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      conformance_commit:
+        description: "Commit of rgb/xitdb-conformance whose bench is built"
+        required: true
+        default: "621466026cd824c25ef27ef6f35a12bdce32e5dc"
+      xitdb_commit:
+        description: "Commit of xit-vcs/xitdb the harness is built against"
+        required: true
+        default: "6b93af1af3a260399fa0a0b1b268ded2cbf5eec5"
+
+jobs:
+  compare:
+    name: Swift against Zig
+    runs-on: [self-hosted, macOS]
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      CONFORMANCE_COMMIT: ${{ inputs.conformance_commit }}
+      XITDB_COMMIT: ${{ inputs.xitdb_commit }}
+    steps:
+      - name: Check out the package
+        uses: actions/checkout@v4
+        with:
+          path: xitdb-swift/package
+
+      - name: Check out the conformance harness
+        uses: actions/checkout@v4
+        with:
+          repository: rgb/xitdb-conformance
+          ref: ${{ inputs.conformance_commit }}
+          path: xitdb-swift/conformance
+          # GITHUB_TOKEN reaches this repository only. If the conformance repository is
+          # private, add a secret CONFORMANCE_TOKEN with read access to it.
+          token: ${{ secrets.CONFORMANCE_TOKEN || github.token }}
+
+      - name: Check out the original xitdb
+        uses: actions/checkout@v4
+        with:
+          repository: xit-vcs/xitdb
+          ref: ${{ inputs.xitdb_commit }}
+          path: xitdb
+
+      - name: Check the toolchains
+        run: |
+          expected_swift="6.4.2"
+          version=$(xcrun swiftc --version 2>&1)
+          echo "$version"
+          case "$version" in
+            *"Swift version $expected_swift "*) ;;
+            *)
+              echo "::error::the benchmark needs Swift $expected_swift, which is Xcode 27.2's toolchain; this runner's xcrun swiftc reports the version above"
+              exit 1
+              ;;
+          esac
+          expected_zig="0.17.1"
+          if ! command -v zig > /dev/null; then
+            echo "::error::zig is not on the runner's PATH; the benchmark needs Zig $expected_zig (add its folder to the runner's .path file)"
+            exit 1
+          fi
+          zig_version=$(zig version)
+          echo "zig $zig_version"
+          if [ "$zig_version" != "$expected_zig" ]; then
+            echo "::error::the benchmark needs Zig $expected_zig, and the runner's zig is $zig_version"
+            exit 1
+          fi
+
+      - name: Build the Zig benchmark
+        working-directory: xitdb-swift/conformance
+        run: zig build -Doptimize=ReleaseFast --prefix out/release
+
+      - name: Build the Swift benchmark
+        working-directory: xitdb-swift/package
+        run: swift build -c release --product XitDBBenchmark
+
+      - name: Run both, three passes alternated
+        working-directory: xitdb-swift/package
+        run: |
+          {
+            echo "## Benchmark: Swift against Zig"
+            echo
+            echo "- Swift: \`${GITHUB_REPOSITORY}\` at \`${GITHUB_SHA}\`, $(xcrun swiftc --version 2>&1 | head -n 1)"
+            echo "- Zig: \`rgb/xitdb-conformance\` at \`${CONFORMANCE_COMMIT}\` against \`xit-vcs/xitdb\` at \`${XITDB_COMMIT}\`, Zig $(zig version), ReleaseFast"
+            echo "- Runner: $(uname -m), macOS $(sw_vers -productVersion)"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          scripts/bench-compare.py ../conformance/out/release/bin/bench .build/release/XitDBBenchmark --passes 3 >> "$GITHUB_STEP_SUMMARY"

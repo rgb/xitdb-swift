@@ -1,0 +1,68 @@
+# The gate on a self-hosted macOS runner: scripts/check.sh at every push and pull request.
+#
+# The runner needs Xcode 27.2, whose Swift is 6.4.2, the one toolchain the gate accepts;
+# check.sh checks it too, but only once it starts, and this workflow fails before anything is
+# built, with the version it saw. If the runner has several Xcodes, select 27.2 with
+# xcode-select or DEVELOPER_DIR on the runner. Nothing is cached: the runners are ours, and
+# actions/checkout cleans the work tree, so every run builds from nothing.
+name: Gate
+
+on:
+  push:
+  pull_request:
+
+# A new push to the same branch or pull request cancels the run before it.
+concurrency:
+  group: gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: Gate on macOS
+    runs-on: [self-hosted, macOS]
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the toolchain
+        run: |
+          expected="6.4.2"
+          version=$(xcrun swiftc --version 2>&1)
+          echo "$version"
+          case "$version" in
+            *"Swift version $expected "*) ;;
+            *)
+              echo "::error::the gate needs Swift $expected, which is Xcode 27.2's toolchain; this runner's xcrun swiftc reports the version above"
+              exit 1
+              ;;
+          esac
+
+      - name: Run the gate
+        run: scripts/check.sh
+
+  # Waits for the Linux milestone (M13): the package does not build on Linux yet. When it
+  # does, remove the `if: false`. The runner then has the Swift toolchain the user installs
+  # (swiftly, or a toolchain tarball on PATH), and the job builds and tests with it, warnings
+  # as errors, as the first steps of the gate do on macOS.
+  linux:
+    name: Build and test on Linux
+    if: false
+    runs-on: [self-hosted, Linux]
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show the toolchain
+        run: swift --version
+
+      - name: Build
+        run: swift build -Xswiftc -warnings-as-errors
+
+      - name: Test
+        run: swift test -Xswiftc -warnings-as-errors
