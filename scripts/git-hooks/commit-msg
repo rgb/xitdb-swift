@@ -1,0 +1,5 @@
+#!/bin/sh
+# Takes any Co-Authored-By line out of a commit message, as commits in this project don't carry them.
+# Git runs it once a clone has `git config core.hooksPath scripts/git-hooks`.
+grep -iv '^co-authored-by:' "$1" > "$1.no-trailer" || true
+mv "$1.no-trailer" "$1"

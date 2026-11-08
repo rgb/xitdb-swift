@@ -190,6 +190,13 @@ Pull requests from forks run on the same runners, so a public repository should 
 outside collaborators before their workflows run.
 `scripts/bench-compare.py` runs the same comparison by hand.
 
+Commits in this repository carry no `Co-Authored-By` trailer; `scripts/git-hooks/commit-msg` removes one from a
+message. Git runs it once a clone has
+
+```
+git config core.hooksPath scripts/git-hooks
+```
+
 ## Credit
 
 This package is a port of the original xitdb at <https://github.com/xit-vcs/xitdb>, which was made for the
