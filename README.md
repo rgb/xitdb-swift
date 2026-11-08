@@ -24,11 +24,11 @@ hash your own keys, and you keep your own indexes. If you want queries or a sche
 The port reached parity with the original on 2026-11-07: every operation of the original, checked by
 conformance scripts. On 2026-11-08 it added the checks that turn misuse the original allows into a clear error,
 such as a cursor kept for a later transaction, a handle held across a freeze, or a write after a failure in the same
-one, and explicit recovery of a file whose root header or last trailer is damaged. There are now PLACEHOLDER-ALL scripts. In PLACEHOLDER-PASS of them the file must match
-byte for byte what the original writes, or, where the port deliberately does otherwise, what the original writes
-when it is made to do the same. The other PLACEHOLDER-FAIL must fail, as they do with the original: they check that a runner
-catches what is wrong, such as an expectation the database does not meet or an error nobody handles. It has not
-been released yet.
+one, and explicit recovery of a file whose root header or last trailer is damaged. There are now 226 scripts. In 128
+of them the file must match byte for byte what the original writes, or, where the port deliberately does otherwise,
+what the original writes when it is made to do the same. The other 98 must fail, as they do with the original: they
+check that a runner catches what is wrong, such as an expectation the database does not meet or an error nobody
+handles. It has not been released yet.
 
 Not there yet, and being worked on in this order:
 
