@@ -14,7 +14,8 @@ affordable. A copy of such data is a second name for one mutable thing. ``Databa
 committed kind for the rest of the transaction, so a copy made before the freeze stays as it was.
 
 A freeze also changes the handles you hold. Every cursor and collection made before it can still read, and is refused if it
-tries to write, except to make a collection again from it. The rest of this article is about what to do instead.
+tries to write, even to make a collection again from it. The one exception is making a collection from the cursor the
+transaction's body was given, and the way on starts there. The rest of this article is about why.
 
 ### A copy of committed data
 
@@ -93,35 +94,39 @@ try history.append(.slot(try history.slot(at: -1))) { cursor in
 ```
 
 "cities" has three elements and "big-cities" two. Step 3 is not optional: `moment` and `bigCities` were made before the
-freeze, and a write through either is refused.
+freeze, and a write through either is refused, and so is making `bigCities` again from its own cursor.
 
 ### What a freeze does to the handles you hold
 
-After ``Database/freeze()``, every cursor and collection made before it in the transaction is stale:
+After ``Database/freeze()``, every cursor and collection made before it in the transaction is stale, the cursor the
+transaction's body was given included:
 
-- **A write through it is refused** with ``XitDBError/staleCursor``. The guard runs before anything is written, so the
-  transaction is not poisoned (see <doc:Transactions>) and goes on. That covers every write but the one in the last bullet: a
-  value, an append, a ``HashMap/putCursor(forHash:)-(Sequence<UInt8>)``, a byte array.
+- **A write through it is refused** with ``XitDBError/staleCursor``: a value, an append, a
+  ``HashMap/putCursor(forHash:)-(Sequence<UInt8>)``, a byte array, and making a collection again from its cursor. The guard runs
+  before anything is written, so the transaction is not poisoned (see <doc:Transactions>) and goes on.
 - **A read through it works**, and reads what the handle points at, which the freeze keeps as it is. It does not see what
-  fresh handles write afterwards, since they write copies, unless a collection is made again from a cursor held below it,
-  which writes in place: see below.
-- **A collection made again from it is fresh.** Making a collection runs its initialiser, which copies the collection's header,
-  or its first block, into the transaction, and that is allowed through a stale cursor of the same transaction. The cursors
-  and collections it gives are fresh.
+  fresh handles write afterwards, since they write copies.
+- **The cursor the body was given can still make a collection.** Its slot is in a record the engine keeps for the
+  transaction, the copy of the root slot, or in ``ArrayList/append(_:_:)`` on a history the new element's slot in the
+  history's block, and nothing in the transaction can copy that record. So making a collection from it is allowed after a
+  freeze, and the cursors and collections that gives are fresh. A value written through it is refused like any other write.
+  The engine goes by the slot, so the cursor of a collection made from it, such as `moment.cursor`, can make a collection
+  too, whenever the collection was made. Writes through the collection itself are refused all the same.
 
-The safe way on is the one in step 3: start from the cursor the body was given, which is at the top of everything the
-transaction writes, and make each collection again on the way down to where you write.
+The way on is the one in step 3: start from the cursor the body was given, which is at the top of everything the transaction
+writes, and make each collection again on the way down to where you write.
 
-A cursor from an earlier transaction is stale for writing in the same way, and stays so: no initialiser makes it fresh,
-because there it would write into committed bytes. Take a new one from the root. What reads through such a cursor give is in
-<doc:ConcurrencyAndSnapshots>.
+A cursor from an earlier transaction is stale for writing in the same way. Take a new one from the root. What reads through
+such a cursor give is in <doc:ConcurrencyAndSnapshots>.
 
-### A collection made again from a cursor you held
+### Why a held cursor cannot start again
 
-Making the collection again from the cursor you already hold also works, and is shorter: `ArrayList<ReadWrite>(stock.cursor)`.
-What it costs is less obvious. The initialiser writes the cursor's own slot, in place, to point at the copy it makes. That slot
-is in a record made before the freeze, and anything else that shares the record changes with it: a copy of a collection that
-contains the slot, whether the copy was made before the freeze or after.
+Making the collection again from the cursor you already hold would be shorter, `ArrayList<ReadWrite>(stock.cursor)`, and the
+original allows it. The port refuses it, because of what the initialiser does: it writes the cursor's own slot, in place, to
+point at the copy it makes. That slot is in a record made before the freeze, and anything else that shares the record would
+change with it: a copy of a collection that contains the slot, whether the copy was made before the freeze or after. And once
+anything has copied that record since the freeze, as a second handle taken from the root does on its way down, the root no
+longer reaches the record the slot is in, and the write is lost at the commit without an error.
 
 Here a whole map is copied, and a list inside it is then written through a cursor held from before the freeze:
 
@@ -136,12 +141,13 @@ try cursor.database.freeze()
 ```
 
 ```swift
-// Writes the list's slot in place, in a record the copy shares.
+// Refused with staleCursor: it would write the list's slot in place, in a record the copy shares.
 try ArrayList<ReadWrite>(stock.cursor).append(.uint(2))
 ```
 
-After the commit, both "shop" and "yesterday" have a stock of two. The copy shares the map's entries, and the list's slot is in
-one of them. Taken again from the root, the same append leaves "yesterday" with a stock of one:
+In the original that append goes through, and after the commit both "shop" and "yesterday" have a stock of two: the copy shares
+the map's entries, and the list's slot is in one of them. Taken again from the body's cursor, the same append leaves "yesterday"
+with a stock of one:
 
 ```swift
 let rootAgain = try HashMap<ReadWrite>(cursor)
@@ -149,25 +155,24 @@ let shopAgain = try HashMap<ReadWrite>(rootAgain.putCursor(forHash: sha256("shop
 try ArrayList<ReadWrite>(shopAgain.putCursor(forHash: sha256("stock"))).append(.uint(2))
 ```
 
-So a collection made again from a held cursor is safe in two cases: the cursor is at the copied collection itself, whose slot is
-its own (making "shop" again from `shop.cursor` leaves "yesterday" alone), or nothing that contains its slot has been copied in
-this transaction, before the freeze or after. The engine cannot tell a shared record from one that is not, so nothing refuses
-the other case. When in doubt, go from the root.
+Some held cursors would be safe to start again from, such as one at the copied collection itself while nothing has copied the
+record its slot is in. The engine cannot tell those from the rest without following every copy, so it refuses them all. The
+body's cursor is the exception because its slot is in the one record that no copy can share.
 
 ### A join freezes too
 
 ``LinkedArrayList/append(contentsOf:)-(LinkedArrayList<CursorAccess>)`` joins two lists by sharing nodes with both, so it
-freezes the transaction as ``Database/freeze()`` does. The list that called it is the exception: it is refreshed by the call and
-goes on working.
+freezes the transaction as ``Database/freeze()`` does. Every collection made before the join is stale afterwards, the list that
+called it included, and a write through one is refused. To go on, take the list again from the body's cursor:
 
 ```swift
 try tasks.append(contentsOf: more)
-// The list that joined goes on working.
-try tasks.append(.uint(3))
+// The list that joined is stale too. Take it again from the body's cursor.
+let joined = try LinkedArrayList<ReadWrite>(HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("tasks")))
+try joined.append(.uint(3))
 ```
 
-Every other collection made before the join, `more` included, is stale, and a write through it is refused. A join on one list
-stales the handles of every other in the transaction, since the freeze is the database's.
+A join on one list stales the handles of every other in the transaction, since the freeze is the database's.
 
 ### The original's pattern, with a cursor's freeze
 
@@ -198,11 +203,12 @@ A freeze writes nothing. Its cost comes at the first write after it, which copie
 as a write to committed data does. Writes after that, to places already copied, are in place again.
 
 The numbers depend on the shape. Here it is two linked lists of 1,000 elements, made in the same transaction in a map at the
-root, and then joined. The join appended 822 bytes to the file. The first append after it appended 1,114, copying its way down
-to the list's last leaf, and the second appended nothing: it wrote in place, as writes to what the transaction has made since
-the freeze do. With lists of 10,000 elements the first append appended 1,388. The path, and so the cost, grows with the
-logarithm of the size. The package measured another shape, a list of 16 joined with one built in the same transaction: 840 to
-1,662 bytes for lists of 1,000 to 100,000 elements.
+root, and then joined. The join appended 822 bytes to the file. Taking the list again from the body's cursor appended 210: the
+map's block, 144 bytes, when the map was made again, the list's entry, 50, at the `putCursor`, and the list's header, 16, when
+the list was made again. The first append after that appended 1,114, copying the nodes on its way down to the end of the list, and the
+second appended nothing: it wrote in place, as writes to what the transaction has made since the freeze do. With lists of 10,000
+elements the join appended 274, taking the list again the same 210, and the first append 1,388. The path, and so the cost of the
+first append, grows with the logarithm of the size.
 
 ### Where this is going
 

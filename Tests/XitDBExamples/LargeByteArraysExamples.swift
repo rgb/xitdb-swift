@@ -230,6 +230,38 @@ import XitDB
         #expect(try database.rootCursor.slot.isEmpty)
     }
 
+    @Test func aFreezeInsideTheBodyIsImmutableBytes() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        // Uncaught, the error comes out of the transaction, which rolls back.
+        #expect(throws: XitDBError.immutableBytes) {
+            try database.withTransaction { cursor in
+                var value = try HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("value"))
+                try value.writeBytes { writer in
+                    try writer.write([1, 2, 3])
+                    try database.freeze()
+                }
+            }
+        }
+        #expect(try database.rootCursor.slot.isEmpty)
+        // Caught, the transaction is poisoned.
+        var caught: (any Error)?
+        #expect(throws: XitDBError.poisonedTransaction) {
+            try database.withTransaction { cursor in
+                var value = try HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("value"))
+                do {
+                    try value.writeBytes { writer in
+                        try writer.write([1, 2, 3])
+                        try database.freeze()
+                    }
+                } catch {
+                    caught = error
+                }
+            }
+        }
+        #expect(caught as? XitDBError == .immutableBytes)
+        #expect(try database.rootCursor.slot.isEmpty)
+    }
+
     @Test func aWrittenValueHasARecordHoweverShort() throws {
         let moment = try newMoment { moment in
             var cursor = try moment.putCursor(forHash: sha256("hi"))

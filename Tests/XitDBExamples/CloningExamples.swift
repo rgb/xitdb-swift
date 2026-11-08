@@ -97,6 +97,11 @@ import XitDB
             #expect(throws: XitDBError.staleCursor) { try moment.put(.uint(1), forHash: sha256("x")) }
             #expect(throws: XitDBError.staleCursor) { try first.write(.uint(1)) }
             #expect(throws: XitDBError.staleCursor) { try bigCities.putCursor(at: 0) }
+            // So is making a collection again from a held cursor.
+            #expect(throws: XitDBError.staleCursor) { try ArrayList<ReadWrite>(bigCities.cursor) }
+            #expect(throws: XitDBError.staleCursor) { try ArrayList<ReadWrite>(first) }
+            // But not from the cursor of a collection made at the body's own slot.
+            try HashMap<ReadWrite>(moment.cursor).put(.uint(1), forHash: sha256("y"))
             // Reads go on, and see what the handle saw.
             #expect(try bigCities.count == 1)
             #expect(try moment.cursor(forHash: sha256("fruits")) != nil)
@@ -106,6 +111,9 @@ import XitDB
             try ArrayList<ReadWrite>(again.putCursor(forHash: sha256("big-cities"))).append(.uint(2))
         }
         #expect(try count("big-cities", in: history) == 2)
+        let moment = try HashMap<ReadOnly>(history.cursor(at: -1)!)
+        #expect(try moment.cursor(forHash: sha256("y"))!.readUInt64() == 1)
+        #expect(try moment.cursor(forHash: sha256("x")) == nil)
     }
 
     @Test func whatACopyOfCommittedDataCosts() throws {
@@ -150,6 +158,10 @@ import XitDB
             try list.append(.uint(1))
             var value = try moment.putCursor(forHash: sha256("bytes"))
             try cursor.database.freeze()
+            // The body's own cursor is refused too, for anything but making a collection.
+            #expect(throws: XitDBError.staleCursor) { try cursor.write(.uint(1)) }
+            #expect(throws: XitDBError.staleCursor) { try cursor.writeIfEmpty(.uint(1)) }
+            #expect(throws: XitDBError.staleCursor) { try cursor.writeBytes { writer in try writer.write([1]) } }
             #expect(throws: XitDBError.staleCursor) {
                 try value.writeBytes { writer in try writer.write([1, 2, 3]) }
             }
@@ -162,42 +174,42 @@ import XitDB
         }
     }
 
-    @Test func anInitOnAHeldCursorWritesItsSlotInPlace() throws {
-        func copies(takingTheListAgainFromTheRoot: Bool) throws -> (UInt64, UInt64) {
-            let database = try Database(creating: MemoryStorage(), hashSize: 32)
-            try database.withTransaction { cursor in
-                let root = try HashMap<ReadWrite>(cursor)
-                let shop = try HashMap<ReadWrite>(root.putCursor(forHash: sha256("shop")))
-                let stock = try ArrayList<ReadWrite>(shop.putCursor(forHash: sha256("stock")))
-                try stock.append(.uint(1))
+    @Test func anInitOnAHeldCursorIsRefused() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        try database.withTransaction { cursor in
+            let root = try HashMap<ReadWrite>(cursor)
+            let shop = try HashMap<ReadWrite>(root.putCursor(forHash: sha256("shop")))
+            let stock = try ArrayList<ReadWrite>(shop.putCursor(forHash: sha256("stock")))
+            try stock.append(.uint(1))
 
-                // A copy of the whole shop, and a freeze to keep it as it is.
-                try root.put(.slot(try shop.slot), forHash: sha256("yesterday"))
-                try cursor.database.freeze()
+            // A copy of the whole shop, and a freeze to keep it as it is.
+            try root.put(.slot(try shop.slot), forHash: sha256("yesterday"))
+            try cursor.database.freeze()
 
-                if takingTheListAgainFromTheRoot {
-                    let rootAgain = try HashMap<ReadWrite>(cursor)
-                    let shopAgain = try HashMap<ReadWrite>(rootAgain.putCursor(forHash: sha256("shop")))
-                    try ArrayList<ReadWrite>(shopAgain.putCursor(forHash: sha256("stock"))).append(.uint(2))
-                } else {
-                    // Writes the list's slot in place, in a record the copy shares.
-                    try ArrayList<ReadWrite>(stock.cursor).append(.uint(2))
-                }
+            #expect(throws: XitDBError.staleCursor) {
+                // Refused with staleCursor: it would write the list's slot in place, in a record the copy shares.
+                try ArrayList<ReadWrite>(stock.cursor).append(.uint(2))
             }
-            let root = try HashMap<ReadOnly>(database.rootCursor)
-            func stockCount(_ key: String) throws -> UInt64 {
-                let shop = try HashMap<ReadOnly>(root.cursor(forHash: sha256(key))!)
-                return try ArrayList<ReadOnly>(shop.cursor(forHash: sha256("stock"))!).count
-            }
-            return (try stockCount("shop"), try stockCount("yesterday"))
+
+            let rootAgain = try HashMap<ReadWrite>(cursor)
+            let shopAgain = try HashMap<ReadWrite>(rootAgain.putCursor(forHash: sha256("shop")))
+            try ArrayList<ReadWrite>(shopAgain.putCursor(forHash: sha256("stock"))).append(.uint(2))
         }
-        // The copy changes with the shop.
-        #expect(try copies(takingTheListAgainFromTheRoot: false) == (2, 2))
-        // From the root, it does not.
-        #expect(try copies(takingTheListAgainFromTheRoot: true) == (2, 1))
+        // The refusal wrote nothing, and the way from the root leaves the copy alone.
+        #expect(try stockCounts(in: database) == (2, 1))
     }
 
-    @Test func aCopyMadeAfterTheFreezeChangesToo() throws {
+    /// The stock of "shop" and of "yesterday", as committed.
+    private func stockCounts(in database: Database) throws -> (UInt64, UInt64) {
+        let root = try HashMap<ReadOnly>(database.rootCursor)
+        func stockCount(_ key: String) throws -> UInt64 {
+            let shop = try HashMap<ReadOnly>(root.cursor(forHash: sha256(key))!)
+            return try ArrayList<ReadOnly>(shop.cursor(forHash: sha256("stock"))!).count
+        }
+        return (try stockCount("shop"), try stockCount("yesterday"))
+    }
+
+    @Test func anInitOnAHeldCursorIsRefusedWhenTheCopyComesAfterTheFreeze() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         try database.withTransaction { cursor in
             let root = try HashMap<ReadWrite>(cursor)
@@ -207,16 +219,12 @@ import XitDB
             try cursor.database.freeze()
             // The copy shares the shop's record from before the freeze.
             try HashMap<ReadWrite>(cursor).put(.slot(try shop.slot), forHash: sha256("yesterday"))
-            try ArrayList<ReadWrite>(stock.cursor).append(.uint(2))
+            #expect(throws: XitDBError.staleCursor) { try ArrayList<ReadWrite>(stock.cursor) }
         }
-        let root = try HashMap<ReadOnly>(database.rootCursor)
-        for key in ["shop", "yesterday"] {
-            let shop = try HashMap<ReadOnly>(root.cursor(forHash: sha256(key))!)
-            #expect(try ArrayList<ReadOnly>(shop.cursor(forHash: sha256("stock"))!).count == 2)
-        }
+        #expect(try stockCounts(in: database) == (1, 1))
     }
 
-    @Test func anInitOnTheCopiedCollectionItselfIsSafe() throws {
+    @Test func aHeldCursorIsRefusedEvenWhereItWouldBeSafe() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         try database.withTransaction { cursor in
             let root = try HashMap<ReadWrite>(cursor)
@@ -224,8 +232,10 @@ import XitDB
             try shop.put(.uint(1), forHash: sha256("open"))
             try root.put(.slot(try shop.slot), forHash: sha256("yesterday"))
             try cursor.database.freeze()
-            // The shop's own slot is not in anything that was copied.
-            try HashMap<ReadWrite>(shop.cursor).put(.uint(0), forHash: sha256("open"))
+            // The shop's own slot is in nothing that was copied, and still the engine cannot tell.
+            #expect(throws: XitDBError.staleCursor) { try HashMap<ReadWrite>(shop.cursor) }
+            let shopAgain = try HashMap<ReadWrite>(HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("shop")))
+            try shopAgain.put(.uint(0), forHash: sha256("open"))
         }
         let root = try HashMap<ReadOnly>(database.rootCursor)
         func open(_ key: String) throws -> UInt64 {
@@ -235,28 +245,40 @@ import XitDB
         #expect(try open("yesterday") == 1)
     }
 
-    @Test func aJoinFreezesAndRefreshesItsList() throws {
+    @Test func aJoinFreezesEveryList() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         try database.withTransaction { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            var tasks = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("tasks")))
+            let tasks = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("tasks")))
             let more = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("more")))
             try tasks.append(.uint(1))
             try more.append(.uint(2))
 
             try tasks.append(contentsOf: more)
-            // The list that joined goes on working.
-            try tasks.append(.uint(3))
+            // The list that joined is stale too. Take it again from the body's cursor.
+            let joined = try LinkedArrayList<ReadWrite>(HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("tasks")))
+            try joined.append(.uint(3))
 
-            // Every other collection made before the join is stale.
+            // Every collection made before the join is stale, the list that joined included. Through
+            // `tasks`, after the second handle above, the original loses the write at the commit.
+            #expect(throws: XitDBError.staleCursor) { try tasks.append(.uint(5)) }
+            #expect(throws: XitDBError.staleCursor) { try LinkedArrayList<ReadWrite>(tasks.cursor) }
             #expect(throws: XitDBError.staleCursor) { try more.append(.uint(4)) }
             #expect(throws: XitDBError.staleCursor) { try moment.put(.uint(4), forHash: sha256("x")) }
             let again = try HashMap<ReadWrite>(cursor)
             let moreAgain = try LinkedArrayList<ReadWrite>(again.putCursor(forHash: sha256("more")))
             try moreAgain.append(.uint(4))
-            #expect(try tasks.count == 3)
-            #expect(try moreAgain.count == 2)
         }
+
+        // What the commit holds: every write through a fresh handle, and nothing of the refused ones.
+        let moment = try HashMap<ReadOnly>(database.rootCursor)
+        func elements(_ key: String) throws -> [UInt64] {
+            let list = try LinkedArrayList<ReadOnly>(moment.cursor(forHash: sha256(key))!)
+            return try (0..<list.count).map { try list.cursor(at: $0)!.readUInt64() }
+        }
+        #expect(try elements("tasks") == [1, 2, 3])
+        #expect(try elements("more") == [2, 4])
+        #expect(try moment.cursor(forHash: sha256("x")) == nil)
     }
 
     @Test func aCursorFreezeProtectsOnlyFromThatCursor() throws {
@@ -349,36 +371,41 @@ import XitDB
 
     @Test func whatAFreezeCosts() throws {
         // The shape the article gives: two lists made in the same transaction, in a map at the root.
-        func measure(_ size: Int) throws -> (join: Int, first: Int, second: Int) {
+        func measure(_ size: Int) throws -> [Int] {
             let storage = MemoryStorage()
             let database = try Database(creating: storage, hashSize: 32)
-            var result = (join: 0, first: 0, second: 0)
+            var appended: [Int] = []
             try database.withTransaction { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
-                var tasks = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("tasks")))
+                let tasks = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("tasks")))
                 let more = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("more")))
                 for number in 0..<size {
                     try tasks.append(.uint(UInt64(number)))
                     try more.append(.uint(UInt64(number)))
                 }
                 var mark = storage.bytes.count
+                func step() {
+                    appended.append(storage.bytes.count - mark)
+                    mark = storage.bytes.count
+                }
                 try tasks.append(contentsOf: more)
-                result.join = storage.bytes.count - mark
-                mark = storage.bytes.count
-                try tasks.append(.uint(0))
-                result.first = storage.bytes.count - mark
-                mark = storage.bytes.count
-                try tasks.append(.uint(1))
-                result.second = storage.bytes.count - mark
+                step()
+                // The way on after the join, a step at a time: the map's block, the list's entry, its header.
+                let rootAgain = try HashMap<ReadWrite>(cursor)
+                step()
+                let entry = try rootAgain.putCursor(forHash: sha256("tasks"))
+                step()
+                let joined = try LinkedArrayList<ReadWrite>(entry)
+                step()
+                try joined.append(.uint(0))
+                step()
+                try joined.append(.uint(1))
+                step()
             }
-            return result
+            return appended
         }
-        let small = try measure(1000)
-        #expect(small.join == 822)
-        #expect(small.first == 1114)
-        #expect(small.second == 0)
-        let large = try measure(10000)
-        #expect(large.first == 1388)
-        #expect(large.second == 0)
+        // The join, the map, the entry, the header, the first append and the second.
+        #expect(try measure(1000) == [822, 144, 50, 16, 1114, 0])
+        #expect(try measure(10000) == [274, 144, 50, 16, 1388, 0])
     }
 }

@@ -25,8 +25,13 @@ These mean the code asked for something it should not have. Most are worth fixin
 - ``XitDBError/expectedTxStart``: A write below the root, or a freeze, with no transaction running.
 - ``XitDBError/nestedTopLevelWrite``: A write through the root, or a new transaction, while one is running.
 - ``XitDBError/cursorNotWritable``: ``Cursor/writeBytes(formatTag:_:)`` on the ``Database/rootCursor``.
-- ``XitDBError/staleCursor``: A write through a cursor or collection made before the last freeze or join of the transaction, or
-  in an earlier transaction; or a read through one from a transaction that did not commit. See <doc:CloningFreezeAndStaleHandles>.
+- ``XitDBError/staleCursor``: A write through a cursor or collection made before the last freeze or join of the transaction,
+  making a collection from it included, except making one from the cursor the transaction's body was given, or from the cursor
+  of a collection made from that; a write through one from an earlier transaction; or a read through one from a transaction
+  that did not commit. See <doc:CloningFreezeAndStaleHandles>.
+- ``XitDBError/immutableBytes``: A write that would change committed or frozen bytes in place, by a route the check on stale
+  cursors does not catch. Through the public API that is a freeze inside the body of ``Cursor/writeBytes(formatTag:_:)``: the
+  writer has written by then, so the transaction is poisoned.
 - ``XitDBError/structuralSlot``: A slot that belongs to a tree written as a value, such as the slot of a cursor from a map's
   iterator. Write the slot of the entry's ``Entry/value`` instead.
 - ``XitDBError/poisonedTransaction``: A write, or the commit, in a transaction where an earlier operation failed after it had

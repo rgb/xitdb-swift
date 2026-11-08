@@ -137,9 +137,9 @@ of the result did 108 reads and appended 8,584: the same 220, and new nodes for 
 
 <!-- Pinned by `whatAJoinAndACutCost` in XitDBExamples: the numbers and the test change together. -->
 
-A join is `mutating`, so the list has to be a `var`: the call refreshes it, and it goes on working. It also freezes the
-transaction, so every other collection you made before the join is stale, and a write through one is refused with
-``XitDBError/staleCursor``. Take those again from the cursor the transaction's body was given: see
+A join freezes the transaction, so every collection you made before it is stale, the list that joined included, and a write
+through one is refused with ``XitDBError/staleCursor``. Take the list again from the cursor the transaction's body was given,
+as the example does with `joined`. Making it again from the list's own cursor is refused too: see
 <doc:CloningFreezeAndStaleHandles>.
 
 ``LinkedArrayList/insert(_:at:)`` needs an element to insert before, so an index equal to the count throws

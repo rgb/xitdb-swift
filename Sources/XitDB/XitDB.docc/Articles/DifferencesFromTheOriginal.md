@@ -5,25 +5,30 @@ What this package does differently from xitdb in Zig, and what it does the same 
 ## Overview
 
 The port's first rule is that it writes the same bytes: given the same file ID, the same commit IDs and the same operations, it
-produces the same file as the original. That is checked with 219 conformance scripts. In 121 the file must match byte for byte the
+produces the same file as the original. That is checked with PLACEHOLDER-ALL conformance scripts. In PLACEHOLDER-PASS the file must match byte for byte the
 one the original writes, or, for the few operations the port deliberately does differently, the one the original writes when it is
-made to do the same. The other 98 must fail, as they do with the original: they check that a runner catches what is wrong.
+made to do the same. The other PLACEHOLDER-FAIL must fail, as they do with the original: they check that a runner catches what is wrong.
 
 The second rule is that where the original's behaviour looks wrong, the port does what is correct. The differences are of three
-kinds: the port refuses with an error, or decides differently, what would damage data in the original; it gives an error or a sensible result where the
-original crashes or disagrees with itself; and it recovers, when asked, a file the original cannot open. Two of them change the
-bytes of operations that are valid in both, the writes after a join and ``Cursor/writeIfEmpty(_:)``. Each of those was made in a
-branch of the original first, and the port's files are compared with that branch's.
+kinds: the port refuses with an error, or decides differently, what would damage data in the original; it gives an error or a
+sensible result where the original crashes or disagrees with itself; and it recovers, when asked, a file the original cannot
+open. A refusal reaches no file: it comes before the write, and where an operation had already written, the transaction can no
+longer commit. So it narrows which sequences of operations the port accepts and leaves the files alone: the port reads every
+file the original writes. Two of the differences change the bytes of operations that are valid in both: the operations
+after a join in the same transaction, and ``Cursor/writeIfEmpty(_:)``. Each of those was made in a branch of the original first,
+and the port's files are compared with that branch's.
 
 ### Where the original lets data be damaged
 
 - **A cursor kept from an earlier transaction.** In the original, a write through it changes committed bytes in place, so an
   earlier moment changes, and if the transaction then rolls back, a committed slot can point past the end of the file. The port
   refuses the write with ``XitDBError/staleCursor``.
-- **A cursor or collection held across a freeze or a join.** In the original it goes on writing in place into what is now shared,
-  which loses writes or leaves two headers over one tree, and a later write can crash. The port refuses the write with
-  ``XitDBError/staleCursor``, refreshes the list that joined, and freezes after a join rather than before it: see
-  <doc:CloningFreezeAndStaleHandles>.
+- **A cursor or collection held across a freeze or a join.** In the original a write through it goes in place into what is now
+  shared, which loses writes or leaves two headers over one tree, and a later write can crash. Making a collection again from it
+  writes its slot in place too, so a copy of anything that contains the slot changes with it, and once anything has copied the
+  record the slot is in, the write is lost. The port refuses every write through it with ``XitDBError/staleCursor``, making a
+  collection included, and freezes after a join rather than before it. The one thing allowed is making a collection from the
+  cursor the transaction's body was given, which is the way on: see <doc:CloningFreezeAndStaleHandles>.
 - **A cursor from a transaction that did not commit.** In the original, a read through it gets whatever the next transaction wrote
   at the same offsets. The port refuses the read with ``XitDBError/staleCursor``.
 - **An operation that fails partway.** In the original, a body that catches the error commits what the operation had already
@@ -83,15 +88,13 @@ branch of the original first, and the port's files are compared with that branch
 - **A freeze of one cursor**, ``Cursor/freeze()``, protects the data from writes through that cursor and from nothing else. The
   port does what the original does, except that where the original can crash it throws an error. Whether it should do more is not
   decided.
-- **A collection made again from a held cursor after a freeze** writes that cursor's slot in place, so a copy of anything that
-  contains the slot, made in the same transaction before the freeze or after, changes with it. The original does the same, and nothing can tell a shared record from one that
-  is not. Take the collections again from the root instead.
 - **Writing a slot set to nothing** writes the value bits it carries, which mean nothing, in both. A client of the port cannot
   make a slot, so it cannot choose them.
 - **Two of the original's hazards need its raw path API**, which the port does not make public: a path that skips a collection's
-  initialiser, which writes into committed data, and a freeze inside a callback, which does not carry out of it. A third, a sorted
-  lookup in a write path that turns a set's key-only entry into a pair, is wasteful and not wrong, and it stays, since changing it
-  would change bytes.
+  initialiser, which writes into committed data, and a freeze inside a callback, which does not carry out of it. The port's own
+  path API refuses the write into committed data with ``XitDBError/immutableBytes``: a second check, by position, under the one
+  on handles. A third, a sorted lookup in a write path that turns a set's key-only entry into a pair, is wasteful and not wrong,
+  and it stays, since changing it would change bytes.
 
 ### Differences that are only the API
 
