@@ -52,7 +52,7 @@ public struct HashMap<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     public func cursor(forHash hash: Span<UInt8>) throws(XitDBError) -> Cursor<ReadOnly>? {
@@ -70,7 +70,7 @@ public struct HashMap<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     @inlinable
@@ -87,7 +87,7 @@ public struct HashMap<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     public func slot(forHash hash: Span<UInt8>) throws(XitDBError) -> Slot? {
@@ -105,7 +105,7 @@ public struct HashMap<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     @inlinable
@@ -122,7 +122,7 @@ public struct HashMap<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     public func keyCursor(forHash hash: Span<UInt8>) throws(XitDBError) -> Cursor<ReadOnly>? {
@@ -140,7 +140,7 @@ public struct HashMap<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     @inlinable
@@ -157,7 +157,7 @@ public struct HashMap<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     public func keySlot(forHash hash: Span<UInt8>) throws(XitDBError) -> Slot? {
@@ -175,7 +175,7 @@ public struct HashMap<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     @inlinable
@@ -192,7 +192,7 @@ public struct HashMap<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     public func entry(forHash hash: Span<UInt8>) throws(XitDBError) -> Entry? {
@@ -210,7 +210,7 @@ public struct HashMap<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     @inlinable
@@ -260,9 +260,9 @@ extension HashMap where Access == ReadWrite {
     /// copied, so that writing to it leaves earlier moments as they were.
     ///
     /// **A hash set becomes a hash map.** A map and a set that keep no
-    /// count are one kind to the slot, as in Zig: the slot's tag is written
-    /// as a map and the entries stay. On the root, where this is a
-    /// transaction of its own, a set is a map from then on; a set is
+    /// count are one kind to the slot, as in the original: the slot's tag
+    /// is written as a map and the entries stay. On the root, where this is
+    /// a transaction of its own, a set is a map from then on; a set is
     /// opened with ``HashSet``.
     ///
     /// On the root cursor this is a transaction of its own, unless the root

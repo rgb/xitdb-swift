@@ -220,10 +220,11 @@ extension SortedSet where Access == ReadWrite {
     /// are copied as they are written to.
     ///
     /// **A sorted map becomes a sorted set.** A sorted map and a sorted
-    /// set are one kind to the slot, as in Zig: the slot's tag is written
-    /// as a set and the entries stay, values included, though a set reads
-    /// only their keys. On the root, where this is a transaction of its
-    /// own, a map is a set from then on; a map is opened with ``SortedMap``.
+    /// set are one kind to the slot, as in the original: the slot's tag is
+    /// written as a set and the entries stay, values included, though a set
+    /// reads only their keys. On the root, where this is a transaction of
+    /// its own, a map is a set from then on; a map is opened with
+    /// ``SortedMap``.
     ///
     /// On the root cursor this is a transaction of its own, unless the root
     /// is a sorted set already, in which case nothing is written.

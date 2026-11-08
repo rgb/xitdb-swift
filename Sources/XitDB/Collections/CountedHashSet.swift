@@ -64,7 +64,7 @@ public struct CountedHashSet<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     public func cursor(forHash hash: Span<UInt8>) throws(XitDBError) -> Cursor<ReadOnly>? {
@@ -82,7 +82,7 @@ public struct CountedHashSet<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     @inlinable
@@ -99,7 +99,7 @@ public struct CountedHashSet<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     public func slot(forHash hash: Span<UInt8>) throws(XitDBError) -> Slot? {
@@ -117,7 +117,7 @@ public struct CountedHashSet<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     @inlinable
@@ -137,7 +137,7 @@ public struct CountedHashSet<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     public func contains(hash: Span<UInt8>) throws(XitDBError) -> Bool {
@@ -157,7 +157,7 @@ public struct CountedHashSet<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     @inlinable
@@ -208,11 +208,11 @@ extension CountedHashSet where Access == ReadWrite {
     /// they were.
     ///
     /// **A counted hash map becomes a counted hash set.** A counted map
-    /// and a counted set are one kind to the slot, as in Zig: the slot's
-    /// tag is written as a set, and the count and the entries stay, values
-    /// included, though a set reads only their keys. On the root, where
-    /// this is a transaction of its own, a map is a set from then on; a
-    /// map is opened with ``CountedHashMap``. A map or set that keeps no
+    /// and a counted set are one kind to the slot, as in the original: the
+    /// slot's tag is written as a set, and the count and the entries stay,
+    /// values included, though a set reads only their keys. On the root,
+    /// where this is a transaction of its own, a map is a set from then on;
+    /// a map is opened with ``CountedHashMap``. A map or set that keeps no
     /// count is another kind, and is refused.
     ///
     /// On the root cursor this is a transaction of its own, unless the root

@@ -279,9 +279,9 @@ public struct Cursor<Access: CursorAccess> {
     /// The cursor should be at an entry: one obtained by asking a map for an
     /// entry, or by iterating over a map or set. Any slot that holds bytes
     /// is read as a key on its own, which is what a sorted set's entry is,
-    /// so on a cursor at a byte value this succeeds, as Zig's does: the
-    /// key cursor is at the bytes, the value is empty and the hash is
-    /// zeros. Nothing tells such a value from a set's key.
+    /// so on a cursor at a byte value this succeeds, as the original's
+    /// does: the key cursor is at the bytes, the value is empty and the
+    /// hash is zeros. Nothing tells such a value from a set's key.
     ///
     /// The entry is read-only whatever this cursor is: an entry's key is
     /// what the collection is ordered or indexed by, and is changed only

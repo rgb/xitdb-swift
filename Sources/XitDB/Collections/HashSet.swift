@@ -48,7 +48,7 @@ public struct HashSet<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     public func cursor(forHash hash: Span<UInt8>) throws(XitDBError) -> Cursor<ReadOnly>? {
@@ -66,7 +66,7 @@ public struct HashSet<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     @inlinable
@@ -83,7 +83,7 @@ public struct HashSet<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     public func slot(forHash hash: Span<UInt8>) throws(XitDBError) -> Slot? {
@@ -101,7 +101,7 @@ public struct HashSet<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     @inlinable
@@ -121,7 +121,7 @@ public struct HashSet<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     public func contains(hash: Span<UInt8>) throws(XitDBError) -> Bool {
@@ -141,7 +141,7 @@ public struct HashSet<Access: CursorAccess> {
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or
     ///   set (a slot that holds nothing checks no hash and has no entry for
-    ///   it, as in Zig), ``XitDBError/unexpectedTag`` if the slot holds
+    ///   it, as in the original), ``XitDBError/unexpectedTag`` if the slot holds
     ///   something other than a hash map or set, or an error of the storage
     ///   or of a damaged file.
     @inlinable
@@ -191,10 +191,11 @@ extension HashSet where Access == ReadWrite {
     /// copied, so that writing to it leaves earlier moments as they were.
     ///
     /// **A hash map becomes a hash set.** A map and a set that keep no
-    /// count are one kind to the slot, as in Zig: the slot's tag is written
-    /// as a set and the entries stay, values included, though a set reads
-    /// only their keys. On the root, where this is a transaction of its
-    /// own, a map is a set from then on; a map is opened with ``HashMap``.
+    /// count are one kind to the slot, as in the original: the slot's tag
+    /// is written as a set and the entries stay, values included, though a
+    /// set reads only their keys. On the root, where this is a transaction
+    /// of its own, a map is a set from then on; a map is opened with
+    /// ``HashMap``.
     ///
     /// On the root cursor this is a transaction of its own, unless the root
     /// is such a set already, in which case nothing is written.

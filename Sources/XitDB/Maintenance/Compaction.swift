@@ -68,11 +68,11 @@ extension Database {
     /// random one. A storage that holds a database already keeps that
     /// database's file ID and hash ID, and must have an empty root.
     ///
-    /// The target draws from this database's source of randomness, as
-    /// Zig's target is opened with the source's `io`: its file ID, when
-    /// none is given, and then the commit ID of the compaction's
-    /// transaction, in that order, so that this database's next commit
-    /// draws after them.
+    /// The target draws from this database's source of randomness, as the
+    /// original's target draws from its source's: its file ID, when none
+    /// is given, and then the commit ID of the compaction's transaction,
+    /// in that order, so that this database's next commit draws after
+    /// them.
     ///
     /// - Parameters:
     ///   - storage: Where the target lives.
