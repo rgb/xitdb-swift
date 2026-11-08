@@ -146,6 +146,9 @@ extension Database {
         if overflow { throw .invalidBTreeNode }
 
         guard transactionStart != nil else { throw .expectedTxStart }
+        // The join ends in a freeze, which a byte writer's open record
+        // cannot survive: refused before the join writes anything.
+        guard openByteWriters == 0 else { throw .byteWriterOpen }
         let newRootPtr = try bTreeJoin(headerA.rootPtr, headerB.rootPtr)
         try write(BTreeHeader(size: total, rootPtr: newRootPtr), at: pointer.slot.value)
         // The joined tree shares subtrees with both lists, and the other

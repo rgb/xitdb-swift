@@ -1143,6 +1143,62 @@ import Testing
         #expect(values == [1, 6])
     }
 
+    // MARK: A freeze while a byte writer is open
+
+    /// `Database.freeze()` and a concat inside a byte writer's body are
+    /// refused with `byteWriterOpen` before they move the frozen point,
+    /// which would leave the writer's record below it; the body passes the
+    /// error on, and the transaction is poisoned as after any body that
+    /// throws, since the writer had appended. A freeze with no writer open
+    /// is as before.
+    @Test(arguments: storageKinds)
+    func aFreezeWhileAByteWriterIsOpenIsRefused(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        let before = try fixture.bytes
+
+        func freezeInsideTheBody(_ cursor: inout Cursor<ReadWrite>) throws {
+            var value = try cursor.writePath([.hashMapGet(.value, sha1("bytes"))])
+            let freezes = database.freezeNumber
+            let outcome = Result { () throws -> Void in
+                try value.writeBytes { writer in
+                    try writer.write([1, 2, 3])
+                    try database.freeze()
+                }
+            }
+            #expect(throws: XitDBError.byteWriterOpen) { try outcome.get() }
+            #expect(database.freezeNumber == freezes, "the frozen point did not move")
+            #expect(database.poisoned)
+        }
+        expectPoisoned { try database.withTransaction(freezeInsideTheBody) }
+        #expect(try fixture.bytes == before)
+
+        func concatInsideTheBody(_ cursor: inout Cursor<ReadWrite>) throws {
+            let moment = try HashMap<ReadWrite>(cursor)
+            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: sha1("list").bytes))
+            let other = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: sha1("other").bytes))
+            try other.append(.uint(1))
+            var value = try moment.putCursor(forHash: sha1("bytes").bytes)
+            let freezes = database.freezeNumber
+            let outcome = Result { () throws -> Void in
+                try value.writeBytes { writer in
+                    try writer.write([1, 2, 3])
+                    try list.append(contentsOf: other)
+                }
+            }
+            #expect(throws: XitDBError.byteWriterOpen) { try outcome.get() }
+            #expect(database.freezeNumber == freezes)
+        }
+        expectPoisoned { try database.withTransaction(concatInsideTheBody) }
+        #expect(try fixture.bytes == before)
+
+        try database.withTransaction { cursor in
+            try database.freeze()
+            _ = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("a")), .write(.uint(1))])
+        }
+        #expect(try fixture.value("a").readUInt64() == 1)
+    }
+
 }
 
 /// Every byte of a storage, read through the storage protocol: its length,
