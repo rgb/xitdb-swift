@@ -223,18 +223,26 @@ final class WrappedStorage: WritableStorage {
         #expect(try Self.value("value", in: live) == 99)
         #expect(live.committedSize == (try database.committedSize))
 
-        // A cursor at the transaction's own work is refused: that data is in
-        // no commit yet. A cursor at committed data, read in the same body,
-        // is not.
+        // A cursor pointing at the transaction's own work is refused: that
+        // data is in no commit yet. A cursor at committed data, read in the
+        // same body, is not, and a slot that holds its value passes.
         func running(_ cursor: inout Cursor<ReadWrite>) throws {
             let map = try HashMap<ReadWrite>(cursor)
             try map.put(.uint(7), forHash: sha1("value").bytes)
-            guard let inside = try map.cursor(forHash: sha1("value").bytes) else {
-                Issue.record("the value written in the transaction is not there")
+            try map.put(.bytes(Array(repeating: 9, count: 40)), forHash: sha1("blob").bytes)
+            guard let blob = try map.cursor(forHash: sha1("blob").bytes),
+                let inside = try map.cursor(forHash: sha1("value").bytes)
+            else {
+                Issue.record("the values written in the transaction are not there")
                 return
             }
-            #expect(throws: XitDBError.staleCursor) { try Snapshot(inside) }
-            #expect(throws: XitDBError.staleCursor) { try Snapshot(cursor.readOnly) }
+            #expect(throws: XitDBError.staleCursor) { try Snapshot(blob) }
+            // The map's own cursor points at the block the init wrote here;
+            // the body's cursor variable still holds the slot set to nothing
+            // it was handed, which passes as a value.
+            #expect(throws: XitDBError.staleCursor) { try Snapshot(map.cursor.readOnly) }
+            #expect(try Snapshot(cursor.readOnly).root.tag == .none)
+            #expect(try Snapshot(inside).rootCursor.readUInt64() == 7)
             let earlier = try Snapshot(try #require(try history.cursor(at: 3)))
             #expect(try Self.value("value", in: earlier) == 99)
         }

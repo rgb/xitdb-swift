@@ -45,6 +45,16 @@ public struct Slot: Hashable, Sendable {
         self.full = full
     }
 
+    /// Whether the slot holds its value in itself rather than pointing at
+    /// bytes elsewhere in the file: a number, a short byte array, or
+    /// nothing.
+    var holdsValue: Bool {
+        switch tag {
+        case .none, .uint, .int, .float, .shortBytes: true
+        default: false
+        }
+    }
+
     /// Whether the slot has never been written.
     ///
     /// A slot set explicitly to nothing has the tag ``Tag/none`` too, but its
