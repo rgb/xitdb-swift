@@ -8,8 +8,10 @@
 # actions/checkout cleans the work tree, so every run builds from nothing.
 name: Gate
 
+# A push of a tag does not run it: the tag's commit was gated when its branch was pushed.
 on:
   push:
+    branches: ['**']
   pull_request:
 
 # The token can read the repository and nothing more.
