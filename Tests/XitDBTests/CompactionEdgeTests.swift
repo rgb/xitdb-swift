@@ -336,16 +336,16 @@ import Testing
         #expect(try target.rootCursor.slot == Slot(value: 0, tag: .none, full: true))
     }
 
-    /// A history whose last moment is empty, because the list has no
-    /// elements or its last element was appended and never written, is
-    /// refused before anything is written: Zig compacts it to an empty
-    /// database, losing the list and every moment before the empty one
+    /// A list at the root whose last element is empty, because the list
+    /// has no elements or its last element was appended and never written,
+    /// is refused before anything is written: Zig compacts it to an empty
+    /// database, losing the list and every element before the empty one
     /// (finding 28). The source is checked before the target, so a target
     /// that holds data is refused for the source's reason, and the shape
-    /// that opens the target refuses before opening it. A last moment set
+    /// that opens the target refuses before opening it. A last element set
     /// to nothing is a moment, and compacts.
     @Test(arguments: StorageKind.allCases)
-    func aHistoryWithAnEmptyLastMomentIsRefused(kind: StorageKind) throws {
+    func aRootListWhoseLastElementIsEmptyIsRefused(kind: StorageKind) throws {
         func allBytes(_ subject: StorageUnderTest) throws -> [UInt8] {
             try readBytes(subject.storage, at: 0, count: Int(try subject.storage.length))
         }

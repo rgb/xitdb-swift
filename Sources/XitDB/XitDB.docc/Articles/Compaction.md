@@ -42,10 +42,11 @@ What happens depends on the root:
   list. The earlier moments are what compaction is there to discard.
 - **A root that is anything else** is copied whole, a ``LinkedArrayList`` or a root set to nothing included.
 - **An empty root** commits nothing, and you get an empty database.
-- **A history whose last moment is empty is refused** with ``XitDBError/emptyLastMoment``, before anything is written to
-  the target: a list with no elements, or a last element that was appended and never written, however many moments come
-  before it. Compacting it would give you an empty database, with neither the list nor those moments in it, which is what
-  the original does. A last moment set to nothing is a moment, and compacts.
+- **A list at the root whose last element is empty is refused** with ``XitDBError/emptyLastMoment``, before anything is
+  written to the target: a list with no elements, or a last element that was appended and never written, however many
+  elements come before it, and whether or not the list is a history. Compacting it would give you an empty database, with
+  neither the list nor those elements in it, which is what the original does. A last element set to nothing is a moment,
+  and compacts.
 
 A value or a collection is copied once, however many slots point at it, so two keys that shared a value before share it
 afterwards, and a cycle ends. The exception is the partly filled blocks at the end of an array list, which are copied for each

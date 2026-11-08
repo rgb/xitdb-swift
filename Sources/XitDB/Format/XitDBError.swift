@@ -70,12 +70,13 @@ public enum XitDBError: Error, Sendable {
     /// The target of a compaction already contains data.
     case targetNotEmpty
 
-    /// The database being compacted is a history whose last moment is
-    /// empty: its root is an array list with no elements, or the last
-    /// element was appended and never written. Compacting it would keep
-    /// nothing of the history, neither the list nor the moments before the
-    /// empty one, so it is refused before anything is written to the
-    /// target. A last moment set to nothing is a moment, and compacts.
+    /// The root of the database being compacted is an array list whose
+    /// last element is empty: the list has no elements, or its last element
+    /// was appended and never written, whether the list is a history or any
+    /// other list at the root. Compacting it would keep nothing of it,
+    /// neither the list nor the elements before the empty one, so it is
+    /// refused before anything is written to the target. A last element
+    /// set to nothing is a moment, and compacts.
     case emptyLastMoment
 
     /// The storage a database was to be created in already contains data.

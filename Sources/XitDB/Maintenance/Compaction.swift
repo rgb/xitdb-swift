@@ -17,13 +17,14 @@ extension Database {
     /// The target gets what the latest moment reaches and nothing else, in
     /// one ordinary transaction, with its header, trailer and commit ID.
     /// A root that is an array list is a history, and only its last
-    /// moment survives, as the sole element of a new list. A history whose
-    /// last moment is empty, because the list has no elements or its last
-    /// element was appended and never written, is refused: compacting it
-    /// would keep nothing of the history, which is what the original does.
-    /// A last moment set to nothing is a moment, and compacts. An empty
-    /// root commits nothing. Any other root, one set to nothing included,
-    /// is copied whole.
+    /// element survives, as the sole element of a new list. A list at the
+    /// root whose last element is empty, because the list has no elements
+    /// or its last element was appended and never written, is refused,
+    /// whether or not the list is a history: compacting it would keep
+    /// nothing of the list, which is what the original does. A last
+    /// element set to nothing is a moment, and compacts. An empty root
+    /// commits nothing. Any other root, one set to nothing included, is
+    /// copied whole.
     ///
     /// The target must be a database whose root is empty, opened by the
     /// caller, with the same hash size as this one: a new one, or an
@@ -36,8 +37,8 @@ extension Database {
     ///   - target: The database to write into.
     ///   - offsetMap: Where the copy remembers what went where. It is reset
     ///     first, and holds every mapping when the call returns.
-    /// - Throws: ``XitDBError/emptyLastMoment`` if this database is a
-    ///   history whose last moment is empty, which is checked before
+    /// - Throws: ``XitDBError/emptyLastMoment`` if the root is a list
+    ///   whose last element is empty, which is checked before
     ///   anything else, so that the target and the offset map are as they
     ///   were; ``XitDBError/targetNotEmpty`` if the target's root holds
     ///   anything, this database itself included, in which case the target
@@ -115,9 +116,9 @@ extension Database {
         case root(Slot)
     }
 
-    /// Reads what a compaction copies, and refuses a history whose last
-    /// moment is empty (finding 28): Zig compacts such a history to an
-    /// empty database, losing the list and every moment before the empty
+    /// Reads what a compaction copies, and refuses a list at the root whose
+    /// last element is empty (finding 28): Zig compacts such a list to an
+    /// empty database, losing the list and every element before the empty
     /// one. It runs before anything is done to the target or the offset
     /// map, so that the refusal writes nothing.
     private func compactionSource() throws(XitDBError) -> CompactionSource {
@@ -129,7 +130,7 @@ extension Database {
 
         // an array list root is a history. the path gives nil for a list
         // with no elements and for a last element appended and never
-        // written; a last moment set to nothing is full, so it comes back.
+        // written; a last element set to nothing is full, so it comes back.
         let last: InlineArray<1, PathPart> = [.arrayListGet(-1)]
         guard let lastMoment = try rootCursor.readPathSlot(last.span) else { throw .emptyLastMoment }
         return .lastMoment(lastMoment)
