@@ -31,10 +31,10 @@ These mean the code asked for something it should not have. Most are worth fixin
   that; a write through one from an earlier transaction; a read through one from a transaction that did not commit; or a
   ``Snapshot/init(_:)`` of such a cursor, or of work the running transaction has not committed yet. See
   <doc:CloningFreezeAndStaleHandles>.
-- ``XitDBError/snapshotOverwritten``: A read through a ``Snapshot`` of a file whose bytes below the snapshot's committed size
-  were rewritten since, through the storage the snapshot was taken from: by a replication sync at 0, or by a write or a
-  truncation through your own reference to the storage. Take a new snapshot. A snapshot of a database in memory never reports
-  it: see <doc:ConcurrencyAndSnapshots>.
+- ``XitDBError/snapshotOverwritten``: A read through a ``Snapshot`` of a file whose bytes below the snapshot's committed size,
+  the root header excepted, which every commit rewrites, were rewritten since, through the storage the snapshot was taken from:
+  by a replication sync at 0, or by a write or a truncation through your own reference to the storage. Take a new snapshot. A
+  snapshot of a database in memory never reports it: see <doc:ConcurrencyAndSnapshots>.
 - ``XitDBError/subCollectionSnapshot``: Compacting a ``SnapshotDatabase`` made over a snapshot of one collection, which is not
   a whole commit.
 - ``XitDBError/byteWriterOpen``: A ``Database/freeze()``, or a join, inside the body of ``Cursor/writeBytes(formatTag:_:)``.

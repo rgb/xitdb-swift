@@ -120,7 +120,7 @@ every read through the snapshot from then on, one under way included, throws ``X
 one. A snapshot of a database in memory keeps its commit's bytes and reads on. Only a rewrite through the storage the snapshot
 was taken from is seen. One through another storage opened on the same path, or by another process, is not: the snapshot then
 reads the new file at the old offsets, and the checks on what it reads report damage, or at worst give a wrong value. A file
-lock, when the writer asked for one, keeps such a second opener out while the snapshot lives. See <doc:Replication>, and
+lock, when the writer asked for one, keeps out a second opener that asks for the lock too, while the snapshot lives. See <doc:Replication>, and
 <doc:Compaction> for a file replaced while a snapshot reads it.
 
 ### What a snapshot costs
@@ -134,10 +134,12 @@ lock, when the writer asked for one, keeps such a second opener out while the sn
 On a storage of your own, taking a snapshot copies the committed bytes, which costs their size.
 
 Holding a snapshot across a commit is where memory costs more. A snapshot shares the database's array, and the first write
-while it lives copies the whole array, at 17.6 µs per megabyte. A snapshot kept alive across every commit makes every commit
-pay it: in the benchmark, a database that grew to 9.66 MB paid about 170 µs for the copy at each commit, against 3.4 µs for
-the commit itself. On a buffered file the same thing cost 4%. So hold a snapshot of a memory database briefly, and keep data
-that is both large and written under readers in a file.
+while it lives copies the whole array, at 17.6 µs per megabyte. After that the database's array is its own again, so one
+snapshot held across many commits pays once. Every commit pays only when a snapshot taken since the last write is alive at
+each one, as when the writer hands out a new snapshot after every commit. The benchmark does that: a database that grew to
+9.66 MB paid about 170 µs for the copy at each commit, against 3.4 µs for the commit itself. On a buffered file the same
+thing cost 4%. So let a snapshot of a memory database go before the next write when you can, and keep data that is both
+large and written under readers in a file.
 
 These are the package's measurements of 2026-11-08, in a release build. Yours will differ with the machine.
 
