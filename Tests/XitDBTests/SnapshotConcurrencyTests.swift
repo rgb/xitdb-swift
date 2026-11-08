@@ -40,14 +40,22 @@ import Testing
         return (try #require(first), try #require(second))
     }
 
+    /// A snapshot with the number both its keys hold.
+    private struct Published: Sendable {
+        let snapshot: Snapshot
+        let number: UInt64
+    }
+
     /// The newest snapshot the writer has published, for the readers.
     private actor Latest {
-        private var snapshot: Snapshot?
+        private var published: Published?
         private var done = false
 
-        func publish(_ snapshot: Snapshot) { self.snapshot = snapshot }
+        func publish(_ snapshot: Snapshot, _ number: UInt64) {
+            published = Published(snapshot: snapshot, number: number)
+        }
         func finish() { done = true }
-        func current() -> (Snapshot?, Bool) { (snapshot, done) }
+        func current() -> (Published?, Bool) { (published, done) }
     }
 
     @Test(arguments: storageKinds)
@@ -63,12 +71,14 @@ import Testing
                     var newest: UInt64 = 0
                     var reads = 0
                     while true {
-                        let (snapshot, done) = await latest.current()
-                        if let snapshot {
-                            let (first, second) = try Self.pair(of: snapshot)
-                            // One commit, whole, and never an older one than
-                            // a snapshot published before it.
-                            if first != second || first < newest { mismatches += 1 }
+                        let (published, done) = await latest.current()
+                        if let published {
+                            let (first, second) = try Self.pair(of: published.snapshot)
+                            // The commit it was published as, whole, and never
+                            // an older one than a snapshot published before it.
+                            if first != published.number || second != published.number || first < newest {
+                                mismatches += 1
+                            }
                             newest = first
                             reads += 1
                         }
@@ -81,7 +91,7 @@ import Testing
             // The writer, on this task: a commit, then its snapshot.
             for number in 1...commits {
                 try fixture.commit(number)
-                await latest.publish(try fixture.database.snapshot())
+                await latest.publish(try fixture.database.snapshot(), number)
             }
             await latest.finish()
             return try await group.reduce(0, +)
@@ -92,20 +102,25 @@ import Testing
     @Test(arguments: [StorageKind.file, .bufferedFile])
     func readersHammerTheFenceWhileTheWriterSyncsFromZero(kind: StorageKind) async throws {
         let fixture = try Fixture(kind)
-        // Two databases to sync from, each with its own numbers under both keys.
-        func replica(_ number: UInt64) throws -> [UInt8] {
+        // Databases to sync from, each with its own number under both keys
+        // and a different layout, so that a stale snapshot reading the new
+        // file at its old offsets cannot find a consistent pair by chance.
+        func replica(_ number: UInt64, padding: Int) throws -> [UInt8] {
             let other = try Database(creating: MemoryStorage(), hashSize: 20)
             func body(_ cursor: inout Cursor<ReadWrite>) throws {
                 let map = try HashMap<ReadWrite>(cursor)
+                try map.put(.bytes(Array(repeating: 0xAB, count: padding)), forHash: sha1("padding").bytes)
                 try map.put(.uint(number), forHash: sha1("first").bytes)
                 try map.put(.uint(number), forHash: sha1("second").bytes)
             }
             try other.withTransaction(body)
             return try other.readCommitted(from: 0, to: try other.committedSize)
         }
-        let replicas = [try replica(1000), try replica(2000)]
+        let replicas = [
+            try replica(1000, padding: 16), try replica(2000, padding: 300), try replica(3000, padding: 1200),
+        ]
         let latest = Latest()
-        await latest.publish(try fixture.database.snapshot())
+        await latest.publish(try fixture.database.snapshot(), 0)
 
         let outcome = try await withThrowingTaskGroup(of: (wrong: Int, refused: Int, read: Int).self) { group in
             for _ in 0..<4 {
@@ -114,11 +129,13 @@ import Testing
                     var refused = 0
                     var read = 0
                     while true {
-                        let (snapshot, done) = await latest.current()
-                        if let snapshot {
+                        let (published, done) = await latest.current()
+                        if let published {
                             do {
-                                let (first, second) = try Self.pair(of: snapshot)
-                                if first != second { wrong += 1 }
+                                let (first, second) = try Self.pair(of: published.snapshot)
+                                // A read that goes through gives the snapshot's
+                                // own number, never another replica's.
+                                if first != published.number || second != published.number { wrong += 1 }
                                 read += 1
                             } catch XitDBError.snapshotOverwritten {
                                 // The file was rewritten under it: refused,
@@ -133,8 +150,9 @@ import Testing
                 }
             }
             for round in 0..<60 {
-                try fixture.database.applyReplicated(at: 0, bytes: replicas[round % 2])
-                await latest.publish(try fixture.database.snapshot())
+                let number = UInt64(1000 * (round % 3 + 1))
+                try fixture.database.applyReplicated(at: 0, bytes: replicas[round % 3])
+                await latest.publish(try fixture.database.snapshot(), number)
             }
             await latest.finish()
             return try await group.reduce((wrong: 0, refused: 0, read: 0)) {
@@ -143,39 +161,55 @@ import Testing
         }
         #expect(outcome.wrong == 0)
         #expect(outcome.read > 0)
+
+        // Whatever the readers' timing, a snapshot held across a sync from
+        // zero refuses: the fence must have tripped at least this once.
+        let held = try fixture.database.snapshot()
+        try fixture.database.applyReplicated(at: 0, bytes: replicas[0])
+        var refused = outcome.refused
+        do {
+            _ = try Self.pair(of: held)
+        } catch XitDBError.snapshotOverwritten {
+            refused += 1
+        }
+        #expect(refused > 0)
+        #expect(refused > outcome.refused, "the fence did not trip for the snapshot held across the last sync")
     }
 
-    /// How many of the process's descriptors are open on the file at `path`.
-    /// Other tests open files of their own meanwhile, so only this file is
-    /// counted.
-    private static func descriptors(on path: String) throws -> Int {
-        let standardized = URL(fileURLWithPath: path).standardizedFileURL.path
-        var count = 0
-        for name in try FileManager.default.contentsOfDirectory(atPath: "/dev/fd") {
-            guard let descriptor = Int32(name) else { continue }
-            var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
-            guard fcntl(descriptor, F_GETPATH, &buffer) == 0 else { continue }
-            let bytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
-            let openPath = String(decoding: bytes, as: UTF8.self)
-            if URL(fileURLWithPath: openPath).standardizedFileURL.path == standardized { count += 1 }
+    #if canImport(Darwin)
+        /// How many of the process's descriptors are open on the file at
+        /// `path`. Other tests open files of their own meanwhile, so only this
+        /// file is counted.
+        private static func descriptors(on path: String) throws -> Int {
+            let standardized = URL(fileURLWithPath: path).standardizedFileURL.path
+            var count = 0
+            for name in try FileManager.default.contentsOfDirectory(atPath: "/dev/fd") {
+                guard let descriptor = Int32(name) else { continue }
+                var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+                guard fcntl(descriptor, F_GETPATH, &buffer) == 0 else { continue }
+                let bytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+                let openPath = String(decoding: bytes, as: UTF8.self)
+                if URL(fileURLWithPath: openPath).standardizedFileURL.path == standardized { count += 1 }
+            }
+            return count
         }
-        return count
-    }
 
-    @Test func aSnapshotOpensNoDescriptorOfItsOwn() throws {
-        let subject = try StorageUnderTest(.bufferedFile)
-        let path = try #require(subject.path)
-        let database = try Database(creating: subject.storage, hashSize: 20)
-        try HashMap<ReadWrite>(database.rootCursor).put(.uint(1), forHash: sha1("a").bytes)
-        let before = try Self.descriptors(on: path)
-        #expect(before == 1)
-        var snapshots: [Snapshot] = []
-        for _ in 0..<100 {
-            snapshots.append(try database.snapshot())
+        @Test func aSnapshotOpensNoDescriptorOfItsOwn() throws {
+            let subject = try StorageUnderTest(.bufferedFile)
+            let path = try #require(subject.path)
+            let database = try Database(creating: subject.storage, hashSize: 20)
+            try HashMap<ReadWrite>(database.rootCursor).put(.uint(1), forHash: sha1("a").bytes)
+            let before = try Self.descriptors(on: path)
+            #expect(before == 1)
+            var snapshots: [Snapshot] = []
+            for _ in 0..<100 {
+                snapshots.append(try database.snapshot())
+            }
+            #expect(try Self.descriptors(on: path) == before)
+            #expect(
+                try HashMap<ReadOnly>(snapshots[99].rootCursor).cursor(forHash: sha1("a").bytes)?.readUInt64() == 1)
         }
-        #expect(try Self.descriptors(on: path) == before)
-        #expect(try HashMap<ReadOnly>(snapshots[99].rootCursor).cursor(forHash: sha1("a").bytes)?.readUInt64() == 1)
-    }
+    #endif
 
     @Test func theLockLivesWhileASnapshotDoes() throws {
         let directory = try TemporaryDirectory()

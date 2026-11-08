@@ -58,7 +58,7 @@ enum StructureWalk {
         let slot = try cursor.slot
         if slot.tag.pointsAtCollection {
             if path.contains(slot.value) {
-                output += "cycle(\(slot.value))"
+                output += "cycle(\(slot.tag) at \(slot.value))"
                 return
             }
             path.append(slot.value)
