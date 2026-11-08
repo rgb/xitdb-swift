@@ -1,0 +1,658 @@
+import Testing
+
+@testable import XitDB
+
+/// The guards of the engine (decisions D18 and D22, findings 1, 2, 3, 12,
+/// 16, 17 and 22): each refuses before it writes. Every test here reads the
+/// whole storage through the storage protocol before and after a refused
+/// operation and compares the two byte for byte, on every kind of storage.
+@Suite struct GuardTests {
+    /// The storage kinds the tests run on: every one there is.
+    static let storageKinds = StorageKind.allCases
+
+    /// A database with a hash map at its root on a storage of one kind, and
+    /// the checks the tests share.
+    private struct Fixture {
+        let subject: StorageUnderTest
+        let database: Database
+
+        init(_ kind: StorageKind) throws {
+            subject = try StorageUnderTest(kind)
+            database = try Database(
+                storage: subject.storage, hashSize: 20, hashID: nil, fileID: 7,
+                random: FixedRandom((1...200).map { UInt64($0) }))
+            _ = try database.rootCursor.writePath([.hashMapInit()])
+        }
+
+        /// Every byte the storage holds now, buffered ones included.
+        var bytes: [UInt8] {
+            get throws { try wholeStorage(subject.storage) }
+        }
+
+        /// A cursor at a key of the root map, in the last commit.
+        func value(_ key: String) throws -> Cursor<ReadOnly> {
+            try #require(try database.rootCursor.readPath([.hashMapGet(.value, sha1(key))]))
+        }
+
+        /// Runs `body`, which has to throw `error`, and checks that the
+        /// storage is byte for byte what it was before: the refusal came
+        /// before any write. One `#expect(throws:)` cannot hold another,
+        /// which is why `body` runs outside it.
+        func expectRefused(
+            _ error: XitDBError, _ body: () throws -> Void, sourceLocation: SourceLocation = #_sourceLocation
+        ) throws {
+            let before = try bytes
+            let outcome = Result { try body() }
+            #expect(throws: error, sourceLocation: sourceLocation) { try outcome.get() }
+            #expect(try bytes == before, "the refused operation changed the storage", sourceLocation: sourceLocation)
+        }
+
+        /// Runs `body`, which has to succeed, and checks that the storage
+        /// is byte for byte what it was before.
+        func expectWritesNothing(_ body: () throws -> Void, sourceLocation: SourceLocation = #_sourceLocation) throws {
+            let before = try bytes
+            try body()
+            #expect(try bytes == before, "the operation changed the storage", sourceLocation: sourceLocation)
+        }
+    }
+
+    // MARK: Stale cursors
+
+    /// A cursor from an earlier transaction cannot write in a later one,
+    /// whatever the path: a value, a path, one that begins with an init
+    /// part, an empty one, `writeIfEmpty` and a byte writer are all
+    /// `staleCursor`. The refusals do not poison the later transaction,
+    /// which goes on and commits.
+    @Test(arguments: storageKinds)
+    func aCursorFromAnEarlierTransactionCannotWrite(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        var kept: Cursor<ReadWrite>?
+        try database.withTransaction { cursor in
+            kept = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(1))])
+        }
+        var stale = try #require(kept)
+
+        try database.withTransaction { cursor in
+            try fixture.expectRefused(.staleCursor) { try stale.write(.uint(2)) }
+            try fixture.expectRefused(.staleCursor) { _ = try stale.writePath([.write(.uint(2))]) }
+            try fixture.expectRefused(.staleCursor) { _ = try stale.writePath([.hashMapInit()]) }
+            try fixture.expectRefused(.staleCursor) { _ = try stale.writePath([]) }
+            try fixture.expectRefused(.staleCursor) { try stale.writeIfEmpty(.uint(2)) }
+            try fixture.expectRefused(.staleCursor) { try stale.writeBytes(bodyOfARefusedWriter) }
+            #expect(!database.poisoned)
+            _ = try cursor.writePath([.hashMapGet(.value, sha1("b")), .write(.uint(2))])
+        }
+        #expect(try fixture.value("a").readUInt64() == 1)
+        #expect(try fixture.value("b").readUInt64() == 2)
+    }
+
+    /// After `Database.freeze()` a cursor from before it, the transaction's
+    /// own included, cannot write a path that does not begin with an init
+    /// part, and not an empty path either. A path that begins with an init
+    /// part is how the transaction goes on, and it writes.
+    @Test(arguments: storageKinds)
+    func aCursorFromBeforeAFreezeWritesOnlyThroughAnInit(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        try database.withTransaction { cursor in
+            let map = try cursor.writePath([.hashMapGet(.value, sha1("map")), .hashMapInit()])
+            var value = try map.writePath([.hashMapGet(.value, sha1("k")), .write(.uint(1))])
+            try database.freeze()
+
+            try fixture.expectRefused(.staleCursor) { try value.write(.uint(2)) }
+            try fixture.expectRefused(.staleCursor) { try value.writeIfEmpty(.uint(2)) }
+            try fixture.expectRefused(.staleCursor) { try value.writeBytes(bodyOfARefusedWriter) }
+            try fixture.expectRefused(.staleCursor) {
+                _ = try map.writePath([.hashMapGet(.value, sha1("k")), .write(.uint(2))])
+            }
+            try fixture.expectRefused(.staleCursor) {
+                _ = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(3))])
+            }
+            // an empty path is refused too
+            try fixture.expectRefused(.staleCursor) { _ = try cursor.writePath([]) }
+            try fixture.expectRefused(.staleCursor) { _ = try map.writePath([]) }
+
+            // a path that begins with an init part writes, through either
+            _ = try map.writePath([.hashMapInit(), .hashMapGet(.value, sha1("k")), .write(.uint(2))])
+            _ = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("a")), .write(.uint(3))])
+            let list = try ArrayList<ReadWrite>(
+                try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("list"))]))
+            try list.append(.uint(4))
+        }
+        #expect(try fixture.value("map").readPath([.hashMapGet(.value, sha1("k"))])?.readUInt64() == 2)
+        #expect(try fixture.value("a").readUInt64() == 3)
+        #expect(try fixture.value("list").readPath([.arrayListGet(0)])?.readUInt64() == 4)
+    }
+
+    /// A concat counts as a freeze: afterwards the transaction's cursor,
+    /// the other list and a value cursor from before it cannot write, an
+    /// empty path included, and an init part is the way on.
+    @Test(arguments: storageKinds)
+    func aConcatFreezesTheTransaction(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        try database.withTransaction { cursor in
+            var list = try LinkedArrayList<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("list"))]))
+            let other = try LinkedArrayList<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("other"))]))
+            try list.append(.uint(1))
+            try other.append(.uint(2))
+            var value = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(1))])
+            let freezesBefore = database.freezeNumber
+            try list.append(contentsOf: other)
+            #expect(database.freezeNumber == freezesBefore + 1)
+
+            try fixture.expectRefused(.staleCursor) { try value.write(.uint(2)) }
+            try fixture.expectRefused(.staleCursor) { try other.append(.uint(3)) }
+            try fixture.expectRefused(.staleCursor) {
+                _ = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(2))])
+            }
+            try fixture.expectRefused(.staleCursor) { _ = try cursor.writePath([]) }
+            _ = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("a")), .write(.uint(2))])
+        }
+        #expect(try fixture.value("a").readUInt64() == 2)
+        let list = try LinkedArrayList<ReadOnly>(try fixture.value("list"))
+        #expect(try list.count == 2)
+        #expect(try list.cursor(at: 0)?.readUInt64() == 1)
+        #expect(try list.cursor(at: 1)?.readUInt64() == 2)
+        #expect(try LinkedArrayList<ReadOnly>(try fixture.value("other")).count == 1)
+    }
+
+    /// A cursor from a transaction that rolled back may not read the file:
+    /// its bytes were truncated and the offsets reused. Its `slot` is a
+    /// snapshot and stays; reading the value, the bytes, the count, the
+    /// entry or a path through it is refused, and so is a write in the
+    /// next transaction.
+    @Test(arguments: storageKinds)
+    func aCursorFromARolledBackTransactionCannotRead(kind: StorageKind) throws {
+        struct Cancel: Error {}
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        let before = try fixture.bytes
+        var keptValue: Cursor<ReadWrite>?
+        var keptBytes: Cursor<ReadWrite>?
+        var keptMap: Cursor<ReadWrite>?
+        var keptList: Cursor<ReadWrite>?
+        let outcome = Result { () throws -> Void in
+            try database.withTransaction { cursor in
+                keptValue = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(1))])
+                keptBytes = try cursor.writePath([
+                    .hashMapGet(.value, sha1("bytes")), .write(.bytes(utf8("a value too long for a slot"))),
+                ])
+                let map = try cursor.writePath([.hashMapGet(.value, sha1("map")), .hashMapInit(counted: true)])
+                _ = try map.writePath([.hashMapGet(.value, sha1("k")), .write(.uint(7))])
+                keptMap = map
+                let list = try cursor.writePath([.hashMapGet(.value, sha1("list")), .arrayListInit])
+                _ = try list.writePath([.arrayListAppend, .write(.uint(8))])
+                keptList = list
+                throw Cancel()
+            }
+        }
+        #expect(throws: Cancel.self) { try outcome.get() }
+        #expect(try fixture.bytes == before)
+
+        var value = try #require(keptValue)
+        let bytes = try #require(keptBytes)
+        let map = try #require(keptMap)
+        let list = try #require(keptList)
+        #expect(try value.slot == Slot(value: 1, tag: .uint))
+        #expect(try map.slot.tag == .countedHashMap)
+        try fixture.expectRefused(.staleCursor) { _ = try value.readUInt64() }
+        try fixture.expectRefused(.staleCursor) { _ = try bytes.readBytes() }
+        try fixture.expectRefused(.staleCursor) { _ = try bytes.count }
+        try fixture.expectRefused(.staleCursor) { _ = try bytes.readEntry() }
+        try fixture.expectRefused(.staleCursor) { _ = try map.count }
+        try fixture.expectRefused(.staleCursor) { _ = try map.readPath([.hashMapGet(.value, sha1("k"))]) }
+        try fixture.expectRefused(.staleCursor) { _ = try map.readPathSlot([.hashMapGet(.value, sha1("k"))]) }
+        try fixture.expectRefused(.staleCursor) { _ = try list.readPath([.arrayListGet(0)]) }
+        try fixture.expectRefused(.staleCursor) { _ = try list.count }
+
+        try database.withTransaction { _ in
+            try fixture.expectRefused(.staleCursor) { try value.write(.uint(2)) }
+            try fixture.expectRefused(.staleCursor) { _ = try value.readUInt64() }
+        }
+    }
+
+    /// A cursor's own `freeze()` moves only its freeze point: it counts no
+    /// freeze of the database, so no other cursor is stale after it, and
+    /// the cursor itself still writes.
+    @Test(arguments: storageKinds)
+    func aCursorsOwnFreezeStalesNoCursor(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        try database.withTransaction { cursor in
+            var a = try cursor.writePath([.hashMapGet(.value, sha1("a"))])
+            var b = try cursor.writePath([.hashMapGet(.value, sha1("b"))])
+            let freezes = database.freezeNumber
+            try a.freeze()
+            #expect(database.freezeNumber == freezes)
+            try b.write(.uint(2))
+            try a.write(.uint(1))
+            _ = try cursor.writePath([.hashMapGet(.value, sha1("c")), .write(.uint(3))])
+        }
+        #expect(try fixture.value("a").readUInt64() == 1)
+        #expect(try fixture.value("b").readUInt64() == 2)
+        #expect(try fixture.value("c").readUInt64() == 3)
+    }
+
+    /// The root cursor is never stale: one taken before a transaction that
+    /// froze, and one taken inside a transaction that rolled back, both
+    /// read and write afterwards. Inside a transaction a write through it
+    /// is a nested one, as it always was.
+    @Test(arguments: storageKinds)
+    func theRootCursorIsNeverStale(kind: StorageKind) throws {
+        struct Cancel: Error {}
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        let early = database.rootCursor
+        try database.withTransaction { cursor in
+            _ = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(1))])
+            try database.freeze()
+            _ = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("b")), .write(.uint(2))])
+        }
+        var inFailed: Cursor<ReadWrite>?
+        let outcome = Result { () throws -> Void in
+            try database.withTransaction { cursor in
+                inFailed = database.rootCursor
+                _ = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(9))])
+                throw Cancel()
+            }
+        }
+        #expect(throws: Cancel.self) { try outcome.get() }
+        let late = try #require(inFailed)
+
+        #expect(try early.readPath([.hashMapGet(.value, sha1("a"))])?.readUInt64() == 1)
+        #expect(try late.readPath([.hashMapGet(.value, sha1("b"))])?.readUInt64() == 2)
+        _ = try early.writePath([.hashMapGet(.value, sha1("c")), .write(.uint(3))])
+        _ = try late.writePath([.hashMapGet(.value, sha1("d")), .write(.uint(4))])
+        #expect(try fixture.value("c").readUInt64() == 3)
+        #expect(try fixture.value("d").readUInt64() == 4)
+        try database.withTransaction { _ in
+            #expect(throws: XitDBError.nestedTopLevelWrite) {
+                try early.writePath([.hashMapGet(.value, sha1("e")), .write(.uint(5))])
+            }
+        }
+    }
+
+    /// A cursor from an earlier transaction that committed reads as
+    /// before, outside and inside a later transaction, and what it reads
+    /// is its snapshot.
+    @Test(arguments: storageKinds)
+    func aCursorFromACommittedTransactionReads(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        var keptValue: Cursor<ReadWrite>?
+        var keptMap: Cursor<ReadWrite>?
+        try database.withTransaction { cursor in
+            keptValue = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(1))])
+            let map = try cursor.writePath([.hashMapGet(.value, sha1("map")), .hashMapInit(counted: true)])
+            _ = try map.writePath([.hashMapGet(.value, sha1("k")), .write(.uint(7))])
+            keptMap = map
+        }
+        let value = try #require(keptValue)
+        let map = try #require(keptMap)
+        #expect(try value.readUInt64() == 1)
+        #expect(try map.count == 1)
+        #expect(try map.readPath([.hashMapGet(.value, sha1("k"))])?.readUInt64() == 7)
+        var iterator = try map.iterator()
+        #expect(try iterator.next()?.readEntry().value.readUInt64() == 7)
+
+        try database.withTransaction { cursor in
+            _ = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(2))])
+            #expect(try value.readUInt64() == 1)
+            #expect(try map.count == 1)
+        }
+        #expect(try value.readUInt64() == 1)
+        #expect(try fixture.value("a").readUInt64() == 2)
+    }
+
+    /// A write through a cursor keeps the cursor's numbers: a cursor that
+    /// wrote just before a freeze, with `write`, `writeIfEmpty` or a byte
+    /// writer, is stale after it like one that only was made before it.
+    @Test(arguments: storageKinds)
+    func aWriteDoesNotMakeACursorFresh(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        try database.withTransaction { cursor in
+            var written = try cursor.writePath([.hashMapGet(.value, sha1("a"))])
+            try written.write(.uint(1))
+            var ifEmpty = try cursor.writePath([.hashMapGet(.value, sha1("b"))])
+            try ifEmpty.writeIfEmpty(.uint(2))
+            var bytes = try cursor.writePath([.hashMapGet(.value, sha1("c"))])
+            try bytes.writeBytes { writer in try writer.write([1, 2, 3]) }
+            try database.freeze()
+
+            try fixture.expectRefused(.staleCursor) { try written.write(.uint(9)) }
+            try fixture.expectRefused(.staleCursor) { try ifEmpty.writeIfEmpty(.uint(9)) }
+            try fixture.expectRefused(.staleCursor) { try ifEmpty.write(.uint(9)) }
+            try fixture.expectRefused(.staleCursor) { try bytes.writeBytes(bodyOfARefusedWriter) }
+            try fixture.expectRefused(.staleCursor) { try bytes.write(.uint(9)) }
+            // what they wrote stands, and they read it
+            #expect(try written.readUInt64() == 1)
+            #expect(try ifEmpty.readUInt64() == 2)
+            #expect(try bytes.readBytes() == [1, 2, 3])
+        }
+        #expect(try fixture.value("a").readUInt64() == 1)
+        #expect(try fixture.value("b").readUInt64() == 2)
+        #expect(try fixture.value("c").readBytes() == [1, 2, 3])
+    }
+
+    // MARK: The concat's own wrapper
+
+    /// The list that calls `append(contentsOf:)` goes on from the cursor
+    /// the concat gave back, made after the freeze, so its next write
+    /// works and the element is there. A second wrapper of the same slot
+    /// held across the concat, a copy or one made from the same cursor,
+    /// is stale.
+    @Test(arguments: storageKinds)
+    func aConcatRefreshesItsOwnWrapperOnly(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        try database.withTransaction { cursor in
+            var list = try LinkedArrayList<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("list"))]))
+            let other = try LinkedArrayList<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("other"))]))
+            try list.append(.uint(1))
+            try other.append(.uint(2))
+            let copy = list
+            let sameCursor = try LinkedArrayList<ReadWrite>(list.cursor)
+
+            try list.append(contentsOf: other)
+            try list.append(.uint(9))
+            #expect(try list.count == 3)
+            #expect(try list.cursor(at: 2)?.readUInt64() == 9)
+
+            try fixture.expectRefused(.staleCursor) { try copy.append(.uint(3)) }
+            try fixture.expectRefused(.staleCursor) { try copy.remove(at: 0) }
+            try fixture.expectRefused(.staleCursor) { try sameCursor.append(.uint(3)) }
+            try fixture.expectRefused(.staleCursor) { _ = try sameCursor.putCursor(at: 0) }
+            try list.append(.uint(10))
+        }
+        let list = try LinkedArrayList<ReadOnly>(try fixture.value("list"))
+        #expect(try list.count == 4)
+        for (index, expected) in [1, 2, 9, 10].enumerated() {
+            #expect(try list.cursor(at: index)?.readUInt64() == UInt64(expected))
+        }
+    }
+
+    // MARK: A sorted map's key
+
+    /// A sorted map's key cursor has no position (finding 2): the key of an
+    /// entry from `readEntry()`, the key the path API gives and the entry
+    /// itself all refuse `write(_:)` and a write path with
+    /// `cursorNotWritable`, and the entry is as it was.
+    @Test(arguments: storageKinds)
+    func aSortedMapsKeyCannotBeWritten(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        try database.withTransaction { cursor in
+            let map = try SortedMap<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("map"))]))
+            try map.put(.uint(1), forKey: utf8("k"))
+            let entry = try #require(try map.entry(forKey: utf8("k")))
+            #expect(entry.key.slotPointer.position == nil)
+
+            // a read-write cursor at the key's pointer, which only the
+            // package can make
+            var key = Cursor<ReadWrite>(
+                slotPointer: entry.key.slotPointer, database: database, frozenAt: entry.key.frozenAt)
+            try fixture.expectRefused(.cursorNotWritable) { try key.write(.bytes(utf8("j"))) }
+            try fixture.expectRefused(.cursorNotWritable) { _ = try key.writePath([.write(.bytes(utf8("j")))]) }
+            try fixture.expectRefused(.cursorNotWritable) { _ = try key.writePath([.hashMapInit()]) }
+            try fixture.expectRefused(.cursorNotWritable) { try key.writeIfEmpty(.bytes(utf8("j"))) }
+
+            // the key and the entry the path API gives in a write path
+            var pathKey = try map.cursor.writePath([.sortedMapGet(.key, SortedKey(utf8("k")))])
+            #expect(pathKey.slotPointer.position == nil)
+            try fixture.expectRefused(.cursorNotWritable) { try pathKey.write(.bytes(utf8("j"))) }
+            var pair = try map.cursor.writePath([.sortedMapGet(.kvPair, SortedKey(utf8("k")))])
+            #expect(pair.slotPointer.position == nil)
+            try fixture.expectRefused(.cursorNotWritable) { try pair.write(.uint(5)) }
+
+            #expect(try map.entry(forKey: utf8("k"))?.key.readBytes() == utf8("k"))
+            #expect(try map.cursor(forKey: utf8("k"))?.readUInt64() == 1)
+            #expect(try map.count == 1)
+        }
+    }
+
+    // MARK: Structural slots
+
+    /// A slot with one of the trees' own tags, `index`, `kvPair` or
+    /// `sortedKvPair`, is refused as a value (finding 3) before anything is
+    /// written, through `write(_:)` and through a path. The same value
+    /// with another tag is written.
+    @Test(arguments: storageKinds)
+    func aStructuralSlotIsRefusedAsAValue(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        try database.withTransaction { cursor in
+            var value = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(1))])
+            for tag in [Tag.index, .kvPair, .sortedKvPair] {
+                let slot = Slot(value: 100, tag: tag)
+                try fixture.expectRefused(.structuralSlot) { try value.write(.slot(slot)) }
+                try fixture.expectRefused(.structuralSlot) { _ = try value.writePath([.write(.slot(slot))]) }
+                // the get reaches an entry this transaction made, so it
+                // writes nothing on the way
+                try fixture.expectRefused(.structuralSlot) {
+                    _ = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.slot(slot))])
+                }
+            }
+            #expect(try value.readUInt64() == 1)
+            try value.write(.slot(Slot(value: 100, tag: .uint)))
+            #expect(try value.readUInt64() == 100)
+        }
+        #expect(try fixture.value("a").readUInt64() == 100)
+    }
+
+    // MARK: Nothing after a remove
+
+    /// A part after `.hashMapRemove` or `.sortedMapRemove` is
+    /// `pathPartMustBeAtEnd` (finding 12), reported before anything is
+    /// removed: the entry is still there and the storage is unchanged. A
+    /// remove at the end of the path removes.
+    @Test(arguments: storageKinds)
+    func nothingFollowsARemove(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        try database.withTransaction { cursor in
+            let map = try HashMap<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("map"))]))
+            try map.put(.uint(1), forHash: hashInt("k"))
+            let sorted = try SortedMap<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("sorted"))]))
+            try sorted.put(.uint(2), forKey: utf8("k"))
+
+            for trailing in [PathPart.write(.uint(3)), .hashMapGet(.value, sha1("k")), .ctx] {
+                try fixture.expectRefused(.pathPartMustBeAtEnd) {
+                    _ = try map.cursor.writePath([.hashMapRemove(sha1("k")), trailing])
+                }
+                try fixture.expectRefused(.pathPartMustBeAtEnd) {
+                    _ = try sorted.cursor.writePath([.sortedMapRemove(SortedKey(utf8("k"))), trailing])
+                }
+            }
+            #expect(try map.cursor(forHash: hashInt("k"))?.readUInt64() == 1)
+            #expect(try sorted.cursor(forKey: utf8("k"))?.readUInt64() == 2)
+            #expect(try sorted.count == 1)
+
+            _ = try map.cursor.writePath([.hashMapRemove(sha1("k"))])
+            _ = try sorted.cursor.writePath([.sortedMapRemove(SortedKey(utf8("k")))])
+            #expect(try map.cursor(forHash: hashInt("k")) == nil)
+            #expect(try sorted.cursor(forKey: utf8("k")) == nil)
+            #expect(try sorted.count == 0)
+        }
+    }
+
+    // MARK: Poisoning
+
+    /// A byte writer whose body throws after it has written poisons the
+    /// transaction (finding 16): every further write through any cursor is
+    /// `poisonedTransaction` and writes nothing, reads still work, the
+    /// commit is `poisonedTransaction`, and the rollback leaves the storage
+    /// byte for byte what it was before the transaction. The next
+    /// transaction is clean.
+    @Test(arguments: storageKinds)
+    func aWriterThatFailsAfterWritingPoisonsTheTransaction(kind: StorageKind) throws {
+        struct Cancel: Error {}
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        try database.withTransaction { cursor in
+            _ = try cursor.writePath([.hashMapGet(.value, sha1("committed")), .write(.uint(1))])
+        }
+        let before = try fixture.bytes
+
+        // The transaction's body as a function: the compiler at hand rejects
+        // a refused byte writer in a closure nested this deep, with a
+        // function type mismatch in its SIL, and accepts the function.
+        func transaction(_ cursor: inout Cursor<ReadWrite>) throws {
+            // the transaction's cursor as a value, for the closures below
+            let transactionCursor = cursor
+            var a = try cursor.writePath([.hashMapGet(.value, sha1("a"))])
+            var b = try cursor.writePath([.hashMapGet(.value, sha1("b")), .write(.uint(2))])
+            let list = try ArrayList<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("list"))]))
+            #expect(!database.poisoned)
+            #expect(throws: Cancel.self) {
+                try a.writeBytes { writer in
+                    try writer.write([1, 2, 3])
+                    throw Cancel()
+                }
+            }
+            #expect(database.poisoned)
+
+            try fixture.expectRefused(.poisonedTransaction) { try b.write(.uint(3)) }
+            try fixture.expectRefused(.poisonedTransaction) { try a.writeIfEmpty(.uint(3)) }
+            try fixture.expectRefused(.poisonedTransaction) { try a.writeBytes(bodyOfARefusedWriter) }
+            try fixture.expectRefused(.poisonedTransaction) { try list.append(.uint(3)) }
+            try fixture.expectRefused(.poisonedTransaction) {
+                _ = try transactionCursor.writePath([.hashMapGet(.value, sha1("c")), .write(.uint(3))])
+            }
+            try fixture.expectRefused(.poisonedTransaction) { _ = try transactionCursor.writePath([.hashMapInit()]) }
+            try fixture.expectRefused(.poisonedTransaction) { _ = try transactionCursor.writePath([]) }
+            #expect(try b.readUInt64() == 2)
+            #expect(try a.slot.isEmpty)
+        }
+        expectPoisoned { try database.withTransaction(transaction) }
+        #expect(try fixture.bytes == before)
+        #expect(try database.rootCursor.readPath([.hashMapGet(.value, sha1("b"))]) == nil)
+        #expect(try fixture.value("committed").readUInt64() == 1)
+
+        try database.withTransaction { cursor in
+            #expect(!database.poisoned)
+            _ = try cursor.writePath([.hashMapGet(.value, sha1("b")), .write(.uint(5))])
+        }
+        #expect(try fixture.value("b").readUInt64() == 5)
+    }
+
+    /// A path that writes and then meets a part its slot refuses poisons
+    /// too: the get makes an entry and writes a value, then the list part
+    /// on a number is `unexpectedTag`, and the transaction can only roll
+    /// back.
+    @Test(arguments: storageKinds)
+    func aPathThatFailsAfterWritingPoisonsTheTransaction(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        let before = try fixture.bytes
+        func transaction(_ cursor: inout Cursor<ReadWrite>) throws {
+            let transactionCursor = cursor
+            var a = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(1))])
+            let lengthBefore = try fixture.subject.storage.length
+            #expect(throws: XitDBError.unexpectedTag) {
+                try transactionCursor.writePath([.hashMapGet(.value, sha1("new")), .write(.uint(1)), .arrayListAppend])
+            }
+            #expect(try fixture.subject.storage.length > lengthBefore, "the path had written")
+            #expect(database.poisoned)
+            try fixture.expectRefused(.poisonedTransaction) { try a.write(.uint(2)) }
+            try fixture.expectRefused(.poisonedTransaction) { try a.writeBytes(bodyOfARefusedWriter) }
+            try fixture.expectRefused(.poisonedTransaction) {
+                _ = try transactionCursor.writePath([.hashMapGet(.value, sha1("c")), .write(.uint(3))])
+            }
+        }
+        expectPoisoned { try database.withTransaction(transaction) }
+        #expect(try fixture.bytes == before)
+        #expect(try database.rootCursor.readPath([.hashMapGet(.value, sha1("a"))]) == nil)
+    }
+
+    /// An operation that fails before it writes does not poison: a missing
+    /// key, an index out of range and each of the refused guards leave the
+    /// transaction able to write and to commit.
+    @Test(arguments: storageKinds)
+    func aFailureBeforeWritingDoesNotPoison(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        try database.withTransaction { cursor in
+            let map = try HashMap<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("map"))]))
+            let list = try LinkedArrayList<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("list"))]))
+            let sorted = try SortedMap<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("sorted"))]))
+            try sorted.put(.uint(1), forKey: utf8("k"))
+            var value = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(1))])
+
+            // lookups that fail
+            try fixture.expectRefused(.keyNotFound) { _ = try map.cursor.writePath([.hashMapRemove(sha1("missing"))]) }
+            try fixture.expectRefused(.indexOutOfRange) { try list.remove(at: 3) }
+            try fixture.expectRefused(.indexOutOfRange) { try list.put(.uint(1), at: 0) }
+            // the guards
+            try fixture.expectRefused(.structuralSlot) { try value.write(.slot(Slot(value: 1, tag: .kvPair))) }
+            try fixture.expectRefused(.pathPartMustBeAtEnd) {
+                _ = try map.cursor.writePath([.hashMapRemove(sha1("x")), .write(.uint(1))])
+            }
+            var key = try sorted.cursor.writePath([.sortedMapGet(.key, SortedKey(utf8("k")))])
+            try fixture.expectRefused(.cursorNotWritable) { try key.write(.bytes(utf8("j"))) }
+            try database.freeze()
+            try fixture.expectRefused(.staleCursor) { try value.write(.uint(2)) }
+            #expect(!database.poisoned)
+
+            _ = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("a")), .write(.uint(2))])
+        }
+        #expect(try fixture.value("a").readUInt64() == 2)
+        #expect(try SortedMap<ReadOnly>(try fixture.value("sorted")).cursor(forKey: utf8("k"))?.readUInt64() == 1)
+    }
+
+    // MARK: writeIfEmpty
+
+    /// `writeIfEmpty` goes by the slot as it is now (finding 17): on a slot
+    /// another cursor has written it writes nothing, even through a cursor
+    /// whose snapshot saw the slot empty, and a slot set to nothing is not
+    /// empty either; on an empty slot it writes.
+    @Test(arguments: storageKinds)
+    func writeIfEmptyGoesByTheSlotAsItIsNow(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        try database.withTransaction { cursor in
+            var first = try cursor.writePath([.hashMapGet(.value, sha1("a"))])
+            var snapshot = first
+            try first.write(.uint(1))
+            #expect(try snapshot.slot.isEmpty)
+            try fixture.expectWritesNothing { try snapshot.writeIfEmpty(.uint(2)) }
+            try fixture.expectWritesNothing { try first.writeIfEmpty(.uint(2)) }
+            #expect(try snapshot.slot.isEmpty, "the snapshot is not what the write goes by")
+            #expect(try first.readUInt64() == 1)
+
+            var cleared = try cursor.writePath([.hashMapGet(.value, sha1("b")), .write(.slot(nil))])
+            try fixture.expectWritesNothing { try cleared.writeIfEmpty(.uint(3)) }
+            #expect(try cleared.slot == Slot(tag: .none, full: true))
+
+            var empty = try cursor.writePath([.hashMapGet(.value, sha1("c"))])
+            let before = try fixture.bytes
+            try empty.writeIfEmpty(.uint(4))
+            #expect(try fixture.bytes != before)
+            #expect(try empty.readUInt64() == 4)
+        }
+        #expect(try fixture.value("a").readUInt64() == 1)
+        #expect(try fixture.value("b").slot == Slot(tag: .none, full: true))
+        #expect(try fixture.value("c").readUInt64() == 4)
+    }
+}
+
+/// Every byte of a storage, read through the storage protocol: its length,
+/// then one read from the start. The protocol's read sees what a buffered
+/// file still holds in memory, which the file on disk does not.
+func wholeStorage(_ storage: some ReadableStorage) throws -> [UInt8] {
+    let length = Int(try storage.length)
+    var buffer = [UInt8](repeating: 0, count: length)
+    var span = buffer.mutableSpan
+    let read = try storage.read(into: &span, at: 0)
+    try #require(read == length, "the storage read fewer bytes than its length")
+    return buffer
+}
+
+/// The body for a byte writer that has to be refused before it runs: a
+/// guard refuses the writer before the record is started, so the body
+/// never sees a writer. It records an issue if it does.
+private func bodyOfARefusedWriter(_ writer: inout ByteWriter) throws {
+    Issue.record("the body of a refused byte writer ran")
+}
