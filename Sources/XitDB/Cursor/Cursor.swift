@@ -634,7 +634,10 @@ extension Cursor where Access == ReadWrite {
     /// short it is.
     ///
     /// Nothing else may be written to the database while `body` runs, since
-    /// the array can only grow while it is the last thing in it.
+    /// the array can only grow while it is the last thing in it, and nothing
+    /// may be frozen: ``Database/freeze()`` and a concat are refused inside
+    /// `body` with ``XitDBError/byteWriterOpen``, since the record being
+    /// filled would fall below the freeze.
     ///
     /// - Parameters:
     ///   - formatTag: A format tag to store with the bytes, or `nil` for
@@ -648,7 +651,9 @@ extension Cursor where Access == ReadWrite {
     ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
     ///   transaction failed after writing;
     ///   ``XitDBError/unexpectedWriterPosition`` if something else was
-    ///   written while `body` ran; and whatever `body` throws.
+    ///   written while `body` ran; ``XitDBError/byteWriterOpen`` from a
+    ///   freeze or a concat inside `body`, which `body` passes on, so that
+    ///   the transaction is poisoned; and whatever else `body` throws.
     public mutating func writeBytes(
         formatTag: FormatTag? = nil,
         _ body: (inout ByteWriter) throws -> Void
@@ -659,6 +664,11 @@ extension Cursor where Access == ReadWrite {
         do {
             var writer = ByteWriter(record: try ByteRecordWriter(database: database, at: slotPointer))
             writer.formatTag = formatTag
+            // A freeze while the body runs would leave the record below the
+            // frozen point: Database.freeze() and a concat refuse while one
+            // is open.
+            database.openByteWriters += 1
+            defer { database.openByteWriters -= 1 }
             try body(&writer)
             slotPointer.slot = try writer.record.finish(slotPosition: slotPointer.position)
         } catch {
@@ -786,9 +796,11 @@ extension Database {
     /// before writing anything, a refused guard included, leaves the
     /// transaction as it was. The cursor `body` is given is the
     /// transaction's cursor: after a freeze, ``Database/freeze()`` or a
-    /// concat, it is the one cursor from before the freeze that a path
-    /// beginning with an init part may go through, so a collection made
-    /// again from it is fresh. It and every cursor and collection made
+    /// concat, it is the one place from before the freeze that a path
+    /// beginning with an init part may go through, it or any cursor at the
+    /// same slot, such as the cursor of a collection made from it, so a
+    /// collection made again from either is fresh. It and every cursor and
+    /// collection made
     /// from it belong to this transaction: a write through one of them
     /// after `body` returns is refused with ``XitDBError/staleCursor``.
     ///

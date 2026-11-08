@@ -142,9 +142,10 @@ public enum XitDBError: Error, Sendable {
     /// things refer to or that are committed; for a read, one made in a
     /// transaction that did not commit, whose bytes are gone. The way on
     /// after a freeze is the transaction's cursor, the one
-    /// ``Database/withTransaction(_:)`` or a history append hands its body:
-    /// a path that begins with a collection's init part is allowed through
-    /// it, since its slot is the engine's own record that nothing inside
+    /// ``Database/withTransaction(_:)`` or a history append hands its body,
+    /// or any cursor at the same slot, such as the cursor of a collection
+    /// made from it: a path that begins with a collection's init part is
+    /// allowed through it, since its slot is the engine's own record that nothing inside
     /// the transaction can copy, and every cursor taken from it is fresh.
     /// Through any other cursor from before the freeze every write is
     /// refused, inits included: an init through a held cursor rewrites its
@@ -159,8 +160,19 @@ public enum XitDBError: Error, Sendable {
     /// by a clone or another handle. The engine refuses it before it
     /// writes. A path that skips a collection's init part and writes into
     /// an old block reports this; a cursor from before the freeze reports
-    /// ``staleCursor`` first.
+    /// ``staleCursor`` first. Through the public API nothing reaches it:
+    /// the collections run their init parts, and a freeze inside a byte
+    /// writer's body is ``byteWriterOpen``.
     case immutableBytes
+
+    /// ``Database/freeze()`` or a concat was called while a byte writer's
+    /// body was running, which would move the frozen point past the record
+    /// the writer is filling and leave its completion nowhere to write. The
+    /// freeze is refused before it moves anything; the body then ends with
+    /// this error, and the transaction is poisoned as after any body that
+    /// throws, since the writer had appended before the body ran. Finish
+    /// byte writers before freezing.
+    case byteWriterOpen
 
     /// A slot whose tag is `index`, `kvPair` or `sortedKvPair` was given to
     /// write as a value. Those tags are the trees' own; such a slot in a

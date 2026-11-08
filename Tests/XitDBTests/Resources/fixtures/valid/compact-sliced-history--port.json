@@ -1,0 +1,31 @@
+{
+  "format": "xitdb-script/1",
+  "description": "Compacting a list at the root that has lost its last moment some other way than in compact-roots, as gen found: sliced to nothing, and then given an element appended in a callback that wrote nothing to it. Zig compacts each to an empty root, and the port refuses each with EmptyLastMoment, before writing anything (finding 28). A last element set to nothing is a moment, so that compacts. What the port writes is what Zig writes with the refused compactions left out.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f0000000000022",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "write": { "uint": 1 } }] },
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "write": { "bytes": "a long value in the second moment" } }] },
+    { "op": "write_path", "on": "root", "path": ["array_list_init", { "array_list_slice": { "size": 0 } }], "note": "a history sliced to nothing is still a list" },
+    { "op": "slot", "on": "root", "expect": { "tag": "array_list" } },
+    { "op": "compact", "into": "sliced", "file_id": "00000000000000a0", "offset_map": "disk", "expect_error": "EmptyLastMoment" },
+    { "op": "create_database", "name": "empty_target", "file_id": "00000000000000a1" },
+    { "op": "compact", "into": "empty_target", "offset_map": "memory", "expect_error": "EmptyLastMoment" },
+
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "ctx": { "as": "c", "ops": [
+      { "op": "read_path", "on": "c", "path": [], "expect_null": true, "note": "the callback writes nothing to the element it's given" }
+    ] } }] },
+    { "op": "count", "on": "root", "expect": 1 },
+    { "op": "compact", "into": "sliced", "file_id": "00000000000000a0", "offset_map": "memory", "expect_error": "EmptyLastMoment", "note": "an element appended and never written isn't a moment" },
+
+    { "op": "write_path", "on": "root", "path": ["array_list_init", { "array_list_get": -1 }, { "write": { "slot": null } }], "note": "set to nothing, it's a moment" },
+    { "op": "compact", "into": "sliced", "file_id": "00000000000000a0", "offset_map": "disk" },
+    { "op": "use", "name": "sliced" },
+    { "op": "count", "on": "root", "expect": 1 },
+    { "op": "read_path_slot", "on": "root", "path": [{ "array_list_get": 0 }], "expect": { "tag": "none", "full": true } },
+    { "op": "use", "name": "empty_target" },
+    { "op": "committed_size", "expect": 62 },
+    { "op": "slot", "on": "root", "expect": { "tag": "none", "full": false } }
+  ]
+}

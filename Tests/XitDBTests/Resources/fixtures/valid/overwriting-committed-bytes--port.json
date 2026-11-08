@@ -1,6 +1,6 @@
 {
   "format": "xitdb-script/1",
-  "description": "overwriting-committed-bytes with what the port does. A path that skips a collection's init part still writes straight into what's committed, as that's finding 13, which doesn't change. A cursor kept from an earlier transaction can't any more: it raises StaleCursor, before writing, even for an init, which would rewrite a committed slot. It can still be read, as a snapshot. A cursor from a transaction that was rolled back can't be read either, as its bytes are gone and the offsets get reused.",
+  "description": "overwriting-committed-bytes with what the port does. A path that skips a collection's init part still writes straight into what's committed, as that's finding 13, which doesn't change. A cursor kept from an earlier transaction can't any more: it raises StaleCursor, before writing, even for an init, which would rewrite a committed slot. It can still be read, as a snapshot. A cursor from a transaction that was rolled back can't be read either, as its bytes are gone and the offsets get reused. It ends with a write through a cursor from before a db_freeze, which is refused too, as it would change what the freeze kept, and the init that's allowed instead.",
   "hash_size": 20,
   "hash_id": "sha1",
   "file_id": "c0f0000000000006",
@@ -53,6 +53,17 @@
       { "op": "fail" }
     ] }, "expect_error": "ScriptAbort" },
     { "op": "read_uint", "on": "kept", "expect": 1, "note": "and one from a transaction that committed can still be read" },
-    { "op": "write", "on": "kept", "data": { "uint": 1 }, "expect_error": "ExpectedTxStart" }
+    { "op": "write", "on": "kept", "data": { "uint": 1 }, "expect_error": "ExpectedTxStart" },
+
+    { "op": "read_path_slot", "on": "root", "path": [{ "array_list_get": -1 }], "as": "last" },
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "write": { "slot": { "var": "last" } } }, { "hash_map_init": {} }, { "ctx": { "as": "m", "ops": [
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "frozen" } } }, { "write": { "uint": 1 } }], "as": "frozen" },
+      { "op": "db_freeze" },
+      { "op": "write", "on": "frozen", "data": { "uint": 2 }, "expect_error": "StaleCursor", "note": "it would write where the freeze kept what it froze" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "frozen" } } }, { "write": { "uint": 2 } }], "note": "an init through the callback's own cursor, which is from before the freeze too, copies it" },
+      { "op": "read_uint", "on": "frozen", "expect": 1, "note": "and the frozen one still has what it had" }
+    ] } }] },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "sha1": "frozen" } } }], "as": "frozen_now" },
+    { "op": "read_uint", "on": "frozen_now", "expect": 2 }
   ]
 }

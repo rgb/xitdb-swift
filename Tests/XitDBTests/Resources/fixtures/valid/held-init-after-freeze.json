@@ -1,0 +1,37 @@
+{
+  "format": "xitdb-script/1",
+  "description": "Finding 29: after a freeze, an init through a cursor held from before it writes where the new collection is into that cursor's slot in place, and the slot is in a record made before the freeze. A clone made before the freeze by copying a map's slot shares that record, so it changes too: a.list and b.list both get the second element. Going down from the root again copies the record instead, so c.list gets it and d.list keeps one element. Both are valid on Zig and on the port, where an init is how to go on through a cursor from before a freeze.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f000000000001e",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "ctx": { "as": "m", "ops": [
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "a" } } }, { "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "list" } } }, "array_list_init", "array_list_append", { "write": { "uint": 1 } }], "note": "a map under a, with a list in it of one element" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "a" } } }, { "hash_map_get": { "value": { "sha1": "list" } } }], "as": "held", "note": "a cursor on a.list's slot, which is in a's record" },
+      { "op": "read_path_slot", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "a" } } }], "as": "a_slot" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "b" } } }, { "write": { "slot": { "var": "a_slot" } } }], "note": "a clone: b is a's slot, so the two share the record" },
+      { "op": "db_freeze" },
+      { "op": "write_path", "on": "held", "path": ["array_list_init", "array_list_append", { "write": { "uint": 2 } }], "note": "the init copies the list, and writes where the copy is into held's slot, in the record that a and b share" }
+    ] } }] },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "a" } } }, { "hash_map_get": { "value": { "sha1": "list" } } }], "as": "a_list" },
+    { "op": "count", "on": "a_list", "expect": 2 },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "b" } } }, { "hash_map_get": { "value": { "sha1": "list" } } }], "as": "b_list" },
+    { "op": "count", "on": "b_list", "expect": 2, "note": "the clone changed with it" },
+    { "op": "read_path", "on": "b_list", "path": [{ "array_list_get": 1 }], "as": "b_second" },
+    { "op": "read_uint", "on": "b_second", "expect": 2 },
+
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "ctx": { "as": "n", "ops": [
+      { "op": "write_path", "on": "n", "path": [{ "hash_map_get": { "value": { "sha1": "c" } } }, { "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "list" } } }, "array_list_init", "array_list_append", { "write": { "uint": 1 } }] },
+      { "op": "read_path_slot", "on": "n", "path": [{ "hash_map_get": { "value": { "sha1": "c" } } }], "as": "c_slot" },
+      { "op": "write_path", "on": "n", "path": [{ "hash_map_get": { "value": { "sha1": "d" } } }, { "write": { "slot": { "var": "c_slot" } } }] },
+      { "op": "db_freeze" },
+      { "op": "write_path", "on": "n", "path": [{ "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "c" } } }, { "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "list" } } }, "array_list_init", "array_list_append", { "write": { "uint": 2 } }], "note": "going down from the root again: the inits copy the root's map and c's record, so d keeps the old record" }
+    ] } }] },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "c" } } }, { "hash_map_get": { "value": { "sha1": "list" } } }], "as": "c_list" },
+    { "op": "count", "on": "c_list", "expect": 2 },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "d" } } }, { "hash_map_get": { "value": { "sha1": "list" } } }], "as": "d_list" },
+    { "op": "count", "on": "d_list", "expect": 1, "note": "the clone kept what it had" },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "a" } } }, { "hash_map_get": { "value": { "sha1": "list" } } }], "as": "a_list_still" },
+    { "op": "count", "on": "a_list_still", "expect": 2 }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "format": "xitdb-script/1",
+  "description": "Every way to read through what a rolled-back transaction made, which is an undefined use in Zig: its bytes are gone, and the next transaction reuses the offsets. The port refuses each with StaleCursor: a read-write cursor, a read-only one, a read-only view of either, made before or after the rollback, an iterator made through one, and next on an iterator made in that transaction. A view raises nothing when it's made, as it reads nothing. In a later transaction, a refused read writes nothing, so it poisons nothing, and the transaction commits. What the port writes is what Zig writes with those reads left out.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f0000000000021",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "kept" } } }, { "write": { "uint": 1 } }] },
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "ctx": { "as": "m", "ops": [
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "gone" } } }, { "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "x" } } }, { "write": { "uint": 2 } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "gone" } } }], "as": "rw" },
+      { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "gone" } } }], "as": "ro" },
+      { "op": "read_only", "on": "rw", "as": "view_before" },
+      { "op": "iterator", "on": "rw", "as": "it" },
+      { "op": "fail" }
+    ] } }], "expect_error": "ScriptAbort", "note": "rolled back, with everything it made" },
+
+    { "op": "count", "on": "rw", "expect_error": "StaleCursor" },
+    { "op": "read_path", "on": "rw", "path": [{ "hash_map_get": { "value": { "sha1": "x" } } }], "expect_error": "StaleCursor" },
+    { "op": "count", "on": "ro", "expect_error": "StaleCursor", "note": "a read-only cursor made in it" },
+    { "op": "count", "on": "view_before", "expect_error": "StaleCursor", "note": "a view made in it" },
+    { "op": "read_only", "on": "rw", "as": "view_after", "note": "a view is the cursor it's from, so it's from that transaction too. Making one reads nothing" },
+    { "op": "count", "on": "view_after", "expect_error": "StaleCursor" },
+    { "op": "read_path", "on": "view_after", "path": [{ "hash_map_get": { "value": { "sha1": "x" } } }], "expect_error": "StaleCursor" },
+    { "op": "iterator", "on": "rw", "as": "it_after", "expect_error": "StaleCursor", "note": "an iterator through one" },
+    { "op": "iterator", "on": "view_after", "as": "it_after", "expect_error": "StaleCursor" },
+    { "op": "next", "on": "it", "expect_error": "StaleCursor", "note": "and one made in it" },
+
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "ctx": { "as": "n", "ops": [
+      { "op": "write_path", "on": "n", "path": [{ "hash_map_get": { "value": { "sha1": "later" } } }, { "write": { "bytes": "a long value that lands where the rolled-back one was" } }] },
+      { "op": "count", "on": "rw", "expect_error": "StaleCursor", "note": "the same inside a later transaction" },
+      { "op": "read_path", "on": "ro", "path": [{ "hash_map_get": { "value": { "sha1": "x" } } }], "expect_error": "StaleCursor" },
+      { "op": "count", "on": "view_after", "expect_error": "StaleCursor" },
+      { "op": "next", "on": "it", "expect_error": "StaleCursor" },
+      { "op": "iterator", "on": "ro", "as": "it_later", "expect_error": "StaleCursor" },
+      { "op": "write_path", "on": "n", "path": [{ "hash_map_get": { "value": { "sha1": "kept" } } }, { "write": { "uint": 3 } }], "note": "none of those wrote anything, so the transaction isn't poisoned" }
+    ] } }] },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "kept" } } }], "as": "kept_now" },
+    { "op": "read_uint", "on": "kept_now", "expect": 3 },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "gone" } } }], "expect_null": true }
+  ]
+}

@@ -18,6 +18,7 @@
         { "op": "slot", "on": "k", "expect": { "tag": "short_bytes" } },
         { "op": "write", "on": "k", "data": { "bytes": "b" }, "expect_error": "CursorNotWriteable",
           "note": "a sorted map's key can't be written, through sorted_map_get {key} or a key-value pair" },
+        { "op": "writer", "on": "k", "steps": [{ "write": "b" }], "expect_error": "CursorNotWriteable", "note": "by any way to write, the byte writer too" },
         { "op": "write", "on": "v", "data": { "uint": 3 } },
         { "op": "write_path", "on": "sm", "path": [{ "sorted_map_remove": "absent" }], "expect_error": "KeyNotFound" },
         { "op": "count", "on": "sm", "expect": 3 },
