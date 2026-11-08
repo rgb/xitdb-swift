@@ -166,4 +166,11 @@ extension PathPart {
         default: false
         }
     }
+
+    /// Whether this part writes a slot with one of the trees' own tags,
+    /// which is refused before any part of the path runs.
+    var writesStructuralSlot: Bool {
+        if case .write(let data) = self { return data.isStructuralSlot }
+        return false
+    }
 }

@@ -108,6 +108,16 @@ public struct Cursor<Access: CursorAccess> {
         if freezeCount < database.freezeNumber, !(path.count > 0 && path[0].isInit) { throw .staleCursor }
     }
 
+    /// Refuses a path that would write a slot with one of the trees' own
+    /// tags, before any part of it runs, so that nothing is written and
+    /// nothing poisoned (finding 3). It comes after ``checkWritable(_:)``,
+    /// so that a write with no transaction open is `expectedTxStart` first.
+    func checkData(_ path: Span<PathPart>) throws(XitDBError) {
+        for index in 0..<path.count where path[index].writesStructuralSlot {
+            throw .structuralSlot
+        }
+    }
+
     /// Whether this is a cursor at the root of the database.
     var isRoot: Bool {
         slotPointer.position == RootHeader.position
@@ -461,9 +471,11 @@ extension Cursor where Access == ReadWrite {
         lift: (XitDBError) -> Failure,
         callback: (inout Cursor<ReadWrite>) throws(Failure) -> Void
     ) throws(Failure) -> Cursor<ReadWrite> {
-        // The checks before anything is written, in the port's fixed order.
+        // The checks before anything is written, in the port's fixed order,
+        // then the data every write part carries.
         do throws(XitDBError) {
             try checkWritable(path)
+            try checkData(path)
         } catch {
             throw lift(error)
         }
@@ -574,6 +586,9 @@ extension Cursor where Access == ReadWrite {
         } else {
             try checkReadable()
         }
+        // The data is checked before the slot is looked at, so that a
+        // structural slot is refused whatever the slot holds.
+        try checkData(path.span)
         var pointer = try resolved()
         if !isRoot, let position = pointer.position {
             pointer.slot = try database.reader.slot(at: position)

@@ -121,10 +121,11 @@ extension Database {
     ///
     /// **A commit may be lost by this call.** Everything after the last
     /// trailer that verifies is discarded: a commit whose trailer was
-    /// damaged, and whatever followed it. Nothing else in XitDB drops a
-    /// commit; opening a damaged database fails instead, and its bytes stay
-    /// as they were until this is called. Copy the storage first if the
-    /// discarded bytes might be wanted.
+    /// damaged, and whatever followed it. This is the only call that cuts a
+    /// database back to an earlier commit of its own; opening a damaged
+    /// database fails instead, and its bytes stay as they were until this
+    /// is called. Copy the storage first if the discarded bytes might be
+    /// wanted.
     ///
     /// The scan goes by the trailers alone, not by the root header. On a
     /// storage whose root header is sound this still cuts to the last

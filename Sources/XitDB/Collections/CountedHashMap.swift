@@ -440,6 +440,11 @@ extension CountedHashMap where Access == ReadWrite {
     ///   set, or an error of the storage or of a damaged file.
     public func putKey(_ key: WritableData, forHash hash: Span<UInt8>) throws(XitDBError) {
         let path: InlineArray<2, PathPart> = [.hashMapGet(.key, KeyHash(hash)), .ctx]
+        // The key is written inside the callback, so it is not a part of
+        // the path: check it here, after the cursor's checks and before the
+        // entry is made, as a write part would be checked.
+        try cursor.checkWritable(path.span)
+        try key.checkIsValue()
         _ = try cursor.writePath(
             path.span,
             typed: { (keyCursor: inout Cursor<ReadWrite>) throws(XitDBError) in
