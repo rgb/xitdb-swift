@@ -52,13 +52,16 @@ How a database works, in the order to read it.
 ### Opening a database
 
 A database keeps its bytes in a storage. ``BufferedFileStorage`` is the one to use for a file, and
-``MemoryStorage`` for a database that needs none. What opening does with a damaged file, and how threads and processes
-share one, are here too.
+``MemoryStorage`` for a database that needs none. What opening does with a damaged file, how threads and processes
+share one, and the snapshot that hands one commit to other tasks are here too.
 
 - <doc:Storage>
 - <doc:Recovery>
 - <doc:ConcurrencyAndSnapshots>
 - ``Database``
+- ``Snapshot``
+- ``SnapshotDatabase``
+- ``ReadableDatabase``
 - ``BufferedFileStorage``
 - ``MemoryStorage``
 - ``FileStorage``

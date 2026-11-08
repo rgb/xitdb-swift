@@ -60,6 +60,35 @@ import XitDB
         #expect(mismatches == 0)
     }
 
+    @Test @MainActor func aTaskReadsASnapshotWhileTheMainActorWrites() async throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
+        try history.append(.slot(try history.slot(at: -1))) { cursor in
+            try HashMap<ReadWrite>(cursor).put(.uint(1), forHash: sha256("count"))
+        }
+
+        // The writer, on the main actor, hands the last commit to a reader.
+        let snapshot = try database.snapshot()
+        let reader = Task.detached {
+            let history = try ArrayList<ReadOnly>(snapshot.rootCursor)
+            let moment = try HashMap<ReadOnly>(history.cursor(at: -1)!)
+            return try moment.cursor(forHash: sha256("count"))!.readUInt64()
+        }
+
+        // The writer goes on, and the reader reads the commit it was given.
+        try history.append(.slot(try history.slot(at: -1))) { cursor in
+            try HashMap<ReadWrite>(cursor).put(.uint(2), forHash: sha256("count"))
+        }
+        let count = try await reader.value
+        #expect(count == 1)
+        let latest = try HashMap<ReadOnly>(history.cursor(at: -1)!)
+        #expect(try latest.cursor(forHash: sha256("count"))!.readUInt64() == 2)
+
+        // A database of the snapshot reads the same commit.
+        let reading = SnapshotDatabase(snapshot)
+        #expect(try ArrayList<ReadOnly>(reading.rootCursor).count == 1)
+    }
+
     @Test func aCursorFromAnEarlierCommitReadsThatCommit() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         let map = try HashMap<ReadWrite>(database.rootCursor)

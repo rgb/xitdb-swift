@@ -1,7 +1,7 @@
 # Concurrency and snapshots
 
-Which types can cross between threads and tasks, how readers and a writer share a file, and what a cursor from another
-transaction reads.
+Which types can cross between threads and tasks, how readers and a writer share a file, how a snapshot hands one commit
+to other tasks, and what a cursor from another transaction reads.
 
 ## Overview
 
@@ -12,14 +12,16 @@ and everything before it never change.
 
 ### What can cross between tasks
 
-Only plain values are `Sendable`: ``Slot`` and its ``Slot/Tag``, ``WritableData``, ``Bytes``, ``FormatTag``, ``HashID``,
+Plain values are `Sendable`: ``Slot`` and its ``Slot/Tag``, ``WritableData``, ``Bytes``, ``FormatTag``, ``HashID``,
 ``DatabaseHeader``, ``ReplicaState``, ``XitDBError``, ``MemoryOffsetMap``, ``ArrayByteSink``, ``ArrayByteSource``, and the
-enums ``Durability``, ``FileAccess``, ``FileLock`` and ``SyncPoint``.
+enums ``Durability``, ``FileAccess``, ``FileLock`` and ``SyncPoint``. So is a ``Snapshot``, which is how another task reads a
+database: see <doc:ConcurrencyAndSnapshots#Snapshots>.
 
-Nothing that reads or writes a database is: ``Database``, ``Cursor``, the collections, ``Entry``, ``CollectionIterator``,
-``ByteReader``, ``ByteWriter``, and the storages, whose conformance to `Sendable` is marked unavailable. In Swift 6 mode the
-compiler holds you to it. It refuses to share a database between two tasks, and lets one move to another task only when
-nothing left behind can use it. A database has no lock inside, so do not get around the compiler with `@unchecked Sendable`.
+Nothing that reads or writes a database is: ``Database``, ``SnapshotDatabase``, ``Cursor``, the collections, ``Entry``,
+``CollectionIterator``, ``ByteReader``, ``ByteWriter``, and the storages, whose conformance to `Sendable` is marked
+unavailable. In Swift 6 mode the compiler holds you to it. It refuses to share a database between two tasks, and lets one move
+to another task only when nothing left behind can use it. A database has no lock inside, so do not get around the compiler with
+`@unchecked Sendable`.
 
 ### Readers and a writer
 
@@ -50,8 +52,8 @@ already read.
 
 The lock, the read-only access mode and why a reader that opened the file read-write is a second writer are in <doc:Storage>.
 
-A database in memory has no file to share. Its ``MemoryStorage`` belongs to one thread or task at a time, as the database does,
-so no other thread can read it at the same time.
+A database in memory has no file to share. Its ``MemoryStorage`` belongs to one thread or task at a time, as the database
+does; other tasks read it through a snapshot.
 
 ### Cursors from other transactions
 
@@ -76,7 +78,68 @@ The ``Database/rootCursor`` is never stale: every read through it looks up the l
 
 ### Snapshots
 
-Read snapshots that can be shared between threads and tasks are the next thing planned for the package, and are not here yet.
+``Database/snapshot()`` takes a ``Snapshot`` of the last commit: its committed size and its root, read and verified once. A
+snapshot is `Sendable`, so it can go to any task, and it never refreshes: it reads that commit, whatever the writer does
+afterwards. Where it is used, ``Snapshot/rootCursor`` gives a read-only cursor at its root, and ``SnapshotDatabase`` makes a
+database of it, for compacting or replicating the commit. Neither reads anything. A ``SnapshotDatabase``, and everything made
+from a snapshot, belongs to the task that made it, as a ``Database`` does. Two tasks reading one snapshot share nothing but the snapshot.
+
+Here a database in memory is written on the main actor, and a task reads the commit it was handed:
+
+```swift
+// The writer, on the main actor, hands the last commit to a reader.
+let snapshot = try database.snapshot()
+let reader = Task.detached {
+    let history = try ArrayList<ReadOnly>(snapshot.rootCursor)
+    let moment = try HashMap<ReadOnly>(history.cursor(at: -1)!)
+    return try moment.cursor(forHash: sha256("count"))!.readUInt64()
+}
+
+// The writer goes on, and the reader reads the commit it was given.
+try history.append(.slot(try history.slot(at: -1))) { cursor in
+    try HashMap<ReadWrite>(cursor).put(.uint(2), forHash: sha256("count"))
+}
+let count = try await reader.value
+```
+
+`count` is 1, whichever of the two ran first: the snapshot was taken before the second commit. To see a later commit, take a
+new snapshot.
+
+A ``SnapshotDatabase`` has only reading members, and every cursor a snapshot gives is read-only, so nothing can write through
+one. Nothing read from a snapshot is ever stale, since nothing runs a transaction on it. Code that only reads can take
+`some ReadableDatabase`: both a ``Database`` and a ``SnapshotDatabase`` are one, as ``ReadableDatabase`` says.
+
+``Snapshot/init(_:)`` makes a snapshot of one collection inside a commit, so that one task can find it and hand it to many: the
+new snapshot's root cursor is at that collection. It throws because, for a cursor of a live database, it first takes a
+snapshot of that database, which reads the root header. A cursor at work that the running transaction has not committed yet
+is refused with ``XitDBError/staleCursor``: take the snapshot after the commit.
+
+A snapshot of a database in a file reads the file through the storage's own descriptor, so the file stays open, and any lock
+held, until the storage and the last snapshot have gone. If a replication sync at 0 through that database rewrites the file,
+every read through the snapshot from then on, one under way included, throws ``XitDBError/snapshotOverwritten``: take a new
+one. A snapshot of a database in memory keeps its commit's bytes and reads on. Only a rewrite through the storage the snapshot
+was taken from is seen. One through another storage opened on the same path, or by another process, is not: the snapshot then
+reads the new file at the old offsets, and the checks on what it reads report damage, or at worst give a wrong value. A file
+lock, when the writer asked for one, keeps such a second opener out while the snapshot lives. See <doc:Replication>, and
+<doc:Compaction> for a file replaced while a snapshot reads it.
+
+### What a snapshot costs
+
+| | In memory | In a file |
+|---|---|---|
+| Taking a snapshot | 52 ns | 0.9 µs, two reads |
+| A snapshot, a database over it, and one key read | 0.28 µs | 2.8 µs |
+| Reads through a snapshot, against the live database | 1 to 7% slower | the same, or up to 3% faster |
+
+On a storage of your own, taking a snapshot copies the committed bytes, which costs their size.
+
+Holding a snapshot across a commit is where memory costs more. A snapshot shares the database's array, and the first write
+while it lives copies the whole array, at 17.6 µs per megabyte. A snapshot kept alive across every commit makes every commit
+pay it: in the benchmark, a database that grew to 9.66 MB paid about 170 µs for the copy at each commit, against 3.4 µs for
+the commit itself. On a buffered file the same thing cost 4%. So hold a snapshot of a memory database briefly, and keep data
+that is both large and written under readers in a file.
+
+These are the package's measurements of 2026-11-08, in a release build. Yours will differ with the machine.
 
 ## See Also
 

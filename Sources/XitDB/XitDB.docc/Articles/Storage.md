@@ -5,7 +5,8 @@ Where a database keeps its bytes: the three storages, how to open a file, and ho
 ## Overview
 
 A ``Database`` keeps its bytes in a storage, a flat run of bytes addressed by offset, and it owns that storage: it is the only
-thing that writes to it. The storage owns its file and closes it when it goes away.
+thing that writes to it. The storage owns its file and closes it when it goes away and the last ``Snapshot`` of a database in it
+has gone.
 
 ```swift
 // A file, through a buffer: the one to use for a file.
@@ -114,7 +115,8 @@ collection on its root cursor discards whatever the real writer's transaction ha
 ### The lock
 
 One writer at a time is your responsibility, and an advisory lock is the tool. A storage takes one if you ask, when it opens, and
-holds it until it goes away:
+holds it until it goes away and the last ``Snapshot`` of a database in it has gone. A snapshot reads through the storage's own
+file descriptor, so the file stays open, and the lock held, for as long as one lives:
 
 ```swift
 // The writer holds an exclusive lock for as long as its storage lives.
@@ -128,7 +130,7 @@ need not ask: it does not get in the writer's way, and it gets a consistent view
 ``FileLock/shared`` lock does keep the writer out.
 
 No lock is taken unless you ask for one. Holding a lock on a file in a shared container while an iOS app is suspended gets the app
-terminated, so that decision is left to you.
+terminated, so that decision is left to you, and a snapshot kept alive holds the lock too.
 
 ### Writing a storage
 

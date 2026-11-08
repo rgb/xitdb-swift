@@ -34,6 +34,10 @@ let history = try ArrayList<ReadOnly>(compacted.rootCursor)
 The new database takes this one's hash size, and its hash ID unless you give another. It gets a new random file ID unless
 you give one, so it is a new file as far as replicas are concerned: see <doc:Replication>.
 
+The source can be a ``SnapshotDatabase``, made over a ``Snapshot``, so that another task compacts the snapshot's commit while
+the writer goes on committing. A snapshot of one collection, made with ``Snapshot/init(_:)``, is not a whole commit, and
+compacting a ``SnapshotDatabase`` over one is refused with ``XitDBError/subCollectionSnapshot``.
+
 ### What is kept
 
 What happens depends on the root:
@@ -134,7 +138,9 @@ _ = try FileManager.default.replaceItemAt(
     withItemAt: URL(fileURLWithPath: "compact.db"))
 ```
 
-Other processes need to open the file again: one that has the old file open goes on reading the old file.
+Other processes need to open the file again: one that has the old file open goes on reading the old file. So does a
+``Snapshot`` taken before the replacement. It reads through the file it was taken from, which stays open while the snapshot
+lives, so it goes on reading the old bytes and is not affected.
 
 ### Forgetting one thing
 
