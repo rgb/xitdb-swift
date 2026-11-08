@@ -77,7 +77,7 @@ import XitDB
 
     @Test func theStorageShapeTakesTheSourcesHashID() throws {
         let source = try Database(creating: MemoryStorage(), hashSize: 32, hashID: "sha2")
-        _ = try ArrayList<ReadWrite>(source.rootCursor)
+        try ArrayList<ReadWrite>(source.rootCursor).append(.uint(1))
         var offsets = MemoryOffsetMap()
 
         let compacted = try source.compact(into: MemoryStorage(), offsetMap: &offsets)
@@ -99,23 +99,28 @@ import XitDB
         #expect(try compacted.committedSize == 62)
         #expect(try compacted.rootCursor.slot.isEmpty)
 
-        // A history with no moments commits nothing either: the list is lost.
+        // A history with no moments is refused: compacting it would lose the list.
         let empty = try Database(creating: MemoryStorage(), hashSize: 32)
         _ = try ArrayList<ReadWrite>(empty.rootCursor)
         var more = MemoryOffsetMap()
-        let compactedEmpty = try empty.compact(into: MemoryStorage(), offsetMap: &more)
-        #expect(try compactedEmpty.rootCursor.slot.isEmpty)
+        #expect(throws: XitDBError.emptyLastMoment) {
+            try empty.compact(into: MemoryStorage(), offsetMap: &more)
+        }
     }
 
-    @Test func aLastElementNeverWrittenLosesTheHistory() throws {
+    @Test func aLastElementNeverWrittenIsRefused() throws {
         let database = try newHistory(moments: 3)
         let history = try ArrayList<ReadWrite>(database.rootCursor)
         _ = try history.appendCursor()
 
+        // Compacting would keep nothing: not the list, not the three moments.
+        // Nothing is written to the target, which stays an empty storage.
+        let target = MemoryStorage()
         var offsets = MemoryOffsetMap()
-        let compacted = try database.compact(into: MemoryStorage(), offsetMap: &offsets)
-        #expect(try compacted.rootCursor.slot.isEmpty)
-        #expect(try compacted.committedSize == 62)
+        #expect(throws: XitDBError.emptyLastMoment) {
+            try database.compact(into: target, offsetMap: &offsets)
+        }
+        #expect(target.bytes.isEmpty)
     }
 
     @Test func onlyAnArrayListAtTheRootIsAHistory() throws {

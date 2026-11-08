@@ -629,6 +629,7 @@ final class ScriptRunner {
         case .invalidRange: "InvalidRange"
         case .invalidLength: "InvalidLength"
         case .targetNotEmpty: "TargetNotEmpty"
+        case .emptyLastMoment: "EmptyLastMoment"
         // No script creates a database in a storage that holds bytes.
         case .storageNotEmpty: "StorageNotEmpty"
         case .keyOffsetExceeded: "KeyOffsetExceeded"

@@ -312,48 +312,104 @@ import Testing
         }
     }
 
-    /// An empty source commits nothing in the target, and neither does a
-    /// history with no moments, or one whose last moment was never written:
-    /// the target is left as it was, byte for byte.
+    /// An empty source commits nothing in the target, which is left as it
+    /// was byte for byte; a root set to nothing is not empty, and is copied
+    /// as a commit.
     @Test(arguments: StorageKind.allCases)
-    func aSourceWithNoLastMomentCommitsNothing(kind: StorageKind) throws {
-        func compactingLeavesUntouched(_ prepare: (Database) throws -> Void) throws {
+    func anEmptySourceCommitsNothing(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let source = try makeDatabase(subject)
+        let targetSubject = try StorageUnderTest(kind)
+        let target = try Database(storage: targetSubject.storage, hashSize: 20, fileID: 8)
+        let before = try readBytes(targetSubject.storage, at: 0, count: Int(try targetSubject.storage.length))
+        var map = MemoryOffsetMap()
+        try source.compact(into: target, offsetMap: &map)
+        let after = try readBytes(targetSubject.storage, at: 0, count: Int(try targetSubject.storage.length))
+        #expect(after == before)
+        #expect(try target.rootCursor.slot.isEmpty)
+
+        // but a root set to nothing is copied, as a commit
+        var root = source.rootCursor
+        try root.write(.slot(nil))
+        try source.compact(into: target, offsetMap: &map)
+        #expect(try targetSubject.storage.length > UInt64(before.count))
+        #expect(try target.rootCursor.slot == Slot(value: 0, tag: .none, full: true))
+    }
+
+    /// A history whose last moment is empty, because the list has no
+    /// elements or its last element was appended and never written, is
+    /// refused before anything is written: Zig compacts it to an empty
+    /// database, losing the list and every moment before the empty one
+    /// (finding 28). The source is checked before the target, so a target
+    /// that holds data is refused for the source's reason, and the shape
+    /// that opens the target refuses before opening it. A last moment set
+    /// to nothing is a moment, and compacts.
+    @Test(arguments: StorageKind.allCases)
+    func aHistoryWithAnEmptyLastMomentIsRefused(kind: StorageKind) throws {
+        func allBytes(_ subject: StorageUnderTest) throws -> [UInt8] {
+            try readBytes(subject.storage, at: 0, count: Int(try subject.storage.length))
+        }
+        func refusing(_ prepare: (Database) throws -> Void) throws {
             let subject = try StorageUnderTest(kind)
             let source = try makeDatabase(subject)
             try prepare(source)
+            let sourceBefore = try allBytes(subject)
+            var map = MemoryOffsetMap()
+
+            // a target opened by the caller is left as it was
             let targetSubject = try StorageUnderTest(kind)
             let target = try Database(storage: targetSubject.storage, hashSize: 20, fileID: 8)
-            let before = try readBytes(targetSubject.storage, at: 0, count: Int(try targetSubject.storage.length))
-            var map = MemoryOffsetMap()
-            try source.compact(into: target, offsetMap: &map)
-            let after = try readBytes(targetSubject.storage, at: 0, count: Int(try targetSubject.storage.length))
-            #expect(after == before)
-            #expect(try target.rootCursor.slot.isEmpty)
+            let targetBefore = try allBytes(targetSubject)
+            #expect(throws: XitDBError.emptyLastMoment) { try source.compact(into: target, offsetMap: &map) }
+            #expect(try allBytes(targetSubject) == targetBefore)
+
+            // a target that holds data is refused for the source's reason
+            let heldSubject = try StorageUnderTest(kind)
+            let held = try Database(storage: heldSubject.storage, hashSize: 20, fileID: 9)
+            try HashMap<ReadWrite>(held.rootCursor).put(.uint(1), forHash: sha1("held").bytes)
+            let heldBefore = try allBytes(heldSubject)
+            #expect(throws: XitDBError.emptyLastMoment) { try source.compact(into: held, offsetMap: &map) }
+            #expect(try allBytes(heldSubject) == heldBefore)
+
+            // the shape that opens the target refuses before opening it
+            let emptySubject = try StorageUnderTest(kind)
+            #expect(throws: XitDBError.emptyLastMoment) {
+                _ = try source.compact(into: emptySubject.storage, offsetMap: &map)
+            }
+            #expect(try emptySubject.storage.length == 0)
+
+            #expect(try allBytes(subject) == sourceBefore)
         }
-        // an empty source
-        try compactingLeavesUntouched { _ in }
+
+        // three written moments and one appended, never written
+        try refusing { source in
+            let history = try ArrayList<ReadWrite>(source.rootCursor)
+            for round in 1...3 {
+                try history.append(.slot(try history.slot(at: -1))) { cursor in
+                    try HashMap<ReadWrite>(cursor).put(.uint(UInt64(round)), forHash: sha1("round-\(round)").bytes)
+                }
+            }
+            _ = try history.appendCursor()
+            #expect(try history.count == 4)
+        }
         // a history with no moments
-        try compactingLeavesUntouched { source in
+        try refusing { source in
             _ = try source.rootCursor.writePath([.arrayListInit])
             #expect(try source.rootCursor.count == 0)
         }
-        // a history whose last moment was never written
-        try compactingLeavesUntouched { source in
-            _ = try source.rootCursor.writePath([.arrayListInit, .arrayListAppend])
-            #expect(try source.rootCursor.count == 1)
-        }
-        // but a root set to nothing is copied, as a commit
+
+        // but a last moment set to nothing is a moment, and compacts
         let subject = try StorageUnderTest(kind)
         let source = try makeDatabase(subject)
-        var root = source.rootCursor
-        try root.write(.slot(nil))
-        let targetSubject = try StorageUnderTest(kind)
-        let target = try Database(storage: targetSubject.storage, hashSize: 20, fileID: 8)
-        let lengthBefore = try targetSubject.storage.length
+        let history = try ArrayList<ReadWrite>(source.rootCursor)
+        try history.append(.uint(1))
+        try history.append(.slot(nil))
         var map = MemoryOffsetMap()
-        try source.compact(into: target, offsetMap: &map)
-        #expect(try targetSubject.storage.length > lengthBefore)
-        #expect(try target.rootCursor.slot == Slot(value: 0, tag: .none, full: true))
+        let targetSubject = try StorageUnderTest(kind)
+        let target = try source.compact(into: targetSubject.storage, offsetMap: &map)
+        let compacted = try ArrayList<ReadOnly>(target.rootCursor)
+        #expect(try compacted.count == 1)
+        #expect(try compacted.slot(at: 0) == Slot(value: 0, tag: .none, full: true))
     }
 
     /// A tree branch whose child points back at its root: the memo ends the

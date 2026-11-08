@@ -17,10 +17,13 @@ extension Database {
     /// The target gets what the latest moment reaches and nothing else, in
     /// one ordinary transaction, with its header, trailer and commit ID.
     /// A root that is an array list is a history, and only its last
-    /// moment survives, as the sole element of a new list; a history with
-    /// no last moment, or whose last moment was never written, commits
-    /// nothing. An empty root commits nothing either. Any other root, one
-    /// set to nothing included, is copied whole.
+    /// moment survives, as the sole element of a new list. A history whose
+    /// last moment is empty, because the list has no elements or its last
+    /// element was appended and never written, is refused: compacting it
+    /// would keep nothing of the history, which is what the original does.
+    /// A last moment set to nothing is a moment, and compacts. An empty
+    /// root commits nothing. Any other root, one set to nothing included,
+    /// is copied whole.
     ///
     /// The target must be a database whose root is empty, opened by the
     /// caller, with the same hash size as this one: a new one, or an
@@ -33,7 +36,10 @@ extension Database {
     ///   - target: The database to write into.
     ///   - offsetMap: Where the copy remembers what went where. It is reset
     ///     first, and holds every mapping when the call returns.
-    /// - Throws: ``XitDBError/targetNotEmpty`` if the target's root holds
+    /// - Throws: ``XitDBError/emptyLastMoment`` if this database is a
+    ///   history whose last moment is empty, which is checked before
+    ///   anything else, so that the target and the offset map are as they
+    ///   were; ``XitDBError/targetNotEmpty`` if the target's root holds
     ///   anything, this database itself included, in which case the target
     ///   is left as it was; ``XitDBError/invalidHashSize`` if the target's
     ///   hash size differs from this database's; and for a damaged source,
@@ -49,42 +55,8 @@ extension Database {
     ///   then, the next transaction discards it. Errors of the two
     ///   storages and of the offset map are passed on.
     public func compact<Map: OffsetMap>(into target: Database, offsetMap: inout Map) throws(XitDBError) {
-        // cached offsets only apply to this compaction's target
-        try offsetMap.clear()
-        guard target.header.hashSize == header.hashSize else { throw .invalidHashSize }
-
-        // the target must be a new or empty database, because compaction
-        // writes to it with ordinary transactions. this also rejects
-        // compacting a database into its own file.
-        guard try target.rootCursor.slot.isEmpty else { throw .targetNotEmpty }
-
-        // an empty root compacts to a new database. a root explicitly set
-        // to nothing isn't empty, so it is remapped below.
-        let sourceRoot = try rootCursor.slot
-        if sourceRoot.isEmpty { return }
-
-        // the target is written as one ordinary transaction, so it is
-        // committed and synced like any other. the remap must run inside
-        // the transaction, because starting one truncates the target.
-        var compactor = Compactor(source: self, target: target)
-        switch sourceRoot.tag {
-        case .arrayList:
-            // an array list root is a history, and its latest moment
-            // becomes the only moment of a new one
-            let last: InlineArray<1, PathPart> = [.arrayListGet(-1)]
-            if let lastMoment = try rootCursor.readPathSlot(last.span) {
-                let path: InlineArray<3, PathPart> = [.arrayListInit, .arrayListAppend, .ctx]
-                _ = try target.rootCursor.writePath(path.span) { (cursor) throws(XitDBError) in
-                    try cursor.write(.slot(try compactor.remap(lastMoment, offsetMap: &offsetMap)))
-                }
-            }
-        default:
-            // any other root is remapped whole
-            let path: InlineArray<1, PathPart> = [.ctx]
-            _ = try target.rootCursor.writePath(path.span) { (cursor) throws(XitDBError) in
-                try cursor.write(.slot(try compactor.remap(sourceRoot, offsetMap: &offsetMap)))
-            }
-        }
+        let source = try compactionSource()
+        try compact(source, into: target, offsetMap: &offsetMap)
     }
 
     /// Compacts this database into a new one over `storage`, and returns
@@ -109,21 +81,94 @@ extension Database {
     ///     before the target is opened.
     /// - Returns: The target, open for reading and writing.
     /// - Throws: What ``compact(into:offsetMap:)`` throws, and what opening a
-    ///   database over `storage` throws.
+    ///   database over `storage` throws. ``XitDBError/emptyLastMoment`` is
+    ///   raised before the target is opened, so an empty storage stays
+    ///   empty.
     public func compact<Map: OffsetMap>(
         into storage: any WritableStorage,
         hashID: HashID? = nil,
         fileID: UInt64? = nil,
         offsetMap: inout Map
     ) throws(XitDBError) -> Database {
+        // the source is checked before the target is opened, because opening
+        // writes a header into an empty storage, and a guard writes nothing
+        let source = try compactionSource()
+
         // cached offsets only apply to this compaction's target, and Zig
         // resets the map before it opens the target
         try offsetMap.clear()
         let target = try Database(
             storage: storage, hashSize: header.hashSize, hashID: hashID ?? header.hashID, fileID: fileID,
             random: random)
-        try compact(into: target, offsetMap: &offsetMap)
+        try compact(source, into: target, offsetMap: &offsetMap)
         return target
+    }
+
+    /// What a compaction copies from its source.
+    private enum CompactionSource {
+        /// An empty root: nothing is committed in the target.
+        case nothing
+        /// The last moment of a history, which becomes the only moment of a
+        /// new one.
+        case lastMoment(Slot)
+        /// Any other root, copied whole.
+        case root(Slot)
+    }
+
+    /// Reads what a compaction copies, and refuses a history whose last
+    /// moment is empty (finding 28): Zig compacts such a history to an
+    /// empty database, losing the list and every moment before the empty
+    /// one. It runs before anything is done to the target or the offset
+    /// map, so that the refusal writes nothing.
+    private func compactionSource() throws(XitDBError) -> CompactionSource {
+        // an empty root compacts to a new database. a root explicitly set
+        // to nothing isn't empty, so it is remapped.
+        let root = try rootCursor.slot
+        if root.isEmpty { return .nothing }
+        guard root.tag == .arrayList else { return .root(root) }
+
+        // an array list root is a history. the path gives nil for a list
+        // with no elements and for a last element appended and never
+        // written; a last moment set to nothing is full, so it comes back.
+        let last: InlineArray<1, PathPart> = [.arrayListGet(-1)]
+        guard let lastMoment = try rootCursor.readPathSlot(last.span) else { throw .emptyLastMoment }
+        return .lastMoment(lastMoment)
+    }
+
+    private func compact<Map: OffsetMap>(
+        _ source: CompactionSource, into target: Database, offsetMap: inout Map
+    ) throws(XitDBError) {
+        // cached offsets only apply to this compaction's target
+        try offsetMap.clear()
+        guard target.header.hashSize == header.hashSize else { throw .invalidHashSize }
+
+        // the target must be a new or empty database, because compaction
+        // writes to it with ordinary transactions. this also rejects
+        // compacting a database into its own file.
+        guard try target.rootCursor.slot.isEmpty else { throw .targetNotEmpty }
+
+        // the target is written as one ordinary transaction, so it is
+        // committed and synced like any other. the remap must run inside
+        // the transaction, because starting one truncates the target.
+        switch source {
+        case .nothing:
+            return
+        case .lastMoment(let lastMoment):
+            // the latest moment of a history becomes the only moment of a
+            // new one
+            var compactor = Compactor(source: self, target: target)
+            let path: InlineArray<3, PathPart> = [.arrayListInit, .arrayListAppend, .ctx]
+            _ = try target.rootCursor.writePath(path.span) { (cursor) throws(XitDBError) in
+                try cursor.write(.slot(try compactor.remap(lastMoment, offsetMap: &offsetMap)))
+            }
+        case .root(let root):
+            // any other root is remapped whole
+            var compactor = Compactor(source: self, target: target)
+            let path: InlineArray<1, PathPart> = [.ctx]
+            _ = try target.rootCursor.writePath(path.span) { (cursor) throws(XitDBError) in
+                try cursor.write(.slot(try compactor.remap(root, offsetMap: &offsetMap)))
+            }
+        }
     }
 }
 
