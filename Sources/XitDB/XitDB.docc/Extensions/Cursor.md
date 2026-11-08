@@ -6,7 +6,9 @@
 
 - ``slot``
 - ``count``
-- ``database``
+- ``database-62rmi``
+- ``database-7kom4``
+- ``readOnly``
 
 ### Reading numbers
 

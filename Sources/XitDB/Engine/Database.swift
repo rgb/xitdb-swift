@@ -56,6 +56,11 @@ public final class Database {
     /// point past the record the writer is filling.
     var openByteWriters = 0
 
+    /// For an engine under a ``SnapshotDatabase``, that database, so that a
+    /// read-only cursor's `database` is the one its holder made.
+    /// Weak: the snapshot database owns its engine, not the other way.
+    weak var readingOwner: AnyObject?
+
     /// The number of commits this object has made. A write looks at it
     /// before and after, to know whether it committed anything.
     private(set) var commitCount: UInt64 = 0
@@ -265,21 +270,18 @@ public final class Database {
         try storage.sync(.afterRootHeader)
     }
 
-    /// Opens a read-only database over a snapshot, at no I/O cost.
-    ///
-    /// The database reads the snapshot's commit, whatever the writer has
-    /// done since; every write through it is refused with
-    /// ``XitDBError/cursorNotWritable`` before anything is done, and its
-    /// ``snapshot()`` gives the same snapshot back. Its replication reads
-    /// serve the whole commit's bytes, a sub-collection snapshot's too, and
-    /// compaction from a sub-collection snapshot is refused with
-    /// ``XitDBError/subCollectionSnapshot``. Like every database it
+    /// The engine under a ``SnapshotDatabase``: a database over a snapshot's
+    /// read half with the root pinned, at no I/O cost. It reads the
+    /// snapshot's commit whatever the writer has done since; nothing public
+    /// writes through it, since the type that holds it has no writing
+    /// members, and the storage's snapshot case refuses a write from inside
+    /// the module with ``XitDBError/cursorNotWritable``. Like every database it
     /// belongs to one thread or task at a time: each task that reads a
     /// snapshot opens a database of its own over it, which costs a few small
     /// objects and no read.
     ///
     /// - Parameter snapshot: The commit to read.
-    public init(reading snapshot: Snapshot) {
+    init(reading snapshot: Snapshot) {
         let storage = BuiltInStorage.snapshot(snapshot.storage)
         self.storage = storage
         identity = DatabaseIdentity(header: snapshot.header)
@@ -343,7 +345,6 @@ public final class Database {
     ///   ``XitDBError/byteWriterOpen`` while a byte writer's body is
     ///   running.
     public func freeze() throws(XitDBError) {
-        if readsSnapshot { throw .cursorNotWritable }
         guard transactionStart != nil else { throw .expectedTxStart }
         guard openByteWriters == 0 else { throw .byteWriterOpen }
         transactionStart = try storage.length

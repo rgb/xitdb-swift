@@ -7,7 +7,7 @@ import XitDB
 
 /// Reads what `cursor` reaches, to a depth of eight and within a budget of
 /// cursors.
-func walk<Access: CursorAccess>(_ cursor: Cursor<Access>, depth: Int, budget: inout Int) {
+func walk<Access: CursorAccess>(_ cursor: Cursor<Access>, hashSize: Int, depth: Int, budget: inout Int) {
     guard depth < 8, budget > 0 else { return }
     budget -= 1
     _ = try? cursor.slot
@@ -31,8 +31,8 @@ func walk<Access: CursorAccess>(_ cursor: Cursor<Access>, depth: Int, budget: in
         _ = try? reader.readRemaining()
     }
     if let entry = try? cursor.readEntry() {
-        walk(entry.key, depth: depth + 1, budget: &budget)
-        walk(entry.value, depth: depth + 1, budget: &budget)
+        walk(entry.key, hashSize: hashSize, depth: depth + 1, budget: &budget)
+        walk(entry.value, hashSize: hashSize, depth: depth + 1, budget: &budget)
     }
     guard let tag = try? cursor.slot.tag else { return }
 
@@ -44,12 +44,11 @@ func walk<Access: CursorAccess>(_ cursor: Cursor<Access>, depth: Int, budget: in
         while visited < 5000, let element = try? iterator.next() {
             visited += 1
             if budget > 0 {
-                walk(element, depth: depth + 1, budget: &budget)
+                walk(element, hashSize: hashSize, depth: depth + 1, budget: &budget)
             }
         }
     }
 
-    let hashSize = Int(cursor.database.header.hashSize)
     switch tag {
     case .arrayList:
         if let list = try? ArrayList<ReadOnly>(cursor) {
@@ -57,7 +56,7 @@ func walk<Access: CursorAccess>(_ cursor: Cursor<Access>, depth: Int, budget: in
             for index in [0, 1, 15, 16, 17, 299, -1, -2, -300, Int.max, Int.min] {
                 iterate(try? list.iterator(fromIndex: index))
                 if let element = try? list.cursor(at: index) {
-                    walk(element, depth: depth + 1, budget: &budget)
+                    walk(element, hashSize: hashSize, depth: depth + 1, budget: &budget)
                 }
                 _ = try? list.slot(at: index)
             }
@@ -68,7 +67,7 @@ func walk<Access: CursorAccess>(_ cursor: Cursor<Access>, depth: Int, budget: in
             for index in [0, 1, 15, 16, 17, -1, -2, Int.max, Int.min] {
                 iterate(try? list.iterator(fromIndex: index))
                 if let element = try? list.cursor(at: index) {
-                    walk(element, depth: depth + 1, budget: &budget)
+                    walk(element, hashSize: hashSize, depth: depth + 1, budget: &budget)
                 }
             }
         }
@@ -78,7 +77,7 @@ func walk<Access: CursorAccess>(_ cursor: Cursor<Access>, depth: Int, budget: in
             for name in keyNames {
                 let keyHash = hash(name, hashSize)
                 if let value = try? map.cursor(forHash: keyHash) {
-                    walk(value, depth: depth + 1, budget: &budget)
+                    walk(value, hashSize: hashSize, depth: depth + 1, budget: &budget)
                 }
                 _ = try? map.keyCursor(forHash: keyHash)
                 _ = try? map.entry(forHash: keyHash)

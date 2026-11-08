@@ -24,10 +24,7 @@ public enum XitDBError: Error, Sendable {
     case writeNotAllowed
 
     /// The cursor has no position in the file, so nothing can be written
-    /// through it; or its database reads a ``Snapshot``, which nothing
-    /// writes to. Every write through such a database is refused with this
-    /// before anything is done, ``Database/applyReplicated(at:bytes:)`` on
-    /// it included.
+    /// through it.
     case cursorNotWritable
 
     /// A write below the root was attempted outside a transaction.

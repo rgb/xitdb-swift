@@ -106,7 +106,8 @@ try maybe.writeIfEmpty(.uint(1))
 try maybe.writeIfEmpty(.uint(2))
 ```
 
-A helper given only a cursor can reach its database through ``Cursor/database``.
+A helper given only a cursor can reach its database through its `database`, a ``Database`` on a read-write cursor and
+`any ReadableDatabase` on a read-only one; a helper over a cursor of any access goes through ``Cursor/readOnly`` first.
 
 ### A cursor holds a snapshot
 

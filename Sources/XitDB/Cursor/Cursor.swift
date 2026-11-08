@@ -30,9 +30,10 @@ public struct Cursor<Access: CursorAccess> {
     /// slot cannot be written through this cursor.
     var slotPointer: SlotPointer
 
-    /// The database the cursor reads from and writes to: where a helper
-    /// given only a cursor reaches the root, or freezes.
-    public let database: Database
+    /// The engine the cursor reads from and writes through: the live
+    /// database, or the one under a ``SnapshotDatabase``. The public view
+    /// is the cursor's `database`, typed by its access.
+    let engine: Database
 
     /// The freeze point: writes through this cursor copy any data written
     /// before this position, even data from the current transaction. Zero
@@ -54,7 +55,7 @@ public struct Cursor<Access: CursorAccess> {
     /// database's freezes so far.
     init(slotPointer: SlotPointer, database: Database, frozenAt: UInt64 = 0) {
         self.slotPointer = slotPointer
-        self.database = database
+        self.engine = database
         self.frozenAt = frozenAt
         self.transaction = database.cursorTransaction
         self.freezeCount = database.freezeNumber
@@ -65,7 +66,7 @@ public struct Cursor<Access: CursorAccess> {
     /// commit is refused as the cursor is.
     init(viewing other: Cursor<some CursorAccess>) {
         self.slotPointer = other.slotPointer
-        self.database = other.database
+        self.engine = other.engine
         self.frozenAt = other.frozenAt
         self.transaction = other.transaction
         self.freezeCount = other.freezeCount
@@ -78,7 +79,7 @@ public struct Cursor<Access: CursorAccess> {
     ///
     /// - Throws: ``XitDBError/staleCursor`` if it is.
     func checkReadable() throws(XitDBError) {
-        if transaction != 0 && !isRoot && database.transactionFailed(transaction) { throw .staleCursor }
+        if transaction != 0 && !isRoot && engine.transactionFailed(transaction) { throw .staleCursor }
     }
 
     /// The checks before a write through this cursor, in the order the
@@ -94,10 +95,7 @@ public struct Cursor<Access: CursorAccess> {
     /// ``XitDBError/expectedTxStart`` as it always was, and an empty path
     /// works.
     func checkWritable(_ path: Span<PathPart>) throws(XitDBError) {
-        // A snapshot's database is read and never written: refused before
-        // anything, the root cursor's transaction included.
-        if database.readsSnapshot { throw .cursorNotWritable }
-        if database.transactionStart == nil {
+        if engine.transactionStart == nil {
             if !isRoot && path.count > 0 { throw .expectedTxStart }
             return
         }
@@ -105,10 +103,10 @@ public struct Cursor<Access: CursorAccess> {
             if path.count > 0 { throw .nestedTopLevelWrite }
             return
         }
-        if database.poisoned { throw .poisonedTransaction }
+        if engine.poisoned { throw .poisonedTransaction }
         if slotPointer.position == nil, path.count == 0 || !path[0].isGet { throw .cursorNotWritable }
-        if transaction != database.transactionNumber { throw .staleCursor }
-        if freezeCount < database.freezeNumber {
+        if transaction != engine.transactionNumber { throw .staleCursor }
+        if freezeCount < engine.freezeNumber {
             // After a freeze the one way on through a cursor from before it
             // is a path that begins with an init part through the
             // transaction's own cursor (D24): its slot is the engine's own
@@ -117,7 +115,7 @@ public struct Cursor<Access: CursorAccess> {
             // gives a fresh cursor. Every other write through a cursor from
             // before the freeze is stale, inits through other cursors
             // included.
-            guard let body = database.bodyPosition, slotPointer.position == body, path.count > 0, path[0].isInit
+            guard let body = engine.bodyPosition, slotPointer.position == body, path.count > 0, path[0].isInit
             else { throw .staleCursor }
         }
     }
@@ -132,7 +130,7 @@ public struct Cursor<Access: CursorAccess> {
         }
     }
 
-    /// Whether this is a cursor at the root of the database.
+    /// Whether this is a cursor at the root of the engine.
     var isRoot: Bool {
         slotPointer.position == RootHeader.position
     }
@@ -143,7 +141,7 @@ public struct Cursor<Access: CursorAccess> {
     /// this.
     func resolved() throws(XitDBError) -> SlotPointer {
         if isRoot {
-            return try database.reader.resolvedRoot()
+            return try engine.reader.resolvedRoot()
         }
         return slotPointer
     }
@@ -158,8 +156,8 @@ public struct Cursor<Access: CursorAccess> {
     package func readPath(_ path: Span<PathPart>) throws(XitDBError) -> Cursor<ReadOnly>? {
         try checkReadable()
         do throws(XitDBError) {
-            let pointer = try database.reader.readSlotPointer(path, at: try resolved())
-            return Cursor<ReadOnly>(slotPointer: pointer, database: database)
+            let pointer = try engine.reader.readSlotPointer(path, at: try resolved())
+            return Cursor<ReadOnly>(slotPointer: pointer, database: engine)
         } catch {
             guard error == .keyNotFound || error == .indexOutOfRange else { throw error }
             return nil
@@ -177,7 +175,7 @@ public struct Cursor<Access: CursorAccess> {
     package func readPathSlot(_ path: Span<PathPart>) throws(XitDBError) -> Slot? {
         try checkReadable()
         do throws(XitDBError) {
-            let pointer = try database.reader.readSlotPointer(path, at: try resolved())
+            let pointer = try engine.reader.readSlotPointer(path, at: try resolved())
             return pointer.slot.isEmpty ? nil : pointer.slot
         } catch {
             guard error == .keyNotFound || error == .indexOutOfRange else { throw error }
@@ -266,7 +264,7 @@ public struct Cursor<Access: CursorAccess> {
     ///   root cursor and is from a transaction that did not commit.
     public func readBytesWithFormatTag(maxCount: Int? = nil) throws(XitDBError) -> Bytes {
         try checkReadable()
-        return try database.reader.bytesObject(try resolved().slot, maxSize: maxCount)
+        return try engine.reader.bytesObject(try resolved().slot, maxSize: maxCount)
     }
 
     /// Reads the slot's value as a byte array into a buffer, without
@@ -304,7 +302,7 @@ public struct Cursor<Access: CursorAccess> {
         into buffer: inout MutableSpan<UInt8>
     ) throws(XitDBError) -> (count: Int, formatTag: FormatTag?) {
         try checkReadable()
-        return try database.reader.bytesObject(try resolved().slot, into: &buffer)
+        return try engine.reader.bytesObject(try resolved().slot, into: &buffer)
     }
 
     /// Reads the entry of a map or set that this cursor is at: its key, its
@@ -328,8 +326,8 @@ public struct Cursor<Access: CursorAccess> {
     public func readEntry() throws(XitDBError) -> Entry {
         try checkReadable()
         let entry = try resolved().slot
-        let found = try database.reader.keyValuePair(entry)
-        let hashSize = database.header.hashSize
+        let found = try engine.reader.keyValuePair(entry)
+        let hashSize = engine.header.hashSize
         // A sorted map's key is never writable, since the map is ordered by
         // it (finding 2): its cursor has no position, as in the original's
         // fix branch, so the package-level path API cannot write it either.
@@ -340,7 +338,7 @@ public struct Cursor<Access: CursorAccess> {
                     position: keyPosition,
                     slot: found.pair.keySlot
                 ),
-                database: database,
+                database: engine,
                 frozenAt: frozenAt
             ),
             value: Cursor<ReadOnly>(
@@ -348,7 +346,7 @@ public struct Cursor<Access: CursorAccess> {
                     position: KeyValuePair.valuePosition(of: entry, hashSize: hashSize),
                     slot: found.pair.valueSlot
                 ),
-                database: database,
+                database: engine,
                 frozenAt: frozenAt
             ),
             keyHash: found.hash
@@ -365,7 +363,7 @@ public struct Cursor<Access: CursorAccess> {
     public var count: UInt64 {
         get throws(XitDBError) {
             try checkReadable()
-            return try database.reader.count(try resolved().slot)
+            return try engine.reader.count(try resolved().slot)
         }
     }
 }
@@ -411,14 +409,18 @@ public struct Entry {
     }
 }
 
-extension Cursor where Access == ReadWrite {
-    /// A cursor at the same slot that can only read. It is as stale as
-    /// this one: a view of a cursor from a transaction that did not commit
-    /// is refused the same way.
+extension Cursor {
+    /// A cursor at the same slot that can only read; a read-only cursor is
+    /// its own. It is as stale as this one: a view of a cursor from a
+    /// transaction that did not commit is refused the same way. A helper
+    /// given a cursor of any access reaches its database through it, as
+    /// `database` has the type the access decides.
     public var readOnly: Cursor<ReadOnly> {
         Cursor<ReadOnly>(viewing: self)
     }
+}
 
+extension Cursor where Access == ReadWrite {
     // MARK: Paths
 
     /// Follows a path from this cursor, writing as its parts say.
@@ -499,29 +501,29 @@ extension Cursor where Access == ReadWrite {
         var start = slotPointer
         if !isRoot, let position = start.position {
             do throws(XitDBError) {
-                start.slot = try database.reader.slot(at: position)
+                start.slot = try engine.reader.slot(at: position)
             } catch {
                 throw lift(error)
             }
         }
 
-        let database = self.database
+        let engine = self.engine
         let frozenAt = self.frozenAt
-        let commitsBefore = database.commitCount
-        let writesBefore = database.writesIssued
+        let commitsBefore = engine.commitCount
+        let writesBefore = engine.writesIssued
         // A cursor this operation gives back, the callback's or the result,
         // is stamped with the freezes as they were when the operation began
         // (D24 item 6): a freeze the operation itself makes, a concat's or
         // a callback's, must not make its result look fresh.
-        let freezesBefore = database.freezeNumber
+        let freezesBefore = engine.freezeNumber
         let result: SlotPointer
         do throws(Failure) {
-            result = try database.writeSlotPointer(path, at: start, frozenAt: frozenAt, lift: lift) {
+            result = try engine.writeSlotPointer(path, at: start, frozenAt: frozenAt, lift: lift) {
                 (pointer: inout SlotPointer) throws(Failure) in
                 // The first callback of a transaction is the transaction's
                 // own: its cursor is the one that goes on after a freeze.
-                database.noteBody(pointer.position)
-                var cursor = Cursor<ReadWrite>(slotPointer: pointer, database: database, frozenAt: frozenAt)
+                engine.noteBody(pointer.position)
+                var cursor = Cursor<ReadWrite>(slotPointer: pointer, database: engine, frozenAt: frozenAt)
                 cursor.freezeCount = freezesBefore
                 try callback(&cursor)
                 // Only the slot comes back out. A freeze made on the
@@ -534,10 +536,10 @@ extension Cursor where Access == ReadWrite {
             // write had already written something: what it left cannot be
             // undone short of the whole transaction, which is poisoned
             // (finding 16).
-            if database.transactionStart == nil {
-                try? database.truncate()
-            } else if database.writesIssued != writesBefore {
-                database.poison()
+            if engine.transactionStart == nil {
+                try? engine.truncate()
+            } else if engine.writesIssued != writesBefore {
+                engine.poison()
             }
             throw error
         }
@@ -550,14 +552,14 @@ extension Cursor where Access == ReadWrite {
         // wrapped around a root cursor, for no bytes written. So this syncs
         // only after a commit, which only the outermost write makes, as it
         // ends: there is no transaction left by then.
-        if database.commitCount != commitsBefore {
+        if engine.commitCount != commitsBefore {
             do throws(XitDBError) {
-                try database.storage.sync(.afterRootHeader)
+                try engine.storage.sync(.afterRootHeader)
             } catch {
                 throw lift(error)
             }
         }
-        var written = Cursor<ReadWrite>(slotPointer: result, database: database, frozenAt: frozenAt)
+        var written = Cursor<ReadWrite>(slotPointer: result, database: engine, frozenAt: frozenAt)
         written.freezeCount = freezesBefore
         return written
     }
@@ -605,9 +607,8 @@ extension Cursor where Access == ReadWrite {
         // cursors included; outside one, a slot that is not empty is left
         // alone without an error, as it always was, and an empty one gets
         // the write's expectedTxStart.
-        if database.readsSnapshot { throw .cursorNotWritable }
         let path: InlineArray<1, PathPart> = [.write(data)]
-        if database.transactionStart != nil {
+        if engine.transactionStart != nil {
             try checkWritable(path.span)
         } else {
             try checkReadable()
@@ -617,7 +618,7 @@ extension Cursor where Access == ReadWrite {
         try checkData(path.span)
         var pointer = try resolved()
         if !isRoot, let position = pointer.position {
-            pointer.slot = try database.reader.slot(at: position)
+            pointer.slot = try engine.reader.slot(at: position)
         }
         if pointer.slot.isEmpty {
             try write(data)
@@ -664,22 +665,22 @@ extension Cursor where Access == ReadWrite {
     ) throws {
         // A byte writer is a write with no path: the same checks first.
         try checkWritable(Span())
-        let writesBefore = database.writesIssued
+        let writesBefore = engine.writesIssued
         do {
-            var writer = ByteWriter(record: try ByteRecordWriter(database: database, at: slotPointer))
+            var writer = ByteWriter(record: try ByteRecordWriter(database: engine, at: slotPointer))
             writer.formatTag = formatTag
             // A freeze while the body runs would leave the record below the
             // frozen point: Database.freeze() and a concat refuse while one
             // is open.
-            database.openByteWriters += 1
-            defer { database.openByteWriters -= 1 }
+            engine.openByteWriters += 1
+            defer { engine.openByteWriters -= 1 }
             try body(&writer)
             slotPointer.slot = try writer.record.finish(slotPosition: slotPointer.position)
         } catch {
             // A writer that failed after appending bytes has left them
             // behind, which poisons the transaction (finding 16).
-            if database.transactionStart != nil && database.writesIssued != writesBefore {
-                database.poison()
+            if engine.transactionStart != nil && engine.writesIssued != writesBefore {
+                engine.poison()
             }
             throw error
         }
@@ -706,8 +707,8 @@ extension Cursor where Access == ReadWrite {
     ///
     /// - Throws: ``XitDBError/expectedTxStart`` outside a transaction.
     public mutating func freeze() throws(XitDBError) {
-        guard database.transactionStart != nil else { throw .expectedTxStart }
-        frozenAt = try database.storage.length
+        guard engine.transactionStart != nil else { throw .expectedTxStart }
+        frozenAt = try engine.storage.length
     }
 }
 
@@ -760,7 +761,7 @@ public struct ByteWriter: ~Copyable {
 }
 
 extension Database {
-    /// A cursor at the root of the database.
+    /// A cursor at the root of the engine.
     ///
     /// Everything read through it comes from the last commit, whichever
     /// that is at the time of the read. Every write through it is a
@@ -775,11 +776,8 @@ extension Database {
     /// processes on one file use the file's lock: a reader that opened
     /// read-write is a second writer, and starting a write-mode collection on
     /// its root cursor discards whatever the other process's transaction has
-    /// written so far. On a database made with ``init(reading:)`` the cursor
-    /// reads the snapshot's commit and every write through it is refused
-    /// with ``XitDBError/cursorNotWritable``. <doc:ConcurrencyAndSnapshots>
-    /// says which types cross threads and how readers share a file with a
-    /// writer.
+    /// written so far. <doc:ConcurrencyAndSnapshots> says which types cross
+    /// threads and how readers share a file with a writer.
     public var rootCursor: Cursor<ReadWrite> {
         // The cursor only holds a snapshot of the root slot, and everything
         // that starts at it reads the root again. If this read fails, the
@@ -831,5 +829,14 @@ extension Database {
         // A write path that ends in `.ctx` runs the body or throws.
         guard let result else { preconditionFailure("the transaction's body was not run") }
         return result
+    }
+}
+
+extension Cursor where Access == ReadWrite {
+    /// The database the cursor writes to: where a helper given only a
+    /// cursor reaches the root, or freezes. A read-write cursor only ever
+    /// comes from a live database's transaction, so this is that database.
+    public var database: Database {
+        engine
     }
 }

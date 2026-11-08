@@ -37,9 +37,8 @@ extension Database {
     ///   - target: The database to write into.
     ///   - offsetMap: Where the copy remembers what went where. It is reset
     ///     first, and holds every mapping when the call returns.
-    /// - Throws: ``XitDBError/cursorNotWritable`` if `target` reads a
-    ///   snapshot, and ``XitDBError/subCollectionSnapshot`` if this database
-    ///   reads a snapshot of a sub-collection, both before anything is done;
+    /// - Throws: ``XitDBError/subCollectionSnapshot`` if this database
+    ///   reads a snapshot of a sub-collection, before anything is done;
     ///   ``XitDBError/emptyLastMoment`` if the root is a list
     ///   whose last element is empty, which is checked before
     ///   anything else, so that the target and the offset map are as they
@@ -59,9 +58,6 @@ extension Database {
     ///   then, the next transaction discards it. Errors of the two
     ///   storages and of the offset map are passed on.
     public func compact<Map: OffsetMap>(into target: Database, offsetMap: inout Map) throws(XitDBError) {
-        // A target reading a snapshot is never written: refused before the
-        // source is looked at or the offset map touched.
-        if target.readsSnapshot { throw .cursorNotWritable }
         let source = try compactionSource()
         try compact(source, into: target, offsetMap: &offsetMap)
     }

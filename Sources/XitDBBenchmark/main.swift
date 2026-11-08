@@ -106,10 +106,35 @@ func milliseconds(_ body: () throws -> Void) rethrows -> Double {
     return Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000
 }
 
+/// What a read or iterate phase reads: a read-only cursor at the root,
+/// the live database's or a snapshot's (`--snapshot`), and the live
+/// database itself for the phases that need it, which `--snapshot` leaves
+/// alone.
+struct Reading {
+    let root: Cursor<ReadOnly>
+    let database: Database?
+
+    init(_ database: Database) {
+        root = database.rootCursor.readOnly
+        self.database = database
+    }
+
+    init(snapshotOf database: Database) throws {
+        root = SnapshotDatabase(try database.snapshot()).rootCursor
+        self.database = nil
+    }
+
+    /// The live database, for a phase that needs one.
+    func live() throws -> Database {
+        guard let database else { throw BenchmarkFailure(description: "the phase needs the live database") }
+        return database
+    }
+}
+
 /// The last moment of the list at the root.
-func lastMoment(_ database: Database) throws -> Cursor<ReadOnly> {
+func lastMoment(_ reading: Reading) throws -> Cursor<ReadOnly> {
     let path: InlineArray<1, PathPart> = [.arrayListGet(-1)]
-    guard let moment = try database.rootCursor.readPath(path.span) else {
+    guard let moment = try reading.root.readPath(path.span) else {
         throw BenchmarkFailure(description: "the database has no moment")
     }
     return moment
@@ -171,17 +196,18 @@ struct Workload {
     let keyCount: Int
     let prepare: (RunStorage, Keys) throws -> Any
     let write: (RunStorage, Keys, Any) throws -> Database
-    let read: (Database, Keys, Any) throws -> Void
-    let iterate: (Database, Keys, Any) throws -> Void
+    let read: (Reading, Keys, Any) throws -> Void
+    let iterate: (Reading, Keys, Any) throws -> Void
     /// Checks made after the write phase and after the read phase, off
     /// the clock: what a phase must have done, where checking it would
     /// cost time the phase does not.
     var afterWrite: (Database, Any) throws -> Void = { _, _ in }
     var afterRead: (Database, Any) throws -> Void = { _, _ in }
-    /// Whether the read or iterate phase writes to the database, as a
-    /// replication's second sync does, so that `--snapshot` leaves this
+    /// Whether the read or iterate phase needs the live database, as a
+    /// replication's second sync does, which writes, or a snapshot's cost
+    /// does, which takes snapshots of it; `--snapshot` leaves such a
     /// workload on the database itself.
-    var readPhasesWrite = false
+    var readPhasesNeedDatabase = false
     /// What the read phase needs put back before it runs, off the clock,
     /// for a phase that changes the database it reads and is run again
     /// on the same one under `--repeat`.
@@ -191,8 +217,8 @@ struct Workload {
     init(
         name: String, size: Int, kinds: [StorageKind], keyKind: Keys.Kind, keyCount: Int,
         write: @escaping (Database, Keys) throws -> Void,
-        read: @escaping (Database, Keys) throws -> Void,
-        iterate: @escaping (Database, Keys) throws -> Void
+        read: @escaping (Reading, Keys) throws -> Void,
+        iterate: @escaping (Reading, Keys) throws -> Void
     ) {
         self.name = name
         self.size = size
@@ -205,8 +231,8 @@ struct Workload {
             try write(database, keys)
             return database
         }
-        self.read = { database, keys, _ in try read(database, keys) }
-        self.iterate = { database, keys, _ in try iterate(database, keys) }
+        self.read = { reading, keys, _ in try read(reading, keys) }
+        self.iterate = { reading, keys, _ in try iterate(reading, keys) }
     }
 
     /// A workload whose write phase makes the database it measures, and
@@ -215,8 +241,8 @@ struct Workload {
         name: String, size: Int, kinds: [StorageKind], keyKind: Keys.Kind, keyCount: Int,
         prepare: @escaping (RunStorage, Keys) throws -> Any,
         write: @escaping (RunStorage, Keys, Any) throws -> Database,
-        read: @escaping (Database, Keys, Any) throws -> Void,
-        iterate: @escaping (Database, Keys, Any) throws -> Void
+        read: @escaping (Reading, Keys, Any) throws -> Void,
+        iterate: @escaping (Reading, Keys, Any) throws -> Void
     ) {
         self.name = name
         self.size = size
@@ -240,10 +266,10 @@ func mapInsert(_ size: Int, kinds: [StorageKind]) -> Workload {
                 _ = try cursor.writePath(put.span)
             }
         }
-    } read: { database, hashes in
-        try readMap(try lastMoment(database), hashes)
-    } iterate: { database, hashes in
-        try iterateMap(try lastMoment(database), hashes)
+    } read: { reading, hashes in
+        try readMap(try lastMoment(reading), hashes)
+    } iterate: { reading, hashes in
+        try iterateMap(try lastMoment(reading), hashes)
     }
 }
 
@@ -256,16 +282,16 @@ func listAppend(_ size: Int, kinds: [StorageKind]) -> Workload {
                 _ = try cursor.writePath(append.span)
             }
         }
-    } read: { database, _ in
-        let moment = try lastMoment(database)
+    } read: { reading, _ in
+        let moment = try lastMoment(reading)
         for index in 0..<size {
             let path: InlineArray<1, PathPart> = [.arrayListGet(Int64(index))]
             guard let cursor = try moment.readPath(path.span), try cursor.readUInt64() == UInt64(index) else {
                 throw BenchmarkFailure(description: "element \(index) does not read back")
             }
         }
-    } iterate: { database, _ in
-        let list = try ArrayList(try lastMoment(database))
+    } iterate: { reading, _ in
+        let list = try ArrayList(try lastMoment(reading))
         var iterator = try list.iterator()
         var count: UInt64 = 0
         while let element = try iterator.next() {
@@ -319,10 +345,10 @@ func mapTransactionsSnapshot(_ transactions: Int, kinds: [StorageKind]) -> Workl
         guard let held, held.committedSize == (try database.committedSize) else {
             throw BenchmarkFailure(description: "the last snapshot is not of the last commit")
         }
-    } read: { database, hashes in
-        try readMap(try lastMoment(database), hashes)
-    } iterate: { database, hashes in
-        try iterateMap(try lastMoment(database), hashes)
+    } read: { reading, hashes in
+        try readMap(try lastMoment(reading), hashes)
+    } iterate: { reading, hashes in
+        try iterateMap(try lastMoment(reading), hashes)
     }
 }
 
@@ -332,7 +358,9 @@ func mapTransactionsSnapshot(_ transactions: Int, kinds: [StorageKind]) -> Workl
 /// it and reads one key, `size` times, which is what a task pays to look at
 /// a snapshot.
 func snapshotTake(_ size: Int, kinds: [StorageKind]) -> Workload {
-    Workload(name: "snapshot_take", size: size, kinds: kinds, keyKind: .hashes, keyCount: 1_000) { database, keys in
+    var workload = Workload(
+        name: "snapshot_take", size: size, kinds: kinds, keyKind: .hashes, keyCount: 1_000
+    ) { database, keys in
         let hashes = keys.hashes
         let path: InlineArray<4, PathPart> = [.arrayListInit, .arrayListAppend, .hashMapInit(), .ctx]
         _ = try database.rootCursor.writePath(path.span) { cursor in
@@ -341,22 +369,26 @@ func snapshotTake(_ size: Int, kinds: [StorageKind]) -> Workload {
                 _ = try cursor.writePath(put.span)
             }
         }
-    } read: { database, _ in
+    } read: { reading, _ in
+        let database = try reading.live()
         for _ in 0..<size {
             _ = try database.snapshot()
         }
-    } iterate: { database, keys in
+    } iterate: { reading, keys in
+        let database = try reading.live()
         let hashes = keys.hashes
         for index in 0..<size {
-            let reading = Database(reading: try database.snapshot())
+            let pinned = try Reading(snapshotOf: database)
             let key = index % hashes.count
             let path: InlineArray<1, PathPart> = [.hashMapGet(.value, hashes[key])]
-            guard let cursor = try lastMoment(reading).readPath(path.span), try cursor.readUInt64() == UInt64(key)
+            guard let cursor = try lastMoment(pinned).readPath(path.span), try cursor.readUInt64() == UInt64(key)
             else {
                 throw BenchmarkFailure(description: "key-\(key) does not read back through a snapshot")
             }
         }
     }
+    workload.readPhasesNeedDatabase = true
+    return workload
 }
 
 func mapTransactions(_ transactions: Int, kinds: [StorageKind]) -> Workload {
@@ -365,10 +397,10 @@ func mapTransactions(_ transactions: Int, kinds: [StorageKind]) -> Workload {
         database,
         keys in
         try writeTransactions(transactions, into: database, keys)
-    } read: { database, hashes in
-        try readMap(try lastMoment(database), hashes)
-    } iterate: { database, hashes in
-        try iterateMap(try lastMoment(database), hashes)
+    } read: { reading, hashes in
+        try readMap(try lastMoment(reading), hashes)
+    } iterate: { reading, hashes in
+        try iterateMap(try lastMoment(reading), hashes)
     }
 }
 
@@ -399,10 +431,10 @@ func mapCompact(_ transactions: Int, kinds: [StorageKind]) -> Workload {
         // the target's header and everything after it are written here
         return try run.source.compact(
             into: storage.storage, fileID: 0x0011_2233_4455_6677, offsetMap: &run.offsetMap)
-    } read: { database, keys, _ in
-        try readMap(try lastMoment(database), keys)
-    } iterate: { database, keys, _ in
-        try iterateMap(try lastMoment(database), keys)
+    } read: { reading, keys, _ in
+        try readMap(try lastMoment(reading), keys)
+    } iterate: { reading, keys, _ in
+        try iterateMap(try lastMoment(reading), keys)
     }
 }
 
@@ -445,14 +477,15 @@ func replicate(_ transactions: Int, kinds: [StorageKind]) -> Workload {
         try run.source.readCommitted(from: 0, to: run.sizeAfterFirst, into: &run.fullSync)
         try run.replica.applyReplicated(at: 0, bytes: run.fullSync)
         return run.replica
-    } read: { replica, _, prepared in
+    } read: { reading, _, prepared in
+        let replica = try reading.live()
         let run = prepared as! ReplicationRun
         run.start = try run.source.replicationStart(for: try replica.replicaState)
         run.end = try run.source.committedSize
         try run.source.readCommitted(from: run.start, to: run.end, into: &run.incrementalSync)
         try replica.applyReplicated(at: run.start, bytes: run.incrementalSync)
-    } iterate: { replica, keys, _ in
-        try iterateMap(try lastMoment(replica), keys)
+    } iterate: { reading, keys, _ in
+        try iterateMap(try lastMoment(reading), keys)
     }
     workload.afterWrite = { replica, prepared in
         let run = prepared as! ReplicationRun
@@ -460,7 +493,7 @@ func replicate(_ transactions: Int, kinds: [StorageKind]) -> Workload {
             throw BenchmarkFailure(description: "the full sync did not bring the replica to the source's size")
         }
     }
-    workload.readPhasesWrite = true
+    workload.readPhasesNeedDatabase = true
     workload.afterRead = { replica, prepared in
         let run = prepared as! ReplicationRun
         guard run.start == run.sizeAfterFirst else {
@@ -496,16 +529,16 @@ func linkedAppend(_ size: Int, kinds: [StorageKind]) -> Workload {
                 _ = try cursor.writePath(append.span)
             }
         }
-    } read: { database, _ in
-        let moment = try lastMoment(database)
+    } read: { reading, _ in
+        let moment = try lastMoment(reading)
         for index in 0..<size {
             let path: InlineArray<1, PathPart> = [.linkedArrayListGet(Int64(index))]
             guard let cursor = try moment.readPath(path.span), try cursor.readUInt64() == UInt64(index) else {
                 throw BenchmarkFailure(description: "element \(index) does not read back")
             }
         }
-    } iterate: { database, _ in
-        let list = try LinkedArrayList(try lastMoment(database))
+    } iterate: { reading, _ in
+        let list = try LinkedArrayList(try lastMoment(reading))
         var iterator = try list.iterator()
         var count: UInt64 = 0
         while let element = try iterator.next() {
@@ -532,8 +565,8 @@ func sortedInsert(_ size: Int, kinds: [StorageKind]) -> Workload {
                 _ = try cursor.writePath(put.span)
             }
         }
-    } read: { database, keys in
-        let moment = try lastMoment(database)
+    } read: { reading, keys in
+        let moment = try lastMoment(reading)
         let sortedKeys = keys.sortedKeys
         for index in sortedKeys.indices {
             let path: InlineArray<1, PathPart> = [.sortedMapGet(.value, sortedKeys[index])]
@@ -541,9 +574,9 @@ func sortedInsert(_ size: Int, kinds: [StorageKind]) -> Workload {
                 throw BenchmarkFailure(description: "key-\(index) does not read back")
             }
         }
-    } iterate: { database, keys in
+    } iterate: { reading, keys in
         let texts = keys.texts
-        let map = try SortedMap(try lastMoment(database))
+        let map = try SortedMap(try lastMoment(reading))
         var iterator = try map.iterator()
         var count = 0
         // two buffers of sixteen bytes, the key just read and the one
@@ -659,7 +692,8 @@ func run(_ workload: Workload) throws {
             // With --snapshot the reading phases see one snapshot, taken off
             // the clock, through a fresh read-only database.
             let reading =
-                readThroughSnapshot && !workload.readPhasesWrite ? Database(reading: try database.snapshot()) : database
+                readThroughSnapshot && !workload.readPhasesNeedDatabase
+                ? try Reading(snapshotOf: database) : Reading(database)
             readTimes.append(try milliseconds { try workload.read(reading, keys, prepared) })
             try workload.afterRead(database, prepared)
             iterateTimes.append(try milliseconds { try workload.iterate(reading, keys, prepared) })
@@ -744,11 +778,11 @@ func runCounting(_ workload: Workload, _ kind: StorageKind) throws {
     try workload.afterWrite(database, prepared)
     try workload.beforeRead(database, prepared)
     counts.install(on: file)
-    try workload.read(database, keys, prepared)
+    try workload.read(Reading(database), keys, prepared)
     counts.report(workload, "read", kind)
     try workload.afterRead(database, prepared)
     counts.install(on: file)
-    try workload.iterate(database, keys, prepared)
+    try workload.iterate(Reading(database), keys, prepared)
     counts.report(workload, "iterate", kind)
 }
 
@@ -768,7 +802,7 @@ func runRepeatedly(_ workload: Workload, _ kind: StorageKind, phase: String, sec
         let run = phase == "read" ? workload.read : workload.iterate
         while DispatchTime.now().uptimeNanoseconds < deadline {
             if phase == "read" { try workload.beforeRead(database, prepared) }
-            total += try milliseconds { try run(database, keys, prepared) }
+            total += try milliseconds { try run(Reading(database), keys, prepared) }
             runs += 1
         }
     } else {

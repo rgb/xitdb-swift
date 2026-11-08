@@ -960,9 +960,9 @@ final class ScriptRunner {
                 // package would not, at the entry's positions.
                 let pair = try cursor.readEntry()
                 let keyCursor = Cursor<ReadWrite>(
-                    slotPointer: pair.key.slotPointer, database: pair.key.database, frozenAt: pair.key.frozenAt)
+                    slotPointer: pair.key.slotPointer, database: pair.key.engine, frozenAt: pair.key.frozenAt)
                 let valueCursor = Cursor<ReadWrite>(
-                    slotPointer: pair.value.slotPointer, database: pair.value.database, frozenAt: pair.value.frozenAt)
+                    slotPointer: pair.value.slotPointer, database: pair.value.engine, frozenAt: pair.value.frozenAt)
                 (pairHash, key, value) = (pair.hash, .readWrite(keyCursor), .readWrite(valueCursor))
             case .readOnly(let cursor):
                 let pair = try cursor.readEntry()
