@@ -200,10 +200,12 @@ extension Database {
 
     /// One node on the way down to the element being inserted, read for
     /// writing, or removed, with the child the way goes through.
-    private struct Frame {
+    private struct Frame: FrameStackElement {
         var position: UInt64
         var node: BTreeNode
         var index: Int
+
+        static var placeholder: Frame { Frame(position: 0, node: .placeholder, index: 0) }
     }
 
     /// Descends from `rootPtr` to the leaf that `rank` falls in, keeping
@@ -217,8 +219,8 @@ extension Database {
         from rootPtr: UInt64,
         rank: UInt64,
         inclusive: Bool
-    ) throws(XitDBError) -> (branches: [Frame], leafPtr: UInt64, leaf: BTreeNode, rank: UInt64) {
-        var branches: [Frame] = []
+    ) throws(XitDBError) -> (branches: FrameStack<Frame>, leafPtr: UInt64, leaf: BTreeNode, rank: UInt64) {
+        var branches = FrameStack<Frame>()
         var nodePtr = rootPtr
         var rem = rank
         while branches.count <= BTree.maxHeight {
@@ -282,7 +284,8 @@ extension Database {
         }
 
         // Each branch on the way up, rebuilt with its child as it is now.
-        for frame in branches.reversed() {
+        for index in stride(from: branches.count - 1, through: 0, by: -1) {
+            let frame = branches[index]
             var entries = BTreeEntries()
             entries.append(frame.node, from: 0, to: frame.index)
             entries.append(Slot(value: result.nodePtr, tag: .index), count: result.count)
@@ -340,7 +343,8 @@ extension Database {
 
         var childPtr = newLeafPtr
         var oldChildPtr = leafPtr
-        for frame in branches.reversed() {
+        for index in stride(from: branches.count - 1, through: 0, by: -1) {
+            let frame = branches[index]
             // A child that stayed put leaves this branch, and all above it,
             // as they are.
             if childPtr == oldChildPtr {
@@ -476,7 +480,7 @@ extension Database {
         right: Bool
     ) throws(XitDBError) -> BTreeJoinResult {
         // Down the spine, keeping each node.
-        var spine: [BTreeNode] = []
+        var spine = FrameStack<BTreeNode>()
         var nodePtr = tallerPtr
         var height = tallerHeight
         while height - 1 > shorterHeight {
@@ -499,7 +503,8 @@ extension Database {
         var sub = right ? try bTreeMergeNodes(end, other) : try bTreeMergeNodes(other, end)
 
         // Back up the spine.
-        for branch in spine.reversed() {
+        for index in stride(from: spine.count - 1, through: 0, by: -1) {
+            let branch = spine[index]
             var entries = BTreeEntries()
             if right {
                 entries.append(branch, from: 0, to: Int(branch.num) - 1)
@@ -571,7 +576,9 @@ extension Database {
         var left = try appendNode(entries.node(.leaf, from: 0, to: r))
         var right = try appendNode(entries.node(.leaf, from: r, to: entries.count))
 
-        for frame in branches.reversed() {
+        for index in stride(from: branches.count - 1, through: 0, by: -1) {
+
+            let frame = branches[index]
             let leftSub = try bTreeSubtree(frame.node, from: 0, to: frame.index)
             let rightSub = try bTreeSubtree(frame.node, from: frame.index + 1, to: Int(frame.node.num))
             left = try bTreeJoin(leftSub, left)

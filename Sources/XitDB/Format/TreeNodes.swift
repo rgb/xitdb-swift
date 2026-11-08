@@ -410,3 +410,13 @@ struct SortedNode: Sendable, TreeNodeBytes {
         bytes.copyBytes(from: self.bytes.span, count: Int(byteCount))
     }
 }
+
+extension BTreeNode: FrameStackElement {
+    /// An empty leaf, to fill a frame stack's inline storage with.
+    static var placeholder: BTreeNode { BTreeNode(kind: .leaf, num: 0) }
+}
+
+extension SortedNode: FrameStackElement {
+    /// An empty leaf, to fill a frame stack's inline storage with.
+    static var placeholder: SortedNode { SortedNode(kind: .leaf, num: 0) }
+}
