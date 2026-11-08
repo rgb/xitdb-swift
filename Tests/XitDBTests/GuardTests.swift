@@ -714,11 +714,13 @@ import Testing
 
     /// Every public read, through a cursor from a transaction that did not
     /// commit, is `staleCursor`: the cursor's own reads, its reader and its
-    /// iterator, the read-only view, and every read of every read-only
-    /// collection made from it, before and after a later transaction has
-    /// reused the offsets. The table names each entry point, so that a new
-    /// one is added here and not forgotten; the two that escaped the check
-    /// before this test (`reader()`, `rank(of:)`) are in it.
+    /// iterator, the read-only view, every read of every read-only
+    /// collection made from it, and the reads of an iterator and a byte
+    /// reader made through the cursor before the rollback, before and after
+    /// a later transaction has reused the offsets. The table names each
+    /// entry point, so that a new one is added here and not forgotten; the
+    /// ones that escaped the check before this test (`reader()`,
+    /// `rank(of:)`, the kept iterator and reader) are in it.
     @Test(arguments: storageKinds)
     func everyReadThroughARolledBackCursorIsRefused(kind: StorageKind) throws {
         struct Cancel: Error {}
@@ -727,15 +729,19 @@ import Testing
         let hash = sha1("k").bytes
         let key = utf8("k")
         var kept: [String: Cursor<ReadWrite>] = [:]
+        var keptIterator: CollectionIterator?
+        var keptReader: ByteReader?
         let outcome = Result { () throws -> Void in
             try database.withTransaction { cursor in
                 kept["number"] = try cursor.writePath([.hashMapGet(.value, sha1("number")), .write(.uint(7))])
                 kept["bytes"] = try cursor.writePath([
                     .hashMapGet(.value, sha1("bytes")), .write(.bytes(utf8("a value too long for a slot"))),
                 ])
+                keptReader = try kept["bytes"]?.reader()
                 let list = try ArrayList<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("list"))]))
                 try list.append(.uint(1))
                 kept["list"] = list.cursor
+                keptIterator = try list.iterator()
                 let linked = try LinkedArrayList<ReadWrite>(
                     try cursor.writePath([.hashMapGet(.value, sha1("linked"))]))
                 try linked.append(.uint(1))
@@ -782,8 +788,45 @@ import Testing
         let countedSet = try CountedHashSet<ReadOnly>(try stale("countedSet"))
         let sorted = try SortedMap<ReadOnly>(try stale("sorted"))
         let sortedSet = try SortedSet<ReadOnly>(try stale("sortedSet"))
+        guard let staleIterator = keptIterator, let staleReader = keptReader else {
+            Issue.record("the iterator and the reader were not kept")
+            return
+        }
 
         let reads: [(String, () throws -> Void)] = [
+            // the two handles that are not cursors, made before the rollback
+            (
+                "CollectionIterator.next",
+                {
+                    var iterator = staleIterator
+                    _ = try iterator.next()
+                }
+            ),
+            (
+                "ByteReader.read(into:)",
+                {
+                    var reader = staleReader
+                    var buffer = [UInt8](repeating: 0, count: 8)
+                    var span = buffer.mutableSpan
+                    _ = try reader.read(into: &span)
+                }
+            ),
+            (
+                "ByteReader.readAll(into:)",
+                {
+                    var reader = staleReader
+                    var buffer = [UInt8](repeating: 0, count: 8)
+                    var span = buffer.mutableSpan
+                    try reader.readAll(into: &span)
+                }
+            ),
+            (
+                "ByteReader.readRemaining",
+                {
+                    var reader = staleReader
+                    _ = try reader.readRemaining()
+                }
+            ),
             ("Cursor.count", { _ = try list.cursor.count }),
             ("Cursor.readUInt64", { _ = try number.readUInt64() }),
             ("Cursor.readInt64", { _ = try number.readInt64() }),

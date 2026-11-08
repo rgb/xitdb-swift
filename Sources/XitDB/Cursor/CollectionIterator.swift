@@ -13,17 +13,24 @@
 /// The iterator goes through the collection as it was when the iterator was
 /// made, unless the collection is being changed in place in the same
 /// transaction, in which case it can give a mix of old and new elements, or
-/// throw an error; it does not stop the program. The elements are read-only
+/// throw an error; it does not stop the program. An iterator made through a
+/// cursor from a transaction that did not commit is refused with
+/// ``XitDBError/staleCursor``, as the cursor is. The elements are read-only
 /// whatever the collection's cursor was, so one type serves both.
 public struct CollectionIterator {
     private var slots: SlotIterator
     private let database: Database
     private let frozenAt: UInt64
 
-    init(slots: SlotIterator, database: Database, frozenAt: UInt64) {
+    /// The transaction of the cursor the iterator was made from, or zero
+    /// for a root cursor, which is never stale.
+    private let transaction: UInt64
+
+    init(slots: SlotIterator, database: Database, frozenAt: UInt64, transaction: UInt64) {
         self.slots = slots
         self.database = database
         self.frozenAt = frozenAt
+        self.transaction = transaction
     }
 
     /// The next element or entry, or `nil` when there are no more.
@@ -43,7 +50,11 @@ public struct CollectionIterator {
     ///   its size or a linked array list can be, and
     ///   ``XitDBError/invalidEnumTag`` or ``XitDBError/endOfStream`` if
     ///   part of it cannot be read. Only a damaged file causes these.
+    ///   ``XitDBError/staleCursor`` if the iterator was made through a
+    ///   cursor from a transaction that did not commit, whose bytes are
+    ///   gone: the iterator is as stale as the cursor.
     public mutating func next() throws(XitDBError) -> Cursor<ReadOnly>? {
+        if transaction != 0 && database.transactionFailed(transaction) { throw .staleCursor }
         guard let pointer = try slots.next() else { return nil }
         return Cursor<ReadOnly>(slotPointer: pointer, database: database, frozenAt: frozenAt)
     }
@@ -62,7 +73,8 @@ extension Cursor {
         return CollectionIterator(
             slots: try SlotIterator(reader: database.reader, collection: slot),
             database: database,
-            frozenAt: frozenAt
+            frozenAt: frozenAt,
+            transaction: isRoot ? 0 : transaction
         )
     }
 
@@ -74,7 +86,8 @@ extension Cursor {
         return CollectionIterator(
             slots: try SlotIterator(reader: database.reader, arrayList: slot, from: index),
             database: database,
-            frozenAt: frozenAt
+            frozenAt: frozenAt,
+            transaction: isRoot ? 0 : transaction
         )
     }
 
@@ -86,7 +99,8 @@ extension Cursor {
         return CollectionIterator(
             slots: try SlotIterator(reader: database.reader, linkedArrayList: slot, from: index),
             database: database,
-            frozenAt: frozenAt
+            frozenAt: frozenAt,
+            transaction: isRoot ? 0 : transaction
         )
     }
 
@@ -98,7 +112,8 @@ extension Cursor {
         return CollectionIterator(
             slots: try SlotIterator(reader: database.reader, sortedMap: slot, from: index),
             database: database,
-            frozenAt: frozenAt
+            frozenAt: frozenAt,
+            transaction: isRoot ? 0 : transaction
         )
     }
 
@@ -110,7 +125,8 @@ extension Cursor {
         return CollectionIterator(
             slots: try SlotIterator(reader: database.reader, sortedMap: slot, fromKey: key),
             database: database,
-            frozenAt: frozenAt
+            frozenAt: frozenAt,
+            transaction: isRoot ? 0 : transaction
         )
     }
 }
