@@ -135,23 +135,24 @@ public enum XitDBError: Error, Sendable {
     /// or whose count cannot grow is being added to.
     case invalidCount
 
-    /// A cursor that cannot be used any more: for a write, one made before
-    /// the last freeze of this transaction (``Database/freeze()`` or
+    /// A cursor that cannot be used any more: for a write, one made before the
+    /// last freeze of this transaction (``Database/freeze()`` or
     /// ``LinkedArrayList/append(contentsOf:)-(Slot)``) or in an earlier
     /// transaction, since a write through it would change bytes that other
     /// things refer to or that are committed; for a read, one made in a
-    /// transaction that did not commit, whose bytes are gone. The way on
-    /// after a freeze is the transaction's cursor, the one
-    /// ``Database/withTransaction(_:)`` or a history append hands its body,
-    /// or any cursor at the same slot, such as the cursor of a collection
-    /// made from it: a path that begins with a collection's init part is
-    /// allowed through it, since its slot is the engine's own record that nothing inside
-    /// the transaction can copy, and every cursor taken from it is fresh.
-    /// Through any other cursor from before the freeze every write is
-    /// refused, inits included: an init through a held cursor rewrites its
-    /// slot in place, in a record a copy may have left behind, and lost
-    /// writes silently. A write that would land below the freeze by any
-    /// other route is ``immutableBytes``, refused before anything is written.
+    /// transaction that did not commit, whose bytes are gone. The way on after
+    /// a freeze is the transaction's cursor, the one
+    /// ``Database/withTransaction(_:)`` or a history append hands its body, or
+    /// any cursor at the same slot, such as the cursor of a collection made
+    /// from it: a path that begins with a collection's init part is allowed
+    /// through it, since its slot is the engine's own record that nothing
+    /// inside the transaction can copy, and every cursor taken from it is
+    /// fresh. Through any other cursor from before the freeze every write is
+    /// refused, inits included: an init through a held cursor rewrites its slot
+    /// in place, in a record a copy may have left behind, and lost writes
+    /// silently. A write that would land below the freeze by any other route is
+    /// ``immutableBytes``, refused before anything is written.
+    /// <doc:CloningFreezeAndStaleHandles> has the whole of it.
     case staleCursor
 
     /// A write would change committed or frozen bytes in place: its position

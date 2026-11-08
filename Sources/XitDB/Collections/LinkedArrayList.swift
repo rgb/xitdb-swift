@@ -20,15 +20,16 @@
 /// the root of the database is the exception: there, every write is a
 /// transaction of its own.
 ///
-/// **Appending another list freezes the transaction.** The joined tree
-/// shares nodes with both lists, so after ``append(contentsOf:)-(Slot)``
-/// every write in the transaction copies what was written before it, as
-/// after ``Database/freeze()``, with the same part for the caller: every
-/// collection or cursor made before the call is stale, the list that made
-/// it included, refused with ``XitDBError/staleCursor`` at its next write.
-/// The way on is a new list from the transaction's cursor, the one
-/// ``Database/withTransaction(_:)`` or a history append hands its body,
-/// through which an init is allowed after a freeze.
+/// **Appending another list freezes the transaction.** The joined tree shares
+/// nodes with both lists, so after ``append(contentsOf:)-(Slot)`` every write
+/// in the transaction copies what was written before it, as after
+/// ``Database/freeze()``, with the same part for the caller: every collection
+/// or cursor made before the call is stale, the list that made it included,
+/// refused with ``XitDBError/staleCursor`` at its next write. The way on is a
+/// new list from the transaction's cursor, the one
+/// ``Database/withTransaction(_:)`` or a history append hands its body, through
+/// which an init is allowed after a freeze. <doc:CloningFreezeAndStaleHandles>
+/// says why.
 public struct LinkedArrayList<Access: CursorAccess> {
     /// The cursor the list is a view of.
     public let cursor: Cursor<Access>
@@ -337,11 +338,12 @@ extension LinkedArrayList where Access == ReadWrite {
     /// other list is unchanged, and the result shares nodes with both.
     ///
     /// This freezes the transaction: every write after it copies what was
-    /// written before it, as after ``Database/freeze()``, and every
-    /// collection or cursor made before the call is stale, this list
-    /// included, refused with ``XitDBError/staleCursor`` at its next write.
-    /// The way on is a new list from the transaction's cursor, the one
-    /// ``Database/withTransaction(_:)`` or a history append hands its body.
+    /// written before it, as after ``Database/freeze()``, and every collection
+    /// or cursor made before the call is stale, this list included, refused
+    /// with ``XitDBError/staleCursor`` at its next write. The way on is a new
+    /// list from the transaction's cursor, the one
+    /// ``Database/withTransaction(_:)`` or a history append hands its body;
+    /// <doc:CloningFreezeAndStaleHandles> says why.
     ///
     /// - Parameter list: The other list, which may be one that can only
     ///   read.
@@ -364,11 +366,12 @@ extension LinkedArrayList where Access == ReadWrite {
     /// other list is unchanged, and the result shares nodes with both.
     ///
     /// This freezes the transaction: every write after it copies what was
-    /// written before it, as after ``Database/freeze()``, and every
-    /// collection or cursor made before the call is stale, this list
-    /// included, refused with ``XitDBError/staleCursor`` at its next write.
-    /// The way on is a new list from the transaction's cursor, the one
-    /// ``Database/withTransaction(_:)`` or a history append hands its body.
+    /// written before it, as after ``Database/freeze()``, and every collection
+    /// or cursor made before the call is stale, this list included, refused
+    /// with ``XitDBError/staleCursor`` at its next write. The way on is a new
+    /// list from the transaction's cursor, the one
+    /// ``Database/withTransaction(_:)`` or a history append hands its body;
+    /// <doc:CloningFreezeAndStaleHandles> says why.
     ///
     /// - Parameter list: The slot of the other list, from its ``slot``,
     ///   in this database.

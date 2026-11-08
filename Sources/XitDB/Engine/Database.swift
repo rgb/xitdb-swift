@@ -279,13 +279,13 @@ public final class Database {
     /// immutable, as if it had been committed: later writes copy it instead
     /// of changing it in place.
     ///
-    /// Within a transaction, data the transaction created is changed in
-    /// place, because nothing committed can refer to it. That stops being
-    /// safe once a slot has been copied to a second place: both places then
-    /// name the same data, and a change through one shows through the
-    /// other. Freezing after the copy protects what the copy points at
-    /// from writes through the original; the article on cloning says what
-    /// it does not protect.
+    /// Within a transaction, data the transaction created is changed in place,
+    /// because nothing committed can refer to it. That stops being safe once a
+    /// slot has been copied to a second place: both places then name the same
+    /// data, and a change through one shows through the other. Freezing after
+    /// the copy protects what the copy points at from writes through the
+    /// original; <doc:CloningFreezeAndStaleHandles> says what it does not
+    /// protect.
     ///
     /// The caller's part: finish any ``Cursor/writeBytes(formatTag:_:)``
     /// before freezing, since a byte array grows only while it is the last
@@ -389,9 +389,12 @@ public final class Database {
     /// write into it in place would change what another handle, a clone or
     /// an earlier moment refers to. The transaction's own slot is the
     /// exception, the engine's own record that nothing else reaches; a
-    /// write that leaves the bytes unchanged is exempted by its caller.
+    /// write that leaves the bytes unchanged is exempted by its caller. A
+    /// position inside the file's headers is not frozen data but a damaged
+    /// pointer, which the reads that follow report as a damaged file.
     func checkPosition(_ position: UInt64) throws(XitDBError) {
-        if let start = transactionStart, position < start, position != bodyPosition { throw .immutableBytes }
+        guard let start = transactionStart, position >= RootHeader.endPosition else { return }
+        if position < start, position != bodyPosition { throw .immutableBytes }
     }
 
     /// Writes a slot back from an init part, which always writes its slot:

@@ -1331,16 +1331,16 @@
         {"op":"read_path","on":"c79","path":[],"expect_null":true},
         {"op":"read_path","on":"root","path":[{"array_list_get":-3},{"hash_map_get":{"value":{"hex":"0000000000000000000000000000000000000061"}}}],"expect_null":true},
         {"op":"read_path","on":"c79","path":[],"expect_null":true},
-        {"op":"db_freeze"}]}}],"as":"c80"},
+        {"op":"db_freeze"}]}}]},
       {"op":"write_path","on":"c78","path":[{"hash_map_init":{}}],"as":"c78"},
       {"op":"write_path","on":"c78","path":[{"hash_map_init":{}},{"hash_map_get":{"value":{"hex":"0000000000000000000000000000000000000021"}}},"array_list_init","array_list_append",{"write":{"bytes":"drxtlfje"}}]},
-      {"op":"write_path","on":"c78","path":[{"hash_map_init":{}},{"hash_map_get":{"value":{"sha1":"k2"}}},{"ctx":{"as":"c81","ops":[
-        {"op":"read_path","on":"c81","path":[],"as":"r1000000439","expect_null":false},
+      {"op":"write_path","on":"c78","path":[{"hash_map_init":{}},{"hash_map_get":{"value":{"sha1":"k2"}}},{"ctx":{"as":"c80","ops":[
+        {"op":"read_path","on":"c80","path":[],"as":"r1000000439","expect_null":false},
         {"op":"read_bytes_into","on":"r1000000439","size":10,"expect":{"hex":"6100a2"},"expect_format_tag":null},
         {"op":"read_bytes","on":"r1000000439","max_size":3,"expect":{"hex":"6100a2"}},
         {"op":"read_stream","on":"r1000000439","buffer_size":7,"steps":[{"seek":2},{"seek":5},{"seek":5},{"seek":1},{"read":4,"expect":{"hex":"00a2"}},{"read_all":0,"expect":""}]},
-        {"op":"write_path","on":"c81","path":[{"write":{"uint":483}}]}]}}]},
-      {"op":"write","on":"c80","data":{"bytes":{"hex":"610054"}}},
+        {"op":"write_path","on":"c80","path":[{"write":{"uint":483}}]}]}}]},
+      {"op":"write_if_empty","on":"c80","data":{"bytes":{"hex":"610054"}}},
       {"op":"write_path","on":"c78","path":[{"hash_map_init":{}},{"hash_map_get":{"value":{"hex":"0000000000000000000000000000000000000041"}}},{"write":{"bytes":{"hex":"6100c1"}}}]},
       {"op":"write_path","on":"c78","path":[{"hash_map_init":{}},{"hash_map_get":{"value":{"sha1":"k15"}}},{"write":{"bytes":"z"}}]},
       {"op":"read_path","on":"c78","path":[{"hash_map_get":{"value":{"sha1":"k13"}}},{"hash_map_get":{"kv_pair":{"sha1":"k5"}}}],"expect_null":true}]}}]}

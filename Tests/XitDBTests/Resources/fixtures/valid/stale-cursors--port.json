@@ -1,6 +1,6 @@
 {
   "format": "xitdb-script/1",
-  "description": "Every way to write through each kind of stale cursor, which the port refuses with StaleCursor before writing anything: one from an earlier transaction, an init through it included; one from before a db_freeze, unless the path begins with an init; one from before a concat, where what the concat gives back is fresh; and one from a rolled-back transaction, which can't be read either, by any way to read. Reads through a cursor from before a freeze stay valid. Nothing refused writes anything, so nothing is poisoned, and each transaction commits. Nothing writes after the concat in its transaction, so the bytes don't depend on whether a concat freezes. What the port writes is what Zig writes with the refused ops left out.",
+  "description": "Every way to write through each kind of stale cursor, which the port refuses with StaleCursor before writing anything: one from an earlier transaction, an init through it included; one from before a db_freeze, an init through it included, unless it's the transaction's body; one from before a concat, which what the concat gives back is too, as it counts as made before the concat (D24); and one from a rolled-back transaction, which can't be read either, by any way to read. Reads through a cursor from before a freeze stay valid. Nothing refused writes anything, so nothing is poisoned, and each transaction commits. Nothing writes after the concat in its transaction, so the bytes don't depend on whether a concat freezes. What the port writes is what Zig writes with the refused ops left out.",
   "hash_size": 20,
   "hash_id": "sha1",
   "file_id": "c0f0000000000023",
@@ -34,7 +34,8 @@
       { "op": "read_uint", "on": "x", "expect": 1, "note": "reads through it stay valid" },
       { "op": "read_path", "on": "inner", "path": [{ "hash_map_get": { "value": { "sha1": "x" } } }], "as": "x_again" },
       { "op": "read_uint", "on": "x_again", "expect": 1 },
-      { "op": "write_path", "on": "inner", "path": [{ "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "y" } } }], "as": "y", "note": "the way on: an init through it, and what follows goes through what that made" },
+      { "op": "write_path", "on": "inner", "path": [{ "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "y" } } }], "expect_error": "StaleCursor", "note": "an init too, as it would write inner's slot in a record from before the freeze" },
+      { "op": "write_path", "on": "p", "path": [{ "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "inner" } } }, { "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "y" } } }], "as": "y", "note": "the way on: an init through the transaction's body, and what follows goes through what that made" },
       { "op": "write", "on": "y", "data": { "uint": 3 } }
     ] } }] },
 
@@ -44,12 +45,12 @@
       { "op": "read_path_slot", "on": "q", "path": [{ "hash_map_get": { "value": { "sha1": "lb" } } }], "as": "lb_slot" },
       { "op": "write_path", "on": "q", "path": [{ "hash_map_get": { "value": { "sha1": "other" } } }, { "write": { "uint": 5 } }], "as": "other" },
       { "op": "write_path", "on": "q", "path": [{ "hash_map_get": { "value": { "sha1": "la" } } }, "linked_array_list_init"], "as": "la" },
-      { "op": "write_path", "on": "la", "path": [{ "linked_array_list_concat": { "list": { "var": "lb_slot" } } }], "as": "joined", "note": "a concat freezes, and what it gives back is made after the freeze" },
-      { "op": "write_path", "on": "joined", "path": [], "as": "joined_again", "note": "so it's fresh" },
+      { "op": "write_path", "on": "la", "path": [{ "linked_array_list_concat": { "list": { "var": "lb_slot" } } }], "as": "joined", "note": "a concat freezes, and what it gives back counts as made before the freeze" },
+      { "op": "write_path", "on": "joined", "path": [], "as": "joined_again", "expect_error": "StaleCursor", "note": "so it's stale too" },
       { "op": "write", "on": "other", "data": { "uint": 6 }, "expect_error": "StaleCursor", "note": "and one from before it isn't" },
       { "op": "write_path", "on": "la", "path": [], "expect_error": "StaleCursor" },
       { "op": "count", "on": "la", "expect": 2, "note": "reading through it is fine, and it goes by its slot as it is now" },
-      { "op": "count", "on": "joined_again", "expect": 2 }
+      { "op": "count", "on": "joined", "expect": 2, "note": "reading through it is fine" }
     ] } }] },
 
     { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "ctx": { "as": "r", "ops": [

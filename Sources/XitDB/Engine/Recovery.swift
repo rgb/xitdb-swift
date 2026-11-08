@@ -119,13 +119,14 @@ extension Database {
     /// system's randomness: the recovered database draws its commit IDs
     /// from it as an opened one does.
     ///
-    /// **A commit may be lost by this call.** Everything after the last
-    /// trailer that verifies is discarded: a commit whose trailer was
-    /// damaged, and whatever followed it. This is the only call that cuts a
-    /// database back to an earlier commit of its own; opening a damaged
-    /// database fails instead, and its bytes stay as they were until this
-    /// is called. Copy the storage first if the discarded bytes might be
-    /// wanted.
+    /// **A commit may be lost by this call.** Everything after the last trailer
+    /// that verifies is discarded: a commit whose trailer was damaged, and
+    /// whatever followed it. This is the only call that cuts a database back to
+    /// an earlier commit of its own; opening a damaged database fails instead,
+    /// and its bytes stay as they were until this is called. Copy the storage
+    /// first if the discarded bytes might be wanted. <doc:Recovery> says what
+    /// opening does with a root header it cannot trust and what recovering can
+    /// lose.
     ///
     /// The scan goes by the trailers alone, not by the root header. On a
     /// storage whose root header is sound this still cuts to the last
