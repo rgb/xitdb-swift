@@ -11,6 +11,8 @@ inside your program and keeps its data in one file or in memory.
   transaction that fails leaves the database as it was.
 - Replicating a database is copying the bytes the other side lacks. Reclaiming space is compacting it into a
   new file.
+- Readers on other threads and tasks get a snapshot: a `Sendable` value that reads one commit from any task
+  while the writer goes on.
 - The port reads and writes the same files as the original, byte for byte. Given the same operations and the
   same IDs, the two produce identical files, apart from the few operations the port deliberately does
   differently, which the article "Where the port differs from the original" lists.
@@ -22,14 +24,14 @@ hash your own keys, and you keep your own indexes. If you want queries or a sche
 ## Status
 
 The port does everything the original does. Beyond that, it refuses with an error most of the misuse that the original
-lets through to damage data, such as a cursor kept for a later transaction, a handle held across a freeze, or a write after
-a failure in the same transaction, and it recovers, when asked, a file whose root header or last trailer is damaged, which
-the original cannot open. Every public symbol is documented, and the documentation has articles for the concepts and
-four tutorials. It has not been released yet.
+lets through to damage data, such as a cursor kept for a later transaction, a handle held across a freeze, or a write
+after a failure in the same transaction, and it recovers, when asked, a file whose root header or last trailer is
+damaged, which the original cannot open. It also hands one commit to other threads and tasks as a read snapshot. Every
+public symbol is documented, and the documentation has articles for the concepts and four tutorials. It has not been
+released yet.
 
 Not there yet, and planned in this order:
 
-- read snapshots that can be shared between threads and tasks;
 - a hashing target and a more Swift-flavoured layer over the API shown here (string keys, typed values);
 - a tool that shows what a file holds, and tests that check random sequences of operations against Swift's own
   collections;

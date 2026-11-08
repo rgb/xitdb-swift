@@ -132,4 +132,34 @@
             }
         }
     }
+
+    @Assessments {
+        @MultipleChoice {
+            The source is compacted into a new file. What does the next sync send?
+
+            @Choice(isCorrect: false) {
+                Only the commits the replica does not have yet.
+
+                @Justification(reaction: "Try again.") {
+                    The compacted file has a new file ID, so the replica is not a prefix of it.
+                }
+            }
+
+            @Choice(isCorrect: true) {
+                The whole compacted file, from 0.
+
+                @Justification(reaction: "That's right.") {
+                    Asked where to start, the source answers 0, and the replica is replaced by a full copy.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                Nothing, until the replica is deleted by hand.
+
+                @Justification(reaction: "Try again.") {
+                    A sync at 0 replaces the replica whatever it holds. Nothing else about the sync changes.
+                }
+            }
+        }
+    }
 }

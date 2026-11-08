@@ -130,4 +130,34 @@
             }
         }
     }
+
+    @Assessments {
+        @MultipleChoice {
+            You correct a book's title. What does the index need?
+
+            @Choice(isCorrect: false) {
+                Nothing: the sorted map follows the record.
+
+                @Justification(reaction: "Try again.") {
+                    Nothing keeps an index up to date but your own code.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                The key of the old entry changed in place to the new title.
+
+                @Justification(reaction: "Try again.") {
+                    A key cannot be changed. Its entry has to move.
+                }
+            }
+
+            @Choice(isCorrect: true) {
+                The old title removed and the new one put, in the transaction that changes the record.
+
+                @Justification(reaction: "That's right.") {
+                    The entry moves, and the one transaction means no moment has the record without its index entry.
+                }
+            }
+        }
+    }
 }

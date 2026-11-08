@@ -35,7 +35,7 @@ and the port's files are compared with that branch's.
 - **An operation that fails partway.** In the original, a body that catches the error commits what the operation had already
   written, such as an entry without its value or a count one too high. In the port the transaction can no longer commit, and every
   later write in it and the commit throw ``XitDBError/poisonedTransaction``: see <doc:Transactions>.
-- **``Cursor/writeIfEmpty(_:)``.** The original goes by the cursor's snapshot of the slot, so it can overwrite a value written since
+- **``Cursor/writeIfEmpty(_:)``.** The original goes by the cursor's copy of the slot, so it can overwrite a value written since
   through another cursor. The port goes by the slot as it is now.
 - **A slot that belongs to a tree, written as a value.** In the original that builds a tree it cannot read, or panics at a hash size
   of 64. The port refuses it with ``XitDBError/structuralSlot``.
@@ -109,11 +109,12 @@ The file format and the operations are the same, and the API follows Swift:
 - **``Entry`` is read-only**, so a sorted map's key cannot be overwritten through one, and a client cannot make a ``Slot``.
 - **Nothing that reads or writes a database is `Sendable`**: ``Database``, ``Cursor``, the collections, the storages, ``ByteReader`` and
   ``ByteWriter``. A database belongs to one thread or task at a time, and in Swift 6 mode the compiler enforces it. Plain values such as
-  ``Slot``, ``Bytes`` and ``XitDBError`` are `Sendable`: see <doc:ConcurrencyAndSnapshots>.
+  ``Slot``, ``Bytes`` and ``XitDBError`` are `Sendable`, and so is a ``Snapshot`` of one commit, which is how another task reads a
+  database: see <doc:ConcurrencyAndSnapshots>.
 
-Every operation of the original is here. Planned beyond it, and not here yet: read snapshots that can be shared between threads and
-tasks, a target with ready-made hashes, and a layer with string keys and typed values, whose handles take themselves again after a
-freeze, so that a clone is safe without one.
+Every operation of the original is here, and read snapshots beyond it. Planned, and not here yet: a target with ready-made hashes,
+and a layer with string keys and typed values, whose handles take themselves again after a freeze, so that a clone is safe without
+one.
 
 ### The names
 
