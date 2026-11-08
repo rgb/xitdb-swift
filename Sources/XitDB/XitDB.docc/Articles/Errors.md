@@ -28,8 +28,15 @@ These mean the code asked for something it should not have. Most are worth fixin
 - ``XitDBError/staleCursor``: A write through a cursor or collection made before the last ``Database/freeze()`` or join
   (``LinkedArrayList/append(contentsOf:)-(LinkedArrayList<CursorAccess>)``) of the transaction, making a collection from it
   included, except making one from the cursor the transaction's body was given, or from the cursor of a collection made from
-  that; a write through one from an earlier transaction; or a read through one from a transaction that did not commit. See
+  that; a write through one from an earlier transaction; a read through one from a transaction that did not commit; or a
+  ``Snapshot/init(_:)`` of such a cursor, or of work the running transaction has not committed yet. See
   <doc:CloningFreezeAndStaleHandles>.
+- ``XitDBError/snapshotOverwritten``: A read through a ``Snapshot`` of a file whose bytes below the snapshot's committed size,
+  the root header excepted, which every commit rewrites, were rewritten since, through the storage the snapshot was taken from:
+  by a replication sync at 0, or by a write or a truncation through your own reference to the storage. Take a new snapshot. A
+  snapshot of a database in memory never reports it: see <doc:ConcurrencyAndSnapshots>.
+- ``XitDBError/subCollectionSnapshot``: Compacting a ``SnapshotDatabase`` made over a snapshot of one collection, which is not
+  a whole commit.
 - ``XitDBError/byteWriterOpen``: A ``Database/freeze()``, or a join, inside the body of ``Cursor/writeBytes(formatTag:_:)``.
   It is refused before it does anything, but the writer has written by then, so if the body passes the error on, the
   transaction is poisoned. Finish the byte array first.

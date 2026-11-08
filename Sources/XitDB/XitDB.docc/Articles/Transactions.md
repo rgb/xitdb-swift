@@ -127,7 +127,7 @@ handle made before a freeze is stale, and a collection made again from this curs
 
 Reads depend on what they go through. A cursor at the root of the database reads the last commit, so the transaction's
 writes do not show there until it commits. A collection made from the body's cursor sees what the transaction has
-written. The body's cursor itself is a snapshot like any other, so once a collection has been made from it, read
+written. The body's cursor itself holds a copy of its slot, like any cursor, so once a collection has been made from it, read
 through the collection:
 
 ```swift

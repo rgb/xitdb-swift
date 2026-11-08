@@ -21,6 +21,13 @@ Everything starts at the root cursor, and a transaction groups writes. See <doc:
 - ``freeze()``
 - ``committedSize``
 
+### Snapshots
+
+A snapshot hands one commit to other threads and tasks, and a ``SnapshotDatabase`` reads it. See
+<doc:ConcurrencyAndSnapshots>.
+
+- ``snapshot()``
+
 ### Compacting
 
 See <doc:Compaction>.

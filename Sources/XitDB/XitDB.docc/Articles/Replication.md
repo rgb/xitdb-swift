@@ -111,6 +111,14 @@ commit as the source, so it is given 62 and not 0, and it keeps its own header. 
 That last case is why you should only change a replica with ``Database/applyReplicated(at:from:count:)``. Written to directly, it
 no longer matches the source, and the next sync replaces it.
 
+A sync at 0 rewrites a replica's file under any ``Snapshot`` of it. From then on every read through such a snapshot, one under
+way included, throws ``XitDBError/snapshotOverwritten``: take a new snapshot after the sync. A snapshot of a replica in memory
+keeps the old bytes and reads on. A snapshot is told only of a sync through the storage it was taken from: see
+<doc:ConcurrencyAndSnapshots>.
+
+A source can be a ``SnapshotDatabase``, made over a snapshot, so that another task serves the sync while the writer goes on. It serves the whole commit's bytes, even for a snapshot of one collection, since the file is the unit of
+replication.
+
 ### When a sync fails
 
 If a sync at the replica's committed size is interrupted, the replica stays at its last commit. What was written past that is

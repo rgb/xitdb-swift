@@ -96,7 +96,7 @@ through the cursor throws ``XitDBError/expectedTxStart``. Do not keep such a cur
 <doc:Transactions> explains.
 
 ``Cursor/writeIfEmpty(_:)`` writes only if the slot is empty, for a value that should be set once. It decides by the
-slot as it is now, not by the cursor's snapshot of it, so a value written through another cursor since is kept.
+slot as it is now, not by the cursor's copy of it, so a value written through another cursor since is kept.
 
 <!-- Pinned by `writeIfEmptyGoesByTheSlot` in XitDBExamples: the sentence and the test change together. -->
 
@@ -106,10 +106,12 @@ try maybe.writeIfEmpty(.uint(1))
 try maybe.writeIfEmpty(.uint(2))
 ```
 
-A helper given only a cursor can reach its database through its `database`, a ``Database`` on a read-write cursor and
-`any ReadableDatabase` on a read-only one; a helper over a cursor of any access goes through ``Cursor/readOnly`` first.
+A helper given only a cursor can reach its database through the cursor's `database`. A read-write cursor gives the
+``Database``, and a read-only one an `any ReadableDatabase`, which is all a reader needs. A helper that takes either kind,
+a `Cursor<some CursorAccess>`, reaches it as `cursor.readOnly.database`, since ``Cursor/readOnly`` is the cursor itself on a
+read-only cursor.
 
-### A cursor holds a snapshot
+### A cursor holds a copy of its slot
 
 A cursor remembers what its slot held when it was made, and reads go by that. A write through another cursor does
 not show:
@@ -137,7 +139,7 @@ try list.append(.uint(3))
 
 After that, `countBefore` is 1 and `root.count` is 2.
 
-Only the slot is a snapshot. What it points at is read when you ask for it, so a cursor held on a list changed in place
+Only the slot is copied. What it points at is read when you ask for it, so a cursor held on a list changed in place
 in the same transaction reports the list's new count.
 
 ### Iterating
