@@ -141,13 +141,26 @@ public enum XitDBError: Error, Sendable {
     /// transaction, since a write through it would change bytes that other
     /// things refer to or that are committed; for a read, one made in a
     /// transaction that did not commit, whose bytes are gone. The way on
-    /// after a freeze is a new cursor from the transaction's root cursor.
-    /// A path that begins with a collection's init part is still allowed
-    /// through a cursor from before a freeze in the same transaction, but
-    /// it writes the cursor's slot in place, so it is safe only for the
-    /// cloned structure itself, or for a handle into nothing that was
-    /// cloned.
+    /// after a freeze is the transaction's cursor, the one
+    /// ``Database/withTransaction(_:)`` or a history append hands its body:
+    /// a path that begins with a collection's init part is allowed through
+    /// it, since its slot is the engine's own record that nothing inside
+    /// the transaction can copy, and every cursor taken from it is fresh.
+    /// Through any other cursor from before the freeze every write is
+    /// refused, inits included: an init through a held cursor rewrites its
+    /// slot in place, in a record a copy may have left behind, and lost
+    /// writes silently. A write that would land below the freeze by any
+    /// other route is ``immutableBytes``, refused before anything is written.
     case staleCursor
+
+    /// A write would change committed or frozen bytes in place: its position
+    /// is below the transaction's frozen point, where every byte is either
+    /// committed or was written before the last freeze and may be shared
+    /// by a clone or another handle. The engine refuses it before it
+    /// writes. A path that skips a collection's init part and writes into
+    /// an old block reports this; a cursor from before the freeze reports
+    /// ``staleCursor`` first.
+    case immutableBytes
 
     /// A slot whose tag is `index`, `kvPair` or `sortedKvPair` was given to
     /// write as a value. Those tags are the trees' own; such a slot in a

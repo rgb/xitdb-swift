@@ -826,14 +826,20 @@ import Testing
             try database.freeze()
             let frozenAt = UInt64(storage.bytes.count)
 
-            // the list made before the freeze is copied now, to the freeze point
-            let copied = try slot.writePath([.arrayListInit])
-            #expect(try copied.slot.value == frozenAt)
+            // the list made before the freeze is copied now, through the
+            // transaction's cursor (D24): the map's init copies its block
+            // (144 bytes) to the freeze point, the get copies the entry's
+            // pair record (20 + 18 bytes), then the list's init copies the
+            // header and the root block after them
+            let path: [PathPart] = [.hashMapInit(), .hashMapGet(.value, sha1("list")), .arrayListInit]
+            let copied = try cursor.writePath(path)
+            #expect(try copied.slot.value == frozenAt + 144 + 38)
             #expect(try copied.slot.value != (try before.slot.value))
-            // and the copy is the transaction's own
-            let again = try slot.writePath([.arrayListInit])
-            #expect(try again.slot.value == frozenAt)
-            #expect(UInt64(storage.bytes.count) == frozenAt + 16 + 144)
+            // and the copy is the transaction's own: the same path copies
+            // nothing more
+            let again = try cursor.writePath(path)
+            #expect(try again.slot.value == frozenAt + 144 + 38)
+            #expect(UInt64(storage.bytes.count) == frozenAt + 144 + 38 + 16 + 144)
         }
     }
 

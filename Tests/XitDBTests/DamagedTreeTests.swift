@@ -242,8 +242,8 @@ import Testing
             var reported = false
             try damaged.withTransaction { cursor in
                 let map = try HashMap(cursor)
-                var list = try LinkedArrayList(try map.putCursor(forHash: sha1("list").bytes))
-                var short = try LinkedArrayList(try map.putCursor(forHash: sha1("short").bytes))
+                let list = try LinkedArrayList(try map.putCursor(forHash: sha1("list").bytes))
+                let short = try LinkedArrayList(try map.putCursor(forHash: sha1("short").bytes))
                 do {
                     if listOnto {
                         try short.append(contentsOf: try list.slot)

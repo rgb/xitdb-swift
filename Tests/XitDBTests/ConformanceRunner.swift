@@ -623,6 +623,7 @@ final class ScriptRunner {
         case .invalidBTreeNodeKind: "InvalidBTreeNodeKind"
         case .invalidCount: "InvalidCount"
         case .staleCursor: "StaleCursor"
+        case .immutableBytes: "ImmutableBytes"
         case .structuralSlot: "StructuralSlot"
         case .poisonedTransaction: "PoisonedTransaction"
         case .untrustedRootHeader: "UntrustedRootHeader"

@@ -61,11 +61,11 @@ import Testing
         /// test.zig 3938-3945: `Freeze.run`.
         func run(_ cursor: Cursor<ReadWrite>, _ moment: HashMap<ReadWrite>, _ list: LinkedArrayList<ReadWrite>?) throws
         {
-            var other = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: sha1("other").bytes))
+            let other = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: sha1("other").bytes))
             switch self {
             case .database: try cursor.database.freeze()
             case .concat:
-                var list = try #require(list)
+                let list = try #require(list)
                 try list.append(contentsOf: try other.slot)
             case .concatElsewhere: try other.append(contentsOf: try other.slot)
             }
@@ -380,13 +380,13 @@ import Testing
             #expect(throws: XitDBError.invalidBTreeNode) { try list.formSlice(offset: 1, count: 2) }
         }
         try attempt("concat of the damaged list", poisoning: false) { moment in
-            var list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
+            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
             let shortList = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("short-list")))
             #expect(throws: XitDBError.invalidBTreeNode) { try list.append(contentsOf: try shortList.slot) }
         }
         try attempt("concat onto the damaged list", poisoning: false) { moment in
             let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("list")))
-            var shortList = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("short-list")))
+            let shortList = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("short-list")))
             #expect(throws: XitDBError.invalidBTreeNode) { try shortList.append(contentsOf: try list.slot) }
         }
         try attempt("sorted remove", poisoning: true) { moment in

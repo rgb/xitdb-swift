@@ -495,11 +495,19 @@ import Testing
             for value in 3..<6 {
                 try other.append(.uint(UInt64(value)))
             }
+            // each join freezes the transaction: the list is made again from
+            // the transaction's cursor before the next write (D24)
+            func joined() throws -> LinkedArrayList<ReadWrite> {
+                try LinkedArrayList(try HashMap(cursor).putCursor(forHash: key("list")))
+            }
             try list.append(contentsOf: other)
+            list = try joined()
             #expect(try list.count == 6)
             try list.append(contentsOf: other.readOnly)
+            list = try joined()
             #expect(try list.count == 9)
             try list.append(contentsOf: try other.slot)
+            list = try joined()
             #expect(try list.count == 12)
             let values = try (0..<12).map { try list.cursor(at: $0)?.readUInt64() }
             #expect(values == [0, 1, 2, 3, 4, 5, 3, 4, 5, 3, 4, 5])

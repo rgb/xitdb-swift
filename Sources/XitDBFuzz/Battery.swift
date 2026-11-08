@@ -32,7 +32,7 @@ func writeEverywhere(_ database: Database) {
             try list.truncate(to: 1)
         },
         { moment in
-            var linked = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: hash("l", hashSize)))
+            let linked = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: hash("l", hashSize)))
             try linked.append(.uint(1))
             try linked.insert(.uint(1), at: 3)
             try linked.remove(at: 7)

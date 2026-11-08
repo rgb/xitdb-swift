@@ -303,7 +303,9 @@ extension Database {
         }
         let position = try storage.length
         try write(UInt64(key.count), at: position)
-        try storage.write(key, at: try position.offset(by: ByteArrayFormat.lengthByteCount))
+        let keyPosition = try position.offset(by: ByteArrayFormat.lengthByteCount)
+        try checkPosition(keyPosition)
+        try storage.write(key, at: keyPosition)
         noteWrite()
         return Slot(value: position, tag: .bytes)
     }
@@ -320,6 +322,7 @@ extension Database {
             let bytes = InlineArray<18, UInt8> { (output: inout OutputSpan<UInt8>) in
                 pair.pair.encodeSorted(into: &output)
             }
+            try checkPosition(position)
             try storage.write(bytes.span, at: position)
             noteWrite()
         case .kvPair:

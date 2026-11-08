@@ -338,14 +338,16 @@ import Testing
             try alice.put(.uint(26), forHash: hashInt("age"))
 
             let todosCursor = try moment.putCursor(forHash: hashInt("todos"))
-            var todos = try LinkedArrayList<ReadWrite>(todosCursor)
+            let todos = try LinkedArrayList<ReadWrite>(todosCursor)
             try todos.append(contentsOf: try todosCursor.slot)
-            try todos.formSlice(offset: 1, count: 2)
-            try todos.remove(at: 1)
             // the concat froze the transaction, so the moment is made again
-            // from the callback's cursor before it is written through (D18);
-            // Zig's test goes on through the kept one
+            // from the callback's cursor and the list from the moment before
+            // either is written through (D24); Zig's test goes on through
+            // the kept ones
             moment = try HashMap<ReadWrite>(cursor)
+            let todosJoined = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: hashInt("todos")))
+            try todosJoined.formSlice(offset: 1, count: 2)
+            try todosJoined.remove(at: 1)
 
             let lettersCountedMapCursor = try moment.putCursor(forHash: hashInt("letters-counted-map"))
             let lettersCountedMap = try CountedHashMap<ReadWrite>(lettersCountedMapCursor)

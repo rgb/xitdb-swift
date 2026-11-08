@@ -128,7 +128,7 @@ import XitDB
         size = try database.committedSize
         try database.withTransaction { cursor in
             let map = try HashMap<ReadWrite>(cursor)
-            var a = try LinkedArrayList<ReadWrite>(map.putCursor(forHash: first))
+            let a = try LinkedArrayList<ReadWrite>(map.putCursor(forHash: first))
             try a.append(contentsOf: try LinkedArrayList<ReadOnly>(map.cursor(forHash: second)!))
         }
         #expect(storage.reads - reads == 31)
@@ -235,7 +235,7 @@ import XitDB
         try database.withTransaction { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
 
-            var tasks = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("tasks")))
+            let tasks = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("tasks")))
             try tasks.append(.uint(1))
             try tasks.append(.uint(3))
             try tasks.insert(.uint(2), at: 1)  // before the element at index 1
@@ -246,14 +246,18 @@ import XitDB
             try more.append(.uint(5))
 
             // Joins in logarithmic time, sharing what it can with both lists.
+            // The join freezes the transaction, so the list is made again
+            // from the transaction's cursor before it is written to.
             try tasks.append(contentsOf: more)
-            #expect(try tasks.count == 4)
+            let joined = try LinkedArrayList<ReadWrite>(
+                HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("tasks")))
+            #expect(try joined.count == 4)
 
             // Keeps two elements from index 1 on.
-            try tasks.formSlice(offset: 1, count: 2)
-            #expect(try tasks.count == 2)
-            #expect(try tasks.cursor(at: 0)!.readUInt64() == 3)
-            #expect(try tasks.cursor(at: 1)!.readUInt64() == 4)
+            try joined.formSlice(offset: 1, count: 2)
+            #expect(try joined.count == 2)
+            #expect(try joined.cursor(at: 0)!.readUInt64() == 3)
+            #expect(try joined.cursor(at: 1)!.readUInt64() == 4)
         }
     }
 

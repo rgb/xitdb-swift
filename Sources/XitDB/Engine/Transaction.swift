@@ -81,7 +81,10 @@ extension Database {
 
         transactionStart = scratchPosition
         beginTransaction()
-        defer { transactionStart = nil }
+        defer {
+            transactionStart = nil
+            bodyPosition = nil
+        }
 
         // Everything from here to the commit is the transaction: an error
         // that leaves it means it did not commit, which the cursors made in

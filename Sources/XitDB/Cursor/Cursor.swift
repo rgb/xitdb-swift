@@ -86,8 +86,8 @@ public struct Cursor<Access: CursorAccess> {
     /// that cannot write (one with no position, for any path but one that
     /// begins with a get, and for the empty path of a byte writer), a
     /// cursor from an earlier transaction, a cursor from before the last
-    /// freeze (allowed when `path` begins with an init part, the way to go
-    /// on after a freeze).
+    /// freeze (unless it is the transaction's own cursor and `path` begins
+    /// with an init part, the way to go on after a freeze).
     ///
     /// A root cursor is never stale: it resolves itself through the root
     /// header. Outside a transaction nothing is stale either: a write is
@@ -105,7 +105,18 @@ public struct Cursor<Access: CursorAccess> {
         if database.poisoned { throw .poisonedTransaction }
         if slotPointer.position == nil, path.count == 0 || !path[0].isGet { throw .cursorNotWritable }
         if transaction != database.transactionNumber { throw .staleCursor }
-        if freezeCount < database.freezeNumber, !(path.count > 0 && path[0].isInit) { throw .staleCursor }
+        if freezeCount < database.freezeNumber {
+            // After a freeze the one way on through a cursor from before it
+            // is a path that begins with an init part through the
+            // transaction's own cursor (D24): its slot is the engine's own
+            // record, which nothing inside the transaction can copy, and the
+            // init copies the collection's header into the transaction and
+            // gives a fresh cursor. Every other write through a cursor from
+            // before the freeze is stale, inits through other cursors
+            // included.
+            guard let body = database.bodyPosition, slotPointer.position == body, path.count > 0, path[0].isInit
+            else { throw .staleCursor }
+        }
     }
 
     /// Refuses a path that would write a slot with one of the trees' own
@@ -495,11 +506,20 @@ extension Cursor where Access == ReadWrite {
         let frozenAt = self.frozenAt
         let commitsBefore = database.commitCount
         let writesBefore = database.writesIssued
+        // A cursor this operation gives back, the callback's or the result,
+        // is stamped with the freezes as they were when the operation began
+        // (D24 item 6): a freeze the operation itself makes, a concat's or
+        // a callback's, must not make its result look fresh.
+        let freezesBefore = database.freezeNumber
         let result: SlotPointer
         do throws(Failure) {
             result = try database.writeSlotPointer(path, at: start, frozenAt: frozenAt, lift: lift) {
                 (pointer: inout SlotPointer) throws(Failure) in
+                // The first callback of a transaction is the transaction's
+                // own: its cursor is the one that goes on after a freeze.
+                database.noteBody(pointer.position)
                 var cursor = Cursor<ReadWrite>(slotPointer: pointer, database: database, frozenAt: frozenAt)
+                cursor.freezeCount = freezesBefore
                 try callback(&cursor)
                 // Only the slot comes back out. A freeze made on the
                 // callback's cursor ends with the callback.
@@ -534,7 +554,9 @@ extension Cursor where Access == ReadWrite {
                 throw lift(error)
             }
         }
-        return Cursor<ReadWrite>(slotPointer: result, database: database, frozenAt: frozenAt)
+        var written = Cursor<ReadWrite>(slotPointer: result, database: database, frozenAt: frozenAt)
+        written.freezeCount = freezesBefore
+        return written
     }
 
     // MARK: Writing
@@ -762,10 +784,13 @@ extension Database {
     /// are refused with ``XitDBError/poisonedTransaction``, and the
     /// transaction rolls back when `body` returns. An operation that fails
     /// before writing anything, a refused guard included, leaves the
-    /// transaction as it was. The cursor `body` is given, and every cursor
-    /// and collection made from it, belong to this transaction: a write
-    /// through one of them after `body` returns is refused with
-    /// ``XitDBError/staleCursor``.
+    /// transaction as it was. The cursor `body` is given is the
+    /// transaction's cursor: after a freeze, ``Database/freeze()`` or a
+    /// concat, it is the one cursor from before the freeze that a path
+    /// beginning with an init part may go through, so a collection made
+    /// again from it is fresh. It and every cursor and collection made
+    /// from it belong to this transaction: a write through one of them
+    /// after `body` returns is refused with ``XitDBError/staleCursor``.
     ///
     /// Use this to group writes to a root that is not an array list, such as
     /// a hash map: without it, each write through a root cursor is a

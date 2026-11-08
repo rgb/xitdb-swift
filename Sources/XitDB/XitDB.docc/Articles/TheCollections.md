@@ -108,7 +108,7 @@ list at the root that is a transaction, as <doc:MomentsAndHistory> shows.
 ``LinkedArrayList`` can also change anywhere:
 
 ```swift
-var tasks = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("tasks")))
+let tasks = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("tasks")))
 try tasks.append(.uint(1))
 try tasks.append(.uint(3))
 try tasks.insert(.uint(2), at: 1)  // before the element at index 1
@@ -119,12 +119,16 @@ try more.append(.uint(4))
 try more.append(.uint(5))
 
 // Joins in logarithmic time, sharing what it can with both lists.
+// The join freezes the transaction, so the list is made again
+// from the transaction's cursor before it is written to.
 try tasks.append(contentsOf: more)
+let joined = try LinkedArrayList<ReadWrite>(
+    HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("tasks")))
 ```
 
 ```swift
 // Keeps two elements from index 1 on.
-try tasks.formSlice(offset: 1, count: 2)
+try joined.formSlice(offset: 1, count: 2)
 ```
 
 Neither goes through the list. With two lists of 4,096 elements in a map, a join in a transaction of its own did 31 reads and

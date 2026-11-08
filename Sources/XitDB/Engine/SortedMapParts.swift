@@ -39,6 +39,9 @@ extension Database {
         frozenAt: UInt64
     ) throws(XitDBError) -> SlotPointer {
         let header = try reader.sortedMapHeader(pointer.slot)
+        // The part writes the header back in place: a frozen or committed
+        // header is refused here, before the tree is touched.
+        try checkPosition(pointer.slot.value)
         // A size that cannot grow comes from a damaged file: it is reported
         // before the tree is written to, whether or not the key is there,
         // as the linked array list's insert does. (Zig checks nothing and
@@ -61,6 +64,9 @@ extension Database {
 
     func sortedMapRemove(_ pointer: SlotPointer, key: SortedKey, frozenAt: UInt64) throws(XitDBError) {
         let header = try reader.sortedMapHeader(pointer.slot)
+        // The part writes the header back in place: a frozen or committed
+        // header is refused here, before the tree is touched.
+        try checkPosition(pointer.slot.value)
         let result = try key.withBytes { (bytes: Span<UInt8>) throws(XitDBError) in
             try sortedRemove(rootPtr: header.rootPtr, key: bytes, frozenAt: frozenAt)
         }

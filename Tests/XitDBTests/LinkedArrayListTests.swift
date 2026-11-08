@@ -423,9 +423,12 @@ import Testing
                 values.append(n)
             }
 
-            // remove inserted value from the list
+            // remove inserted value from the list. Zig writes the committed
+            // header in place here (finding 13); the port refuses that as
+            // immutableBytes, so the init part copies it first (D24).
             let evenListInsertCursor = try cursor.writePath([
                 .hashMapGet(.value, hashInt("even-insert")),
+                .linkedArrayListInit,
                 .linkedArrayListRemove(Int64(insertIndex)),
             ])
 
