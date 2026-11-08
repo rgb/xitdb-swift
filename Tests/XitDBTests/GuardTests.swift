@@ -636,6 +636,82 @@ import Testing
         #expect(try fixture.value("b").slot == Slot(tag: .none, full: true))
         #expect(try fixture.value("c").readUInt64() == 4)
     }
+
+    // MARK: What the first run of these tests found
+
+    /// A byte writer through a cursor with no position, a sorted map's key,
+    /// is refused before the record is started: the body never runs, the
+    /// storage is unchanged and the transaction is not poisoned. Before
+    /// this was pinned, the writer appended the record's length and ran the
+    /// body, and the refusal came from `finish`, after the writes.
+    @Test(arguments: storageKinds)
+    func aByteWriterThroughASortedKeyIsRefusedBeforeItWrites(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        try database.withTransaction { cursor in
+            let map = try SortedMap<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("map"))]))
+            try map.put(.uint(1), forKey: utf8("k"))
+            var key = try map.cursor.writePath([.sortedMapGet(.key, SortedKey(utf8("k")))])
+            #expect(key.slotPointer.position == nil)
+            try fixture.expectRefused(.cursorNotWritable) { try key.writeBytes(bodyOfARefusedWriter) }
+            try fixture.expectRefused(.cursorNotWritable) { _ = try key.writePath([]) }
+            #expect(!database.poisoned)
+        }
+        let value = try fixture.value("map").readPath([.sortedMapGet(.value, SortedKey(utf8("k")))])
+        #expect(try value?.readUInt64() == 1)
+    }
+
+    /// An iterator over a cursor from a transaction that did not commit,
+    /// and the read-only view of such a cursor (``Cursor/readOnly``, or a
+    /// read-only collection made from it), are as stale as the cursor:
+    /// refused with `staleCursor`, before and after a later transaction has
+    /// reused the offsets. Before this was pinned, the iterator read the
+    /// file without the check, and the view was a new cursor from no
+    /// transaction: both read past the end, and then the other
+    /// transaction's bytes.
+    @Test(arguments: storageKinds)
+    func anIteratorAndAReadOnlyViewOfAStaleCursorAreRefused(kind: StorageKind) throws {
+        struct Cancel: Error {}
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        var keptBytes: Cursor<ReadWrite>?
+        var keptList: Cursor<ReadWrite>?
+        let outcome = Result { () throws -> Void in
+            try database.withTransaction { cursor in
+                keptBytes = try cursor.writePath([
+                    .hashMapGet(.value, sha1("bytes")), .write(.bytes(utf8("a value too long for a slot"))),
+                ])
+                let list = try cursor.writePath([.hashMapGet(.value, sha1("list")), .arrayListInit])
+                _ = try list.writePath([.arrayListAppend, .write(.uint(8))])
+                keptList = list
+                throw Cancel()
+            }
+        }
+        #expect(throws: Cancel.self) { try outcome.get() }
+        let bytes = try #require(keptBytes)
+        let list = try #require(keptList)
+
+        func expectAllRefused(_ when: Comment) {
+            #expect(throws: XitDBError.staleCursor, when) { try list.iterator() }
+            #expect(throws: XitDBError.staleCursor, when) { try ArrayList<ReadOnly>(list).iterator() }
+            #expect(throws: XitDBError.staleCursor, when) { try ArrayList<ReadOnly>(list).cursor(at: 0) }
+            #expect(bytes.readOnly.transaction == bytes.transaction, when)
+            #expect(throws: XitDBError.staleCursor, when) { try bytes.readOnly.readBytes() }
+            #expect(throws: XitDBError.staleCursor, when) { try bytes.readBytes() }
+        }
+        expectAllRefused("before the offsets are reused")
+
+        try database.withTransaction { cursor in
+            _ = try cursor.writePath([
+                .hashMapGet(.value, sha1("other")), .write(.bytes(utf8("other bytes, long enough for a record"))),
+            ])
+            for key in ["x", "y", "z"] {
+                _ = try cursor.writePath([.hashMapGet(.value, sha1(key)), .write(.uint(1))])
+            }
+        }
+        expectAllRefused("after a later transaction reused the offsets")
+    }
+
 }
 
 /// Every byte of a storage, read through the storage protocol: its length,

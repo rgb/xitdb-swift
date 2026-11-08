@@ -248,7 +248,7 @@ extension HashMap where Access == ReadOnly {
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
     ///   other than a hash map or set that keeps no count.
     public init(_ cursor: Cursor<some CursorAccess>) throws(XitDBError) {
-        try self.init(Cursor<ReadOnly>(slotPointer: cursor.slotPointer, database: cursor.database))
+        try self.init(Cursor<ReadOnly>(viewing: cursor))
     }
 }
 

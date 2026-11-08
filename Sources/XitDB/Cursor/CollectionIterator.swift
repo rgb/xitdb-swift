@@ -54,8 +54,10 @@ extension Cursor {
     /// an iterator of nothing.
     ///
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something
-    ///   that is not a collection.
+    ///   that is not a collection, ``XitDBError/staleCursor`` if this cursor
+    ///   is from a transaction that did not commit.
     public func iterator() throws(XitDBError) -> CollectionIterator {
+        try checkReadable()
         let slot = try resolved().slot
         return CollectionIterator(
             slots: try SlotIterator(reader: database.reader, collection: slot),
@@ -67,6 +69,7 @@ extension Cursor {
     /// An iterator over the array list the slot holds, starting at one of
     /// its elements.
     func iterator(fromArrayListIndex index: Int64) throws(XitDBError) -> CollectionIterator {
+        try checkReadable()
         let slot = try resolved().slot
         return CollectionIterator(
             slots: try SlotIterator(reader: database.reader, arrayList: slot, from: index),
@@ -78,6 +81,7 @@ extension Cursor {
     /// An iterator over the linked array list the slot holds, starting at
     /// one of its elements.
     func iterator(fromLinkedArrayListIndex index: Int64) throws(XitDBError) -> CollectionIterator {
+        try checkReadable()
         let slot = try resolved().slot
         return CollectionIterator(
             slots: try SlotIterator(reader: database.reader, linkedArrayList: slot, from: index),
@@ -89,6 +93,7 @@ extension Cursor {
     /// An iterator over the sorted map or set the slot holds, starting at
     /// one of its entries.
     func iterator(fromSortedMapIndex index: Int64) throws(XitDBError) -> CollectionIterator {
+        try checkReadable()
         let slot = try resolved().slot
         return CollectionIterator(
             slots: try SlotIterator(reader: database.reader, sortedMap: slot, from: index),
@@ -100,6 +105,7 @@ extension Cursor {
     /// An iterator over the sorted map or set the slot holds, starting at
     /// the first entry whose key is not below `key`.
     func iterator(fromSortedMapKey key: SortedKey) throws(XitDBError) -> CollectionIterator {
+        try checkReadable()
         let slot = try resolved().slot
         return CollectionIterator(
             slots: try SlotIterator(reader: database.reader, sortedMap: slot, fromKey: key),

@@ -60,6 +60,17 @@ public struct Cursor<Access: CursorAccess> {
         self.freezeCount = database.freezeNumber
     }
 
+    /// A view of another cursor: the same slot, snapshot, freeze point and
+    /// numbers, so that a view of a cursor from a transaction that did not
+    /// commit is refused as the cursor is.
+    init(viewing other: Cursor<some CursorAccess>) {
+        self.slotPointer = other.slotPointer
+        self.database = other.database
+        self.frozenAt = other.frozenAt
+        self.transaction = other.transaction
+        self.freezeCount = other.freezeCount
+    }
+
     /// Whether the cursor is from a transaction that did not commit: its
     /// bytes were truncated and the offsets reused, so nothing may be read
     /// from the file through it. The ``slot`` snapshot touches no bytes and
@@ -72,9 +83,11 @@ public struct Cursor<Access: CursorAccess> {
 
     /// The checks before a write through this cursor, in the order the
     /// port fixes: no transaction, a nested one, a poisoned one, a cursor
-    /// that cannot write, a cursor from an earlier transaction, a cursor
-    /// from before the last freeze (allowed when `path` begins with an init
-    /// part, the way to go on after a freeze).
+    /// that cannot write (one with no position, for any path but one that
+    /// begins with a get, and for the empty path of a byte writer), a
+    /// cursor from an earlier transaction, a cursor from before the last
+    /// freeze (allowed when `path` begins with an init part, the way to go
+    /// on after a freeze).
     ///
     /// A root cursor is never stale: it resolves itself through the root
     /// header. Outside a transaction nothing is stale either: a write is
@@ -90,7 +103,7 @@ public struct Cursor<Access: CursorAccess> {
             return
         }
         if database.poisoned { throw .poisonedTransaction }
-        if slotPointer.position == nil, path.count > 0, !path[0].isGet { throw .cursorNotWritable }
+        if slotPointer.position == nil, path.count == 0 || !path[0].isGet { throw .cursorNotWritable }
         if transaction != database.transactionNumber { throw .staleCursor }
         if freezeCount < database.freezeNumber, !(path.count > 0 && path[0].isInit) { throw .staleCursor }
     }
@@ -362,9 +375,11 @@ public struct Entry {
 }
 
 extension Cursor where Access == ReadWrite {
-    /// A cursor at the same slot that can only read.
+    /// A cursor at the same slot that can only read. It is as stale as
+    /// this one: a view of a cursor from a transaction that did not commit
+    /// is refused the same way.
     public var readOnly: Cursor<ReadOnly> {
-        Cursor<ReadOnly>(slotPointer: slotPointer, database: database)
+        Cursor<ReadOnly>(viewing: self)
     }
 
     // MARK: Paths
