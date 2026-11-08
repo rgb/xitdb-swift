@@ -2,10 +2,9 @@
 /// the entries of a hash map or set, in the order they are stored, or the
 /// entries of a sorted map or set in the order of their keys.
 ///
-/// It is Zig's `Cursor.Iter`. Call ``next()`` until it returns `nil`. The
-/// type is not a `Sequence` or an `IteratorProtocol`, because reading the
-/// next element can fail: `while let element = try iterator.next()` is the
-/// shape.
+/// Call ``next()`` until it returns `nil`. The type is not a `Sequence` or
+/// an `IteratorProtocol`, because reading the next element can fail:
+/// `while let element = try iterator.next()` is the shape.
 ///
 /// An array list gives its elements in order. A hash map or set gives its
 /// entries in the order of their hashes' last bits, which looks random; each

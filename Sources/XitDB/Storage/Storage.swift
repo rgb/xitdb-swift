@@ -126,7 +126,10 @@ public protocol WritableStorage: AnyObject, ReadableStorage {
     ///
     /// - Parameter point: Which of a commit's two syncs this is.
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the storage
-    ///   underneath fails. The commit must then be treated as not made.
+    ///   underneath fails. If this fails before the root header is
+    ///   rewritten, the transaction rolls back. If it fails after, the
+    ///   commit is already in the file, and whether it survives a power
+    ///   loss is not known, so a caller should not rely on it either way.
     func sync(_ point: SyncPoint) throws(XitDBError)
 }
 

@@ -5,7 +5,7 @@
 // Zig's replicaState, replicationStart, readCommitted and applyReplicated.
 
 /// What a replica sends its source, so that the source knows which bytes
-/// to send back: see ``Database/replicationStart(for:)``. Zig's `ReplicaState`.
+/// to send back: see ``Database/replicationStart(for:)``.
 public struct ReplicaState: Sendable, Equatable {
     /// The replica's committed size.
     public var committedSize: UInt64
@@ -23,8 +23,7 @@ public struct ReplicaState: Sendable, Equatable {
 }
 
 /// Where ``Database/readCommitted(from:to:into:)-(_,_,Sink)`` writes the bytes it
-/// reads, a chunk at a time: a growing buffer, a file, a socket. Zig takes
-/// a `std.Io.Writer`.
+/// reads, a chunk at a time: a growing buffer, a file, a socket.
 ///
 /// A sink may throw any error; the call that was writing to it carries the
 /// error as ``XitDBError/callerError(_:)``. ``ArrayByteSink`` collects the
@@ -35,7 +34,7 @@ public protocol ByteSink {
 }
 
 /// Where ``Database/applyReplicated(at:from:count:)`` reads the bytes it
-/// writes, a chunk at a time. Zig takes a `std.Io.Reader`.
+/// writes, a chunk at a time.
 ///
 /// A source may throw any error; the call that was reading from it carries
 /// the error as ``XitDBError/callerError(_:)``. ``ArrayByteSource`` reads
@@ -90,7 +89,7 @@ public struct ArrayByteSource: ByteSource, Sendable {
 
 extension Database {
     /// This database's ``ReplicaState``: its committed size and the
-    /// checksum of the trailer that ends it. Zig's `replicaState`.
+    /// checksum of the trailer that ends it.
     ///
     /// - Throws: What ``committedSize`` throws: the database must check
     ///   out to have a state.
@@ -105,7 +104,7 @@ extension Database {
     /// Where to start sending committed bytes to a replica in `state`: its
     /// committed size if its bytes are a prefix of this database, or 0 if
     /// it must be replaced, because it is a replica of another file or has
-    /// diverged from this one. Zig's `replicationStart`.
+    /// diverged from this one.
     ///
     /// A state is never an error: a size beyond this database's, or one
     /// where no trailer with that checksum ends, gives 0.
@@ -126,7 +125,7 @@ extension Database {
     }
 
     /// Writes the committed bytes from `start` up to `end` to `sink`, a
-    /// chunk at a time: Zig's `readCommitted`.
+    /// chunk at a time.
     ///
     /// `start` is usually from ``replicationStart(for:)``, and `end` cannot
     /// be past ``committedSize``. Committed bytes never change except for
@@ -202,8 +201,7 @@ extension Database {
         return bytes
     }
 
-    /// Writes `count` bytes from `source` at `start` and commits them: Zig's
-    /// `applyReplicated`.
+    /// Writes `count` bytes from `source` at `start` and commits them.
     ///
     /// The bytes must be what ``readCommitted(from:to:into:)-(_,_,Sink)`` gave, so
     /// they end with a trailer. At 0 this database is replaced by them: the
@@ -217,7 +215,7 @@ extension Database {
     /// The commit syncs as any other: the data, then the root header, then
     /// the header's sync. A sync at 0 syncs once, with the whole file.
     ///
-    /// What a failure leaves is what Zig leaves. Bytes that do not end
+    /// What a failure leaves is what the original leaves. Bytes that do not end
     /// with a trailer, or a source that ends short, leave what was written
     /// past the committed size, which the next sync or transaction
     /// discards. A failure at 0 leaves no database: the file was emptied
@@ -231,7 +229,9 @@ extension Database {
     ///   ``XitDBError/invalidDatabase`` if the bytes do not end with
     ///   a trailer that checks, or, at 0, do not hold a database;
     ///   ``XitDBError/invalidHashSize`` at 0 for a database of another
-    ///   hash size; the storage's errors; and the source's, carried as
+    ///   hash size; ``XitDBError/truncatedDatabase`` at 0 for bytes that
+    ///   stop short of the committed size they record; the storage's
+    ///   errors; and the source's, carried as
     ///   ``XitDBError/callerError(_:)``.
     public func applyReplicated<Source: ByteSource>(at start: UInt64, from source: inout Source, count: UInt64)
         throws(XitDBError)

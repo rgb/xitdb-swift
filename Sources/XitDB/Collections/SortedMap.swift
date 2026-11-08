@@ -1,10 +1,10 @@
 /// A map from byte strings to values in a database, kept in key order.
 ///
 /// Keys are bytes, compared as unsigned bytes from the first; a key that is
-/// a prefix of another comes before it. It is Zig's `SortedMap`. The map
-/// gives its entries in that order, from the start, from a key or from a
-/// position, and the position of any key, whether or not it is there: what
-/// a secondary index needs to sort and paginate.
+/// a prefix of another comes before it. The map gives its entries in that
+/// order, from the start, from a key or from a position, and the position
+/// of any key, whether or not it is there: what a secondary index needs to
+/// sort and paginate.
 ///
 /// Underneath is a tree whose leaves hold up to sixteen entries in key
 /// order and whose branches carry a separator key and a count for each

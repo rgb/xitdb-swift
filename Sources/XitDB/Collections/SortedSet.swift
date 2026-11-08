@@ -1,10 +1,9 @@
 /// A set of byte strings in a database, kept in order.
 ///
 /// Keys are bytes, compared as unsigned bytes from the first; a key that is
-/// a prefix of another comes before it. It is Zig's `SortedSet`. Each key
-/// is stored once. The set gives its keys in that order, from the start,
-/// from a key or from a position, and the position of any key, whether or
-/// not it is there.
+/// a prefix of another comes before it. Each key is stored once. The set
+/// gives its keys in that order, from the start, from a key or from a
+/// position, and the position of any key, whether or not it is there.
 ///
 /// Underneath is a tree whose leaves hold up to sixteen entries in key
 /// order and whose branches carry a separator key and a count for each

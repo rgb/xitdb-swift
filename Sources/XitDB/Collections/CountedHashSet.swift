@@ -1,10 +1,9 @@
 /// A counted hash set in a database.
 ///
-/// A set holds keys, each under its hash; it is Zig's `CountedHashSet`.
-/// **The set hashes nothing itself.** The caller hashes each key, with any
-/// function whose result has as many bytes as the database's hash size,
-/// and gives the hash with the key. Two keys with the same hash are the
-/// same key to the set.
+/// A set holds keys, each under its hash. **The set hashes nothing
+/// itself.** The caller hashes each key, with any function whose result
+/// has as many bytes as the database's hash size, and gives the hash with
+/// the key. Two keys with the same hash are the same key to the set.
 ///
 /// A counted set keeps the number of its entries, which ``count`` reads
 /// without going through them. It costs eight bytes each time the set's

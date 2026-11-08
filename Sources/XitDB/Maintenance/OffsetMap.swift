@@ -1,6 +1,6 @@
 /// Where a compaction remembers which target offset each source offset
 /// went to, so that an object pointed at from several places is copied
-/// once and a cycle ends: Zig's `offset_map`.
+/// once and a cycle ends.
 ///
 /// Every mapping must stay available until the compaction finishes. A
 /// compaction resets the map at its start, so one map can serve many
@@ -39,8 +39,7 @@ extension OffsetMap {
     }
 }
 
-/// An offset map kept in memory: Zig's `std.AutoHashMap(u64, u64)`. Its
-/// operations cannot fail.
+/// An offset map kept in memory. Its operations cannot fail.
 ///
 /// It is an open-addressing table of its own rather than a `Dictionary`:
 /// a compaction looks an offset up and records one for every block it

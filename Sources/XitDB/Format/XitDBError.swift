@@ -1,11 +1,10 @@
 /// An error thrown by XitDB.
 ///
-/// The cases mirror the error names of the original Zig implementation, so a
-/// failure means the same thing in both, with one case of its own:
-/// ``indexOutOfRange`` is what Zig reports as `KeyNotFound` for a list
-/// index. Two are comparable only loosely: ``callerError(_:)`` carries an
-/// error of the caller's own, and two of them are equal when their
-/// descriptions are.
+/// The cases mirror the error names of the original, so a failure means the
+/// same thing in both, with one case of its own: ``indexOutOfRange`` is
+/// what the original reports as `KeyNotFound` for a list index. Two are
+/// comparable only loosely: ``callerError(_:)`` carries an error of the
+/// caller's own, and two of them are equal when their descriptions are.
 public enum XitDBError: Error, Sendable {
     /// A slot holds a kind of value that the operation cannot work with.
     ///

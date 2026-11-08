@@ -1,10 +1,9 @@
 /// Reads the bytes of a byte array a part at a time, for
 /// ``Cursor/reader()``.
 ///
-/// It is Zig's `Cursor.Reader`. A reader has a position in the value,
-/// which every read moves forward and ``seek(to:)`` sets. It reads the
-/// value its cursor held when the reader was made, like the cursor's other
-/// reads.
+/// A reader has a position in the value, which every read moves forward
+/// and ``seek(to:)`` sets. It reads the value its cursor held when the
+/// reader was made, like the cursor's other reads.
 ///
 /// Nothing is buffered. Each read of a long value is one read of the
 /// storage, so read in parts of a useful size rather than a byte at a time.

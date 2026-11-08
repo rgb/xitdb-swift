@@ -1,10 +1,9 @@
 /// A counted hash map in a database.
 ///
-/// A map holds values, each under the hash of its key; it is Zig's
-/// `CountedHashMap`. **The map hashes nothing itself.** The caller hashes
-/// each key, with any function whose result has as many bytes as the
-/// database's hash size, and gives the hash. Two keys with the same hash
-/// are the same key to the map.
+/// A map holds values, each under the hash of its key. **The map hashes
+/// nothing itself.** The caller hashes each key, with any function whose
+/// result has as many bytes as the database's hash size, and gives the
+/// hash. Two keys with the same hash are the same key to the map.
 ///
 /// A hash cannot be turned back into its key. To be able to read the keys
 /// of a map, for instance when iterating over it, store each key beside its

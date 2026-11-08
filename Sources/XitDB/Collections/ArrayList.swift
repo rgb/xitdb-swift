@@ -1,8 +1,8 @@
 /// A list in a database, indexed by position.
 ///
 /// Elements are appended at the end, read and written by index, and cut off
-/// from the end with ``truncate(to:)``; it is Zig's `ArrayList`. A negative
-/// index counts from the end: `-1` is the last element.
+/// from the end with ``truncate(to:)``. A negative index counts from the
+/// end: `-1` is the last element.
 ///
 /// A list is a view of a slot. Making one that can only read checks that
 /// the slot holds a list, or nothing. Making one that can write makes the

@@ -671,7 +671,8 @@ extension Database {
     /// transaction. Each access gives a new cursor, which costs one read of
     /// the root header.
     ///
-    /// The cursor is read-write on every storage, as in Zig. A reader opens
+    /// The cursor is read-write on every storage, as in the original. A
+    /// reader opens
     /// its storage with ``FileAccess/readOnly`` and wraps ``Cursor/readOnly``
     /// in the read-only collections, or gives the cursor to their read-only
     /// inits; a write through the root cursor on a read-only storage fails

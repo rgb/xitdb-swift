@@ -35,8 +35,9 @@ public enum FileAccess: Sendable {
 /// disk in order nor that the drive flushes them.
 ///
 /// Not every volume supports every call. Where one is not supported, the
-/// storage tries another that keeps what the level promises, and plain
-/// `fsync` only when nothing better is left. In particular the sync before
+/// storage tries the next best, which can keep less than the level
+/// promises, and plain `fsync` only when nothing better is left. In
+/// particular the sync before
 /// the root header, which is what keeps a file openable after a power loss,
 /// falls back from a barrier to a full sync before it settles for less.
 ///

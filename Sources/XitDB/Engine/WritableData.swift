@@ -112,7 +112,8 @@ public enum WritableData: Sendable {
     /// been read from the same database.
     ///
     /// A cleared slot is not empty: it is marked as holding nothing, which
-    /// ``Slot/isEmpty`` tells apart from never having been written.
+    /// ``Slot/isEmpty`` tells apart from never having been written. An empty
+    /// slot is written as one set to nothing.
     case slot(Slot?)
 
     /// An unsigned integer.

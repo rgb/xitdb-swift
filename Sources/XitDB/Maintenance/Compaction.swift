@@ -12,7 +12,7 @@
 // kept.
 
 extension Database {
-    /// Compacts this database into `target`: Zig's `compact`.
+    /// Compacts this database into `target`.
     ///
     /// The target gets what the latest moment reaches and nothing else, in
     /// one ordinary transaction, with its header, trailer and commit ID.

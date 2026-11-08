@@ -1,10 +1,9 @@
 /// A hash set in a database.
 ///
-/// A set holds keys, each under its hash; it is Zig's `HashSet`. **The set
-/// hashes nothing itself.** The caller hashes each key, with any function
-/// whose result has as many bytes as the database's hash size, and gives
-/// the hash with the key. Two keys with the same hash are the same key to
-/// the set.
+/// A set holds keys, each under its hash. **The set hashes nothing
+/// itself.** The caller hashes each key, with any function whose result
+/// has as many bytes as the database's hash size, and gives the hash with
+/// the key. Two keys with the same hash are the same key to the set.
 ///
 /// A set is a view of a slot. Making one that can only read checks that
 /// the slot holds a set of this kind, or nothing. Making one that can
