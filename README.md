@@ -197,6 +197,10 @@ message. Git runs it once a clone has
 git config core.hooksPath scripts/git-hooks
 ```
 
+Issues are welcome: bug reports, questions about the conformance suite, requests. The repository does not take pull
+requests, since every change goes through the gate and the conformance suite here; a reader with a fix opens an
+issue.
+
 ## Credit
 
 This package is a port of the original xitdb at <https://github.com/xit-vcs/xitdb>, which was made for the
