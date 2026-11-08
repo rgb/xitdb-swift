@@ -148,3 +148,22 @@ package enum PathPart: Sendable {
         }
     }
 }
+
+extension PathPart {
+    /// Whether the part is a collection's init part, which copies the
+    /// collection into the transaction: the way to go on after a freeze.
+    var isInit: Bool {
+        switch self {
+        case .arrayListInit, .hashMapInit, .linkedArrayListInit, .sortedMapInit: true
+        default: false
+        }
+    }
+
+    /// Whether the part only finds something and writes nothing of its own.
+    var isGet: Bool {
+        switch self {
+        case .arrayListGet, .hashMapGet, .linkedArrayListGet, .sortedMapGet, .sortedMapGetIndex: true
+        default: false
+        }
+    }
+}

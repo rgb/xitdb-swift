@@ -124,12 +124,20 @@ import Testing
         let subject = try Subject(kind)
         let database = try subject.damaged(bigEndianBytes(0), at: subject.countPtr)
         try inTransaction(database) { map in
-            #expect(try map.count == 0)
+            let count = try map.count
+            #expect(count == 0)
             // A count of nothing is right for an empty map, so only finding
             // the key proves it wrong: a remove of a key that is there is
-            // reported, one of a key that is not is not damage.
+            // reported, one of a key that is not is not damage. The reported
+            // remove has taken the key out before the count is checked, so
+            // it poisons its transaction (finding 16): the rest runs in
+            // another.
             #expect(throws: XitDBError.invalidCount) { try map.remove(forHash: Subject.hash(0)) }
-            #expect(try !map.remove(forHash: Subject.hash(9)))
+            #expect(throws: XitDBError.poisonedTransaction) { try map.put(.uint(9), forHash: Subject.hash(9)) }
+        }
+        try inTransaction(database) { map in
+            let removed = try map.remove(forHash: Subject.hash(9))
+            #expect(!removed)
             // a put counts up from the number it finds
             try map.put(.uint(9), forHash: Subject.hash(9))
             #expect(try map.count == 1)

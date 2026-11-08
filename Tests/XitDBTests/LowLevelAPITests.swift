@@ -1586,6 +1586,11 @@ import Testing
                 ])
             }
 
+            // each concat froze the transaction: the callback's cursor goes on
+            // through the map's init, and what follows goes through the cursor
+            // that gives (D18); Zig's test goes on through the cursor as it is
+            let cursor = try cursor.writePath([.hashMapInit()])
+
             // append to the new list
             _ = try cursor.writePath([
                 .hashMapGet(.value, sha1("combo")),
@@ -1613,8 +1618,11 @@ import Testing
             }
         }
 
-        // the length of the storage here in a run of the original's Zig test, on every kind of storage
-        #expect(try subject.storage.length == 20706)
+        // the length of the storage here. Zig's test, whose concat froze before its join, gave 20706 on every
+        // kind of storage; here the concat freezes after it (finding 22), so the first append after the concats
+        // copies the joined nodes it touches, and the map's init copies its root block once. The number is the
+        // port's own, not Zig's.
+        #expect(try subject.storage.length == 21398)
     }
 
     /// test.zig 2690-2718: "append items to linked_array_list without setting their value".

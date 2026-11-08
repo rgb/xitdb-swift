@@ -28,7 +28,7 @@ extension Database {
 
         // The tag is the one asked for, which turns a map into a set or back.
         let slot = Slot(value: headerPtr, tag: tag)
-        try write(slot, at: position)
+        try writeSlot(slot, at: position, unchangedFrom: pointer.slot)
         return SlotPointer(position: position, slot: slot)
     }
 
@@ -55,7 +55,7 @@ extension Database {
         // failure in the rest of the path leaves the tree and the header
         // consistent: the entry exists, with an empty value.
         let size = result.added ? header.size + 1 : header.size
-        try write(BTreeHeader(size: size, rootPtr: newRootPtr), at: pointer.slot.value)
+        try writeHeader(BTreeHeader(size: size, rootPtr: newRootPtr), at: pointer.slot.value, unchangedFrom: header)
         return try reader.sortedTargetSlot(result.entry, kind)
     }
 

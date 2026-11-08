@@ -309,18 +309,25 @@ import Testing
         #expect(try get(database, "gap").readBytes() == [1, 0, 0, 0, 5, 6])
     }
 
+    /// The slot is left as it was; the bytes the body wrote before it threw
+    /// stay behind, which poisons the transaction (finding 16): nothing
+    /// more can be written in it, and it rolls back.
     @Test func aWriterWhoseBodyThrowsLeavesTheSlotAsItWas() throws {
         struct Cancel: Error {}
         let database = try makeDatabase()
-        try database.withTransaction { cursor in
-            var value = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(1))])
-            #expect(throws: Cancel.self) {
-                try value.writeBytes { writer in
-                    try writer.write([1, 2, 3])
-                    throw Cancel()
+        try put(database, "a", .uint(1))
+        expectPoisoned {
+            try database.withTransaction { cursor in
+                var value = try cursor.writePath([.hashMapGet(.value, sha1("a"))])
+                #expect(throws: Cancel.self) {
+                    try value.writeBytes { writer in
+                        try writer.write([1, 2, 3])
+                        throw Cancel()
+                    }
                 }
+                #expect(try value.readUInt64() == 1)
+                #expect(throws: XitDBError.poisonedTransaction) { try value.write(.uint(2)) }
             }
-            #expect(try value.readUInt64() == 1)
         }
         #expect(try get(database, "a").readUInt64() == 1)
     }
@@ -344,28 +351,38 @@ import Testing
     }
 
     /// A byte array can only grow while it is the last thing in the file.
+    /// Each refused writer had appended bytes before, which poisons its
+    /// transaction (finding 16), so each runs in one of its own.
     @Test func aWriterCannotGrowOnceSomethingElseWasWritten() throws {
         let database = try makeDatabase()
-        try database.withTransaction { cursor in
-            var value = try cursor.writePath([.hashMapGet(.value, sha1("a"))])
-            var other = try cursor.writePath([.hashMapGet(.value, sha1("b"))])
-            #expect(throws: XitDBError.unexpectedWriterPosition) {
-                try value.writeBytes { writer in
-                    try writer.write([1, 2, 3])
-                    try other.write(.bytes(Self.longValue))
-                    // rewriting what is there is fine
-                    writer.seek(to: 0)
-                    try writer.write([9])
-                    // growing is not
-                    writer.seek(to: 3)
-                    try writer.write([4])
+        expectPoisoned {
+            try database.withTransaction { cursor in
+                var value = try cursor.writePath([.hashMapGet(.value, sha1("a"))])
+                var other = try cursor.writePath([.hashMapGet(.value, sha1("b"))])
+                #expect(throws: XitDBError.unexpectedWriterPosition) {
+                    try value.writeBytes { writer in
+                        try writer.write([1, 2, 3])
+                        try other.write(.bytes(Self.longValue))
+                        // rewriting what is there is fine
+                        writer.seek(to: 0)
+                        try writer.write([9])
+                        // growing is not
+                        writer.seek(to: 3)
+                        try writer.write([4])
+                    }
                 }
             }
-            // with a format tag the end is checked when finishing too
-            #expect(throws: XitDBError.unexpectedWriterPosition) {
-                try value.writeBytes(formatTag: FormatTag(1, 2)) { writer in
-                    try writer.write([1, 2, 3])
-                    try other.write(.bytes(Self.longValue))
+        }
+        // with a format tag the end is checked when finishing too
+        expectPoisoned {
+            try database.withTransaction { cursor in
+                var value = try cursor.writePath([.hashMapGet(.value, sha1("a"))])
+                var other = try cursor.writePath([.hashMapGet(.value, sha1("b"))])
+                #expect(throws: XitDBError.unexpectedWriterPosition) {
+                    try value.writeBytes(formatTag: FormatTag(1, 2)) { writer in
+                        try writer.write([1, 2, 3])
+                        try other.write(.bytes(Self.longValue))
+                    }
                 }
             }
         }
@@ -402,30 +419,44 @@ import Testing
     /// nothing is read, and the storage is not asked. Zig traps on the sum.
     @Test func aWriterRefusesAPositionBeyondAnyStorage() throws {
         let database = try makeDatabase()
-        try database.withTransaction { cursor in
-            var value = try cursor.writePath([.hashMapGet(.value, sha1("far"))])
-            // the position itself would pass the largest number
-            #expect(throws: XitDBError.unexpectedWriterPosition) {
-                try value.writeBytes { writer in
-                    try writer.write([1])
-                    writer.seek(to: .max - 2)
-                    try writer.write([2, 3, 4])
+        // the position itself would pass the largest number. The writer had
+        // appended a byte before, which poisons the transaction (finding 16)
+        expectPoisoned {
+            try database.withTransaction { cursor in
+                var value = try cursor.writePath([.hashMapGet(.value, sha1("far"))])
+                #expect(throws: XitDBError.unexpectedWriterPosition) {
+                    try value.writeBytes { writer in
+                        try writer.write([1])
+                        writer.seek(to: .max - 2)
+                        try writer.write([2, 3, 4])
+                    }
                 }
+                #expect(try value.slot.isEmpty, "a refused write leaves the slot as it was")
             }
-            // the position fits, but not added to where the array starts
-            #expect(throws: XitDBError.unexpectedWriterPosition) {
-                try value.writeBytes { writer in
-                    writer.seek(to: .max - 2)
-                    try writer.write([2])
+        }
+        // the position fits, but not added to where the array starts. The
+        // writer had appended the record's length before, so this poisons
+        // too
+        expectPoisoned {
+            try database.withTransaction { cursor in
+                var value = try cursor.writePath([.hashMapGet(.value, sha1("far"))])
+                #expect(throws: XitDBError.unexpectedWriterPosition) {
+                    try value.writeBytes { writer in
+                        writer.seek(to: .max - 2)
+                        try writer.write([2])
+                    }
                 }
+                #expect(try value.slot.isEmpty, "a refused write leaves the slot as it was")
             }
-            #expect(try value.slot.isEmpty, "a refused write leaves the slot as it was")
         }
     }
 
     // MARK: Cursors
 
-    @Test func writeIfEmptyGoesByTheSnapshot() throws {
+    /// `writeIfEmpty` goes by the slot as it is now, not by the cursor's
+    /// snapshot (finding 17): a copy of the cursor from before the write
+    /// still holds the empty slot, and leaves the value alone.
+    @Test func writeIfEmptyGoesByTheSlot() throws {
         let database = try makeDatabase()
         try database.withTransaction { cursor in
             var first = try cursor.writePath([.hashMapGet(.value, sha1("a"))])
@@ -434,13 +465,19 @@ import Testing
             try first.writeIfEmpty(.uint(2))
             #expect(try first.readUInt64() == 1)
 
-            // the stale copy still thinks the slot is empty, and overwrites
+            // the stale copy's snapshot is still the empty slot, but the
+            // write goes by the slot, which holds 1
             #expect(try stale.slot.isEmpty)
             try stale.writeIfEmpty(.uint(3))
-            #expect(try stale.readUInt64() == 3)
+            #expect(throws: XitDBError.unexpectedTag) { try stale.readUInt64() }
             #expect(try first.readUInt64() == 1)
+
+            // a slot set to nothing is not empty either
+            var cleared = try cursor.writePath([.hashMapGet(.value, sha1("b")), .write(.slot(nil))])
+            try cleared.writeIfEmpty(.uint(4))
+            #expect(try cleared.slot.tag == .none && cleared.slot.full)
         }
-        #expect(try get(database, "a").readUInt64() == 3)
+        #expect(try get(database, "a").readUInt64() == 1)
     }
 
     @Test func aReadOnlyCopyReadsTheSameSlot() throws {

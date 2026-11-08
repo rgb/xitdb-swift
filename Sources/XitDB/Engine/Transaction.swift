@@ -80,8 +80,30 @@ extension Database {
         }
 
         transactionStart = scratchPosition
+        beginTransaction()
         defer { transactionStart = nil }
 
+        // Everything from here to the commit is the transaction: an error
+        // that leaves it means it did not commit, which the cursors made in
+        // it must know.
+        do throws(Failure) {
+            return try runTransaction(
+                path, root: root, scratchPosition: scratchPosition, frozenAt: frozenAt, lift: lift,
+                callback: callback)
+        } catch {
+            recordFailedTransaction()
+            throw error
+        }
+    }
+
+    private func runTransaction<Failure: Error>(
+        _ path: Span<PathPart>,
+        root: Slot,
+        scratchPosition: UInt64,
+        frozenAt: UInt64,
+        lift: (XitDBError) -> Failure,
+        callback: (inout SlotPointer) throws(Failure) -> Void
+    ) throws(Failure) -> SlotPointer {
         // The transaction works on a copy of the root slot.
         var rootPointer = SlotPointer(position: scratchPosition, slot: root)
         do throws(XitDBError) {
@@ -101,6 +123,10 @@ extension Database {
         var result = try runPath(path, at: rootPointer, frozenAt: frozenAt, lift: lift, callback: callback)
 
         do throws(XitDBError) {
+            // An operation that failed after writing has poisoned the
+            // transaction: what it left cannot be committed.
+            if poisoned { throw .poisonedTransaction }
+
             // The copy now holds the new root, so commit it.
             let nextRoot = try reader.slot(at: scratchPosition)
             try commitRoot(nextRoot, commitID: nextCommitID())

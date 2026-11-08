@@ -28,32 +28,32 @@ import Testing
             fileID: 0x0011_2233_4455_6677,
             random: FixedRandom([1, 2, 3])
         )
+        var end: UInt64 = 0
         _ = try database.rootCursor.writePath([.arrayListInit, .arrayListAppend, .hashMapInit(), .ctx]) { cursor in
             let moment = try HashMap(cursor)
-            var a = try LinkedArrayList(try moment.putCursor(forHash: sha1("a").bytes))
-            for value in 0..<16 {
+            // thirty-two appends: a root over two leaves. (A concat used to
+            // make the two leaves; it freezes the transaction now, finding
+            // 22, which would copy them on the first removal.)
+            let a = try LinkedArrayList(try moment.putCursor(forHash: sha1("a").bytes))
+            for value in 0..<32 {
                 try a.append(.uint(UInt64(value)))
             }
-            let b = try LinkedArrayList(try moment.putCursor(forHash: sha1("b").bytes))
-            for value in 16..<32 {
-                try b.append(.uint(UInt64(value)))
-            }
-            try a.append(contentsOf: try b.slot)
-            #expect(try subject.storage.length == 1485)
+            let full = try subject.storage.length
             #expect(try a.count == 32)
 
             for removal in 0..<16 {
                 try a.remove(at: 0)
-                // the joined nodes are this transaction's, so every removal
+                // the nodes are this transaction's, so every removal
                 // rewrites them in place
-                #expect(try subject.storage.length == 1485, "after removal \(removal)")
+                #expect(try subject.storage.length == full, "after removal \(removal)")
             }
             #expect(try a.count == 16)
             let values = try (0..<16).map { try a.cursor(at: $0)?.readUInt64() }
             #expect(values == (16..<32).map { UInt64($0) })
-            // the root is now the surviving leaf itself
+            // the root is now the surviving leaf itself, a node that was there
+            // before the removals began
             let header = try database.reader.bTreeHeader(at: try a.slot.value)
-            #expect(header.rootPtr == 1065)
+            #expect(header.rootPtr < full)
             let root = try database.reader.bTreeNode(at: header.rootPtr)
             #expect(root.kind == .leaf && root.num == 16)
 
@@ -61,14 +61,16 @@ import Testing
             let c = try LinkedArrayList(try moment.putCursor(forHash: sha1("c").bytes))
             try c.append(.uint(7))
             let before = try subject.storage.length
-            #expect(before == 1685)
             try c.remove(at: 0)
-            #expect(try subject.storage.length == 1831)
-            #expect(try database.reader.bTreeHeader(at: try c.slot.value).rootPtr == 1685)
+            // one empty leaf, 2 + 16 * 9 bytes, appended as the new root
+            #expect(try subject.storage.length == before + 146)
+            #expect(try database.reader.bTreeHeader(at: try c.slot.value).rootPtr == before)
             #expect(try c.count == 0)
             #expect(try c.cursor(at: 0) == nil)
+            end = try subject.storage.length
         }
-        #expect(try subject.storage.length == 1856)
+        // and the commit's trailer after it
+        #expect(try subject.storage.length == end + 25)
     }
 
     /// A slice is checked against the size without overflowing, as in Zig:

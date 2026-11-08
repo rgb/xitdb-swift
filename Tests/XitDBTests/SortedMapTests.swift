@@ -83,6 +83,18 @@ import Testing
         let database = try Database(storage: subject.storage, hashSize: 20)
 
         try writesTheFirstMoment(database)
+        // Zig runs the next two blocks inside the first moment. Here a write
+        // that fails after it wrote poisons its transaction (finding 16), so
+        // each runs in a transaction of its own, which then rolls back
+        for block in [guardsTheKeysAndTheEntries, keepsTheCountConsistentAfterAFailedWrite] {
+            #expect(throws: XitDBError.poisonedTransaction) {
+                try database.rootCursor.writePath([.arrayListInit, .arrayListAppend, .hashMapInit(), .ctx]) {
+                    cursor in
+                    let moment = try HashMap<ReadWrite>(cursor)
+                    try block(try SortedMap<ReadWrite>(try moment.putCursor(forHash: hashInt("map"))))
+                }
+            }
+        }
         try theMapPersistsInTheCommittedMoment(database)
         try aSecondMomentInheritsAndMutatesTheMap(database)
     }
@@ -110,8 +122,6 @@ import Testing
             let set = try fillsTheSet(moment)
             try readsShortKeysWithAReader(set)
             try removesFromTheSet(set)
-            try guardsTheKeysAndTheEntries(map)
-            try keepsTheCountConsistentAfterAFailedWrite(map)
         }
     }
 
@@ -334,7 +344,8 @@ import Testing
         }
         #expect(try map.count == countBeforeFailedWrite + 1)
         #expect(try map.entry(forKey: utf8("missing-key")) != nil)
-        #expect(try map.remove(forKey: utf8("missing-key")))  // restore the map for the assertions below
+        // the transaction is poisoned by that write and rolls back, which is what restores the map
+        #expect(throws: XitDBError.poisonedTransaction) { try map.remove(forKey: utf8("missing-key")) }
     }
 
     /// test.zig 3586-3601: the committed moment, read through a read-only map.

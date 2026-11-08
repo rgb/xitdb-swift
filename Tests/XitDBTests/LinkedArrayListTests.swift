@@ -167,6 +167,12 @@ import Testing
                 .linkedArrayListConcat(evenListSliceCursor.slotPointer.slot),
             ])
 
+            // the concat froze the transaction: the callback's cursor goes on
+            // through the map's init, and what follows reads and writes
+            // through the cursor that gives (D18); Zig's test goes on through
+            // the cursor as it is
+            let cursor = try cursor.writePath([.hashMapInit()])
+
             // check all values in the combo list
             var comboValues: [UInt64] = []
             comboValues.append(contentsOf: values[Int(sliceOffset)..<Int(sliceOffset + sliceSize)])

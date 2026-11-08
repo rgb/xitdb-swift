@@ -423,19 +423,29 @@ import Testing
             // the record's bytes start after the byte array's length
             let pairPosition = try holder.slot.value + 8
 
-            let entry = try cursor.writePath([
-                .hashMapGet(.value, sha1("entry")), .write(.slot(Slot(value: pairPosition, tag: .sortedKvPair))),
-            ])
+            // a structural slot cannot be written as a value (finding 3), so the
+            // entry's slot is set through the engine, as a sorted map would
+            let placed = try cursor.writePath([.hashMapGet(.value, sha1("entry"))])
+            #expect(throws: XitDBError.structuralSlot) {
+                try cursor.writePath([
+                    .hashMapGet(.value, sha1("entry")), .write(.slot(Slot(value: pairPosition, tag: .sortedKvPair))),
+                ])
+            }
+            try database.write(
+                Slot(value: pairPosition, tag: .sortedKvPair), at: try #require(placed.slotPointer.position))
+            // a write path starts from the slot as it is now; the callback's
+            // cursor itself still holds its snapshot of the map
+            let entry = try cursor.writePath([.hashMapGet(.value, sha1("entry"))])
             let pair = try entry.readEntry()
             #expect(pair.hash == [UInt8](repeating: 0, count: 20))
             #expect(try pair.key.readBytes() == Array("k".utf8))
             #expect(try pair.value.readUInt64() == 7)
 
             // the value's position is right after the key's, with no hash before
-            // them. The entry is read-only; a read-write cursor at the
-            // value's position, which only the package can make, shows the
-            // position is the record's
-            #expect(pair.key.slotPointer.position == pairPosition)
+            // them. The entry is read-only, and a sorted key has no position at
+            // all (finding 2); a read-write cursor at the value's position, which
+            // only the package can make, shows the position is the record's
+            #expect(pair.key.slotPointer.position == nil)
             #expect(pair.value.slotPointer.position == pairPosition + 9)
             var value = Cursor<ReadWrite>(
                 slotPointer: pair.value.slotPointer, database: pair.value.database, frozenAt: pair.value.frozenAt)
@@ -525,10 +535,14 @@ import Testing
         let damaged = MemoryStorage(bytes: bytes)
         let reopened = try makeDatabase(damaged)
 
-        try reopened.withTransaction { cursor in
-            // without the init part, the element's slot is where the header says: at the root header
-            #expect(throws: XitDBError.invalidDatabase) {
-                try cursor.writePath([.hashMapGet(.value, sha1("list")), .arrayListGet(0), .write(.uint(9))])
+        // the get copied the map's block before the damage was met, so the
+        // transaction is poisoned and rolls back (finding 16)
+        expectPoisoned {
+            try reopened.withTransaction { cursor in
+                // without the init part, the element's slot is where the header says: at the root header
+                #expect(throws: XitDBError.invalidDatabase) {
+                    try cursor.writePath([.hashMapGet(.value, sha1("list")), .arrayListGet(0), .write(.uint(9))])
+                }
             }
         }
         // the root header was not written to
@@ -1070,25 +1084,33 @@ import Testing
         }
         let countedMap: [PathPart] = [.hashMapGet(.value, sha1("map")), .hashMapInit(counted: true)]
 
-        // a counted map that says it is full to the last number
+        // a counted map that says it is full to the last number. The init
+        // copied its block before the count was checked, which poisons the
+        // transaction (finding 16); it rolls back, and so do the two below
         let full = try damaged(at: mapPosition, .max)
-        try full.withTransaction { cursor in
-            #expect(throws: XitDBError.invalidCount) {
-                try cursor.writePath(countedMap + [.hashMapGet(.value, sha1("new")), .write(.uint(2))])
+        expectPoisoned {
+            try full.withTransaction { cursor in
+                #expect(throws: XitDBError.invalidCount) {
+                    try cursor.writePath(countedMap + [.hashMapGet(.value, sha1("new")), .write(.uint(2))])
+                }
             }
         }
         // and one that says it is empty, with an entry in it
         let empty = try damaged(at: mapPosition, 0)
-        try empty.withTransaction { cursor in
-            #expect(throws: XitDBError.invalidCount) {
-                try cursor.writePath(countedMap + [.hashMapRemove(sha1("a"))])
+        expectPoisoned {
+            try empty.withTransaction { cursor in
+                #expect(throws: XitDBError.invalidCount) {
+                    try cursor.writePath(countedMap + [.hashMapRemove(sha1("a"))])
+                }
             }
         }
         // a list that says it has as many elements as there are numbers
         let endless = try damaged(at: listPosition, .max)
-        try endless.withTransaction { cursor in
-            #expect(throws: XitDBError.self) {
-                try cursor.writePath([.hashMapGet(.value, sha1("list")), .arrayListInit, .arrayListAppend])
+        expectPoisoned {
+            try endless.withTransaction { cursor in
+                #expect(throws: XitDBError.self) {
+                    try cursor.writePath([.hashMapGet(.value, sha1("list")), .arrayListInit, .arrayListAppend])
+                }
             }
         }
     }

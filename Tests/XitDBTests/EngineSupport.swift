@@ -109,3 +109,13 @@ func onLargeStack(_ body: @escaping @Sendable () throws -> Void) throws {
     done.wait()
     if let error = outcome.error { throw error }
 }
+
+/// Runs `body`, which has to end in a poisoned transaction (finding 16), and
+/// checks that it does. The expectations inside `body` run as usual; one
+/// `#expect(throws:)` cannot hold another, which is why this is not one.
+func expectPoisoned(
+    _ body: () throws -> Void, sourceLocation: SourceLocation = #_sourceLocation
+) {
+    let outcome = Result { try body() }
+    #expect(throws: XitDBError.poisonedTransaction, sourceLocation: sourceLocation) { try outcome.get() }
+}

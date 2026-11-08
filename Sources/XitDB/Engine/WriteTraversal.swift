@@ -42,7 +42,10 @@ extension Database {
             case .hashMapGet(let kind, let hash):
                 pointer = try hashMapGet(pointer, kind: kind, hash: hash, frozenAt: frozenAt)
             case .hashMapRemove(let hash):
-                // A remove ends the path, whatever follows it.
+                // A remove ends the path: anything after it is an error,
+                // reported before anything is removed (finding 12; Zig
+                // ignores what follows).
+                if index != path.count - 1 { throw .pathPartMustBeAtEnd }
                 try hashMapRemove(pointer, hash: hash, frozenAt: frozenAt)
                 return (pointer, false)
             case .linkedArrayListInit:
@@ -67,7 +70,8 @@ extension Database {
                 // An index names an entry only while nothing is written.
                 throw .writeNotAllowed
             case .sortedMapRemove(let key):
-                // A remove ends the path, whatever follows it.
+                // A remove ends the path, as above.
+                if index != path.count - 1 { throw .pathPartMustBeAtEnd }
                 try sortedMapRemove(pointer, key: key, frozenAt: frozenAt)
                 return (pointer, false)
             case .write(let data):
@@ -89,6 +93,11 @@ extension Database {
         var slot: Slot
         switch data {
         case .slot(let given):
+            // The trees' own tags: a value with one of them builds a tree
+            // the engine cannot read (finding 3).
+            if let given, given.tag == .index || given.tag == .kvPair || given.tag == .sortedKvPair {
+                throw .structuralSlot
+            }
             slot = given ?? Slot(tag: .none)
         case .uint(let value):
             slot = Slot(value: value, tag: .uint)
@@ -158,7 +167,7 @@ extension Database {
 
         // Point the slot at the list.
         let slot = Slot(value: listStart, tag: .arrayList)
-        try write(slot, at: position)
+        try writeSlot(slot, at: position, unchangedFrom: pointer.slot)
         return SlotPointer(position: position, slot: slot)
     }
 
@@ -357,7 +366,7 @@ extension Database {
         // Point the slot at the map. The tag is the one asked for, which
         // turns a map into a set or back.
         let slot = Slot(value: mapStart, tag: tag)
-        try write(slot, at: position)
+        try writeSlot(slot, at: position, unchangedFrom: pointer.slot)
         return SlotPointer(position: position, slot: slot)
     }
 

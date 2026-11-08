@@ -42,6 +42,36 @@ public final class Database {
     /// before and after, to know whether it committed anything.
     private(set) var commitCount: UInt64 = 0
 
+    /// The number of the transaction in progress, or of the last one when
+    /// none is: transactions are numbered from one as they start. A cursor
+    /// records it when it is made, which is how a write through a cursor
+    /// from an earlier transaction is told from one made in this one.
+    private(set) var transactionNumber: UInt64 = 0
+
+    /// How many times a transaction has frozen so far: ``freeze()`` and a
+    /// concat, each once, counted across transactions. A cursor records it
+    /// when it is made; a write through a cursor made before a freeze is
+    /// refused, since what it would write in place may be shared since.
+    private(set) var freezeNumber: UInt64 = 0
+
+    /// The numbers of the transactions that did not commit, as ranges, so
+    /// that a read through a cursor made in one of them can be refused: its
+    /// bytes were truncated and the offsets reused. Consecutive numbers
+    /// share a range, so this grows by one range per commit that a failure
+    /// follows, far less than the file does.
+    private var failedTransactions: [ClosedRange<UInt64>] = []
+
+    /// How many writes the engine has issued to the storage, counted so
+    /// that an operation can tell whether it wrote anything before it
+    /// failed, which poisons the transaction. An init part writing its own
+    /// slot back unchanged is not counted.
+    private(set) var writesIssued: UInt64 = 0
+
+    /// Whether the transaction in progress is poisoned: an operation in it
+    /// failed after it had written to the storage. Every further write and
+    /// the commit fail with ``XitDBError/poisonedTransaction``.
+    private(set) var poisoned = false
+
     /// The source of the file ID of a new database and of every commit ID,
     /// shared with the target a compaction opens.
     let random: RandomSource
@@ -248,6 +278,74 @@ public final class Database {
     public func freeze() throws(XitDBError) {
         guard transactionStart != nil else { throw .expectedTxStart }
         transactionStart = try storage.length
+        noteFreeze()
+    }
+
+    // MARK: Transactions and the cursors made in them
+
+    /// The transaction number a cursor made now records: the transaction in
+    /// progress, or zero outside any.
+    var cursorTransaction: UInt64 {
+        transactionStart == nil ? 0 : transactionNumber
+    }
+
+    /// Counts a freeze of the transaction in progress: ``freeze()`` or a
+    /// concat.
+    func noteFreeze() {
+        freezeNumber &+= 1
+    }
+
+    /// Starts the next transaction: numbers it and clears the poison.
+    func beginTransaction() {
+        transactionNumber &+= 1
+        poisoned = false
+    }
+
+    /// Records that the transaction in progress did not commit.
+    func recordFailedTransaction() {
+        let number = transactionNumber
+        if let last = failedTransactions.last, last.upperBound &+ 1 == number {
+            failedTransactions[failedTransactions.count - 1] = last.lowerBound...number
+        } else {
+            failedTransactions.append(number...number)
+        }
+    }
+
+    /// Whether the transaction with this number ended without committing.
+    func transactionFailed(_ number: UInt64) -> Bool {
+        var low = 0
+        var high = failedTransactions.count
+        while low < high {
+            let middle = (low + high) / 2
+            let range = failedTransactions[middle]
+            if number < range.lowerBound {
+                high = middle
+            } else if number > range.upperBound {
+                low = middle + 1
+            } else {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Marks the transaction in progress as poisoned: an operation failed
+    /// after writing.
+    func poison() {
+        if transactionStart != nil { poisoned = true }
+    }
+
+    /// Counts a write the engine issued to the storage.
+    func noteWrite() {
+        writesIssued &+= 1
+    }
+
+    /// Writes a slot back from an init part, which always writes its slot:
+    /// one that is unchanged does not count as a write of the transaction's.
+    func writeSlot(_ slot: Slot, at position: UInt64, unchangedFrom old: Slot) throws(XitDBError) {
+        let bytes = InlineArray<9, UInt8> { (output: inout OutputSpan<UInt8>) in slot.encode(into: &output) }
+        try storage.write(bytes.span, at: position)
+        if slot != old { noteWrite() }
     }
 
     // MARK: Commit and rollback
@@ -267,6 +365,7 @@ public final class Database {
             trailer.encode(into: &output)
         }
         try storage.write(trailerBytes.span, at: trailerPosition)
+        noteWrite()
 
         // Rewriting the header is what completes the transaction. The data
         // must be on the disk first: otherwise a crash could leave a header
@@ -278,6 +377,7 @@ public final class Database {
             rootHeader.encode(into: &output)
         }
         try storage.write(rootHeaderBytes.span, at: RootHeader.position)
+        noteWrite()
         commitCount &+= 1
     }
 
@@ -316,6 +416,7 @@ public final class Database {
         let block = try reader.indexBlockBytes(at: position)
         let copyPosition = try storage.length
         try storage.write(block.span, at: copyPosition)
+        noteWrite()
         return copyPosition
     }
 
@@ -334,6 +435,7 @@ public final class Database {
             slot.encode(into: &output)
         }
         try storage.write(bytes.span, at: position)
+        noteWrite()
     }
 
     func write(_ value: UInt64, at position: UInt64) throws(XitDBError) {
@@ -341,6 +443,7 @@ public final class Database {
             output.appendBigEndian(value)
         }
         try storage.write(bytes.span, at: position)
+        noteWrite()
     }
 
     func write(_ header: ArrayListHeader, at position: UInt64) throws(XitDBError) {
@@ -348,12 +451,14 @@ public final class Database {
             header.encode(into: &output)
         }
         try storage.write(bytes.span, at: position)
+        noteWrite()
     }
 
     /// Writes an index block of empty slots.
     func writeEmptyIndexBlock(at position: UInt64) throws(XitDBError) {
         let block = InlineArray<144, UInt8>(repeating: 0)
         try storage.write(block.span, at: position)
+        noteWrite()
     }
 
     /// Writes a hashed key-value pair record: the hash, the key slot, the
@@ -371,6 +476,7 @@ public final class Database {
             pair.keySlot.encode(into: &bytes, at: hash.count)
             pair.valueSlot.encode(into: &bytes, at: hash.count + 9)
             try storage.write(record.span.extracting(0..<size), at: position)
+            noteWrite()
         } else {
             let record = hash.withBytes { (hashBytes: Span<UInt8>) in
                 [UInt8](capacity: size) { (output: inout OutputSpan<UInt8>) in
@@ -378,6 +484,7 @@ public final class Database {
                 }
             }
             try storage.write(record.span, at: position)
+            noteWrite()
         }
     }
 }

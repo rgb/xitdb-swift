@@ -125,6 +125,7 @@ extension Database {
         var bytes = block.mutableSpan
         node.encode(into: &bytes)
         try storage.write(block.span.extracting(0..<Int(node.byteCount)), at: position)
+        noteWrite()
     }
 
     /// Appends a node and returns where it is: Zig's `writeBTreeNode` and

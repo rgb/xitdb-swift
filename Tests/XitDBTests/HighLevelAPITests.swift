@@ -314,7 +314,7 @@ import Testing
         let history = try ArrayList<ReadWrite>(database.rootCursor)
 
         try history.append(.slot(try history.slot(at: -1))) { cursor in
-            let moment = try HashMap<ReadWrite>(cursor)
+            var moment = try HashMap<ReadWrite>(cursor)
 
             #expect(try moment.remove(forHash: hashInt("bar")))
             #expect(try !moment.remove(forHash: hashInt("doesn't exist")))
@@ -342,6 +342,10 @@ import Testing
             try todos.append(contentsOf: try todosCursor.slot)
             try todos.formSlice(offset: 1, count: 2)
             try todos.remove(at: 1)
+            // the concat froze the transaction, so the moment is made again
+            // from the callback's cursor before it is written through (D18);
+            // Zig's test goes on through the kept one
+            moment = try HashMap<ReadWrite>(cursor)
 
             let lettersCountedMapCursor = try moment.putCursor(forHash: hashInt("letters-counted-map"))
             let lettersCountedMap = try CountedHashMap<ReadWrite>(lettersCountedMapCursor)

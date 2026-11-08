@@ -304,6 +304,7 @@ extension Database {
         let position = try storage.length
         try write(UInt64(key.count), at: position)
         try storage.write(key, at: try position.offset(by: ByteArrayFormat.lengthByteCount))
+        noteWrite()
         return Slot(value: position, tag: .bytes)
     }
 
@@ -320,6 +321,7 @@ extension Database {
                 pair.pair.encodeSorted(into: &output)
             }
             try storage.write(bytes.span, at: position)
+            noteWrite()
         case .kvPair:
             try write(pair.pair, hash: pair.hash, at: position)
         default:

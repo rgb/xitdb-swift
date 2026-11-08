@@ -29,7 +29,9 @@
 /// anything is written through them.
 public struct LinkedArrayList<Access: CursorAccess> {
     /// The cursor at the slot that holds the list.
-    public let cursor: Cursor<Access>
+    /// The cursor the list is a view of. ``append(contentsOf:)-(Slot)``
+    /// replaces it with a fresh one, which is why that call is `mutating`.
+    public private(set) var cursor: Cursor<Access>
 
     /// The slot that holds the list.
     ///
@@ -332,7 +334,10 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   file.
     public mutating func append(contentsOf list: Slot) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.linkedArrayListConcat(list)]
-        _ = try cursor.writePath(path.span)
+        // The join freezes the transaction, which makes this list's own
+        // cursor stale with every other; the cursor the path gives back
+        // was made after the freeze, so the list goes on from it.
+        cursor = try cursor.writePath(path.span)
     }
 
     /// Inserts an element before the one at `index`.

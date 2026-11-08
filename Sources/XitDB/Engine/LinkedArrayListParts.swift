@@ -10,6 +10,16 @@ extension Database {
             header.encode(into: &output)
         }
         try storage.write(bytes.span, at: position)
+        noteWrite()
+    }
+
+    /// Writes a tree's header back, which a sorted get always does: one
+    /// that is unchanged does not count as a write of the transaction's,
+    /// as an init part's unchanged slot does not.
+    func writeHeader(_ header: BTreeHeader, at position: UInt64, unchangedFrom old: BTreeHeader) throws(XitDBError) {
+        let bytes = InlineArray<16, UInt8> { (output: inout OutputSpan<UInt8>) in header.encode(into: &output) }
+        try storage.write(bytes.span, at: position)
+        if header != old { noteWrite() }
     }
 
     /// The header of the list a slot holds.
@@ -46,7 +56,7 @@ extension Database {
         }
 
         let slot = Slot(value: headerPtr, tag: .linkedArrayList)
-        try write(slot, at: position)
+        try writeSlot(slot, at: position, unchangedFrom: pointer.slot)
         return SlotPointer(position: position, slot: slot)
     }
 
@@ -123,16 +133,17 @@ extension Database {
         let (total, overflow) = headerA.size.addingReportingOverflow(headerB.size)
         if overflow { throw .invalidBTreeNode }
 
-        // The joined tree shares subtrees with both lists, and the other
-        // list stays in use, so everything written so far is frozen: later
-        // writes copy those nodes instead of changing a node that is still
-        // referred to elsewhere. (Zig freezes before the join; the joined
-        // nodes themselves are therefore not frozen. That is reproduced
-        // until parity; decision D18 changes it afterwards.)
         guard transactionStart != nil else { throw .expectedTxStart }
-        transactionStart = try storage.length
         let newRootPtr = try bTreeJoin(headerA.rootPtr, headerB.rootPtr)
         try write(BTreeHeader(size: total, rootPtr: newRootPtr), at: pointer.slot.value)
+        // The joined tree shares subtrees with both lists, and the other
+        // list stays in use, so everything written so far is frozen, the
+        // joined nodes included: an init copies a frozen header, and the
+        // copy shares its nodes, so nothing may change them in place. Zig
+        // at 6b93af1 froze before the join; its fix branch freezes after it
+        // (finding 22), and so does this.
+        transactionStart = try storage.length
+        noteFreeze()
     }
 
     func linkedArrayListRemove(_ pointer: SlotPointer, index: Int64, frozenAt: UInt64) throws(XitDBError) {
