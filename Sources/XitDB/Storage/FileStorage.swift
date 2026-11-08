@@ -55,8 +55,9 @@ public enum Durability: Sendable {
 
     /// Keep writes in order, without waiting for the drive to flush.
     ///
-    /// After a power loss the file opens, but the latest commits may be
-    /// missing.
+    /// After a power loss the latest commits may be missing, and a root
+    /// header whose write the power loss tore has to be recovered with
+    /// ``Database/recover(_:)`` before the database opens.
     case ordered
 
     /// Keep writes in order, and have the drive flush before a commit

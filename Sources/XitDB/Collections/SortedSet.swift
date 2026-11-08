@@ -95,9 +95,9 @@ public struct SortedSet<Access: CursorAccess> {
     /// key that is not below `key` on, which need not be there. A key
     /// beyond every entry gives an iterator of nothing.
     ///
-    /// - Parameter key: The key's bytes, in any sequence of bytes: an array,
-    ///   a slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
-    ///   already borrowed.
+    /// - Parameter key: The key's bytes, in any sequence of bytes: an array, a
+    ///   slice, `Data`, a string's `utf8`. Anything but an array is copied
+    ///   once; the `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something other
     ///   than a sorted map or set, ``XitDBError/invalidBTreeNode`` if the tree
     ///   does not hold what its header or its branches say,
@@ -134,9 +134,9 @@ public struct SortedSet<Access: CursorAccess> {
     /// The number of keys in the set that are below `key`, which need
     /// not be there: the position it has, or would have.
     ///
-    /// - Parameter key: The key's bytes, in any sequence of bytes: an array,
-    ///   a slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
-    ///   already borrowed.
+    /// - Parameter key: The key's bytes, in any sequence of bytes: an array, a
+    ///   slice, `Data`, a string's `utf8`. Anything but an array is copied
+    ///   once; the `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something other
     ///   than a sorted map or set, ``XitDBError/invalidBTreeNode`` if the tree
     ///   does not hold what its header or its branches say,
@@ -182,9 +182,9 @@ public struct SortedSet<Access: CursorAccess> {
 
     /// Whether `key` is in the set.
     ///
-    /// - Parameter key: The key's bytes, in any sequence of bytes: an array,
-    ///   a slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
-    ///   already borrowed.
+    /// - Parameter key: The key's bytes, in any sequence of bytes: an array, a
+    ///   slice, `Data`, a string's `utf8`. Anything but an array is copied
+    ///   once; the `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something other
     ///   than a sorted map or set, ``XitDBError/invalidBTreeNode`` if the tree
     ///   does not hold what its header or its branches say,
@@ -293,9 +293,9 @@ extension SortedSet where Access == ReadWrite {
     /// Adds `key` to the set. A key that is there already is left as it
     /// is.
     ///
-    /// - Parameter key: The key's bytes, in any sequence of bytes: an array,
-    ///   a slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
-    ///   already borrowed.
+    /// - Parameter key: The key's bytes, in any sequence of bytes: an array, a
+    ///   slice, `Data`, a string's `utf8`. Anything but an array is copied
+    ///   once; the `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not the
     ///   root cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
@@ -344,9 +344,9 @@ extension SortedSet where Access == ReadWrite {
     /// Removes the entry for a key. The place it had in its leaf stays
     /// empty; the tree is not rebalanced.
     ///
-    /// - Parameter key: The key's bytes, in any sequence of bytes: an array,
-    ///   a slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
-    ///   already borrowed.
+    /// - Parameter key: The key's bytes, in any sequence of bytes: an array, a
+    ///   slice, `Data`, a string's `utf8`. Anything but an array is copied
+    ///   once; the `Span` overload takes bytes already borrowed.
     /// - Returns: Whether there was an entry to remove.
     /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not the
     ///   root cursor and no transaction is in progress,

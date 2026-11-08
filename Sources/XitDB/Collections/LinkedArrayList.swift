@@ -31,7 +31,6 @@
 /// allowed, but safe only for the cloned structure itself, or for a
 /// handle into nothing that was cloned.
 public struct LinkedArrayList<Access: CursorAccess> {
-    /// The cursor at the slot that holds the list.
     /// The cursor the list is a view of. ``append(contentsOf:)-(Slot)``
     /// replaces it with a fresh one, which is why that call is `mutating`.
     public private(set) var cursor: Cursor<Access>
