@@ -4,13 +4,17 @@
 
 ### Opening and creating
 
+See <doc:Storage>, and <doc:Recovery> for a file whose last commit is damaged.
+
 - ``init(opening:hashSize:)``
 - ``init(creating:hashSize:hashID:fileID:)``
+- ``recover(_:)``
 - ``header``
 
 ### Reading and writing
 
-Everything starts at the root cursor, and a transaction groups writes. See <doc:Transactions>.
+Everything starts at the root cursor, and a transaction groups writes. See <doc:Transactions>, and
+<doc:CloningFreezeAndStaleHandles> for what a freeze does.
 
 - ``rootCursor``
 - ``withTransaction(_:)``

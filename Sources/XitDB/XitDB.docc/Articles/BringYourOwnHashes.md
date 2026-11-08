@@ -13,8 +13,8 @@ The examples in this documentation use a helper of three lines:
 ```swift
 import CryptoKit
 
-func sha256(_ key: String) -> [UInt8] {
-    Array(SHA256.hash(data: Array(key.utf8)))
+func sha256(_ key: String) -> SHA256Digest {
+    SHA256.hash(data: Array(key.utf8))
 }
 ```
 
@@ -30,20 +30,16 @@ let database = try Database(creating: MemoryStorage(), hashSize: 32)
 let map = try HashMap<ReadWrite>(database.rootCursor)
 
 // The hash is the caller's. It only has to have the right size.
-try map.put(.uint(1), forHash: Array(SHA256.hash(data: Array("alice".utf8))))
+try map.put(.uint(1), forHash: SHA256.hash(data: Array("alice".utf8)))
 ```
+
+A hash parameter takes any sequence of bytes: a digest as it is, an array, a slice, `Data`, or a string's `utf8` if it
+happens to have the right length. Each one is made into an array for the call, which for an array costs nothing and for
+anything else is a copy of the hash. Every method also has an overload that takes a `Span<UInt8>`, which copies nothing: see
+<doc:TheCollections>.
 
 A hash of any other size throws ``XitDBError/invalidHashSize`` as soon as there is a map to look in. That includes a
 SHA-1 hash in a database of SHA-256 hashes.
-
-Today a CryptoKit digest has to go in as an array, as above. It is a `Sequence` of bytes and not a `Collection`, which is
-what the map asks for. The next version takes a sequence, and a digest goes in as it is:
-
-```swift
-// A digest goes in as an array, for now: see the article.
-let digest = SHA256.hash(data: Array("alice".utf8))
-try map.put(.uint(1), forHash: Array(digest))
-```
 
 ### Which size to pick
 

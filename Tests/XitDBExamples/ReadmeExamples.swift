@@ -8,8 +8,8 @@ import XitDB
         defer { scratch.remove() }
 
         // XitDB never hashes anything itself: the caller hashes each key.
-        func sha256(_ key: String) -> [UInt8] {
-            Array(SHA256.hash(data: Array(key.utf8)))
+        func sha256(_ key: String) -> SHA256Digest {
+            SHA256.hash(data: Array(key.utf8))
         }
 
         // Open the file, and create the database in it if it is new.

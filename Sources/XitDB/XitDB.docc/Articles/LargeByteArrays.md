@@ -35,9 +35,10 @@ Three things to know:
 
 - **Write nothing else meanwhile.** The array can only grow while it is the last thing in the storage, so after a write to
   anything else in the body, more bytes for the array, or a format tag, throw ``XitDBError/unexpectedWriterPosition``.
-- **If the body throws, the slot is left as it was.** The bytes already written stay in the storage, unused. If the error
-  leaves the transaction, they go with it. If you catch it and the transaction commits, they are committed too, and only
-  compacting removes them.
+- **A failure poisons the transaction.** The array is begun in the storage before the body runs, so when the body throws, even
+  before it has written a byte, or a write of the array fails, bytes are left behind that only a rollback removes. The slot is
+  left as it was, nothing more can be written in the transaction, and it rolls back when its body returns: see
+  <doc:Transactions>.
 - **A value written this way always has a record of its own**, however short it is: eight bytes of length, the bytes, and
   two more for a format tag if it has one. The same bytes written with ``WritableData/bytes(_:formatTag:)`` go in the slot if they are short enough:
   see <doc:CursorsAndValues>.

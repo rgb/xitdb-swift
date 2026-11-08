@@ -12,7 +12,8 @@ inside your program and keeps its data in one file or in memory.
 - Replicating a database is copying the bytes the other side lacks. Reclaiming space is compacting it into a
   new file.
 - The port reads and writes the same files as the original, byte for byte. Given the same operations and the
-  same IDs, the two produce identical files.
+  same IDs, the two produce identical files, apart from the few operations the port deliberately does
+  differently, which the article "Where the port differs from the original" lists.
 - It is pure Swift with no run-time dependencies, down to the system's file calls.
 
 Immutability has a cost: the file only grows until you compact it. The design leaves two jobs to you as well: you
@@ -20,14 +21,15 @@ hash your own keys, and you keep your own indexes. If you want queries or a sche
 
 ## Status
 
-The port reached parity with the original on 2026-11-07: every operation of the original, checked by 209
-conformance scripts. In 111 of them the file must match the original's byte for byte, and in the other 98 the
-script must fail where the original fails. It has not been released yet.
+The port reached parity with the original on 2026-11-07: every operation of the original, checked by
+conformance scripts. On 2026-11-08 it added the checks that turn misuse the original allows into a clear error,
+such as a cursor kept for a later transaction or a write after a failure in the same one, and explicit recovery of
+a file whose last commit is damaged. There are now 219 scripts. In 121 of them the file must match byte for byte
+what the original writes, or, where the port deliberately does otherwise, what the original writes when it is made
+to do the same. In the other 98 the script must fail where the original fails. It has not been released yet.
 
 Not there yet, and being worked on in this order:
 
-- the write-side checks that turn misuse the original allows (a cursor kept across a transaction, for example)
-  into a clear error, and explicit recovery of a file whose last commit is damaged;
 - read snapshots that can be shared between threads and tasks;
 - a hashing target and a more Swift-flavoured layer over the API shown here (string keys, typed values);
 - iOS testing on a simulator, and Linux. It builds for macOS 26 and iOS 26 and is tested on macOS.
@@ -54,8 +56,8 @@ import CryptoKit
 import XitDB
 
 // XitDB never hashes anything itself: the caller hashes each key.
-func sha256(_ key: String) -> [UInt8] {
-    Array(SHA256.hash(data: Array(key.utf8)))
+func sha256(_ key: String) -> SHA256Digest {
+    SHA256.hash(data: Array(key.utf8))
 }
 
 // Open the file, and create the database in it if it is new.

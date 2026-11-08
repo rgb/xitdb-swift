@@ -127,16 +127,16 @@ try tasks.append(contentsOf: more)
 try tasks.formSlice(offset: 1, count: 2)
 ```
 
-Neither goes through the list. Today, with two lists of 4,096 elements in a map, a join in a transaction of its own did 31
-reads and appended 494 bytes: 274 for the one new branch, and 220 for what any transaction reaching that list copies. Cutting
-out the middle of the result did 108 reads and appended 8,584: the same 220, and new nodes for the edges of the tree at every
-level. The next version's join changes these numbers: see <doc:DifferencesFromTheOriginal>.
+Neither goes through the list. With two lists of 4,096 elements in a map, a join in a transaction of its own did 31 reads and
+appended 494 bytes: 274 for the one new branch, and 220 for what any transaction reaching that list copies. Cutting out the middle
+of the result did 108 reads and appended 8,584: the same 220, and new nodes for the edges of the tree at every level.
 
 <!-- Pinned by `whatAJoinAndACutCost` in XitDBExamples: the numbers and the test change together. -->
 
-A join is `mutating`, so the list has to be a `var`. It also freezes the transaction, as
-``LinkedArrayList/append(contentsOf:)-(LinkedArrayList<CursorAccess>)`` explains: to go on writing through another
-collection you made before it, run the initialiser again on the cursor you hold.
+A join is `mutating`, so the list has to be a `var`: the call refreshes it, and it goes on working. It also freezes the
+transaction, so every other collection you made before the join is stale, and a write through one is refused with
+``XitDBError/staleCursor``. Take those again from the cursor the transaction's body was given: see
+<doc:CloningFreezeAndStaleHandles>.
 
 ``LinkedArrayList/insert(_:at:)`` needs an element to insert before, so an index equal to the count throws
 ``XitDBError/indexOutOfRange``. Use ``LinkedArrayList/append(_:)`` to add at the end.
@@ -213,9 +213,10 @@ let byte: UInt8 = 0
 
 ### Hashes and keys
 
-A hash, or a sorted collection's key, is `some Collection<UInt8>` at the call site today: an array, a slice, a string's
-`utf8`, or Foundation's `Data`. The next version takes `some Sequence<UInt8>`. Each method also has an overload taking a
-`Span<UInt8>`, for bytes you already have borrowed, which saves making an array:
+A hash, or a sorted collection's key, is `some Sequence<UInt8>` at the call site: a CryptoKit digest as it is, an array, a
+slice, a string's `utf8`, or Foundation's `Data`. The call makes an array of it, which costs nothing for an array and is a copy
+for anything else. Each method also has an overload taking a `Span<UInt8>`, for bytes you already have borrowed, which copies
+nothing:
 
 ```swift
 let sorted = try SortedMap<ReadWrite>(database.rootCursor)
@@ -225,16 +226,15 @@ try sorted.put(.uint(2), forKey: "pear".utf8)
 ```
 
 ```swift
-let hash = sha256("anything")
-let map = try Database(creating: MemoryStorage(), hashSize: 32)
-let hashed = try HashMap<ReadWrite>(map.rootCursor)
-try hashed.put(.uint(1), forHash: hash)
-try hashed.put(.uint(2), forHash: hash[...])
-try hashed.put(.uint(3), forHash: hash.span)
-```
+let hashes = try Database(creating: MemoryStorage(), hashSize: 32)
+let hashed = try HashMap<ReadWrite>(hashes.rootCursor)
 
-A CryptoKit digest is a sequence and not a collection, so today it goes in as `Array(digest)`:
-see <doc:BringYourOwnHashes>.
+let bytes = [UInt8](repeating: 7, count: 32)
+try hashed.put(.uint(1), forHash: sha256("anything"))
+try hashed.put(.uint(2), forHash: bytes)
+try hashed.put(.uint(3), forHash: bytes[...])
+try hashed.put(.uint(4), forHash: bytes.span)
+```
 
 ## See Also
 

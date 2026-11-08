@@ -38,10 +38,40 @@ try database.withTransaction { cursor in
 }
 ```
 
-The transaction is the only unit of rollback, so if an operation inside the body throws, let the error leave the
-body. Today, a body that catches it and carries on commits whatever the failed operation had already written. In the
-next version such a transaction cannot commit: every later write in it, and the commit, throw an error, and it rolls
-back. See <doc:DifferencesFromTheOriginal>.
+### When an operation fails inside the body
+
+The transaction is the only unit of rollback: nothing undoes part of one. So an operation that fails after it has
+written to the storage poisons its transaction. From then on every write in it is refused with
+``XitDBError/poisonedTransaction``, and so is the commit, which means the transaction rolls back when the body returns,
+whatever the body did with the error. Reads still work.
+
+```swift
+let small = try Database(creating: MemoryStorage(maxSize: 2_000), hashSize: 32)
+do {
+    try small.withTransaction { cursor in
+        let map = try HashMap<ReadWrite>(cursor)
+        try map.put(.uint(1), forHash: sha256("small"))
+        do {
+            // Too large for the storage, and only found out after the entry was written.
+            try map.put(.bytes([UInt8](repeating: 7, count: 3_000)), forHash: sha256("large"))
+        } catch XitDBError.maxSizeExceeded {
+            // Caught, but the transaction is poisoned: the next write, and the commit, fail.
+        }
+    }
+} catch XitDBError.poisonedTransaction {
+    // Nothing of the transaction stays, the small value included.
+}
+```
+
+Having written means any write the operation issued to the storage, whether or not the bytes it wrote were different. Making
+a collection is the one exception: its initialiser writes the collection's slot back even when it copies nothing, and that
+alone does not count.
+
+An operation that fails before it writes anything leaves the transaction as it was, and the body can catch the error and go on.
+Every guard is of that kind: a write through a stale cursor, a structural slot, an index that names no element, a collection of
+the wrong kind for its slot. What poisons is a failure partway: a storage that fails or runs out of room, a byte array whose body
+throws after writing, or an ``ArrayList/append(_:_:)`` whose body throws, as the element is already there. The original commits
+what such an operation left: see <doc:DifferencesFromTheOriginal>.
 
 ### A write through the root is a transaction
 
@@ -118,9 +148,9 @@ progress, because it would commit before the transaction ended. Both are errors:
   while one is running.
 
 A cursor belongs to the transaction that made it. Do not keep one for the next transaction; make a new one from
-the root. With no transaction running it throws ``XitDBError/expectedTxStart``. During a later transaction it writes
-into committed bytes today, without an error, and the next version refuses it: see <doc:DifferencesFromTheOriginal>. A collection at the
-root is the exception, because it reads the root again each time.
+the root. With no transaction running, a write through it throws ``XitDBError/expectedTxStart``, and during a later
+transaction ``XitDBError/staleCursor``. A read through it still works, and reads the commit it came from. A collection at
+the root is the exception, because it reads the root again each time.
 
 ### What a commit does to the file
 
@@ -175,9 +205,10 @@ does not support a call gets the next one, which keeps the level's promise as fa
 header the order is barrier, full flush, plain `fsync`. After it, at ``Durability/full`` it is full flush, barrier, plain
 `fsync`, and at ``Durability/ordered`` it is barrier, plain `fsync`.
 
-The table has one hole for now, at every level. A power loss in the middle of rewriting the root header can leave its
-size unreadable, and such a file does not open, although all its commits are intact behind it. Explicit recovery is
-coming.
+The table has one hole, at every level. A power loss in the middle of rewriting the root header can leave its size
+unreadable. Such a file does not open, although its commits are intact behind it: opening refuses it with
+``XitDBError/untrustedRootHeader(lastVerified:)``, and ``Database/recover(_:)`` repairs it. See <doc:Recovery>, which also
+says what recovering can keep at ``Durability/none``.
 
 None of the levels matters if only the process crashes: what has been written is in the operating system's hands
 by then, and a commit that returned survives at every level. They are about power loss and system crashes.
@@ -196,5 +227,7 @@ given, along with the rest of how to open a file.
 - <doc:/tutorials/XitDB/YourFirstDatabase>
 - <doc:MomentsAndHistory>
 - <doc:CursorsAndValues>
+- <doc:CloningFreezeAndStaleHandles>
+- <doc:Recovery>
 - <doc:Storage>
 - ``Database``

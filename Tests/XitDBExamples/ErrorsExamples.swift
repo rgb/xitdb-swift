@@ -98,17 +98,21 @@ import XitDB
     }
 
     @Test func handlingTheCasesYouExpect() throws {
-        // A program handles the few it expects, and lets the rest go up.
+        // A program handles the few it expects, and lets the rest go up,
+        // a root header that cannot be trusted among them.
         func open(_ storage: any WritableStorage) throws -> Database? {
             do {
                 return try Database(opening: storage)
-            } catch .invalidDatabase, .truncatedDatabase, .endOfStream {
+            } catch .invalidDatabase, .endOfStream {
                 return nil
             }
         }
         #expect(try open(MemoryStorage()) == nil)
         #expect(try open(MemoryStorage(bytes: [1, 2, 3])) == nil)
         #expect(try open(MemoryStorage(bytes: try newDatabaseBytes())) != nil)
+        #expect(throws: XitDBError.untrustedRootHeader(lastVerified: 240)) {
+            try open(MemoryStorage(bytes: Array(try newDatabaseBytes().dropLast())))
+        }
     }
 
     @Test func aFailureOfTheSystem() throws {

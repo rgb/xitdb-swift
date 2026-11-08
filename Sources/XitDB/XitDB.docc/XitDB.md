@@ -31,6 +31,9 @@ Three things in that code are not what you might assume. You hash your own keys,
 in a read-only and a read-write form: see <doc:TheCollections>. And the file only grows until you compact it:
 see <doc:MomentsAndHistory> for what that costs.
 
+A database whose last commit is damaged does not open. Opening names the last commit that verifies, and one
+explicit call, the only one that can lose a commit, cuts the file back to it: see <doc:Recovery>.
+
 To start, take the tutorials, or read the four articles under Essentials in order. After those, each article stands
 on its own.
 
@@ -52,6 +55,8 @@ A database keeps its bytes in a storage. ``BufferedFileStorage`` is the one to u
 ``MemoryStorage`` for a database that needs none.
 
 - <doc:Storage>
+- <doc:Recovery>
+- <doc:ConcurrencyAndSnapshots>
 - ``Database``
 - ``BufferedFileStorage``
 - ``MemoryStorage``
@@ -66,9 +71,11 @@ A database keeps its bytes in a storage. ``BufferedFileStorage`` is the one to u
 Every write happens in a transaction, which commits whole or not at all, and a commit goes as far towards the disk as its
 durability says.
 
+- <doc:CloningFreezeAndStaleHandles>
 - ``Database/withTransaction(_:)``
 - ``Database/rootCursor``
 - ``Database/committedSize``
+- ``Database/freeze()``
 - ``Durability``
 
 ### Reading and writing values

@@ -5,60 +5,90 @@ What this package does differently from xitdb in Zig, and what it does the same 
 ## Overview
 
 The port's first rule is that it writes the same bytes: given the same file ID, the same commit IDs and the same operations, it
-produces the same file as the original. That is checked with 209 conformance scripts: in 111 the file must match the original's
-byte for byte, and in the other 98 the script must fail where the original fails.
+produces the same file as the original. That is checked with 219 conformance scripts. In 121 the file must match byte for byte the
+one the original writes, or, for the few operations the port deliberately does differently, the one the original writes when it is
+made to do the same. In the other 98 the script must fail where the original fails.
 
-The second rule is that where the original's behaviour looks wrong, the port does what is correct, as long as the bytes of an
-operation that is valid in both stay the same. The differences are therefore all of one kind: the port gives an error, or a
-sensible result, where the original crashes, misbehaves, or depends on which kind of storage it has.
+The second rule is that where the original's behaviour looks wrong, the port does what is correct. The differences are of three
+kinds: the port refuses with an error what would damage data in the original; it gives an error or a sensible result where the
+original crashes or disagrees with itself; and it recovers, when asked, a file the original cannot open. Two of them change the
+bytes of operations that are valid in both, the writes after a join and ``Cursor/writeIfEmpty(_:)``. Each of those was made in a
+branch of the original first, and the port's files are compared with that branch's.
 
-### What the port does differently today
+### Refused where the original lets data be damaged
 
-| In the original | In the port |
-|---|---|
-| On macOS, a commit uses plain `fsync`, which promises neither order nor a flush. After a power loss the root header can be ahead of its data, and the file does not open. | ``Durability`` uses `F_BARRIERFSYNC` and `F_FULLFSYNC`. See <doc:Transactions>. |
-| An out-of-range offset aborts the process, and a tree whose header disagrees with its nodes crashes it. | An error where the code comes across it: see <doc:Errors>. |
-| Reading a slot set to nothing as bytes gives an empty value from one call, and `EndOfStream` from the other unless the buffer is empty. | No bytes, from both. |
-| Streaming a slot set to nothing gives `UnexpectedTag`. | An empty stream. |
-| Streaming a short value fails for a slot with no position, and otherwise reads from the file, so it returns other bytes after the slot is overwritten. | It reads the cursor's own slot, like every other read. |
-| An array list's iterator can give an element past the end of the list after a slice. | It stops at the list's size, agreeing with a lookup. |
-| A gap left by a write past the end reads as an error in a buffered file until it is flushed, and as zeros otherwise. | Zeros, on every storage. |
-| Setting a storage's length larger is rejected in memory and allowed for a file. | ``WritableStorage/truncate(to:)`` only shortens, on every storage. |
-| On a read-only file, an unbuffered write fails at once, and a buffered one only at commit. | At once, on both. |
-| With 64-byte hashes, the trie's depth counter overflows at 64 levels. | It works to the depth the hash allows. |
-| It syncs after every write outside a transaction, including ones that commit nothing. | It syncs after a commit. |
+- **A cursor kept from an earlier transaction.** In the original, a write through it changes committed bytes in place, so an
+  earlier moment changes, and if the transaction then rolls back, a committed slot can point past the end of the file. The port
+  refuses the write with ``XitDBError/staleCursor``.
+- **A cursor or collection held across a freeze or a join.** In the original it goes on writing in place into what is now shared,
+  which loses writes or leaves two headers over one tree, and a later write can crash. The port refuses the write with
+  ``XitDBError/staleCursor``, refreshes the list that joined, and freezes after a join rather than before it: see
+  <doc:CloningFreezeAndStaleHandles>.
+- **A cursor from a transaction that did not commit.** In the original, a read through it gets whatever the next transaction wrote
+  at the same offsets. The port refuses the read with ``XitDBError/staleCursor``.
+- **An operation that fails partway.** In the original, a body that catches the error commits what the operation had already
+  written, such as an entry without its value or a count one too high. In the port the transaction can no longer commit, and every
+  later write in it and the commit throw ``XitDBError/poisonedTransaction``: see <doc:Transactions>.
+- **``Cursor/writeIfEmpty(_:)``.** The original goes by the cursor's snapshot of the slot, so it can overwrite a value written since
+  through another cursor. The port goes by the slot as it is now.
+- **A slot that belongs to a tree, written as a value.** In the original that builds a tree it cannot read, or panics at a hash size
+  of 64. The port refuses it with ``XitDBError/structuralSlot``.
+- **A sorted map's key.** The original lets a key be overwritten through the key cursor of an entry, which leaves the map out of
+  order. In the port an ``Entry`` is read-only, and the engine refuses the write as well.
+- **Compacting a list whose last element is empty.** The original gives an empty database, losing the list and every element
+  before the empty one. The port refuses with ``XitDBError/emptyLastMoment``, before writing anything: see <doc:Compaction>.
 
-### What it does the same, for now
+### An error or a sensible result where the original crashes or disagrees
 
-The port matches the original on these, so that its conformance scripts prove the same bytes, and they are worth knowing because
-each is a hazard. The next version of the package changes each of them. Until then, these are the things not to do, and what the
-next version does instead:
+- **An offset past any a file can have** aborts the original's process. The port throws an error.
+- **A tree whose header disagrees with its nodes**, which a damaged file or the original's freeze hazards produce, crashes the
+  original. The port throws an error where it comes across one, and never traps: see <doc:Errors>.
+- **The key and value slots of a hashed entry** are read without checking their tags in the original. The port checks them.
+- **With 64-byte hashes**, the original's depth counter overflows at 64 levels. The port goes as deep as the hash allows, and then
+  throws ``XitDBError/keyOffsetExceeded``.
+- **A slot set to nothing, read as bytes**, gives an empty value from one of the original's calls and `EndOfStream` from the other.
+  The port gives no bytes from both.
+- **A slot set to nothing, streamed,** gives `UnexpectedTag` in the original. The port gives an empty stream.
+- **A short value, streamed,** fails in the original for a slot without a position, and otherwise reads from the file, so it
+  returns other bytes once the slot has been overwritten. The port reads the cursor's own slot, as every other read does.
+- **An array list's iterator after a slice** can give an element past the end of the list in the original. The port's stops at the
+  list's size, agreeing with a lookup.
+- **A gap left by a write past the end** reads as an error in the original's buffered file until it is flushed, and as zeros
+  everywhere else. The port reads zeros on every storage.
+- **Setting a storage's length larger** is refused in memory and allowed for a file in the original. The port's
+  ``WritableStorage/truncate(to:)`` only shortens, on every storage.
+- **A read-only file** fails at the first write in the original's plain file kind, and only at the commit in its buffered kind.
+  The port fails at once on both.
+- **The original syncs after every write outside a transaction**, including ones that commit nothing. The port syncs after a
+  commit.
+- **Reading committed bytes into a writer with no buffer** panics on the original's buffered file. The port has no such writer:
+  a ``ByteSink`` is handed the bytes, a part at a time.
 
-- **Do not keep a cursor for a later transaction.** Used during a later one, it writes into committed bytes in place, which changes
-  earlier moments and which a rollback does not undo. Make a new one from the root. The next version refuses the write with an
-  error, `staleCursor`.
-- **Do not read through a cursor from a transaction that failed.** Its bytes were cut off, and the next transaction reuses their
-  offsets, so it reads whatever that wrote. The next version refuses the read with the same error. A cursor from a transaction
-  that committed stays readable.
-- **Do not carry on after an error in a transaction's body.** What the failed operation had already written is committed along with
-  the rest. Let the error leave the body. In the next version, a write that fails after writing something makes the transaction
-  unable to commit, with an error, `poisonedTransaction`.
-- **Do not write the slot of an entry as a value.** The slot of a cursor from a map's iterator is the entry's own. Written
-  somewhere else, it can only be read as an entry. Read the entry, and write the slot of its ``Entry/value``. The next version
-  refuses it with an error, `structuralSlot`.
-- **After a join or a freeze, run the initialiser again on the cursor you hold.**
-  ``LinkedArrayList/append(contentsOf:)-(LinkedArrayList<CursorAccess>)`` and ``Database/freeze()`` affect the collections made before
-  them, other than the list that joined, and one written through without that can lose writes. In the original this can crash; in the port it gives an error or a
-  wrong result, and never a crash. In the next version a join leaves the list that called it ready to use, and a write through any
-  other collection held across it is the stale cursor's error.
-- **``Cursor/writeIfEmpty(_:)`` goes by the cursor's snapshot.** If the slot was written through another cursor since, the value there
-  is overwritten. The next version decides by the slot as it is now.
+### On the disk
 
-A file whose root header or last trailer is damaged does not open, even though the commits before it are intact. In the next version, opening it fails
-with an error that names the last position that verifies, and a separate call truncates the file to it. Nothing is dropped silently.
+- **On macOS the original commits with plain `fsync`**, which promises neither order nor a flush, so after a power loss its root
+  header can be ahead of its data. The port's ``Durability`` uses `F_BARRIERFSYNC` and `F_FULLFSYNC`: see <doc:Transactions>.
+- **A file whose root header or last trailer is damaged** does not open in the original, even though every commit before it is
+  intact. The port's opening names the end of the last commit that verifies, with
+  ``XitDBError/untrustedRootHeader(lastVerified:)``, and ``Database/recover(_:)`` cuts the file back to it, which can lose a
+  commit and is never done without being asked: see <doc:Recovery>.
 
-Some of those fixes change the bytes of the operations they fix. Each of those is made in a branch of the original first, so that the
-port still has something to compare with.
+### The same as the original
+
+- **A copy made within a transaction** is a second name for something still mutable, until a freeze. That is the original's
+  design, and the port keeps it: see <doc:CloningFreezeAndStaleHandles>.
+- **A freeze of one cursor**, ``Cursor/freeze()``, protects the data from writes through that cursor and from nothing else. The
+  port does what the original does, except that where the original can crash it throws an error. Whether it should do more is not
+  decided.
+- **A collection made again from a held cursor after a freeze** writes that cursor's slot in place, so a copy made before the freeze
+  of anything that contains the slot changes with it. The original does the same, and nothing can tell a shared record from one that
+  is not. Take the collections again from the root instead.
+- **Writing a slot set to nothing** writes the value bits it carries, which mean nothing, in both. A client of the port cannot
+  make a slot, so it cannot choose them.
+- **Three of the original's hazards need its raw path API**, which the port does not make public: parts after a remove, which the
+  original ignores and the port's internal API refuses; a path that skips a collection's initialiser, which writes into committed
+  data; and a freeze inside a callback, which does not carry out of it. A fourth, a sorted lookup in a write path that turns a set's
+  key-only entry into a pair, is wasteful and not wrong, and it stays, since changing it would change bytes.
 
 ### Differences that are only the API
 
@@ -72,10 +102,11 @@ The file format and the operations are the same, and the API follows Swift:
 - **``Entry`` is read-only**, so a sorted map's key cannot be overwritten through one, and a client cannot make a ``Slot``.
 - **Nothing that reads or writes a database is `Sendable`**: ``Database``, ``Cursor``, the collections, the storages, ``ByteReader`` and
   ``ByteWriter``. A database belongs to one thread or task at a time, and in Swift 6 mode the compiler enforces it. Plain values such as
-  ``Slot``, ``Bytes`` and ``XitDBError`` are `Sendable`.
+  ``Slot``, ``Bytes`` and ``XitDBError`` are `Sendable`: see <doc:ConcurrencyAndSnapshots>.
 
 Every operation of the original is here. Planned beyond it, and not here yet: read snapshots that can be shared between threads and
-tasks, a target with ready-made hashes, and a layer with string keys and typed values.
+tasks, a target with ready-made hashes, and a layer with string keys and typed values, whose handles take themselves again after a
+freeze, so that a clone is safe without one.
 
 ### The names
 
@@ -101,6 +132,7 @@ that reads as Swift. If you are coming from the original's documentation:
 ## See Also
 
 - <doc:Errors>
-- <doc:Storage>
+- <doc:CloningFreezeAndStaleHandles>
+- <doc:Recovery>
 - <doc:Transactions>
 - <doc:CursorsAndValues>

@@ -217,6 +217,19 @@ import XitDB
         #expect(throws: XitDBError.poisonedTransaction) { try outcome.get() }
     }
 
+    @Test func aBodyThatThrowsBeforeWritingPoisonsToo() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        #expect(throws: XitDBError.poisonedTransaction) {
+            try database.withTransaction { cursor in
+                var value = try HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("value"))
+                #expect(throws: NoMoreBytes.self) {
+                    try value.writeBytes { _ in throw NoMoreBytes() }
+                }
+            }
+        }
+        #expect(try database.rootCursor.slot.isEmpty)
+    }
+
     @Test func aWrittenValueHasARecordHoweverShort() throws {
         let moment = try newMoment { moment in
             var cursor = try moment.putCursor(forHash: sha256("hi"))

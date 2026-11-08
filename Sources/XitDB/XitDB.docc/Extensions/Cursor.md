@@ -31,7 +31,8 @@ See <doc:LargeByteArrays> for reading a part at a time.
 
 ### Writing
 
-Only on a cursor of ``ReadWrite`` access, and only in a transaction.
+Only on a cursor of ``ReadWrite`` access, and only in a transaction. See <doc:CloningFreezeAndStaleHandles> for how the
+two freezes differ.
 
 - ``write(_:)``
 - ``writeIfEmpty(_:)``
