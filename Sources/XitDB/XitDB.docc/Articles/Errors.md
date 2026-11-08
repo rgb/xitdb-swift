@@ -29,9 +29,8 @@ These mean the code asked for something it should not have. Most are worth fixin
   making a collection from it included, except making one from the cursor the transaction's body was given, or from the cursor
   of a collection made from that; a write through one from an earlier transaction; or a read through one from a transaction
   that did not commit. See <doc:CloningFreezeAndStaleHandles>.
-- ``XitDBError/immutableBytes``: A write that would change committed or frozen bytes in place, by a route the check on stale
-  cursors does not catch. Through the public API that is a freeze inside the body of ``Cursor/writeBytes(formatTag:_:)``: the
-  writer has written by then, so the transaction is poisoned.
+- ``XitDBError/byteWriterOpen``: A freeze, or a join, inside the body of ``Cursor/writeBytes(formatTag:_:)``. It is refused before
+  it does anything, but the writer has written by then, so the transaction is poisoned. Finish the byte array first.
 - ``XitDBError/structuralSlot``: A slot that belongs to a tree written as a value, such as the slot of a cursor from a map's
   iterator. Write the slot of the entry's ``Entry/value`` instead.
 - ``XitDBError/poisonedTransaction``: A write, or the commit, in a transaction where an earlier operation failed after it had
@@ -125,6 +124,8 @@ Nothing public raises these, so you can leave them out of your handling. They ar
 package-level path API:
 
 - ``XitDBError/writeNotAllowed``, ``XitDBError/pathPartMustBeAtEnd`` and ``XitDBError/notImplemented``, which only that API raises.
+- ``XitDBError/immutableBytes``, a write that would change committed or frozen bytes in place. It is a second check under
+  ``XitDBError/staleCursor`` and ``XitDBError/byteWriterOpen``, which refuse every public route to such a write first.
 
 A `switch` over ``XitDBError`` still has to handle them, so give it a `default`. More cases will arrive before the first release.
 

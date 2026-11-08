@@ -230,10 +230,10 @@ import XitDB
         #expect(try database.rootCursor.slot.isEmpty)
     }
 
-    @Test func aFreezeInsideTheBodyIsImmutableBytes() throws {
+    @Test func aFreezeInsideTheBodyIsByteWriterOpen() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         // Uncaught, the error comes out of the transaction, which rolls back.
-        #expect(throws: XitDBError.immutableBytes) {
+        #expect(throws: XitDBError.byteWriterOpen) {
             try database.withTransaction { cursor in
                 var value = try HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("value"))
                 try value.writeBytes { writer in
@@ -258,8 +258,23 @@ import XitDB
                 }
             }
         }
-        #expect(caught as? XitDBError == .immutableBytes)
+        #expect(caught as? XitDBError == .byteWriterOpen)
         #expect(try database.rootCursor.slot.isEmpty)
+
+        // A join is a freeze too.
+        let joins = try Database(creating: MemoryStorage(), hashSize: 32)
+        #expect(throws: XitDBError.byteWriterOpen) {
+            try joins.withTransaction { cursor in
+                let moment = try HashMap<ReadWrite>(cursor)
+                let tasks = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("tasks")))
+                let more = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("more")))
+                try tasks.append(.uint(1))
+                try more.append(.uint(2))
+                var value = try moment.putCursor(forHash: sha256("value"))
+                try value.writeBytes { _ in try tasks.append(contentsOf: more) }
+            }
+        }
+        #expect(try joins.rootCursor.slot.isEmpty)
     }
 
     @Test func aWrittenValueHasARecordHoweverShort() throws {
