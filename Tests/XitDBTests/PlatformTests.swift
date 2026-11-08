@@ -138,7 +138,11 @@ private struct Call: Equatable {
 
     /// Past the largest offset the system has, a read has nothing to read
     /// and a write nowhere to write; neither makes a call there. A transfer
-    /// that starts below it and reaches it stops or fails at the boundary.
+    /// that starts below it and reaches it stops or fails at the boundary,
+    /// and a read is never asked to reach past it: Linux refuses such a call
+    /// with `EINVAL` where Apple platforms read nothing, so the call is cut
+    /// to end at the largest offset, and the byte there, which would end
+    /// past it, is not asked for.
     @Test func anOffsetTheSystemCannotExpressMakesNoCall() throws {
         let edge = UInt64(off_t.max)
         for offset in [UInt64.max, edge + 1] {
@@ -160,8 +164,15 @@ private struct Call: Equatable {
             try Platform.transfer(.read, count: 4, at: edge - 1, callLimit: 1) {
                 calls.append(Call($0, $1, $2))
                 return $1
-            } == 2)
-        #expect(calls == [Call(0, 1, off_t.max - 1), Call(1, 1, off_t.max)])
+            } == 1)
+        #expect(calls == [Call(0, 1, off_t.max - 1)])
+        calls = []
+        #expect(
+            try Platform.transfer(.read, count: 4, at: edge - 3, callLimit: 4) {
+                calls.append(Call($0, $1, $2))
+                return $1
+            } == 3)
+        #expect(calls == [Call(0, 3, off_t.max - 3)])
         calls = []
         #expect(throws: XitDBError.storageFailure(errno: EFBIG)) {
             try Platform.transfer(.write, count: 4, at: edge - 1, callLimit: 1) {

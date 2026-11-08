@@ -44,7 +44,9 @@ public enum FileAccess: Sendable {
 /// Off Apple platforms there are no such calls, and every call the storage
 /// makes is plain `fsync`, so ``ordered`` and ``full`` are the same there:
 /// one `fsync` at each of the two points, promising what `fsync` promises
-/// on that system. ``none`` makes no call anywhere.
+/// on that system. On Linux `fsync` waits for the drive to flush, so both
+/// levels there give what ``full`` gives on Apple platforms, and cost as
+/// much. ``none`` makes no call anywhere.
 public enum Durability: Sendable {
     /// Never sync.
     ///

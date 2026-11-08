@@ -210,7 +210,9 @@ value through a ``BufferedFileStorage``. Yours will differ, by a lot on another 
 the ratios: a full flush is expensive, and it is paid per commit, not per byte.
 
 On Apple platforms a barrier is `F_BARRIERFSYNC` and a full flush is `F_FULLFSYNC`. Plain `fsync` is not a level,
-because it promises neither that writes reach the disk in order nor that the drive flushes them. A volume that
+because it promises neither that writes reach the disk in order nor that the drive flushes them. On Linux there is no
+barrier call and `fsync` waits for the drive to flush, so every sync there is a full flush: ``Durability/ordered`` gives
+what ``Durability/full`` gives, at the same price. A volume that
 does not support a call gets the next one, which keeps the level's promise as far as the volume allows. Before the root
 header the order is barrier, full flush, plain `fsync`. After it, at ``Durability/full`` it is full flush, barrier, plain
 `fsync`, and at ``Durability/ordered`` it is barrier, plain `fsync`.

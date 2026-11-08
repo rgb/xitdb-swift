@@ -176,13 +176,14 @@ import Testing
         #expect(refused > outcome.refused, "the fence did not trip for the snapshot held across the last sync")
     }
 
-    #if canImport(Darwin)
-        /// How many of the process's descriptors are open on the file at
-        /// `path`. Other tests open files of their own meanwhile, so only this
-        /// file is counted.
-        private static func descriptors(on path: String) throws -> Int {
-            let standardized = URL(fileURLWithPath: path).standardizedFileURL.path
-            var count = 0
+    /// How many of the process's descriptors are open on the file at
+    /// `path`. Other tests open files of their own meanwhile, so only this
+    /// file is counted. Apple platforms answer `F_GETPATH` for a descriptor;
+    /// Linux shows each one as a link in `/proc/self/fd`.
+    private static func descriptors(on path: String) throws -> Int {
+        let standardized = URL(fileURLWithPath: path).standardizedFileURL.path
+        var count = 0
+        #if canImport(Darwin)
             for name in try FileManager.default.contentsOfDirectory(atPath: "/dev/fd") {
                 guard let descriptor = Int32(name) else { continue }
                 var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
@@ -191,25 +192,31 @@ import Testing
                 let openPath = String(decoding: bytes, as: UTF8.self)
                 if URL(fileURLWithPath: openPath).standardizedFileURL.path == standardized { count += 1 }
             }
-            return count
-        }
-
-        @Test func aSnapshotOpensNoDescriptorOfItsOwn() throws {
-            let subject = try StorageUnderTest(.bufferedFile)
-            let path = try #require(subject.path)
-            let database = try Database(creating: subject.storage, hashSize: 20)
-            try HashMap<ReadWrite>(database.rootCursor).put(.uint(1), forHash: sha1("a").bytes)
-            let before = try Self.descriptors(on: path)
-            #expect(before == 1)
-            var snapshots: [Snapshot] = []
-            for _ in 0..<100 {
-                snapshots.append(try database.snapshot())
+        #else
+            for name in try FileManager.default.contentsOfDirectory(atPath: "/proc/self/fd") {
+                guard let openPath = try? FileManager.default.destinationOfSymbolicLink(atPath: "/proc/self/fd/\(name)")
+                else { continue }
+                if URL(fileURLWithPath: openPath).standardizedFileURL.path == standardized { count += 1 }
             }
-            #expect(try Self.descriptors(on: path) == before)
-            #expect(
-                try HashMap<ReadOnly>(snapshots[99].rootCursor).cursor(forHash: sha1("a").bytes)?.readUInt64() == 1)
+        #endif
+        return count
+    }
+
+    @Test func aSnapshotOpensNoDescriptorOfItsOwn() throws {
+        let subject = try StorageUnderTest(.bufferedFile)
+        let path = try #require(subject.path)
+        let database = try Database(creating: subject.storage, hashSize: 20)
+        try HashMap<ReadWrite>(database.rootCursor).put(.uint(1), forHash: sha1("a").bytes)
+        let before = try Self.descriptors(on: path)
+        #expect(before == 1)
+        var snapshots: [Snapshot] = []
+        for _ in 0..<100 {
+            snapshots.append(try database.snapshot())
         }
-    #endif
+        #expect(try Self.descriptors(on: path) == before)
+        #expect(
+            try HashMap<ReadOnly>(snapshots[99].rootCursor).cursor(forHash: sha1("a").bytes)?.readUInt64() == 1)
+    }
 
     @Test func theLockLivesWhileASnapshotDoes() throws {
         let directory = try TemporaryDirectory()

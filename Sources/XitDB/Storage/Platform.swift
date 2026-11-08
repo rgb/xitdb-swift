@@ -12,6 +12,10 @@
 #endif
 
 /// A way of asking the operating system to put a file's data on the disk.
+///
+/// The three kinds exist on Apple platforms. On Linux every kind is `fsync`,
+/// which there waits for the drive to flush as well, so it is the full sync,
+/// and no barrier call exists.
 package enum SyncCall: Sendable, Equatable {
     /// The data reaches the disk and the drive flushes its cache. On Apple
     /// platforms, `fcntl` with `F_FULLFSYNC`.
@@ -111,7 +115,10 @@ enum Platform {
     /// that moves exactly what it was asked for is not short, the cap
     /// included, so a read of more than the cap goes on to the next call.
     /// A read at an offset the system cannot express stops as well:
-    /// nothing can be stored there.
+    /// nothing can be stored there. Nor is a read asked to reach past the
+    /// largest offset: Apple platforms answer such a call with nothing,
+    /// Linux refuses it with `EINVAL`, so the call is cut to end at that
+    /// offset and the read stops when nothing is left before it.
     ///
     /// A write stops only when every byte is written. A call that writes
     /// nothing would loop forever and is reported as `EIO`; an offset the
@@ -135,7 +142,9 @@ enum Platform {
                 if direction == .write { throw .storageFailure(errno: fileTooLarge) }
                 break
             }
-            let wanted = min(count - total, callLimit)
+            let room = direction == .read ? Int(clamping: off_t.max - fileOffset) : Int.max
+            let wanted = min(count - total, callLimit, room)
+            if wanted == 0 { break }
             let result = call(total, wanted, fileOffset)
             if result > 0 {
                 total += result

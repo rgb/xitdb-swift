@@ -4,6 +4,12 @@ import XitDBTestSupport
 
 @testable import XitDB
 
+// `CFGetTypeID` tells a JSON `true` from a `1`; Foundation re-exports it on
+// Apple platforms and not on Linux.
+#if !canImport(Darwin)
+    import CoreFoundation
+#endif
+
 // A runner for the conformance scripts, written from the conformance
 // repository's SCRIPT-FORMAT.md. Each op is one call on the engine. The
 // runner adds no checks and no recovery of its own, and it fails on anything

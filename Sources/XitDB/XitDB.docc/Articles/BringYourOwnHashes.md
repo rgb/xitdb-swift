@@ -19,7 +19,7 @@ func sha256(_ key: String) -> SHA256Digest {
 ```
 
 A small `XitDBHashing` target with ready-made hashes is planned, along with a layer that takes string keys. Neither
-exists yet.
+exists yet. On Linux, where there is no CryptoKit, swift-crypto's `import Crypto` is the same API until then.
 
 ### Giving the hash
 
