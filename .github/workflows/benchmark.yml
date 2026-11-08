@@ -24,7 +24,7 @@ on:
       conformance_commit:
         description: "Commit of rgb/xitdb-conformance whose bench is built"
         required: true
-        default: "621466026cd824c25ef27ef6f35a12bdce32e5dc"
+        default: "9a14992133af9a7cffa6c63914b81da8524e93e7"
       xitdb_commit:
         description: "Commit of xit-vcs/xitdb the harness is built against"
         required: true

@@ -1,0 +1,6 @@
+# The Swift Package Index builds the documentation of the XitDB target on macOS and hosts it.
+version: 1
+builder:
+  configs:
+    - platform: macos
+      documentation_targets: [XitDB]

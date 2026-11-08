@@ -1,6 +1,6 @@
 {
   "format": "xitdb-fixtures/1",
-  "conformance_commit": "09d242b1d1d2f98ba2bcf3adf7e900a05a3992fc",
+  "conformance_commit": "dd12e1dddedeb49bf2f5809a2113ac0e7bbf58a5",
   "zig_commit": "6b93af1af3a260399fa0a0b1b268ded2cbf5eec5",
   "zig_version": "0.17.1",
   "fixtures": [
