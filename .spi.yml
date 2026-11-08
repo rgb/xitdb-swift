@@ -4,3 +4,5 @@ builder:
   configs:
     - platform: macos
       documentation_targets: [XitDB]
+    - platform: linux
+      documentation_targets: [XitDB]
