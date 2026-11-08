@@ -123,8 +123,11 @@ import Testing
     }
 
     /// Opening for reading must not ask the system for more than reading,
-    /// or a file the user may only read could not be opened at all.
-    @Test func aFileWithoutWritePermissionOpensReadOnly() throws {
+    /// or a file the user may only read could not be opened at all. Root may
+    /// write a read-only file, so under root the system refuses nothing and
+    /// there is nothing to test: the Linux gate's container runs as root.
+    @Test(.enabled(if: geteuid() != 0, "root may write a read-only file, so nothing is refused"))
+    func aFileWithoutWritePermissionOpensReadOnly() throws {
         let directory = try TemporaryDirectory()
         try writeBytes(try FileStorage(path: directory.path(), access: .create), [1, 2, 3], at: 0)
         try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: directory.path())

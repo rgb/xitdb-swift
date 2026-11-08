@@ -7,9 +7,9 @@
 #   3. import check for Sources/XitDB
 #   4. formatting check
 #   5. documentation build
-#   6. compile-only build for iOS
+#   6. compile-only build for iOS (on macOS)
 #
-# It stops at the first failure and exits non-zero.
+# It runs on macOS and on Linux and stops at the first failure and exits non-zero.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -21,18 +21,36 @@ step() { printf '\n==> %s\n' "$*"; }
 # path dependency (see the comment there).
 strict=(-Xswiftc -warnings-as-errors)
 
-# The gate runs on one compiler, Xcode's, which `.swift-version` selects for every clone
-# and worktree; a scratch copy elsewhere may pick up another toolchain and measure or
-# build something else. The version is checked, not only printed: two builds compared
-# across toolchains once showed differences that were the compilers', not the code's.
+# On macOS the gate runs on one compiler, Xcode's, which `.swift-version` selects for
+# every clone and worktree; a scratch copy elsewhere may pick up another toolchain and
+# measure or build something else. The version is checked, not only printed: two builds
+# compared across toolchains once showed differences that were the compilers', not the
+# code's. On Linux the toolchain is the one the runner has, any Swift 6.4.x: the open
+# source releases and Xcode's need not share a patch number, and the version printed is
+# the record of which one ran.
 expected_swift="6.4.2"
+platform=$(uname -s)
 
 step "Toolchain"
 swift --version
-swift --version 2>&1 | grep -q "Swift version $expected_swift " || {
-    echo "error: the gate needs Swift $expected_swift, Xcode's toolchain (.swift-version selects it)"
+case "$platform" in
+Darwin)
+    swift --version 2>&1 | grep -q "Swift version $expected_swift " || {
+        echo "error: the gate needs Swift $expected_swift, Xcode's toolchain (.swift-version selects it)"
+        exit 1
+    }
+    ;;
+Linux)
+    swift --version 2>&1 | grep -q -E "Swift version 6\.4(\.[0-9]+)? " || {
+        echo "error: the gate needs a Swift 6.4.x toolchain on Linux"
+        exit 1
+    }
+    ;;
+*)
+    echo "error: the gate runs on macOS and Linux, not on $platform"
     exit 1
-}
+    ;;
+esac
 
 # The snapshot proof over the fixtures (SnapshotProofTests) costs many times the
 # replay in a debug build; it runs in the release tests below.
@@ -136,21 +154,24 @@ swift package generate-documentation --target XitDB --warnings-as-errors
 
 # xcodebuild always uses the compiler that ships with Xcode. The workspace selects the
 # same one for `swift`, so the whole gate runs on one compiler; its version is printed
-# here so that a mismatch with the "Toolchain" step above would show.
-step "iOS compile check"
-xcrun swiftc --version
-xcrun swiftc --version 2>&1 | grep -q "Swift version $expected_swift " || {
-    echo "error: xcodebuild would use another compiler than the gate: Swift $expected_swift expected"
-    exit 1
-}
-# The scheme is the library's. Xcode makes one scheme per product once a package has more
-# than one, and none named after the package, which is what this used before the benchmark
-# became the second product.
-xcodebuild build -quiet \
-    -scheme XitDB \
-    -destination 'generic/platform=iOS' \
-    -derivedDataPath .build/xcodebuild \
-    SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
-echo "ok"
+# here so that a mismatch with the "Toolchain" step above would show. Only macOS has
+# Xcode; the Linux gate ends with the documentation build.
+if [ "$platform" = Darwin ]; then
+    step "iOS compile check"
+    xcrun swiftc --version
+    xcrun swiftc --version 2>&1 | grep -q "Swift version $expected_swift " || {
+        echo "error: xcodebuild would use another compiler than the gate: Swift $expected_swift expected"
+        exit 1
+    }
+    # The scheme is the library's. Xcode makes one scheme per product once a package has more
+    # than one, and none named after the package, which is what this used before the benchmark
+    # became the second product.
+    xcodebuild build -quiet \
+        -scheme XitDB \
+        -destination 'generic/platform=iOS' \
+        -derivedDataPath .build/xcodebuild \
+        SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
+    echo "ok"
+fi
 
 printf '\n==> Gate passed\n'
