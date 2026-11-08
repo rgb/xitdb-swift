@@ -38,7 +38,9 @@ final class DatabaseIdentity {
 /// Code that only reads depends on this and not on ``Database``, so that the
 /// same code can later read a snapshot of committed data from any thread.
 struct DatabaseReader {
-    let storage: any ReadableStorage
+    /// The bytes, as the engine holds a storage. Only its reads are used
+    /// here.
+    let storage: BuiltInStorage
     /// The hash size, which a replication cannot change.
     let hashSize: UInt16
     private let identity: DatabaseIdentity
@@ -46,7 +48,7 @@ struct DatabaseReader {
     /// The file ID, which the trailers' checksums cover.
     var fileID: UInt64 { identity.header.fileID }
 
-    init(storage: any ReadableStorage, identity: DatabaseIdentity) {
+    init(storage: BuiltInStorage, identity: DatabaseIdentity) {
         self.storage = storage
         hashSize = identity.header.hashSize
         self.identity = identity

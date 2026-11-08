@@ -177,7 +177,7 @@ extension Database {
 /// Zig's `Compactor`, with its recursion as a stack of frames.
 struct Compactor {
     private let source: DatabaseReader
-    private let target: any WritableStorage
+    private let target: BuiltInStorage
     /// A branch's worth of zeros, what a reserve writes.
     private let zeros = InlineArray<418, UInt8>(repeating: 0)
 

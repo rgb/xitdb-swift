@@ -169,7 +169,7 @@ extension Database {
     /// - Throws: What ``recover(_:)`` throws.
     package static func recover(_ storage: any WritableStorage, random: RandomSource) throws(XitDBError) -> Database {
         let header = try readHeader(of: storage)
-        let reader = DatabaseReader(storage: storage, identity: DatabaseIdentity(header: header))
+        let reader = DatabaseReader(storage: BuiltInStorage(storage), identity: DatabaseIdentity(header: header))
         guard let lastVerified = try reader.lastVerifiedCommitEnd() else { throw .invalidDatabase }
         let trailer = try reader.rootTrailer(endingAt: lastVerified)
 

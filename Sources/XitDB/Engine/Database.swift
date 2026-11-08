@@ -13,8 +13,9 @@
 /// Only one database at a time may write to a storage; any number may read
 /// from it, through storages of their own.
 public final class Database {
-    /// Where the database's bytes are kept.
-    let storage: any WritableStorage
+    /// Where the database's bytes are kept, as the engine holds a storage:
+    /// a built-in one by its class, any other behind the protocol.
+    let storage: BuiltInStorage
 
     /// The read side of the engine over this database's storage.
     let reader: DatabaseReader
@@ -198,6 +199,7 @@ public final class Database {
         let header = try Self.readHeader(of: storage)
         if let hashSize, Int(header.hashSize) != hashSize { throw .invalidHashSize }
 
+        let storage = BuiltInStorage(storage)
         self.storage = storage
         identity = DatabaseIdentity(header: header)
         self.reader = DatabaseReader(storage: storage, identity: identity)
@@ -240,6 +242,7 @@ public final class Database {
             hashSize: hashSize
         )
 
+        let storage = BuiltInStorage(storage)
         self.storage = storage
         identity = DatabaseIdentity(header: header)
         self.reader = DatabaseReader(storage: storage, identity: identity)
