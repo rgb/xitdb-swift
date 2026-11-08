@@ -1,4 +1,5 @@
 import CryptoKit
+import Foundation
 import Testing
 import XitDB
 
@@ -8,11 +9,11 @@ import XitDB
         let map = try HashMap<ReadWrite>(database.rootCursor)
 
         // The hash is the caller's. It only has to have the right size.
-        try map.put(.uint(1), forHash: Array(SHA256.hash(data: Array("alice".utf8))))
+        try map.put(.uint(1), forHash: SHA256.hash(data: Array("alice".utf8)))
 
         #expect(throws: XitDBError.invalidHashSize) {
             // 20 bytes, in a database of 32.
-            try map.put(.uint(1), forHash: Array(Insecure.SHA1.hash(data: Array("alice".utf8))))
+            try map.put(.uint(1), forHash: Insecure.SHA1.hash(data: Array("alice".utf8)))
         }
     }
 
@@ -100,15 +101,23 @@ import XitDB
         }
     }
 
-    @Test func aDigestIsPassedAsAnArray() throws {
+    @Test func aHashIsAnySequenceOfBytes() throws {
+        // A digest as it is.
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         let map = try HashMap<ReadWrite>(database.rootCursor)
+        try map.put(.uint(1), forHash: SHA256.hash(data: Array("alice".utf8)))
+        #expect(try map.cursor(forHash: Array(sha256("alice")))!.readUInt64() == 1)
 
-        // A digest goes in as an array, for now: see the article.
-        let digest = SHA256.hash(data: Array("alice".utf8))
-        try map.put(.uint(1), forHash: Array(digest))
-
-        #expect(try map.cursor(forHash: sha256("alice"))!.readUInt64() == 1)
+        // An array, a slice, `Data`, and a string's `utf8` that has the right length.
+        let small = try Database(creating: MemoryStorage(), hashSize: 5)
+        let words = try HashMap<ReadWrite>(small.rootCursor)
+        try words.put(.uint(1), forHash: "alice".utf8)
+        let bytes = Array("alice".utf8)
+        #expect(try words.cursor(forHash: bytes)!.readUInt64() == 1)
+        #expect(try words.cursor(forHash: Array("xalice".utf8)[1...])!.readUInt64() == 1)
+        #expect(try words.cursor(forHash: Data("alice".utf8))!.readUInt64() == 1)
+        #expect(try words.cursor(forHash: bytes.span)!.readUInt64() == 1)
+        #expect(throws: XitDBError.invalidHashSize) { try words.cursor(forHash: "bob".utf8) }
     }
 
     @Test func recordingTheAlgorithm() throws {
@@ -158,7 +167,7 @@ import XitDB
     @Test func spansAreTakenWithoutACopy() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         let map = try HashMap<ReadWrite>(database.rootCursor)
-        let hash = sha256("alice")
+        let hash = Array(sha256("alice"))
 
         try map.put(.uint(1), forHash: hash.span)
         #expect(try map.cursor(forHash: hash.span)!.readUInt64() == 1)

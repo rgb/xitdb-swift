@@ -4,8 +4,8 @@ import XitDB
 
 @Suite("Tutorial: Keeping a replica in step") struct KeepingAReplicaInStepTutorial {
     @Test func theWholeProgram() throws {
-        func sha256(_ key: String) -> [UInt8] {
-            Array(SHA256.hash(data: Array(key.utf8)))
+        func sha256(_ key: String) -> SHA256Digest {
+            SHA256.hash(data: Array(key.utf8))
         }
 
         let sourceStorage = MemoryStorage()

@@ -123,6 +123,27 @@ import XitDB
         #expect(target.bytes.isEmpty)
     }
 
+    @Test func aLastElementSetToNothingCompacts() throws {
+        let database = try newHistory(moments: 3)
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
+        try history.append(.slot(nil))
+
+        var offsets = MemoryOffsetMap()
+        let compacted = try database.compact(into: MemoryStorage(), offsetMap: &offsets)
+        let kept = try ArrayList<ReadOnly>(compacted.rootCursor)
+        #expect(try kept.count == 1)
+        #expect(try kept.slot(at: 0)!.tag == .none)
+
+        // A linked list at the root is not a history, and is copied whole.
+        let linked = try Database(creating: MemoryStorage(), hashSize: 32)
+        let list = try LinkedArrayList<ReadWrite>(linked.rootCursor)
+        try list.append(.uint(1))
+        _ = try list.appendCursor()
+        var more = MemoryOffsetMap()
+        let copied = try linked.compact(into: MemoryStorage(), offsetMap: &more)
+        #expect(try LinkedArrayList<ReadOnly>(copied.rootCursor).count == 2)
+    }
+
     @Test func onlyAnArrayListAtTheRootIsAHistory() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         let list = try LinkedArrayList<ReadWrite>(database.rootCursor)

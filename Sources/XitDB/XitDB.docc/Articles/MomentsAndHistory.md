@@ -120,13 +120,14 @@ Three things follow that are easy to get wrong:
 - **Data is not immutable while the transaction that made it is running.** A transaction changes in place what
   it made itself, because nothing committed can refer to it. That is what makes large transactions affordable.
   It also means that copying a slot within one transaction gives two names for one mutable thing:
-  ``Database/freeze()`` says what to do about that.
+  <doc:CloningFreezeAndStaleHandles> says what to do about that.
 - **Removing something does not remove its bytes.** Removing a key from the latest moment leaves it in every
   earlier moment, and in the file. To get rid of data for good, remove it, compact the database, which also
   discards the history (``Database/compact(into:offsetMap:)``), and delete the old file.
-- **A cursor kept from an earlier transaction can break all of this.** Used during a later transaction, it writes
-  into committed bytes in place, and an earlier moment changes without an error. Make a new cursor in each
-  transaction. The next version of the package refuses this: see <doc:DifferencesFromTheOriginal>.
+- **A cursor belongs to its transaction.** A write through one kept from an earlier transaction is refused with
+  ``XitDBError/staleCursor``, which is what keeps committed bytes, and every earlier moment, as they are. Make a new
+  cursor in each transaction. A read through a kept cursor still works if its transaction committed, and reads what the
+  cursor saw.
 
 ### What it costs
 

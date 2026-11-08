@@ -3,8 +3,8 @@ import Foundation
 import XitDB
 
 // The hash the examples key their maps with.
-func sha256(_ key: String) -> [UInt8] {
-    Array(SHA256.hash(data: Array(key.utf8)))
+func sha256(_ key: String) -> SHA256Digest {
+    SHA256.hash(data: Array(key.utf8))
 }
 
 /// A directory of a test's own for database files, so that tests can run at

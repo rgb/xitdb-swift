@@ -8,8 +8,8 @@ import XitDB
         defer { scratch.remove() }
 
         func run() throws -> (moments: UInt64, name: [UInt8]) {
-            func sha256(_ key: String) -> [UInt8] {
-                Array(SHA256.hash(data: Array(key.utf8)))
+            func sha256(_ key: String) -> SHA256Digest {
+                SHA256.hash(data: Array(key.utf8))
             }
 
             let storage = try BufferedFileStorage(path: scratch.path("people.db"), access: .create)

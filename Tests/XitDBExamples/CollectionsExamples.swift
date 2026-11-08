@@ -376,13 +376,16 @@ import XitDB
         try sorted.put(.uint(3), forKey: name.utf8.prefix(5) + [0x21])
 
         #expect(try sorted.count == 3)
-        let hash = sha256("anything")
-        let map = try Database(creating: MemoryStorage(), hashSize: 32)
-        let hashed = try HashMap<ReadWrite>(map.rootCursor)
-        try hashed.put(.uint(1), forHash: hash)
-        try hashed.put(.uint(2), forHash: hash[...])
-        try hashed.put(.uint(3), forHash: hash.span)
-        #expect(try hashed.cursor(forHash: hash)!.readUInt64() == 3)
+        let hashes = try Database(creating: MemoryStorage(), hashSize: 32)
+        let hashed = try HashMap<ReadWrite>(hashes.rootCursor)
+
+        let bytes = [UInt8](repeating: 7, count: 32)
+        try hashed.put(.uint(1), forHash: sha256("anything"))
+        try hashed.put(.uint(2), forHash: bytes)
+        try hashed.put(.uint(3), forHash: bytes[...])
+        try hashed.put(.uint(4), forHash: bytes.span)
+        #expect(try hashed.cursor(forHash: sha256("anything"))!.readUInt64() == 1)
+        #expect(try hashed.cursor(forHash: bytes)!.readUInt64() == 4)
     }
 
     @Test func appendingWithABody() throws {

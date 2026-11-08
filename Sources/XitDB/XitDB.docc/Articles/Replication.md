@@ -4,10 +4,10 @@ Keeping a copy of a database up to date by sending it the bytes it lacks.
 
 ## Overview
 
-Once a transaction has committed, its bytes do not change, except for a small header that points at the latest commit. So a
-replica that has a prefix of a database's file needs only what follows it. (Today a cursor kept from an earlier transaction can
-break this; the next version refuses it: see <doc:DifferencesFromTheOriginal>.) There is no log to ship, no protocol to speak and
-no server: a sync is copying bytes.
+Once a transaction has committed, its bytes do not change, except for a small header that points at the latest commit. No
+transaction changes them, since a write through a cursor kept from an earlier one is refused with ``XitDBError/staleCursor``. So a
+replica that has a prefix of a database's file needs only what follows it. There is no log to ship, no protocol to speak and no
+server: a sync is copying bytes.
 
 ![A source and its replica, side by side. The replica holds the same bytes as the start of the source, and the bytes it lacks are copied across.](replica.svg)
 
@@ -127,7 +127,8 @@ var half = ArrayByteSource(Array(bytes[..<(bytes.count / 2)]))
 
 A sync at 0 is the exception. The replica is emptied before the copy begins, so an interrupted one leaves no database:
 ``Database/committedSize`` and ``Database/replicaState`` throw until a sync at 0 succeeds, and the source has to send from 0
-without asking.
+without asking. What did arrive may still hold the source's earlier commits whole, and ``Database/recover(_:)`` keeps the last
+of them, after which the source sends only the rest: see <doc:Recovery>.
 
 If that matters, check for it, and write the copy to a new file, which takes the place of the old one only when it is complete:
 
@@ -179,3 +180,4 @@ An end where no commit ends throws ``XitDBError/invalidDatabase``, and one past 
 - ``ByteSink``
 - ``ByteSource``
 - <doc:Compaction>
+- <doc:Recovery>

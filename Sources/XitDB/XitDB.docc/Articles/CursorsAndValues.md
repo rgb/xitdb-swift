@@ -95,11 +95,10 @@ committed by the time they return: the entry is there without a value, and with 
 through the cursor throws ``XitDBError/expectedTxStart``. Do not keep such a cursor for a later transaction, as
 <doc:Transactions> explains.
 
-``Cursor/writeIfEmpty(_:)`` writes only if the slot is empty, for a value that should be set once. Today it decides by
-the cursor's snapshot of the slot, so a value written through another cursor since is overwritten. The next version
-decides by the slot as it is now: see <doc:DifferencesFromTheOriginal>.
+``Cursor/writeIfEmpty(_:)`` writes only if the slot is empty, for a value that should be set once. It decides by the
+slot as it is now, not by the cursor's snapshot of it, so a value written through another cursor since is kept.
 
-<!-- Pinned by `writeIfEmptyGoesByTheSnapshot` in XitDBExamples: the sentence and the test change together. -->
+<!-- Pinned by `writeIfEmptyGoesByTheSlot` in XitDBExamples: the sentence and the test change together. -->
 
 ```swift
 var maybe = try moment.putCursor(forHash: sha256("once"))
@@ -227,10 +226,9 @@ That map's count is 1, and it still has an entry for `"cleared"`, with nothing i
 how one moment starts from another without copying what it holds. An empty slot is written as one set to nothing. A
 client cannot make a slot; every slot it writes is one a database gave it, and it must have come from the same database.
 
-It should also be a value. The slot of a cursor from a map's iterator is the entry's own. Written elsewhere today, it can only
-be read as an entry, and reading it as bytes or as a collection throws ``XitDBError/unexpectedTag``. The next version refuses
-to write it, with an error, `structuralSlot`. Read the entry, and write the slot of its ``Entry/value``. See
-<doc:DifferencesFromTheOriginal>.
+It should also be a value. The slot of a cursor from a map's iterator is the entry's own, and writing it as a value is
+refused with ``XitDBError/structuralSlot``, before anything is written. Read the entry, and write the slot of its
+``Entry/value``.
 
 ## See Also
 

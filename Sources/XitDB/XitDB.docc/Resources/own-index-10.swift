@@ -1,8 +1,8 @@
 import CryptoKit
 import XitDB
 
-func sha256(_ key: String) -> [UInt8] {
-    Array(SHA256.hash(data: Array(key.utf8)))
+func sha256(_ key: String) -> SHA256Digest {
+    SHA256.hash(data: Array(key.utf8))
 }
 
 struct Book {

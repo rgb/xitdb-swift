@@ -25,11 +25,23 @@ These mean the code asked for something it should not have. Most are worth fixin
 - ``XitDBError/expectedTxStart``: A write below the root, or a freeze, with no transaction running.
 - ``XitDBError/nestedTopLevelWrite``: A write through the root, or a new transaction, while one is running.
 - ``XitDBError/cursorNotWritable``: ``Cursor/writeBytes(formatTag:_:)`` on the ``Database/rootCursor``.
+- ``XitDBError/staleCursor``: A write through a cursor or collection made before the last freeze or join of the transaction,
+  making a collection from it included, except making one from the cursor the transaction's body was given, or from the cursor
+  of a collection made from that; a write through one from an earlier transaction; or a read through one from a transaction
+  that did not commit. See <doc:CloningFreezeAndStaleHandles>.
+- ``XitDBError/byteWriterOpen``: A freeze, or a join, inside the body of ``Cursor/writeBytes(formatTag:_:)``. It is refused before
+  it does anything, but the writer has written by then, so the transaction is poisoned. Finish the byte array first.
+- ``XitDBError/structuralSlot``: A slot that belongs to a tree written as a value, such as the slot of a cursor from a map's
+  iterator. Write the slot of the entry's ``Entry/value`` instead.
+- ``XitDBError/poisonedTransaction``: A write, or the commit, in a transaction where an earlier operation failed after it had
+  written. The transaction can only roll back: see <doc:Transactions>.
 - ``XitDBError/streamTooLong``: A value larger than the limit or the buffer it was read with.
 - ``XitDBError/unexpectedWriterPosition``: A byte array being written grew, or took a format tag, after something else was
   written behind it; or a seek went beyond any position a storage can have.
 - ``XitDBError/storageNotEmpty``: Creating a database in a storage that has bytes.
 - ``XitDBError/targetNotEmpty``: Compacting into a database whose root holds something.
+- ``XitDBError/emptyLastMoment``: Compacting a database whose root is an array list with no elements, or whose last element
+  was appended and never written, which would keep nothing of it: see <doc:Compaction>.
 - ``XitDBError/invalidRange``: A range of committed bytes that makes no sense: past the committed size, starting inside the root header, or a replica's start that is neither 0 nor its size.
 - ``XitDBError/invalidLength``: Cutting a storage to more than its length.
 
@@ -38,10 +50,15 @@ These mean the code asked for something it should not have. Most are worth fixin
 These mean the bytes are not what they should be. Catch them where you open a file you did not write, or where a file might have
 been damaged.
 
-- ``XitDBError/invalidDatabase``: It is not a database, it is empty, or its root header does not lead to a trailer whose checksum
-  matches.
+- ``XitDBError/invalidDatabase``: It is not a database, it is empty, or no trailer in it verifies, which a damaged file ID in
+  its header also causes. Also bytes given to a sync that do not end with a trailer that verifies.
+- ``XitDBError/untrustedRootHeader(lastVerified:)``: Its root header cannot be trusted: the committed size is past the end, too
+  small, or not at a trailer that verifies. `lastVerified` is where the last commit that does verify ends, and
+  ``Database/recover(_:)`` cuts the file back to it: see <doc:Recovery>.
 - ``XitDBError/invalidVersion``: It was written with a format version this package does not read.
-- ``XitDBError/truncatedDatabase``: It is shorter than the committed size it records.
+- ``XitDBError/truncatedDatabase``: The storage of a database already open has become shorter than the committed size it
+  records, as a sync at 0 that failed leaves it; or a sync at 0 brought bytes that stop short of their own. A file cut short
+  before it is opened gives ``XitDBError/untrustedRootHeader(lastVerified:)`` instead, as long as one commit is left whole.
 - ``XitDBError/endOfStream``: It ended before a value did, or is too short to hold its headers, which is 37 bytes. Also a
   ``ByteSource`` that runs out, and ``ByteReader/readAll(into:)`` with fewer bytes left than the buffer holds.
 - ``XitDBError/invalidEnumTag``: A slot's tag is not a known one.
@@ -51,16 +68,17 @@ been damaged.
 - ``XitDBError/keyOffsetExceeded``: A hash map goes deeper than its hashes allow.
 - ``XitDBError/maxShiftExceeded``: A list goes deeper than the format allows.
 
-A file whose root header or last trailer is damaged does not open at the moment, even though the commits before it are intact. In
-the next version, opening it fails with an error that names the last position that verifies, and a separate call truncates the file
-to it: see <doc:DifferencesFromTheOriginal>.
+A file whose root header or last trailer is damaged does not open, even if the commits before it are intact. Opening names the
+end of the last commit that verifies, and leaves the decision to recover to you, since recovering can lose a commit: see
+<doc:Recovery>.
 
 ```swift
-// A program handles the few it expects, and lets the rest go up.
+// A program handles the few it expects, and lets the rest go up,
+// a root header that cannot be trusted among them.
 func open(_ storage: any WritableStorage) throws -> Database? {
     do {
         return try Database(opening: storage)
-    } catch .invalidDatabase, .truncatedDatabase, .endOfStream {
+    } catch .invalidDatabase, .endOfStream {
         return nil
     }
 }
@@ -106,6 +124,8 @@ Nothing public raises these, so you can leave them out of your handling. They ar
 package-level path API:
 
 - ``XitDBError/writeNotAllowed``, ``XitDBError/pathPartMustBeAtEnd`` and ``XitDBError/notImplemented``, which only that API raises.
+- ``XitDBError/immutableBytes``, a write that would change committed or frozen bytes in place. It is a second check under
+  ``XitDBError/staleCursor`` and ``XitDBError/byteWriterOpen``, which refuse every public route to such a write first.
 
 A `switch` over ``XitDBError`` still has to handle them, so give it a `default`. More cases will arrive before the first release.
 
@@ -124,5 +144,6 @@ limit if what it is told to hold is not under your control: see ``MemoryStorage/
 
 - ``XitDBError``
 - <doc:Transactions>
+- <doc:Recovery>
 - <doc:Storage>
 - <doc:DifferencesFromTheOriginal>

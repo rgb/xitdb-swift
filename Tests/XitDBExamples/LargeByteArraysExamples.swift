@@ -217,6 +217,66 @@ import XitDB
         #expect(throws: XitDBError.poisonedTransaction) { try outcome.get() }
     }
 
+    @Test func aBodyThatThrowsBeforeWritingPoisonsToo() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        #expect(throws: XitDBError.poisonedTransaction) {
+            try database.withTransaction { cursor in
+                var value = try HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("value"))
+                #expect(throws: NoMoreBytes.self) {
+                    try value.writeBytes { _ in throw NoMoreBytes() }
+                }
+            }
+        }
+        #expect(try database.rootCursor.slot.isEmpty)
+    }
+
+    @Test func aFreezeInsideTheBodyIsByteWriterOpen() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        // Uncaught, the error comes out of the transaction, which rolls back.
+        #expect(throws: XitDBError.byteWriterOpen) {
+            try database.withTransaction { cursor in
+                var value = try HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("value"))
+                try value.writeBytes { writer in
+                    try writer.write([1, 2, 3])
+                    try database.freeze()
+                }
+            }
+        }
+        #expect(try database.rootCursor.slot.isEmpty)
+        // Caught, the transaction is poisoned.
+        var caught: (any Error)?
+        #expect(throws: XitDBError.poisonedTransaction) {
+            try database.withTransaction { cursor in
+                var value = try HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("value"))
+                do {
+                    try value.writeBytes { writer in
+                        try writer.write([1, 2, 3])
+                        try database.freeze()
+                    }
+                } catch {
+                    caught = error
+                }
+            }
+        }
+        #expect(caught as? XitDBError == .byteWriterOpen)
+        #expect(try database.rootCursor.slot.isEmpty)
+
+        // A join is a freeze too.
+        let joins = try Database(creating: MemoryStorage(), hashSize: 32)
+        #expect(throws: XitDBError.byteWriterOpen) {
+            try joins.withTransaction { cursor in
+                let moment = try HashMap<ReadWrite>(cursor)
+                let tasks = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("tasks")))
+                let more = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("more")))
+                try tasks.append(.uint(1))
+                try more.append(.uint(2))
+                var value = try moment.putCursor(forHash: sha256("value"))
+                try value.writeBytes { _ in try tasks.append(contentsOf: more) }
+            }
+        }
+        #expect(try joins.rootCursor.slot.isEmpty)
+    }
+
     @Test func aWrittenValueHasARecordHoweverShort() throws {
         let moment = try newMoment { moment in
             var cursor = try moment.putCursor(forHash: sha256("hi"))

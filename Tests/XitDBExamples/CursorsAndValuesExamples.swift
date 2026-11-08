@@ -219,7 +219,7 @@ import XitDB
         #expect(keys.sorted() == ["age", "name"])
 
         let entry = try moment.entry(forHash: sha256("name"))!
-        #expect(entry.hash == sha256("name"))
+        #expect(entry.hash == Array(sha256("name")))
         #expect(entry.withHash { $0.count } == 32)
         #expect(try entry.value.readBytes() == Array("Alice".utf8))
     }

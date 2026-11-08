@@ -159,6 +159,68 @@ import XitDB
         #expect(throws: XitDBError.expectedTxStart) {
             try kept!.write(.uint(1))
         }
+        // During a later one, the cursor is stale.
+        try database.withTransaction { _ in
+            #expect(throws: XitDBError.staleCursor) {
+                try kept!.write(.uint(1))
+            }
+        }
+        // A read through it reads the commit it came from.
+        #expect(try kept!.slot.isEmpty)
+    }
+
+    @Test func aFailurePartwayPoisonsTheTransaction() throws {
+        // Any other error, or none, and the checks after this fail.
+        let small = try Database(creating: MemoryStorage(maxSize: 2_000), hashSize: 32)
+        do {
+            try small.withTransaction { cursor in
+                let map = try HashMap<ReadWrite>(cursor)
+                try map.put(.uint(1), forHash: sha256("small"))
+                do {
+                    // Too large for the storage, and only found out after the entry was written.
+                    try map.put(.bytes([UInt8](repeating: 7, count: 3_000)), forHash: sha256("large"))
+                } catch XitDBError.maxSizeExceeded {
+                    // Caught, but the transaction is poisoned: the next write, and the commit, fail.
+                    #expect(throws: XitDBError.poisonedTransaction) { try map.put(.uint(2), forHash: sha256("x")) }
+                    #expect(try map.cursor(forHash: sha256("small"))!.readUInt64() == 1)
+                }
+            }
+        } catch XitDBError.poisonedTransaction {
+            // Nothing of the transaction stays, the small value included.
+        }
+        #expect(try small.committedSize == 62)
+        #expect(try small.rootCursor.slot.isEmpty)
+    }
+
+    @Test func aFailureBeforeWritingLeavesTheTransactionAsItWas() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        try database.withTransaction { cursor in
+            let map = try HashMap<ReadWrite>(cursor)
+            let list = try ArrayList<ReadWrite>(map.putCursor(forHash: sha256("list")))
+            #expect(throws: XitDBError.indexOutOfRange) { try list.put(.uint(1), at: 5) }
+            #expect(throws: XitDBError.unexpectedTag) { try ArrayList<ReadWrite>(cursor) }
+            var iterator = try map.iterator()
+            let entry = try iterator.next()!
+            var copy = try map.putCursor(forHash: sha256("copy"))
+            #expect(throws: XitDBError.structuralSlot) { try copy.write(.slot(try entry.slot)) }
+            #expect(throws: XitDBError.structuralSlot) { try map.put(.slot(try entry.slot), forHash: sha256("new")) }
+            #expect(throws: XitDBError.structuralSlot) { try list.append(.slot(try entry.slot)) }
+            try list.append(.uint(1))
+        }
+        let map = try HashMap<ReadOnly>(database.rootCursor)
+        #expect(try ArrayList<ReadOnly>(map.cursor(forHash: sha256("list"))!).count == 1)
+    }
+
+    @Test func anAppendWhoseBodyThrowsPoisons() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        struct Stop: Error {}
+        #expect(throws: XitDBError.poisonedTransaction) {
+            try database.withTransaction { cursor in
+                let list = try ArrayList<ReadWrite>(HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("list")))
+                #expect(throws: Stop.self) { try list.append(.uint(1)) { _ in throw Stop() } }
+            }
+        }
+        #expect(try database.rootCursor.slot.isEmpty)
     }
 
     @Test func severalMomentsCanShareOneCommit() throws {
