@@ -75,7 +75,7 @@ made:
 let writable = try ArrayList<ReadWrite>(database.rootCursor)
 try writable.append(.uint(1))
 
-// These are the same list. The read-only forms cannot write: `append`
+// These are the same list. The read-only forms cannot write: append
 // is not a method of them.
 let viaProperty: ArrayList<ReadOnly> = writable.readOnly
 let viaCursor = try ArrayList<ReadOnly>(database.rootCursor)
@@ -131,15 +131,16 @@ let joined = try LinkedArrayList<ReadWrite>(
 try joined.formSlice(offset: 1, count: 2)
 ```
 
-Neither goes through the list. With two lists of 4,096 elements in a map, a join in a transaction of its own did 31 reads and
-appended 494 bytes: 274 for the one new branch, and 220 for what any transaction reaching that list copies. Cutting out the middle
-of the result did 108 reads and appended 8,584: the same 220, and new nodes for the edges of the tree at every level.
+Neither goes through the list. With two lists of 4,096 elements in a map, and 8-byte hashes, a join in a transaction of its
+own did 31 reads and appended 494 bytes: 274 for the one new branch, and 220 for what any transaction reaching that list
+copies. Cutting out the middle of the result did 108 reads and appended 8,584: the same 220, and new nodes for the edges of
+the tree at every level.
 
 <!-- Pinned by `whatAJoinAndACutCost` in XitDBExamples: the numbers and the test change together. -->
 
 A join freezes the transaction, so every collection you made before it is stale, the list that joined included, and a write
-through one is refused with ``XitDBError/staleCursor``. Take the list again from the cursor the transaction's body was given,
-as the example does with `joined`. Making it again from the list's own cursor is refused too: see
+through one is refused with ``XitDBError/staleCursor``. Take the list again from the transaction's cursor, the one its body
+was given, as the example does with `joined`. Making it again from the list's own cursor is refused too: see
 <doc:CloningFreezeAndStaleHandles>.
 
 ``LinkedArrayList/insert(_:at:)`` needs an element to insert before, so an index equal to the count throws
@@ -209,7 +210,7 @@ over `0..<(try list.count)` passes straight in. Counts are `UInt64`, and so are 
 `Int64` names no element: a lookup gives `nil`, and a write or an iterator throws ``XitDBError/indexOutOfRange``.
 
 ```swift
-// An `Int`, a `UInt64` and a `UInt8` are all indices.
+// An Int, a UInt64 and a UInt8 are all indices.
 let index: Int = 0
 let count: UInt64 = try list.count
 let byte: UInt8 = 0

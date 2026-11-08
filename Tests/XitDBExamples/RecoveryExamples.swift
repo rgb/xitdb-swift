@@ -112,7 +112,7 @@ import XitDB
             do {
                 return try Database(opening: storage)
             } catch .untrustedRootHeader(let lastVerified) {
-                // Copy the file first if what lies past `lastVerified` might be wanted.
+                // Copy the file first if what lies past lastVerified might be wanted.
                 print("cutting the file back to \(lastVerified) bytes")
                 return try Database.recover(storage)
             }
@@ -200,7 +200,8 @@ import XitDB
         let start = try source.replicationStart(for: try replica.replicaState)
         #expect(start == 1032)
         let end = try source.committedSize
-        try replica.applyReplicated(at: start, bytes: try source.readCommitted(from: start, to: end))
+        let bytes = try source.readCommitted(from: start, to: end)
+        try replica.applyReplicated(at: start, bytes: bytes)
         #expect(replicaStorage.bytes == good)
 
         // The source's first commit is its first 62 bytes: the new database.

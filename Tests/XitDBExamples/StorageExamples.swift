@@ -109,7 +109,8 @@ import XitDB
         defer { scratch.remove() }
 
         // The writer holds an exclusive lock for as long as its storage lives.
-        let writer = try BufferedFileStorage(path: scratch.path("main.db"), access: .create, lock: .exclusive)
+        let writer = try BufferedFileStorage(
+            path: scratch.path("main.db"), access: .create, lock: .exclusive)
 
         // A second writer does not wait: opening it fails at once.
         #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK)) {

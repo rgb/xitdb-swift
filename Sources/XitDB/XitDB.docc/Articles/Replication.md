@@ -141,7 +141,8 @@ if start == 0 {
     // old one's place only once it is complete.
     let storage = try BufferedFileStorage(path: "replica.new", access: .truncate)
     let incoming = try Database(creating: storage, hashSize: 32)
-    try incoming.applyReplicated(at: 0, bytes: try source.readCommitted(from: 0, to: end))
+    let bytes = try source.readCommitted(from: 0, to: end)
+    try incoming.applyReplicated(at: 0, bytes: bytes)
 }
 ```
 
@@ -159,7 +160,7 @@ few to hold the headers.
 ### An earlier commit
 
 ``Database/readCommitted(from:to:into:)-(_,_,Sink)`` from 0 to the committed size of any earlier commit gives a complete database as
-of that commit, with a root header to match. Keep the committed size at the moment you want, and you can have the file as it was.
+of that commit, with a root header to match. Keep the committed size of the commit you want, and you can have the file as it was.
 Here `commit(_:to:)` is a helper that adds a moment:
 
 ```swift

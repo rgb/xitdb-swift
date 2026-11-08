@@ -32,6 +32,8 @@
 
 ### Joining and cutting
 
+A join freezes the transaction. See <doc:CloningFreezeAndStaleHandles> for what that does to the handles you hold.
+
 - ``append(contentsOf:)-(LinkedArrayList<CursorAccess>)``
 - ``append(contentsOf:)-(Slot)``
 - ``formSlice(offset:count:)``

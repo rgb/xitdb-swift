@@ -15,7 +15,8 @@ committed kind for the rest of the transaction, so a copy made before the freeze
 
 A freeze also changes the handles you hold. Every cursor and collection made before it can still read, and is refused if it
 tries to write, even to make a collection again from it. The one exception is making a collection from the cursor the
-transaction's body was given, and the way on starts there. The rest of this article is about why.
+transaction's body was given, or from another cursor at its slot, and the way on starts there. The rest of this article is
+about why.
 
 ### A copy of committed data
 
@@ -39,7 +40,8 @@ try history.append(.slot(try history.slot(at: -1))) { cursor in
     let moment = try HashMap<ReadWrite>(cursor)
 
     // "food" starts as a copy of "fruits", which an earlier transaction made.
-    try moment.put(.slot(try moment.slot(forHash: sha256("fruits"))), forHash: sha256("food"))
+    let fruits = try moment.slot(forHash: sha256("fruits"))
+    try moment.put(.slot(fruits), forHash: sha256("food"))
     let food = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("food")))
     try food.append(.bytes(Array("rice".utf8)))
 }
@@ -55,7 +57,8 @@ The same copy of a list that the transaction has just made does not work:
 ```swift
 try history.append(.slot(try history.slot(at: -1))) { cursor in
     let moment = try HashMap<ReadWrite>(cursor)
-    let bigCities = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("big-cities")))
+    let bigCities = try ArrayList<ReadWrite>(
+        moment.putCursor(forHash: sha256("big-cities")))
     try bigCities.append(.bytes(Array("New York, NY".utf8)))
     try bigCities.append(.bytes(Array("Los Angeles, CA".utf8)))
 
@@ -76,14 +79,15 @@ Freeze after the copy, and take the collections again from the cursor the transa
 ```swift
 try history.append(.slot(try history.slot(at: -1))) { cursor in
     let moment = try HashMap<ReadWrite>(cursor)
-    let bigCities = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("big-cities")))
+    let bigCities = try ArrayList<ReadWrite>(
+        moment.putCursor(forHash: sha256("big-cities")))
     try bigCities.append(.bytes(Array("New York, NY".utf8)))
     try bigCities.append(.bytes(Array("Los Angeles, CA".utf8)))
 
     // 1. Copy the slot.
     try moment.put(.slot(try bigCities.slot), forHash: sha256("cities"))
 
-    // 2. Freeze: nothing this transaction has written so far changes in place any more.
+    // 2. Freeze: nothing written so far in this transaction changes in place any more.
     try cursor.database.freeze()
 
     // 3. Take the collections again, from the cursor the body was given.
@@ -116,8 +120,8 @@ transaction's body was given included:
 The way on is the one in step 3: start from the cursor the body was given, which is at the top of everything the transaction
 writes, and make each collection again on the way down to where you write.
 
-A cursor from an earlier transaction is stale for writing in the same way. Take a new one from the root. What reads through
-such a cursor give is in <doc:ConcurrencyAndSnapshots>.
+A cursor from an earlier transaction is refused for every write, making a collection included, with no exception. Take a new
+one from the root: see <doc:Transactions>. What reads through such a cursor give is in <doc:ConcurrencyAndSnapshots>.
 
 ### Why a held cursor cannot start again
 
@@ -141,7 +145,8 @@ try cursor.database.freeze()
 ```
 
 ```swift
-// Refused with staleCursor: it would write the list's slot in place, in a record the copy shares.
+// Refused with staleCursor: it would write the list's slot in place,
+// in a record the copy shares.
 try ArrayList<ReadWrite>(stock.cursor).append(.uint(2))
 ```
 
@@ -152,7 +157,8 @@ with a stock of one:
 ```swift
 let rootAgain = try HashMap<ReadWrite>(cursor)
 let shopAgain = try HashMap<ReadWrite>(rootAgain.putCursor(forHash: sha256("shop")))
-try ArrayList<ReadWrite>(shopAgain.putCursor(forHash: sha256("stock"))).append(.uint(2))
+try ArrayList<ReadWrite>(shopAgain.putCursor(forHash: sha256("stock")))
+    .append(.uint(2))
 ```
 
 Some held cursors would be safe to start again from, such as one at the copied collection itself while nothing has copied the
@@ -168,7 +174,8 @@ called it included, and a write through one is refused. To go on, take the list 
 ```swift
 try tasks.append(contentsOf: more)
 // The list that joined is stale too. Take it again from the body's cursor.
-let joined = try LinkedArrayList<ReadWrite>(HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("tasks")))
+let joined = try LinkedArrayList<ReadWrite>(
+    HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("tasks")))
 try joined.append(.uint(3))
 ```
 

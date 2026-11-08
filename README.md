@@ -21,28 +21,50 @@ hash your own keys, and you keep your own indexes. If you want queries or a sche
 
 ## Status
 
-The port reached parity with the original on 2026-11-07: every operation of the original, checked by
-conformance scripts. On 2026-11-08 it added the checks that turn misuse the original allows into a clear error,
-such as a cursor kept for a later transaction, a handle held across a freeze, or a write after a failure in the same
-one, and explicit recovery of a file whose root header or last trailer is damaged. There are now 226 scripts. In 128
-of them the file must match byte for byte what the original writes, or, where the port deliberately does otherwise,
-what the original writes when it is made to do the same. The other 98 must fail, as they do with the original: they
-check that a runner catches what is wrong, such as an expectation the database does not meet or an error nobody
-handles. It has not been released yet.
+The port does everything the original does. Beyond that, it refuses with an error most of the misuse that the original
+lets through to damage data, such as a cursor kept for a later transaction, a handle held across a freeze, or a write after
+a failure in the same transaction, and it recovers, when asked, a file whose root header or last trailer is damaged, which
+the original cannot open. Every public symbol is documented, and the documentation has articles for the concepts and
+four tutorials. It has not been released yet.
 
-Not there yet, and being worked on in this order:
+Not there yet, and planned in this order:
 
 - read snapshots that can be shared between threads and tasks;
 - a hashing target and a more Swift-flavoured layer over the API shown here (string keys, typed values);
-- iOS testing on a simulator, and Linux. It builds for macOS 26 and iOS 26 and is tested on macOS.
+- a tool that shows what a file holds, and tests that check random sequences of operations against Swift's own
+  collections;
+- testing on an iOS simulator;
+- Linux.
+
+It builds for macOS 26 and iOS 26, and is tested on macOS.
+
+## How it is tested
+
+- **Conformance scripts**, written from the original's source and the file format by a separate project that never
+  reads the port. There are 226. In 128 of them the port must write the file the original writes, byte for byte, or,
+  where the port deliberately does otherwise, the file the original writes when it is made to do the same. The other 98
+  must fail, as they do with the original: they check that a runner catches what is wrong, such as an expectation the
+  database does not meet or an error nobody handles. Each script runs on every kind of storage it can (the memory
+  storage has no read-only mode), and each one that compacts runs with both kinds of offset map.
+- **The original's own tests**, all eleven, on each kind of storage the original runs them on. They keep the original's
+  assertions, except where the port deliberately does otherwise, and except for the positions of a memory storage's
+  readers and writers, which the port's storage does not have.
+- **The port's own tests**, for what the original does not test: damaged files, a storage that fails partway through a
+  commit, the guards and recovery. A fuzzer damages files at random, then reads, compacts, replicates and writes them,
+  and checks that the library never traps or hangs on one.
+- **Every code example** in this README and in the documentation, compiled and run, apart from the package manifest.
+
+`scripts/check.sh` runs all of them: the tests in debug and release builds with warnings as errors, and the fuzzer on the
+files that once made it fail and on fresh damage from fixed seeds. It also checks the imports and the formatting, builds
+the documentation, runs the benchmark briefly and compiles for iOS.
 
 ## Adding the dependency
 
-The package needs Swift 6.4 and macOS 26 or iOS 26. It has not been published, so for now it is added by path:
+The package needs Swift 6.4 and macOS 26 or iOS 26. In your `Package.swift`:
 
 ```swift manifest
 dependencies: [
-    .package(path: "../xitdb-swift")
+    .package(url: "https://github.com/rgb/xitdb-swift", from: "<version>")
 ],
 targets: [
     .target(name: "MyTarget", dependencies: [.product(name: "XitDB", package: "xitdb-swift")])

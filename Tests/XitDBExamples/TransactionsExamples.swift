@@ -177,10 +177,13 @@ import XitDB
                 let map = try HashMap<ReadWrite>(cursor)
                 try map.put(.uint(1), forHash: sha256("small"))
                 do {
-                    // Too large for the storage, and only found out after the entry was written.
-                    try map.put(.bytes([UInt8](repeating: 7, count: 3_000)), forHash: sha256("large"))
+                    // Too large for the storage, and only found out
+                    // after the entry was written.
+                    let large = [UInt8](repeating: 7, count: 3_000)
+                    try map.put(.bytes(large), forHash: sha256("large"))
                 } catch XitDBError.maxSizeExceeded {
-                    // Caught, but the transaction is poisoned: the next write, and the commit, fail.
+                    // Caught, but the transaction is poisoned:
+                    // the next write, and the commit, fail.
                     #expect(throws: XitDBError.poisonedTransaction) { try map.put(.uint(2), forHash: sha256("x")) }
                     #expect(try map.cursor(forHash: sha256("small"))!.readUInt64() == 1)
                 }
@@ -275,7 +278,8 @@ import XitDB
             #expect(try database.committedSize > 62)
         }
 
-        let storage = try BufferedFileStorage(path: scratch.path("cache.db"), access: .create, durability: .none)
+        let storage = try BufferedFileStorage(
+            path: scratch.path("cache.db"), access: .create, durability: .none)
         _ = try Database(creating: storage, hashSize: 32)
     }
 }

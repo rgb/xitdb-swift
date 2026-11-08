@@ -49,10 +49,13 @@ many bytes and eighteen more.
 
 | Bytes | Hash | When |
 |---|---|---|
-| 32 | SHA-256 | The choice to make if you have no reason to choose. Nobody knows how to make two keys collide. |
-| 20 | SHA-1 | What the original's own tests use, and 12 bytes less per entry. It is broken: someone who chooses your keys and has the computing power can make two collide on purpose. Fine for keys you make yourself. |
+| 32 | SHA-256 | The choice to make if you have no reason to choose. |
+| 20 | SHA-1 | Keys you make yourself, for 12 bytes less per entry. |
 | 64 | SHA-512 | If you already have one. |
 | 8 | Your own 64-bit IDs | Keys that are unique already: see below. |
+
+Nobody knows how to make two SHA-256 hashes collide. SHA-1, which the original's own tests use, is broken: someone who
+chooses your keys and has the computing power can make two collide on purpose, so keep it for keys you make yourself.
 
 ### Two keys, one hash
 
@@ -84,7 +87,7 @@ It writes only once, so what you read back is the first key that had that hash, 
 ```swift
 try map.putKey(.bytes(Array("ab".utf8)), forHash: weakHash("ab"))
 
-// `putKey` writes once, so the stored key is the first one.
+// putKey writes once, so the stored key is the first one.
 try map.putKey(.bytes(Array("ba".utf8)), forHash: weakHash("ba"))
 let stored = try map.keyCursor(forHash: weakHash("ba"))!.readBytes()
 let collided = stored != Array("ba".utf8)
@@ -133,7 +136,7 @@ bytes themselves and no hash: see <doc:SortingAndPaginating>.
 
 The size alone does not say which function made the hashes, and every reader of the file has to use the same one. A
 database's header has four bytes for that, a ``HashID``, which XitDB records and never looks at. It is written when the
-database is created, and only a sync from 0, which replaces the whole header with its source's, changes it:
+database is created, and only a sync at 0, which replaces the whole header with its source's, changes it:
 
 ```swift
 let storage = MemoryStorage()

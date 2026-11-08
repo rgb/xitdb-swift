@@ -67,7 +67,7 @@ A cursor belongs to the transaction it was made in, and to the ``Database`` that
   ```
 
   `count` still reads 1. A write through a read-write cursor kept this way throws ``XitDBError/expectedTxStart`` with no
-  transaction running, and ``XitDBError/staleCursor`` during a later one: see <doc:CloningFreezeAndStaleHandles>.
+  transaction running, and ``XitDBError/staleCursor`` during a later one: see <doc:Transactions>.
 - **If it did not commit**, its bytes were cut off and the next transaction writes in their place, so a read through it is
   refused with ``XitDBError/staleCursor`` too, and so is a read through an iterator or a byte reader made from it before the
   rollback. Only its ``Cursor/slot``, which touches no bytes, still reads.

@@ -4,7 +4,7 @@
 
 ### Opening and creating
 
-See <doc:Storage>, and <doc:Recovery> for a file whose last commit is damaged.
+See <doc:Storage>, and <doc:Recovery> for a file whose root header or last trailer is damaged.
 
 - ``init(opening:hashSize:)``
 - ``init(creating:hashSize:hashID:fileID:)``

@@ -10,7 +10,8 @@
     @Section(title: "Store the records and an index") {
         @ContentAndMedia {
             The records are books, looked up by their ID in a ``HashMap``. They have to be listed by title, which a hash
-            map cannot do, so a ``SortedMap`` from the title to the ID goes beside it.
+            map cannot do, so a ``SortedMap`` from the title to the ID goes beside it. <doc:SortingAndPaginating> covers
+            the same ground at more length.
         }
 
         @Steps {

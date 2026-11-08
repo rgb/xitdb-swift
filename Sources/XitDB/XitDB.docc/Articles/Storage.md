@@ -118,7 +118,8 @@ holds it until it goes away:
 
 ```swift
 // The writer holds an exclusive lock for as long as its storage lives.
-let writer = try BufferedFileStorage(path: "main.db", access: .create, lock: .exclusive)
+let writer = try BufferedFileStorage(
+    path: "main.db", access: .create, lock: .exclusive)
 ```
 
 A ``FileLock`` is never waited for. If it cannot be had at once, opening fails with ``XitDBError/storageFailure(errno:)`` carrying
@@ -185,7 +186,7 @@ The engine relies on these points:
 - **A write past the end fills the gap with zeros.** A write of no bytes does nothing, whatever the offset.
 - **``WritableStorage/truncate(to:)`` only shortens.** A length larger than the current one throws ``XitDBError/invalidLength``.
 - **``ReadableStorage/length`` counts what has been written**, including anything not yet flushed.
-- **``WritableStorage/sync(_:)`` comes twice in every commit**, and once in a replica's sync from 0. ``SyncPoint`` says which it is.
+- **``WritableStorage/sync(_:)`` comes twice in every commit**, and once in a replica's sync at 0. ``SyncPoint`` says which it is.
   The data has to reach the disk before the header does. A failure of either reaches the caller of the transaction.
 
 Report a failure with ``XitDBError/storageFailure(errno:)``. A storage is used from one thread at a time, and it should be a class,

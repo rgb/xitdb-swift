@@ -52,7 +52,8 @@ How a database works, in the order to read it.
 ### Opening a database
 
 A database keeps its bytes in a storage. ``BufferedFileStorage`` is the one to use for a file, and
-``MemoryStorage`` for a database that needs none.
+``MemoryStorage`` for a database that needs none. What opening does with a damaged file, and how threads and processes
+share one, are here too.
 
 - <doc:Storage>
 - <doc:Recovery>
@@ -69,7 +70,8 @@ A database keeps its bytes in a storage. ``BufferedFileStorage`` is the one to u
 ### Running transactions
 
 Every write happens in a transaction, which commits whole or not at all, and a commit goes as far towards the disk as its
-durability says.
+durability says. A copy of something the same transaction wrote needs a freeze, which makes every handle from before it
+stale.
 
 - <doc:CloningFreezeAndStaleHandles>
 - ``Database/withTransaction(_:)``

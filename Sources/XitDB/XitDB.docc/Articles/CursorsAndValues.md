@@ -223,7 +223,8 @@ That map's count is 1, and it still has an entry for `"cleared"`, with nothing i
 ### Copying a slot
 
 ``WritableData/slot(_:)`` writes a slot as it is, without copying what it points at. Both slots then share it, which is
-how one moment starts from another without copying what it holds. An empty slot is written as one set to nothing. A
+how one moment starts from another without copying what it holds. A copy of something the same transaction made needs a
+freeze: see <doc:CloningFreezeAndStaleHandles>. An empty slot is written as one set to nothing. A
 client cannot make a slot; every slot it writes is one a database gave it, and it must have come from the same database.
 
 It should also be a value. The slot of a cursor from a map's iterator is the entry's own, and writing it as a value is

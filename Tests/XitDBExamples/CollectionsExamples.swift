@@ -51,7 +51,7 @@ import XitDB
         let writable = try ArrayList<ReadWrite>(database.rootCursor)
         try writable.append(.uint(1))
 
-        // These are the same list. The read-only forms cannot write: `append`
+        // These are the same list. The read-only forms cannot write: append
         // is not a method of them.
         let viaProperty: ArrayList<ReadOnly> = writable.readOnly
         let viaCursor = try ArrayList<ReadOnly>(database.rootCursor)
@@ -351,7 +351,7 @@ import XitDB
         let list = try ArrayList<ReadWrite>(database.rootCursor)
         try list.append(.uint(1))
 
-        // An `Int`, a `UInt64` and a `UInt8` are all indices.
+        // An Int, a UInt64 and a UInt8 are all indices.
         let index: Int = 0
         let count: UInt64 = try list.count
         let byte: UInt8 = 0

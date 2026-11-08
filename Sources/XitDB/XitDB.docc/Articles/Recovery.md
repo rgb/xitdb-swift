@@ -42,7 +42,7 @@ func openOrRecover(_ storage: any WritableStorage) throws(XitDBError) -> Databas
     do {
         return try Database(opening: storage)
     } catch .untrustedRootHeader(let lastVerified) {
-        // Copy the file first if what lies past `lastVerified` might be wanted.
+        // Copy the file first if what lies past lastVerified might be wanted.
         print("cutting the file back to \(lastVerified) bytes")
         return try Database.recover(storage)
     }
@@ -94,7 +94,8 @@ send only the rest:
 replica = try Database.recover(replicaStorage)
 let start = try source.replicationStart(for: try replica.replicaState)
 let end = try source.committedSize
-try replica.applyReplicated(at: start, bytes: try source.readCommitted(from: start, to: end))
+let bytes = try source.readCommitted(from: start, to: end)
+try replica.applyReplicated(at: start, bytes: bytes)
 ```
 
 With the history above as the source, a connection that drops after 1,100 bytes recovers to 1,032, and the sync sends the last

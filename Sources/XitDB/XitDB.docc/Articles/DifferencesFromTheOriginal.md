@@ -28,7 +28,8 @@ and the port's files are compared with that branch's.
   writes its slot in place too, so a copy of anything that contains the slot changes with it, and once anything has copied the
   record the slot is in, the write is lost. The port refuses every write through it with ``XitDBError/staleCursor``, making a
   collection included, and freezes after a join rather than before it. The one thing allowed is making a collection from the
-  cursor the transaction's body was given, which is the way on: see <doc:CloningFreezeAndStaleHandles>.
+  cursor the transaction's body was given, or from another cursor at its slot, which is the way on: see
+  <doc:CloningFreezeAndStaleHandles>.
 - **A cursor from a transaction that did not commit.** In the original, a read through it gets whatever the next transaction wrote
   at the same offsets. The port refuses the read with ``XitDBError/staleCursor``.
 - **An operation that fails partway.** In the original, a body that catches the error commits what the operation had already

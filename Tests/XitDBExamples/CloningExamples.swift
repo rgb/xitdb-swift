@@ -27,7 +27,8 @@ import XitDB
             let moment = try HashMap<ReadWrite>(cursor)
 
             // "food" starts as a copy of "fruits", which an earlier transaction made.
-            try moment.put(.slot(try moment.slot(forHash: sha256("fruits"))), forHash: sha256("food"))
+            let fruits = try moment.slot(forHash: sha256("fruits"))
+            try moment.put(.slot(fruits), forHash: sha256("food"))
             let food = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("food")))
             try food.append(.bytes(Array("rice".utf8)))
         }
@@ -41,7 +42,8 @@ import XitDB
 
         try history.append(.slot(try history.slot(at: -1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            let bigCities = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("big-cities")))
+            let bigCities = try ArrayList<ReadWrite>(
+                moment.putCursor(forHash: sha256("big-cities")))
             try bigCities.append(.bytes(Array("New York, NY".utf8)))
             try bigCities.append(.bytes(Array("Los Angeles, CA".utf8)))
 
@@ -61,14 +63,15 @@ import XitDB
 
         try history.append(.slot(try history.slot(at: -1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            let bigCities = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("big-cities")))
+            let bigCities = try ArrayList<ReadWrite>(
+                moment.putCursor(forHash: sha256("big-cities")))
             try bigCities.append(.bytes(Array("New York, NY".utf8)))
             try bigCities.append(.bytes(Array("Los Angeles, CA".utf8)))
 
             // 1. Copy the slot.
             try moment.put(.slot(try bigCities.slot), forHash: sha256("cities"))
 
-            // 2. Freeze: nothing this transaction has written so far changes in place any more.
+            // 2. Freeze: nothing written so far in this transaction changes in place any more.
             try cursor.database.freeze()
 
             // 3. Take the collections again, from the cursor the body was given.
@@ -86,7 +89,8 @@ import XitDB
 
         try history.append(.slot(try history.slot(at: -1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            let bigCities = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("big-cities")))
+            let bigCities = try ArrayList<ReadWrite>(
+                moment.putCursor(forHash: sha256("big-cities")))
             try bigCities.append(.bytes(Array("New York, NY".utf8)))
             var first = try bigCities.putCursor(at: 0)
             try database.freeze()
@@ -129,7 +133,8 @@ import XitDB
         try history.append(.slot(try history.slot(at: -1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
             var mark = storage.bytes.count
-            try moment.put(.slot(try moment.slot(forHash: sha256("fruits"))), forHash: sha256("food"))
+            let fruits = try moment.slot(forHash: sha256("fruits"))
+            try moment.put(.slot(fruits), forHash: sha256("food"))
             // A new entry: the hash and two slots.
             #expect(storage.bytes.count - mark == 50)
             mark = storage.bytes.count
@@ -187,13 +192,15 @@ import XitDB
             try cursor.database.freeze()
 
             #expect(throws: XitDBError.staleCursor) {
-                // Refused with staleCursor: it would write the list's slot in place, in a record the copy shares.
+                // Refused with staleCursor: it would write the list's slot in place,
+                // in a record the copy shares.
                 try ArrayList<ReadWrite>(stock.cursor).append(.uint(2))
             }
 
             let rootAgain = try HashMap<ReadWrite>(cursor)
             let shopAgain = try HashMap<ReadWrite>(rootAgain.putCursor(forHash: sha256("shop")))
-            try ArrayList<ReadWrite>(shopAgain.putCursor(forHash: sha256("stock"))).append(.uint(2))
+            try ArrayList<ReadWrite>(shopAgain.putCursor(forHash: sha256("stock")))
+                .append(.uint(2))
         }
         // The refusal wrote nothing, and the way from the root leaves the copy alone.
         #expect(try stockCounts(in: database) == (2, 1))
@@ -256,7 +263,8 @@ import XitDB
 
             try tasks.append(contentsOf: more)
             // The list that joined is stale too. Take it again from the body's cursor.
-            let joined = try LinkedArrayList<ReadWrite>(HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("tasks")))
+            let joined = try LinkedArrayList<ReadWrite>(
+                HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("tasks")))
             try joined.append(.uint(3))
 
             // Every collection made before the join is stale, the list that joined included. Through
@@ -285,7 +293,8 @@ import XitDB
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         try database.withTransaction { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            let bigCities = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("big-cities")))
+            let bigCities = try ArrayList<ReadWrite>(
+                moment.putCursor(forHash: sha256("big-cities")))
             for number in 0..<300 {
                 try bigCities.append(.uint(UInt64(number)))
             }

@@ -95,16 +95,16 @@
 
         @Steps {
             @Step {
-                Pretend the connection drops after half of the bytes. `applyReplicated` takes a ``ByteSource``, which is how
-                bytes can come straight off a connection without being held in memory. This one runs out early, and the call
-                throws. The replica's committed size has not changed.
+                Pretend the connection drops after half of the bytes. ``Database/applyReplicated(at:from:count:)`` takes a
+                ``ByteSource``, which is how bytes can come straight off a connection without being held in memory. This one
+                runs out early, and the call throws. The replica's committed size has not changed.
 
                 @Code(name: "main.swift", file: "replica-11.swift")
             }
 
             @Step {
                 Sync again. What the failed sync left past the committed size is discarded, and the new bytes go in. The one
-                case to take care over is a sync from 0, which empties the replica first: <doc:Replication> says what to do.
+                case to take care over is a sync at 0, which empties the replica first: <doc:Replication> says what to do.
 
                 @Code(name: "main.swift", file: "replica-12.swift")
             }
@@ -114,6 +114,7 @@
     @Section(title: "When the source is replaced") {
         @ContentAndMedia {
             Compacting makes a new file with a new file ID, so replicas of the old one cannot be extended from it.
+            <doc:Compaction> says what else it changes.
         }
 
         @Steps {

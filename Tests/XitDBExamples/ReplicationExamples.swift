@@ -276,7 +276,8 @@ import XitDB
             // old one's place only once it is complete.
             let storage = try BufferedFileStorage(path: scratch.path("replica.new"), access: .truncate)
             let incoming = try Database(creating: storage, hashSize: 32)
-            try incoming.applyReplicated(at: 0, bytes: try source.readCommitted(from: 0, to: end))
+            let bytes = try source.readCommitted(from: 0, to: end)
+            try incoming.applyReplicated(at: 0, bytes: bytes)
             #expect(incoming.header.fileID == source.header.fileID)
         }
     }

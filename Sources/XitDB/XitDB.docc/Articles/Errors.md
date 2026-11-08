@@ -22,15 +22,17 @@ These mean the code asked for something it should not have. Most are worth fixin
   in an `Int64`.
 - ``XitDBError/keyNotFound``: Reads and removes turn this into `nil` and `false`. It gets out only from a write through a collection whose slot was cleared after the collection was made.
 - ``XitDBError/invalidHashSize``: A hash without the database's number of bytes, once there is a map to look in, opening with a stated size that is not the file's, creating with a size of 0 or over 65535, or a compaction target or replica of another size.
-- ``XitDBError/expectedTxStart``: A write below the root, or a freeze, with no transaction running.
+- ``XitDBError/expectedTxStart``: A write below the root, or a ``Database/freeze()``, with no transaction running.
 - ``XitDBError/nestedTopLevelWrite``: A write through the root, or a new transaction, while one is running.
 - ``XitDBError/cursorNotWritable``: ``Cursor/writeBytes(formatTag:_:)`` on the ``Database/rootCursor``.
-- ``XitDBError/staleCursor``: A write through a cursor or collection made before the last freeze or join of the transaction,
-  making a collection from it included, except making one from the cursor the transaction's body was given, or from the cursor
-  of a collection made from that; a write through one from an earlier transaction; or a read through one from a transaction
-  that did not commit. See <doc:CloningFreezeAndStaleHandles>.
-- ``XitDBError/byteWriterOpen``: A freeze, or a join, inside the body of ``Cursor/writeBytes(formatTag:_:)``. It is refused before
-  it does anything, but the writer has written by then, so the transaction is poisoned. Finish the byte array first.
+- ``XitDBError/staleCursor``: A write through a cursor or collection made before the last ``Database/freeze()`` or join
+  (``LinkedArrayList/append(contentsOf:)-(LinkedArrayList<CursorAccess>)``) of the transaction, making a collection from it
+  included, except making one from the cursor the transaction's body was given, or from the cursor of a collection made from
+  that; a write through one from an earlier transaction; or a read through one from a transaction that did not commit. See
+  <doc:CloningFreezeAndStaleHandles>.
+- ``XitDBError/byteWriterOpen``: A ``Database/freeze()``, or a join, inside the body of ``Cursor/writeBytes(formatTag:_:)``.
+  It is refused before it does anything, but the writer has written by then, so if the body passes the error on, the
+  transaction is poisoned. Finish the byte array first.
 - ``XitDBError/structuralSlot``: A slot that belongs to a tree written as a value, such as the slot of a cursor from a map's
   iterator. Write the slot of the entry's ``Entry/value`` instead.
 - ``XitDBError/poisonedTransaction``: A write, or the commit, in a transaction where an earlier operation failed after it had

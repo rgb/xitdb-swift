@@ -52,10 +52,13 @@ do {
         let map = try HashMap<ReadWrite>(cursor)
         try map.put(.uint(1), forHash: sha256("small"))
         do {
-            // Too large for the storage, and only found out after the entry was written.
-            try map.put(.bytes([UInt8](repeating: 7, count: 3_000)), forHash: sha256("large"))
+            // Too large for the storage, and only found out
+            // after the entry was written.
+            let large = [UInt8](repeating: 7, count: 3_000)
+            try map.put(.bytes(large), forHash: sha256("large"))
         } catch XitDBError.maxSizeExceeded {
-            // Caught, but the transaction is poisoned: the next write, and the commit, fail.
+            // Caught, but the transaction is poisoned:
+            // the next write, and the commit, fail.
         }
     }
 } catch XitDBError.poisonedTransaction {
@@ -68,10 +71,11 @@ a collection is the one exception: its initialiser writes the collection's slot 
 alone does not count.
 
 An operation that fails before it writes anything leaves the transaction as it was, and the body can catch the error and go on.
-Every guard is of that kind: a write through a stale cursor, a structural slot, an index that names no element, a collection of
-the wrong kind for its slot. What poisons is a failure partway: a storage that fails or runs out of room, a byte array whose body
-throws, or an ``ArrayList/append(_:_:)`` whose body throws, as the element is already there. The original commits
-what such an operation left: see <doc:DifferencesFromTheOriginal>.
+Every guard is of that kind: a write through a stale cursor (see <doc:CloningFreezeAndStaleHandles>), a structural slot, an
+index that names no element, a collection of the wrong kind for its slot. What poisons is a failure partway: a storage that fails
+or runs out of room, a byte array whose body throws, even with a guard's error such as ``XitDBError/byteWriterOpen``, or an
+``ArrayList/append(_:_:)`` whose body throws, as the element is already there. The original commits what such an operation
+left: see <doc:DifferencesFromTheOriginal>.
 
 ### A write through the root is a transaction
 
@@ -115,6 +119,11 @@ Whatever that slot holds when the body returns is the new root, whichever cursor
 ``ArrayList/append(_:_:)``, the cursor is at the new element instead, and the element is what the slot holds. Passing
 the cursor to a collection's initialiser, as most bodies do, gives the collection a copy of it, and the collection
 writes through the same slot.
+
+The reference calls the cursor that a transaction's body is given the transaction's cursor: the one from
+``Database/withTransaction(_:)``, or from an append to the list at the root. It is also the way on after a freeze: every
+handle made before a freeze is stale, and a collection made again from this cursor is fresh. See
+<doc:CloningFreezeAndStaleHandles>.
 
 Reads depend on what they go through. A cursor at the root of the database reads the last commit, so the transaction's
 writes do not show there until it commits. A collection made from the body's cursor sees what the transaction has
@@ -165,8 +174,8 @@ There is no journal and no write-ahead log. A transaction goes like this:
 3. To commit, it appends a 25-byte trailer: the new root slot, a random commit ID, and a checksum over those, the
    file's ID and the trailer's position.
 4. It syncs the storage.
-5. It rewrites the root header, 17 bytes at offset 20, with the new root and the new committed size. This is the
-   moment the transaction takes effect.
+5. It rewrites the root header, 17 bytes at offset 20, with the new root and the new committed size. The
+   transaction takes effect here.
 6. It syncs the storage again. If this one fails, the call throws, and the commit stands, but it may not survive a crash
    or a power loss.
 
@@ -186,7 +195,8 @@ read-write collection made on the root cursor.
 A file storage is opened with a ``Durability``, which decides what the two syncs do:
 
 ```swift
-let storage = try BufferedFileStorage(path: "cache.db", access: .create, durability: .none)
+let storage = try BufferedFileStorage(
+    path: "cache.db", access: .create, durability: .none)
 ```
 
 | Level | The syncs | After a power loss | A small commit took |

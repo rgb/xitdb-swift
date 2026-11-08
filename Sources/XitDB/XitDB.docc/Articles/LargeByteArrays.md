@@ -35,8 +35,8 @@ Three things to know:
 
 - **Write nothing else meanwhile.** The array can only grow while it is the last thing in the storage, so after a write to
   anything else in the body, more bytes for the array, or a format tag, throw ``XitDBError/unexpectedWriterPosition``. A
-  freeze, or a join, in the body is refused with ``XitDBError/byteWriterOpen``, since it would freeze the array before it is
-  finished.
+  ``Database/freeze()``, or a join with ``LinkedArrayList/append(contentsOf:)-(LinkedArrayList<CursorAccess>)``, in the
+  body is refused with ``XitDBError/byteWriterOpen``, since it would freeze the array before it is finished.
 - **A failure poisons the transaction.** The array is begun in the storage before the body runs, so when the body throws, even
   before it has written a byte, or a write of the array fails, bytes are left behind that only a rollback removes. The slot is
   left as it was, nothing more can be written in the transaction, and it rolls back when its body returns: see
@@ -120,8 +120,9 @@ var reader = try map.cursor(forHash: sha256("value"))!.reader()
 try map.put(.bytes(Array("the second value".utf8)), forHash: sha256("value"))
 ```
 
-The exception is a reader made in a transaction that failed, whose bytes are gone, like a cursor's: see <doc:DifferencesFromTheOriginal>. A slot set to
-nothing reads as no bytes, and a slot holding anything else than bytes throws ``XitDBError/unexpectedTag``.
+The exception is a reader made in a transaction that failed, whose bytes are gone, like a cursor's: see
+<doc:ConcurrencyAndSnapshots>. A slot set to nothing reads as no bytes, and a slot holding anything else than bytes throws
+``XitDBError/unexpectedTag``.
 
 ### Reading one part
 

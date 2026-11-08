@@ -43,7 +43,7 @@ import XitDB
 
         try map.putKey(.bytes(Array("ab".utf8)), forHash: weakHash("ab"))
 
-        // `putKey` writes once, so the stored key is the first one.
+        // putKey writes once, so the stored key is the first one.
         try map.putKey(.bytes(Array("ba".utf8)), forHash: weakHash("ba"))
         let stored = try map.keyCursor(forHash: weakHash("ba"))!.readBytes()
         let collided = stored != Array("ba".utf8)

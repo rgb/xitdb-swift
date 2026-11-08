@@ -9,7 +9,7 @@
         @ContentAndMedia {
             A database keeps its bytes in a storage, and for a database in a file that is a
             ``BufferedFileStorage``. XitDB hashes nothing itself, so the first thing a program needs is a hash for its
-            keys.
+            keys. <doc:Storage> has the other storages, and <doc:BringYourOwnHashes> how to choose a hash.
         }
 
         @Steps {
@@ -47,7 +47,8 @@
     @Section(title: "Write a moment") {
         @ContentAndMedia {
             An element of the history is a moment. Adding one is a transaction: everything in the body commits together
-            when the body returns.
+            when the body returns. <doc:MomentsAndHistory> says why the history is a list, and <doc:Transactions> what a
+            transaction does.
         }
 
         @Steps {

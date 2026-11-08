@@ -26,13 +26,16 @@ import XitDB
             let moment = try HashMap<ReadWrite>(cursor)
 
             // The primary store: from a user's ID to the user's fields.
-            let idToUser = try HashMap<ReadWrite>(moment.putCursor(forHash: sha256("id->user")))
+            let idToUser = try HashMap<ReadWrite>(
+                moment.putCursor(forHash: sha256("id->user")))
 
             // The index: from a username to the user's ID, in username order.
-            let usernameToID = try SortedMap<ReadWrite>(moment.putCursor(forHash: sha256("username->id")))
+            let usernameToID = try SortedMap<ReadWrite>(
+                moment.putCursor(forHash: sha256("username->id")))
 
             for user in users {
-                let fields = try HashMap<ReadWrite>(idToUser.putCursor(forHash: sha256(user.id)))
+                let fields = try HashMap<ReadWrite>(
+                    idToUser.putCursor(forHash: sha256(user.id)))
                 try fields.put(.bytes(Array(user.username.utf8)), forHash: sha256("username"))
                 try fields.put(.bytes(Array(user.name.utf8)), forHash: sha256("name"))
 
@@ -48,7 +51,8 @@ import XitDB
 
         let moment = try HashMap<ReadOnly>(history.cursor(at: -1)!)
         let idToUser = try HashMap<ReadOnly>(moment.cursor(forHash: sha256("id->user"))!)
-        let usernameToID = try SortedMap<ReadOnly>(moment.cursor(forHash: sha256("username->id"))!)
+        let usernameToID = try SortedMap<ReadOnly>(
+            moment.cursor(forHash: sha256("username->id"))!)
 
         // ORDER BY username LIMIT 2 OFFSET 2
         let pageSize = 2
@@ -101,7 +105,8 @@ import XitDB
     @Test func aPrefixSearch() throws {
         let (_, history) = try newDirectory()
         let moment = try HashMap<ReadOnly>(history.cursor(at: -1)!)
-        let usernameToID = try SortedMap<ReadOnly>(moment.cursor(forHash: sha256("username->id"))!)
+        let usernameToID = try SortedMap<ReadOnly>(
+            moment.cursor(forHash: sha256("username->id"))!)
 
         // Everyone whose username starts with "da".
         let prefix = Array("da".utf8)
@@ -119,7 +124,8 @@ import XitDB
     @Test func positions() throws {
         let (_, history) = try newDirectory()
         let moment = try HashMap<ReadOnly>(history.cursor(at: -1)!)
-        let usernameToID = try SortedMap<ReadOnly>(moment.cursor(forHash: sha256("username->id"))!)
+        let usernameToID = try SortedMap<ReadOnly>(
+            moment.cursor(forHash: sha256("username->id"))!)
 
         // alice bob carol dan dave eve
         let carol = try usernameToID.rank(of: "carol".utf8)  // 2
@@ -135,7 +141,8 @@ import XitDB
     @Test func goingBackwards() throws {
         let (_, history) = try newDirectory()
         let moment = try HashMap<ReadOnly>(history.cursor(at: -1)!)
-        let usernameToID = try SortedMap<ReadOnly>(moment.cursor(forHash: sha256("username->id"))!)
+        let usernameToID = try SortedMap<ReadOnly>(
+            moment.cursor(forHash: sha256("username->id"))!)
 
         // There is no reverse iterator. A position counts from either end.
         var usernames: [String] = []
@@ -218,17 +225,22 @@ import XitDB
         // user's field, so that no moment has one without the other.
         try history.append(.slot(try history.slot(at: -1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            let idToUser = try HashMap<ReadWrite>(moment.putCursor(forHash: sha256("id->user")))
-            let usernameToID = try SortedMap<ReadWrite>(moment.putCursor(forHash: sha256("username->id")))
+            let idToUser = try HashMap<ReadWrite>(
+                moment.putCursor(forHash: sha256("id->user")))
+            let usernameToID = try SortedMap<ReadWrite>(
+                moment.putCursor(forHash: sha256("username->id")))
 
-            let fields = try HashMap<ReadWrite>(idToUser.putCursor(forHash: sha256("user000000000003")))
+            let fields = try HashMap<ReadWrite>(
+                idToUser.putCursor(forHash: sha256("user000000000003")))
             try fields.put(.bytes(Array("caroline".utf8)), forHash: sha256("username"))
             try usernameToID.remove(forKey: "carol".utf8)
-            try usernameToID.put(.bytes(Array("user000000000003".utf8)), forKey: "caroline".utf8)
+            try usernameToID.put(
+                .bytes(Array("user000000000003".utf8)), forKey: "caroline".utf8)
         }
 
         let moment = try HashMap<ReadOnly>(history.cursor(at: -1)!)
-        let usernameToID = try SortedMap<ReadOnly>(moment.cursor(forHash: sha256("username->id"))!)
+        let usernameToID = try SortedMap<ReadOnly>(
+            moment.cursor(forHash: sha256("username->id"))!)
         #expect(try usernameToID.cursor(forKey: "carol".utf8) == nil)
         #expect(try usernameToID.cursor(forKey: "caroline".utf8) != nil)
         #expect(try usernameToID.count == 6)
@@ -237,7 +249,8 @@ import XitDB
     @Test func theKeyOfASortedEntryHasNoHash() throws {
         let (_, history) = try newDirectory()
         let moment = try HashMap<ReadOnly>(history.cursor(at: -1)!)
-        let usernameToID = try SortedMap<ReadOnly>(moment.cursor(forHash: sha256("username->id"))!)
+        let usernameToID = try SortedMap<ReadOnly>(
+            moment.cursor(forHash: sha256("username->id"))!)
         let entry = try usernameToID.entry(forKey: "alice".utf8)!
         #expect(entry.hash == [UInt8](repeating: 0, count: 32))
     }
