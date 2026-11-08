@@ -63,6 +63,7 @@ struct ByteRecordWriter: ~Copyable {
             if end != (try startPosition.offset(by: size)) { throw .unexpectedWriterPosition }
         }
 
+        try database.checkPosition(writePosition)
         try database.storage.write(bytes, at: writePosition)
         database.noteWrite()
         position = newPosition
@@ -93,6 +94,7 @@ struct ByteRecordWriter: ~Copyable {
             slot.full = true
             let tagPosition = try database.storage.length
             if (try startPosition.offset(by: size)) != tagPosition { throw .unexpectedWriterPosition }
+            try database.checkPosition(tagPosition)
             try database.storage.write(formatTag.bytes.span, at: tagPosition)
             database.noteWrite()
         }

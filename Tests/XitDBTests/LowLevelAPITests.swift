@@ -1575,29 +1575,31 @@ import Testing
             // since each list has 17 items, each concat
             // will create a gap, causing a root overflow
             // before a normal array list would've.
-            var comboListCursor = try cursor.writePath([
+            _ = try cursor.writePath([
                 .hashMapGet(.value, sha1("combo")),
                 .write(.slot(evenListCursor.slotPointer.slot)),
                 .linkedArrayListInit,
             ])
+            // each concat freezes the transaction, so every write after one
+            // goes through the callback's cursor with the map's init and the
+            // list's init in front, which copy the frozen block and header
+            // (D24); Zig's test goes on through the cursor the concat gave
             for _ in 0..<16 {
-                comboListCursor = try comboListCursor.writePath([
-                    .linkedArrayListConcat(evenListCursor.slotPointer.slot)
+                _ = try cursor.writePath([
+                    .hashMapInit(),
+                    .hashMapGet(.value, sha1("combo")),
+                    .linkedArrayListInit,
+                    .linkedArrayListConcat(evenListCursor.slotPointer.slot),
                 ])
             }
-
-            // each concat froze the transaction: the callback's cursor goes on
-            // through the map's init, and what follows goes through the cursor
-            // that gives (D18); Zig's test goes on through the cursor as it is
             let cursor = try cursor.writePath([.hashMapInit()])
-
             // append to the new list
             _ = try cursor.writePath([
                 .hashMapGet(.value, sha1("combo")),
+                .linkedArrayListInit,
                 .linkedArrayListAppend,
                 .write(.uint(3)),
             ])
-
             // read the new value from the list
             #expect(
                 try #require(
@@ -1619,10 +1621,9 @@ import Testing
         }
 
         // the length of the storage here. Zig's test, whose concat froze before its join, gave 20706 on every
-        // kind of storage; here the concat freezes after it (finding 22), so the first append after the concats
-        // copies the joined nodes it touches, and the map's init copies its root block once. The number is the
-        // port's own, not Zig's.
-        #expect(try subject.storage.length == 21398)
+        // kind of storage; here every concat but the first copies the map's block and the list's header it
+        // finds frozen, and so does the first append after them (D24). The number is the port's own, not Zig's.
+        #expect(try subject.storage.length == 25480)
     }
 
     /// test.zig 2690-2718: "append items to linked_array_list without setting their value".

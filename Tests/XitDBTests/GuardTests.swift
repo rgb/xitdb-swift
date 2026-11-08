@@ -87,19 +87,25 @@ import Testing
         #expect(try fixture.value("b").readUInt64() == 2)
     }
 
-    /// After `Database.freeze()` a cursor from before it, the transaction's
-    /// own included, cannot write a path that does not begin with an init
-    /// part, and not an empty path either. A path that begins with an init
-    /// part is how the transaction goes on, and it writes.
+    /// After `Database.freeze()` no cursor from before it writes, inits
+    /// included, with one exception: a path that begins with an init part
+    /// through the transaction's own cursor, which is how the transaction
+    /// goes on (D24). A value cursor, a map cursor and a wrapper from before
+    /// the freeze are refused for everything, an init through them too; the
+    /// transaction's cursor is refused for a plain path and an empty one and
+    /// writes through an init part, and everything made from it afterwards
+    /// is fresh.
     @Test(arguments: storageKinds)
-    func aCursorFromBeforeAFreezeWritesOnlyThroughAnInit(kind: StorageKind) throws {
+    func afterAFreezeOnlyTheTransactionsCursorGoesOnThroughAnInit(kind: StorageKind) throws {
         let fixture = try Fixture(kind)
         let database = fixture.database
         try database.withTransaction { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
             let map = try cursor.writePath([.hashMapGet(.value, sha1("map")), .hashMapInit()])
             var value = try map.writePath([.hashMapGet(.value, sha1("k")), .write(.uint(1))])
             try database.freeze()
 
+            // handles from before the freeze: refused for every write
             try fixture.expectRefused(.staleCursor) { try value.write(.uint(2)) }
             try fixture.expectRefused(.staleCursor) { try value.writeIfEmpty(.uint(2)) }
             try fixture.expectRefused(.staleCursor) { try value.writeBytes(bodyOfARefusedWriter) }
@@ -107,33 +113,51 @@ import Testing
                 _ = try map.writePath([.hashMapGet(.value, sha1("k")), .write(.uint(2))])
             }
             try fixture.expectRefused(.staleCursor) {
+                _ = try map.writePath([.hashMapInit(), .hashMapGet(.value, sha1("k")), .write(.uint(2))])
+            }
+            try fixture.expectRefused(.staleCursor) { _ = try HashMap<ReadWrite>(map) }
+            try fixture.expectRefused(.staleCursor) { _ = try map.writePath([]) }
+            try fixture.expectRefused(.staleCursor) { try moment.put(.uint(3), forHash: sha1("a").bytes) }
+            // a wrapper made from the transaction's cursor before the freeze
+            // sits at the transaction's slot, which the engine knows by its
+            // position: an init through it is the same init, and is allowed
+            let viaMoment = try HashMap<ReadWrite>(moment.cursor)
+            try viaMoment.put(.uint(6), forHash: sha1("c").bytes)
+
+            // the transaction's cursor: a plain path and an empty path are
+            // refused, a path that begins with an init part writes
+            try fixture.expectRefused(.staleCursor) {
                 _ = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(3))])
             }
-            // an empty path is refused too
             try fixture.expectRefused(.staleCursor) { _ = try cursor.writePath([]) }
-            try fixture.expectRefused(.staleCursor) { _ = try map.writePath([]) }
-
-            // a path that begins with an init part writes, through either
-            _ = try map.writePath([.hashMapInit(), .hashMapGet(.value, sha1("k")), .write(.uint(2))])
             _ = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("a")), .write(.uint(3))])
-            let list = try ArrayList<ReadWrite>(
-                try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("list"))]))
+            _ = try cursor.writePath([
+                .hashMapInit(), .hashMapGet(.value, sha1("map")), .hashMapInit(), .hashMapGet(.value, sha1("k")),
+                .write(.uint(2)),
+            ])
+            // and what is made from it afterwards is fresh
+            let again = try HashMap<ReadWrite>(cursor)
+            let list = try ArrayList<ReadWrite>(try again.putCursor(forHash: sha1("list").bytes))
             try list.append(.uint(4))
+            try again.put(.uint(5), forHash: sha1("b").bytes)
         }
         #expect(try fixture.value("map").readPath([.hashMapGet(.value, sha1("k"))])?.readUInt64() == 2)
         #expect(try fixture.value("a").readUInt64() == 3)
+        #expect(try fixture.value("b").readUInt64() == 5)
+        #expect(try fixture.value("c").readUInt64() == 6)
         #expect(try fixture.value("list").readPath([.arrayListGet(0)])?.readUInt64() == 4)
     }
 
-    /// A concat counts as a freeze: afterwards the transaction's cursor,
-    /// the other list and a value cursor from before it cannot write, an
-    /// empty path included, and an init part is the way on.
+    /// A concat counts as a freeze: afterwards the list that made it, the
+    /// other list, a value cursor and the transaction's cursor cannot write
+    /// a plain path, an empty one included, and an init part through the
+    /// transaction's cursor is the way on.
     @Test(arguments: storageKinds)
     func aConcatFreezesTheTransaction(kind: StorageKind) throws {
         let fixture = try Fixture(kind)
         let database = fixture.database
         try database.withTransaction { cursor in
-            var list = try LinkedArrayList<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("list"))]))
+            let list = try LinkedArrayList<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("list"))]))
             let other = try LinkedArrayList<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("other"))]))
             try list.append(.uint(1))
             try other.append(.uint(2))
@@ -144,6 +168,7 @@ import Testing
 
             try fixture.expectRefused(.staleCursor) { try value.write(.uint(2)) }
             try fixture.expectRefused(.staleCursor) { try other.append(.uint(3)) }
+            try fixture.expectRefused(.staleCursor) { try list.append(.uint(3)) }
             try fixture.expectRefused(.staleCursor) {
                 _ = try cursor.writePath([.hashMapGet(.value, sha1("a")), .write(.uint(2))])
             }
@@ -339,17 +364,17 @@ import Testing
 
     // MARK: The concat's own wrapper
 
-    /// The list that calls `append(contentsOf:)` goes on from the cursor
-    /// the concat gave back, made after the freeze, so its next write
-    /// works and the element is there. A second wrapper of the same slot
-    /// held across the concat, a copy or one made from the same cursor,
-    /// is stale.
+    /// The list that calls `append(contentsOf:)` is as stale as every other
+    /// handle afterwards (D24): its next write, a copy's and that of a
+    /// wrapper made from the same cursor are refused with nothing written,
+    /// and the way on is a new list from the transaction's cursor, whose
+    /// appends are the ones that commit. Its reads still give its snapshot.
     @Test(arguments: storageKinds)
-    func aConcatRefreshesItsOwnWrapperOnly(kind: StorageKind) throws {
+    func aConcatStalesItsOwnListToo(kind: StorageKind) throws {
         let fixture = try Fixture(kind)
         let database = fixture.database
         try database.withTransaction { cursor in
-            var list = try LinkedArrayList<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("list"))]))
+            let list = try LinkedArrayList<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("list"))]))
             let other = try LinkedArrayList<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("other"))]))
             try list.append(.uint(1))
             try other.append(.uint(2))
@@ -357,15 +382,18 @@ import Testing
             let sameCursor = try LinkedArrayList<ReadWrite>(list.cursor)
 
             try list.append(contentsOf: other)
-            try list.append(.uint(9))
-            #expect(try list.count == 3)
-            #expect(try list.cursor(at: 2)?.readUInt64() == 9)
-
+            try fixture.expectRefused(.staleCursor) { try list.append(.uint(9)) }
+            try fixture.expectRefused(.staleCursor) { try list.remove(at: 0) }
             try fixture.expectRefused(.staleCursor) { try copy.append(.uint(3)) }
-            try fixture.expectRefused(.staleCursor) { try copy.remove(at: 0) }
             try fixture.expectRefused(.staleCursor) { try sameCursor.append(.uint(3)) }
             try fixture.expectRefused(.staleCursor) { _ = try sameCursor.putCursor(at: 0) }
-            try list.append(.uint(10))
+            #expect(try list.count == 2, "the stale list still reads its snapshot of the joined list")
+
+            let again = try LinkedArrayList<ReadWrite>(
+                try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("list"))]))
+            try again.append(.uint(9))
+            try again.append(.uint(10))
+            #expect(try again.count == 4)
         }
         let list = try LinkedArrayList<ReadOnly>(try fixture.value("list"))
         #expect(try list.count == 4)
@@ -1000,6 +1028,119 @@ import Testing
         var kept = try #require(outside)
         try fixture.expectRefused(.expectedTxStart) { try kept.write(structural) }
         try fixture.expectRefused(.structuralSlot) { try kept.writeIfEmpty(structural) }
+    }
+
+    // MARK: The position check
+
+    /// A write that would land below the transaction's frozen point by a
+    /// route the handle check does not catch, a fresh cursor whose path has
+    /// no init part in front of a frozen structure, is `immutableBytes`,
+    /// refused before it writes (D24). Two shapes: when the parts before it
+    /// wrote nothing, because an earlier path had copied the block and the
+    /// entry on the way, the transaction is not poisoned and commits
+    /// afterwards; when a part before it copied something, that copy was a
+    /// write, so the transaction is poisoned and rolls back.
+    @Test(arguments: storageKinds)
+    func aWriteBelowTheFrozenPointIsImmutableBytes(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        try database.withTransaction { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            let list = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: sha1("list").bytes))
+            try list.append(.uint(1))
+            try database.freeze()
+            // this path copies the map's block and the list's entry; the
+            // path after it reaches the frozen header through gets alone
+            let entry = try cursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("list"))])
+            let fresh = try cursor.writePath([.hashMapInit()])
+            try fixture.expectRefused(.immutableBytes) {
+                _ = try fresh.writePath([
+                    .hashMapGet(.value, sha1("list")), .linkedArrayListAppend, .write(.uint(2)),
+                ])
+            }
+            #expect(!database.poisoned)
+            // with the list's init in front the header is copied first, and
+            // the write lands in the copy
+            _ = try entry.writePath([.linkedArrayListInit, .linkedArrayListAppend, .write(.uint(2))])
+        }
+        let committed = try LinkedArrayList<ReadOnly>(try fixture.value("list"))
+        #expect(try committed.count == 2)
+
+        // the shape that poisons: the inner map's init copies its block
+        // before the write into the frozen header is refused
+        expectPoisoned {
+            try database.withTransaction { cursor in
+                let moment = try HashMap<ReadWrite>(cursor)
+                let inner = try HashMap<ReadWrite>(try moment.putCursor(forHash: sha1("inner").bytes))
+                let deep = try LinkedArrayList<ReadWrite>(try inner.putCursor(forHash: sha1("deep").bytes))
+                try deep.append(.uint(1))
+                try database.freeze()
+                let fresh = try cursor.writePath([.hashMapInit()])
+                let outcome = Result { () throws -> Void in
+                    _ = try fresh.writePath([
+                        .hashMapGet(.value, sha1("inner")), .hashMapInit(), .hashMapGet(.value, sha1("deep")),
+                        .linkedArrayListAppend, .write(.uint(2)),
+                    ])
+                }
+                #expect(throws: XitDBError.immutableBytes) { try outcome.get() }
+                #expect(database.poisoned)
+            }
+        }
+        #expect(try database.rootCursor.readPath([.hashMapGet(.value, sha1("inner"))]) == nil)
+    }
+
+    // MARK: What the init exception lost (findings 29 and 30)
+
+    /// Finding 30: after a join, the list that made it and a second handle
+    /// for the same list from the transaction's cursor. The stale list's
+    /// append is refused with nothing written, the second handle's commits,
+    /// and nothing is lost; the original silently dropped the first.
+    @Test(arguments: storageKinds)
+    func aHeldListAfterAJoinLosesNothing(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        try database.withTransaction { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            let tasks = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: sha1("tasks").bytes))
+            let more = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: sha1("more").bytes))
+            try tasks.append(.uint(1))
+            try more.append(.uint(2))
+            try tasks.append(contentsOf: more)
+            let again = try HashMap<ReadWrite>(cursor)
+            let tasksAgain = try LinkedArrayList<ReadWrite>(try again.putCursor(forHash: sha1("tasks").bytes))
+            try fixture.expectRefused(.staleCursor) { try tasks.append(.uint(5)) }
+            try tasksAgain.append(.uint(6))
+            #expect(!database.poisoned)
+        }
+        let committed = try LinkedArrayList<ReadOnly>(try fixture.value("tasks"))
+        let values = try (0..<Int(try committed.count)).map { try committed.cursor(at: $0)?.readUInt64() }
+        #expect(values == [1, 2, 6])
+    }
+
+    /// Finding 29: after `Database.freeze()`, a held list and a second
+    /// handle for it from the transaction's cursor. The held list's init is
+    /// refused, as it would rewrite its slot in a record the second handle's
+    /// copy leaves behind, its append is refused, the second handle's append
+    /// commits, and nothing is lost.
+    @Test(arguments: storageKinds)
+    func aHeldHandleAfterAFreezeLosesNothing(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        try database.withTransaction { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            let tasks = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: sha1("tasks").bytes))
+            try tasks.append(.uint(1))
+            try database.freeze()
+            try fixture.expectRefused(.staleCursor) { _ = try LinkedArrayList<ReadWrite>(tasks.cursor) }
+            let again = try HashMap<ReadWrite>(cursor)
+            let tasksAgain = try LinkedArrayList<ReadWrite>(try again.putCursor(forHash: sha1("tasks").bytes))
+            try tasksAgain.append(.uint(6))
+            try fixture.expectRefused(.staleCursor) { try tasks.append(.uint(5)) }
+            #expect(!database.poisoned)
+        }
+        let committed = try LinkedArrayList<ReadOnly>(try fixture.value("tasks"))
+        let values = try (0..<Int(try committed.count)).map { try committed.cursor(at: $0)?.readUInt64() }
+        #expect(values == [1, 6])
     }
 
 }

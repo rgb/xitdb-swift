@@ -121,6 +121,7 @@ extension Database {
     /// for a leaf, 274 for a linked array list's branch and 418 for a
     /// sorted map's.
     func writeNode(_ node: some RankedNode, at position: UInt64) throws(XitDBError) {
+        try checkPosition(position)
         var block = InlineArray<418, UInt8>(repeating: 0)
         var bytes = block.mutableSpan
         node.encode(into: &bytes)

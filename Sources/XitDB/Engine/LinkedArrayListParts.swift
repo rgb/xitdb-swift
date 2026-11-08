@@ -6,6 +6,7 @@
 extension Database {
     /// Writes a list's header at `position`.
     func write(_ header: BTreeHeader, at position: UInt64) throws(XitDBError) {
+        try checkPosition(position)
         let bytes = InlineArray<16, UInt8> { (output: inout OutputSpan<UInt8>) in
             header.encode(into: &output)
         }
@@ -17,6 +18,7 @@ extension Database {
     /// that is unchanged does not count as a write of the transaction's,
     /// as an init part's unchanged slot does not.
     func writeHeader(_ header: BTreeHeader, at position: UInt64, unchangedFrom old: BTreeHeader) throws(XitDBError) {
+        if header != old { try checkPosition(position) }
         let bytes = InlineArray<16, UInt8> { (output: inout OutputSpan<UInt8>) in header.encode(into: &output) }
         try storage.write(bytes.span, at: position)
         if header != old { noteWrite() }
@@ -82,12 +84,18 @@ extension Database {
 
     func linkedArrayListAppend(_ pointer: SlotPointer, frozenAt: UInt64) throws(XitDBError) -> SlotPointer {
         let header = try linkedArrayListHeader(pointer)
+        // The part ends by writing the header back in place: a frozen or
+        // committed header is refused here, before the tree is touched.
+        try checkPosition(pointer.slot.value)
         return try linkedArrayListInsert(pointer, header: header, rank: header.size, frozenAt: frozenAt)
     }
 
     func linkedArrayListInsert(_ pointer: SlotPointer, index: Int64, frozenAt: UInt64) throws(XitDBError) -> SlotPointer
     {
         let header = try linkedArrayListHeader(pointer)
+        // The part ends by writing the header back in place: a frozen or
+        // committed header is refused here, before the tree is touched.
+        try checkPosition(pointer.slot.value)
         guard let rank = DatabaseReader.linkedArrayListRank(index: index, size: header.size) else {
             throw .indexOutOfRange
         }
@@ -115,6 +123,9 @@ extension Database {
 
     func linkedArrayListSlice(_ pointer: SlotPointer, offset: UInt64, size: UInt64) throws(XitDBError) {
         let header = try linkedArrayListHeader(pointer)
+        // The part ends by writing the header back in place: a frozen or
+        // committed header is refused here, before the tree is touched.
+        try checkPosition(pointer.slot.value)
         // Checked without overflow: the offset and the size together could
         // wrap.
         if offset > header.size || size > header.size - offset { throw .indexOutOfRange }
@@ -127,6 +138,7 @@ extension Database {
 
     func linkedArrayListConcat(_ pointer: SlotPointer, other: Slot) throws(XitDBError) {
         let headerA = try linkedArrayListHeader(pointer)
+        try checkPosition(pointer.slot.value)
         if other.tag != .linkedArrayList { throw .unexpectedTag }
         let headerB = try reader.bTreeHeader(at: other.value)
         // A total that does not fit comes from a damaged file.
@@ -148,6 +160,9 @@ extension Database {
 
     func linkedArrayListRemove(_ pointer: SlotPointer, index: Int64, frozenAt: UInt64) throws(XitDBError) {
         let header = try linkedArrayListHeader(pointer)
+        // The part ends by writing the header back in place: a frozen or
+        // committed header is refused here, before the tree is touched.
+        try checkPosition(pointer.slot.value)
         guard let rank = DatabaseReader.linkedArrayListRank(index: index, size: header.size) else {
             throw .indexOutOfRange
         }

@@ -159,6 +159,7 @@ extension Database {
                 listStart = try storage.length
                 header.ptr = try listStart.offset(by: ArrayListHeader.byteCount)
                 try write(header, at: listStart)
+                try checkPosition(header.ptr)
                 try storage.write(block.span, at: header.ptr)
             }
         default:
@@ -192,6 +193,9 @@ extension Database {
         if pointer.slot.tag != .arrayList { throw .unexpectedTag }
         let listStart = pointer.slot.value
         let header = try reader.arrayListHeader(at: listStart)
+        // The part writes the header back in place: a frozen or committed
+        // header is refused here, before the blocks are touched.
+        try checkPosition(listStart)
         let appended = try arrayListAppendSlot(header, frozenAt: frozenAt)
         // The header is updated before the rest of the path runs, so that a
         // callback can freeze it.
@@ -203,6 +207,9 @@ extension Database {
         if pointer.slot.tag != .arrayList { throw .unexpectedTag }
         let listStart = pointer.slot.value
         let header = try reader.arrayListHeader(at: listStart)
+        // The part writes the header back in place: a frozen or committed
+        // header is refused here, before the blocks are touched.
+        try checkPosition(listStart)
         let sliced = try arrayListSliceHeader(header, size: size, frozenAt: frozenAt)
         try write(sliced, at: listStart)
     }
@@ -386,6 +393,9 @@ extension Database {
         // count, so a sound one is the same before and after.
         var count: UInt64 = 0
         if map.counted {
+            // The count is written back in place: a frozen or committed one
+            // is refused here, before the blocks are touched.
+            try checkPosition(pointer.slot.value)
             count = try reader.uint64(at: pointer.slot.value)
             if count == .max { throw .invalidCount }
         }
@@ -402,6 +412,7 @@ extension Database {
     private func hashMapRemove(_ pointer: SlotPointer, hash: KeyHash, frozenAt: UInt64) throws(XitDBError) {
         let map = try DatabaseReader.hashMapIndexPosition(pointer.slot)
         try reader.checkHashSize(hash)
+        if map.counted { try checkPosition(pointer.slot.value) }
 
         var keyFound = true
         do throws(XitDBError) {

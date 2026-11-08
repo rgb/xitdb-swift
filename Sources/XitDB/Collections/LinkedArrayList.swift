@@ -23,17 +23,15 @@
 /// **Appending another list freezes the transaction.** The joined tree
 /// shares nodes with both lists, so after ``append(contentsOf:)-(Slot)``
 /// every write in the transaction copies what was written before it, as
-/// after ``Database/freeze()``, with the same part for the caller: the
-/// list that made the call is refreshed, and every other collection or
-/// cursor made before it is stale, refused with ``XitDBError/staleCursor``
-/// at its next write. The way on is a new cursor from the transaction's
-/// root cursor; making the collection again from the cursor it holds is
-/// allowed, but safe only for the cloned structure itself, or for a
-/// handle into nothing that was cloned.
+/// after ``Database/freeze()``, with the same part for the caller: every
+/// collection or cursor made before the call is stale, the list that made
+/// it included, refused with ``XitDBError/staleCursor`` at its next write.
+/// The way on is a new list from the transaction's cursor, the one
+/// ``Database/withTransaction(_:)`` or a history append hands its body,
+/// through which an init is allowed after a freeze.
 public struct LinkedArrayList<Access: CursorAccess> {
-    /// The cursor the list is a view of. ``append(contentsOf:)-(Slot)``
-    /// replaces it with a fresh one, which is why that call is `mutating`.
-    public private(set) var cursor: Cursor<Access>
+    /// The cursor the list is a view of.
+    public let cursor: Cursor<Access>
 
     /// The slot that holds the list.
     ///
@@ -336,18 +334,14 @@ extension LinkedArrayList where Access == ReadWrite {
     }
 
     /// Appends every element of another linked array list to this one. The
-    /// other list is unchanged, and the result shares nodes with both. This
-    /// list is refreshed by the call: it reads and writes the joined list,
-    /// and appending to it afterwards works.
+    /// other list is unchanged, and the result shares nodes with both.
     ///
     /// This freezes the transaction: every write after it copies what was
-    /// written before it, as after ``Database/freeze()``, and every other
-    /// collection or cursor made before the call is stale, refused with
-    /// ``XitDBError/staleCursor`` at its next write. The way on is a new
-    /// cursor from the transaction's root cursor; making the collection
-    /// again from the cursor it holds is allowed, but safe only for the
-    /// cloned structure itself, or for a handle into nothing that was
-    /// cloned.
+    /// written before it, as after ``Database/freeze()``, and every
+    /// collection or cursor made before the call is stale, this list
+    /// included, refused with ``XitDBError/staleCursor`` at its next write.
+    /// The way on is a new list from the transaction's cursor, the one
+    /// ``Database/withTransaction(_:)`` or a history append hands its body.
     ///
     /// - Parameter list: The other list, which may be one that can only
     ///   read.
@@ -362,23 +356,19 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   transaction failed after writing, ``XitDBError/invalidBTreeNode`` if
     ///   either tree does not hold what its header says, or an error of the
     ///   storage or of a damaged file.
-    public mutating func append(contentsOf list: LinkedArrayList<some CursorAccess>) throws(XitDBError) {
+    public func append(contentsOf list: LinkedArrayList<some CursorAccess>) throws(XitDBError) {
         try append(contentsOf: try list.slot)
     }
 
     /// Appends every element of another linked array list to this one. The
-    /// other list is unchanged, and the result shares nodes with both. This
-    /// list is refreshed by the call: it reads and writes the joined list,
-    /// and appending to it afterwards works.
+    /// other list is unchanged, and the result shares nodes with both.
     ///
     /// This freezes the transaction: every write after it copies what was
-    /// written before it, as after ``Database/freeze()``, and every other
-    /// collection or cursor made before the call is stale, refused with
-    /// ``XitDBError/staleCursor`` at its next write. The way on is a new
-    /// cursor from the transaction's root cursor; making the collection
-    /// again from the cursor it holds is allowed, but safe only for the
-    /// cloned structure itself, or for a handle into nothing that was
-    /// cloned.
+    /// written before it, as after ``Database/freeze()``, and every
+    /// collection or cursor made before the call is stale, this list
+    /// included, refused with ``XitDBError/staleCursor`` at its next write.
+    /// The way on is a new list from the transaction's cursor, the one
+    /// ``Database/withTransaction(_:)`` or a history append hands its body.
     ///
     /// - Parameter list: The slot of the other list, from its ``slot``,
     ///   in this database.
@@ -393,12 +383,12 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   transaction failed after writing, ``XitDBError/invalidBTreeNode`` if
     ///   either tree does not hold what its header says, or an error of the
     ///   storage or of a damaged file.
-    public mutating func append(contentsOf list: Slot) throws(XitDBError) {
+    public func append(contentsOf list: Slot) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.linkedArrayListConcat(list)]
         // The join freezes the transaction, which makes this list's own
-        // cursor stale with every other; the cursor the path gives back
-        // was made after the freeze, so the list goes on from it.
-        cursor = try cursor.writePath(path.span)
+        // cursor stale with every other (D24): the caller goes on from the
+        // transaction's cursor, not from this list.
+        _ = try cursor.writePath(path.span)
     }
 
     /// Inserts an element before the one at `index`.

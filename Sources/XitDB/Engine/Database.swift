@@ -38,6 +38,16 @@ public final class Database {
     /// copied before it is changed.
     var transactionStart: UInt64?
 
+    /// The position of the slot the transaction's own cursor is at: the
+    /// root-slot copy for a transaction run on the root, the appended
+    /// element's slot for a history append's callback. It is the one
+    /// position a write may go on at after a freeze (decision D24): the
+    /// slot lives in the engine's own record, which no path started inside
+    /// the transaction can copy, and every write re-reads it first. Set
+    /// when the transaction's callback cursor is made, cleared when the
+    /// transaction ends.
+    var bodyPosition: UInt64?
+
     /// The number of commits this object has made. A write looks at it
     /// before and after, to know whether it committed anything.
     private(set) var commitCount: UInt64 = 0
@@ -278,16 +288,17 @@ public final class Database {
     /// the freeze is stale: it still points into data that is now frozen,
     /// so a write through it is refused with ``XitDBError/staleCursor``
     /// before anything is written, while its reads go on working. To go
-    /// on writing, take a new cursor from the transaction's root cursor.
-    /// A path that begins with an init part is allowed through a stale
-    /// cursor of the same transaction as well, by making the collection
-    /// again from the cursor you hold: the init copies the collection's
-    /// header or first block into the transaction, and the cursor and
-    /// collection it gives are fresh, but it writes the cursor's slot in
-    /// place, in a record from before the freeze, so it is safe only for
-    /// the cloned structure itself, or for a handle into nothing that was
-    /// cloned. ``LinkedArrayList/append(contentsOf:)-(Slot)`` freezes the
-    /// same way, and refreshes the list that called it.
+    /// on writing, use the transaction's cursor, the one
+    /// ``withTransaction(_:)`` or a history append handed the body:
+    /// a path that begins with an init part is allowed through it, so a
+    /// collection made again from it is fresh, and so is every cursor
+    /// taken from it; its slot is the engine's own record, which nothing
+    /// inside the transaction can copy, and every write re-reads it. Every
+    /// other cursor from before the freeze is refused for every write,
+    /// inits included: a held handle's init would rewrite its slot in a
+    /// record that a copy may have left behind, which lost writes silently.
+    /// ``LinkedArrayList/append(contentsOf:)-(Slot)`` freezes the same way
+    /// and stales its own list too.
     ///
     /// - Throws: ``XitDBError/expectedTxStart`` outside a transaction.
     public func freeze() throws(XitDBError) {
@@ -355,9 +366,26 @@ public final class Database {
         writesIssued &+= 1
     }
 
+    /// Records the transaction's cursor: the first callback cursor made in
+    /// the transaction. Later callbacks' cursors are ordinary handles.
+    func noteBody(_ position: UInt64?) {
+        if bodyPosition == nil { bodyPosition = position }
+    }
+
+    /// Refuses a write below the transaction's frozen point before it is
+    /// made (decision D24): every byte there is committed or frozen, and a
+    /// write into it in place would change what another handle, a clone or
+    /// an earlier moment refers to. The transaction's own slot is the
+    /// exception, the engine's own record that nothing else reaches; a
+    /// write that leaves the bytes unchanged is exempted by its caller.
+    func checkPosition(_ position: UInt64) throws(XitDBError) {
+        if let start = transactionStart, position < start, position != bodyPosition { throw .immutableBytes }
+    }
+
     /// Writes a slot back from an init part, which always writes its slot:
     /// one that is unchanged does not count as a write of the transaction's.
     func writeSlot(_ slot: Slot, at position: UInt64, unchangedFrom old: Slot) throws(XitDBError) {
+        if slot != old { try checkPosition(position) }
         let bytes = InlineArray<9, UInt8> { (output: inout OutputSpan<UInt8>) in slot.encode(into: &output) }
         try storage.write(bytes.span, at: position)
         if slot != old { noteWrite() }
@@ -446,6 +474,7 @@ public final class Database {
     // has to allocate all the way to wherever it is asked to write.
 
     func write(_ slot: Slot, at position: UInt64) throws(XitDBError) {
+        try checkPosition(position)
         let bytes = InlineArray<9, UInt8> { (output: inout OutputSpan<UInt8>) in
             slot.encode(into: &output)
         }
@@ -454,6 +483,7 @@ public final class Database {
     }
 
     func write(_ value: UInt64, at position: UInt64) throws(XitDBError) {
+        try checkPosition(position)
         let bytes = InlineArray<8, UInt8> { (output: inout OutputSpan<UInt8>) in
             output.appendBigEndian(value)
         }
@@ -462,6 +492,7 @@ public final class Database {
     }
 
     func write(_ header: ArrayListHeader, at position: UInt64) throws(XitDBError) {
+        try checkPosition(position)
         let bytes = InlineArray<16, UInt8> { (output: inout OutputSpan<UInt8>) in
             header.encode(into: &output)
         }
@@ -471,6 +502,7 @@ public final class Database {
 
     /// Writes an index block of empty slots.
     func writeEmptyIndexBlock(at position: UInt64) throws(XitDBError) {
+        try checkPosition(position)
         let block = InlineArray<144, UInt8>(repeating: 0)
         try storage.write(block.span, at: position)
         noteWrite()
@@ -479,6 +511,7 @@ public final class Database {
     /// Writes a hashed key-value pair record: the hash, the key slot, the
     /// value slot.
     func write(_ pair: KeyValuePair, hash: KeyHash, at position: UInt64) throws(XitDBError) {
+        try checkPosition(position)
         let size = hash.count + 18
         if size <= 82 {
             // The record is built in the buffer it is written from, with a
