@@ -112,47 +112,60 @@ import XitDB
         #expect(record == [0, 7] + Array("payload".utf8))
     }
 
+    /// A writer that fails has already appended the record it was filling,
+    /// so its transaction is poisoned: nothing more can be written in it,
+    /// and it rolls back when the body returns.
     @Test func aSeekBeyondAnyPosition() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
-        try database.withTransaction { cursor in
-            var value = try HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("value"))
-            #expect(throws: XitDBError.unexpectedWriterPosition) {
-                try value.writeBytes { writer in
-                    writer.seek(to: UInt64.max - 1)
-                    try writer.write([1, 2, 3, 4])
+        let outcome = Result {
+            try database.withTransaction { cursor in
+                var value = try HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("value"))
+                #expect(throws: XitDBError.unexpectedWriterPosition) {
+                    try value.writeBytes { writer in
+                        writer.seek(to: UInt64.max - 1)
+                        try writer.write([1, 2, 3, 4])
+                    }
                 }
             }
         }
+        #expect(throws: XitDBError.poisonedTransaction) { try outcome.get() }
     }
 
     @Test func nothingElseWhileWriting() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
-        try database.withTransaction { cursor in
-            let moment = try HashMap<ReadWrite>(cursor)
-            var value = try moment.putCursor(forHash: sha256("value"))
-            #expect(throws: XitDBError.unexpectedWriterPosition) {
-                try value.writeBytes { writer in
-                    try writer.write(Array("first".utf8))
-                    try moment.put(.bytes(Array("something else".utf8)), forHash: sha256("other"))
-                    try writer.write(Array("second".utf8))
+        let outcome = Result {
+            try database.withTransaction { cursor in
+                let moment = try HashMap<ReadWrite>(cursor)
+                var value = try moment.putCursor(forHash: sha256("value"))
+                #expect(throws: XitDBError.unexpectedWriterPosition) {
+                    try value.writeBytes { writer in
+                        try writer.write(Array("first".utf8))
+                        try moment.put(.bytes(Array("something else".utf8)), forHash: sha256("other"))
+                        try writer.write(Array("second".utf8))
+                    }
                 }
             }
         }
+        // the writer had written, so the transaction is poisoned and rolls back
+        #expect(throws: XitDBError.poisonedTransaction) { try outcome.get() }
     }
 
     @Test func aFormatTagAfterAnotherWrite() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
-        try database.withTransaction { cursor in
-            let moment = try HashMap<ReadWrite>(cursor)
-            var value = try moment.putCursor(forHash: sha256("value"))
-            #expect(throws: XitDBError.unexpectedWriterPosition) {
-                try value.writeBytes { writer in
-                    try writer.write(Array("first".utf8))
-                    try moment.put(.bytes(Array("something else".utf8)), forHash: sha256("other"))
-                    writer.formatTag = "xx"
+        let outcome = Result {
+            try database.withTransaction { cursor in
+                let moment = try HashMap<ReadWrite>(cursor)
+                var value = try moment.putCursor(forHash: sha256("value"))
+                #expect(throws: XitDBError.unexpectedWriterPosition) {
+                    try value.writeBytes { writer in
+                        try writer.write(Array("first".utf8))
+                        try moment.put(.bytes(Array("something else".utf8)), forHash: sha256("other"))
+                        writer.formatTag = "xx"
+                    }
                 }
             }
         }
+        #expect(throws: XitDBError.poisonedTransaction) { try outcome.get() }
     }
 
     @Test func anotherWriteThatTheArrayDoesNotOutgrow() throws {
@@ -182,20 +195,26 @@ import XitDB
 
     private struct NoMoreBytes: Error {}
 
+    /// The slot keeps its value; the bytes the body wrote stay behind, which
+    /// poisons the transaction, so it rolls back as a whole.
     @Test func aBodyThatThrowsLeavesTheSlot() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
-        try database.withTransaction { cursor in
-            let moment = try HashMap<ReadWrite>(cursor)
-            var value = try moment.putCursor(forHash: sha256("value"))
-            try value.write(.uint(1))
-            #expect(throws: NoMoreBytes.self) {
-                try value.writeBytes { writer in
-                    try writer.write(Array("partial".utf8))
-                    throw NoMoreBytes()
+        let outcome = Result {
+            try database.withTransaction { cursor in
+                let moment = try HashMap<ReadWrite>(cursor)
+                var value = try moment.putCursor(forHash: sha256("value"))
+                try value.write(.uint(1))
+                #expect(throws: NoMoreBytes.self) {
+                    try value.writeBytes { writer in
+                        try writer.write(Array("partial".utf8))
+                        throw NoMoreBytes()
+                    }
                 }
+                #expect(try moment.cursor(forHash: sha256("value"))!.readUInt64() == 1)
+                #expect(throws: XitDBError.poisonedTransaction) { try value.write(.uint(2)) }
             }
-            #expect(try moment.cursor(forHash: sha256("value"))!.readUInt64() == 1)
         }
+        #expect(throws: XitDBError.poisonedTransaction) { try outcome.get() }
     }
 
     @Test func aWrittenValueHasARecordHoweverShort() throws {

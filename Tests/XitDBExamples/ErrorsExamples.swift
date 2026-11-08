@@ -21,8 +21,10 @@ import XitDB
         #expect(throws: XitDBError.endOfStream) {
             try Database(opening: MemoryStorage(bytes: Array(good[..<10])))
         }
-        // Cut short: it says it has more than it has.
-        #expect(throws: XitDBError.truncatedDatabase) {
+        // Cut short: it says it has more than it has, so its root header cannot
+        // be trusted; the error names the end of the last commit that verifies,
+        // and `Database.recover(_:)` cuts the file back to it.
+        #expect(throws: XitDBError.untrustedRootHeader(lastVerified: 240)) {
             try Database(opening: MemoryStorage(bytes: Array(good[..<(good.count - 1)])))
         }
         // Long enough for a header and too short for the root header after it.

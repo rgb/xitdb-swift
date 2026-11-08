@@ -50,7 +50,7 @@ it holds. None of that has been copied. In the first transaction there is no las
 and `.slot(nil)` writes a slot set to nothing, which ``HashMap`` then makes into a new map.
 
 Copying happens as the body changes things. Making the read-write ``HashMap`` copies the first block of the map
-it was given, and each ``HashMap/put(_:forHash:)-(_,Collection<UInt8>)`` copies the blocks on the way to the entry it changes. Everything else stays shared
+it was given, and each ``HashMap/put(_:forHash:)-(_,Sequence<UInt8>)`` copies the blocks on the way to the entry it changes. Everything else stays shared
 with earlier moments:
 
 ![A history of three moments, each a map. The first holds apples at 120 and pears at 300. The second shares the pears with the first and has a new price for apples. The third shares the new price and has no pears.](history.svg)
@@ -164,7 +164,7 @@ let map = try HashMap<ReadWrite>(database.rootCursor)
 try map.put(.uint(10), forHash: sha256("price"))
 ```
 
-Each ``HashMap/put(_:forHash:)-(_,Collection<UInt8>)`` is then a transaction of its own, unless you group them with ``Database/withTransaction(_:)``. The
+Each ``HashMap/put(_:forHash:)-(_,Sequence<UInt8>)`` is then a transaction of its own, unless you group them with ``Database/withTransaction(_:)``. The
 bytes of earlier states are still in the file, with nothing in the database leading to them. The file still grows with
 every transaction until you compact it, by 160 bytes less per transaction in a short history because there is no list to
 copy, and 144 less for each level of a longer one.

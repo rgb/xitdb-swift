@@ -71,14 +71,14 @@
 
         @Steps {
             @Step {
-                Search by prefix. ``SortedMap/iterator(fromKey:)-(Collection<UInt8>)`` starts at the first key that is not below the one you give, whether
+                Search by prefix. ``SortedMap/iterator(fromKey:)-(Sequence<UInt8>)`` starts at the first key that is not below the one you give, whether
                 or not it exists. You stop at the first key that no longer has the prefix.
 
                 @Code(name: "main.swift", file: "own-index-07.swift")
             }
 
             @Step {
-                Ask where a key is. ``SortedMap/rank(of:)-(Collection<UInt8>)`` is the number of keys below it, and it works for a key that is not there,
+                Ask where a key is. ``SortedMap/rank(of:)-(Sequence<UInt8>)`` is the number of keys below it, and it works for a key that is not there,
                 which gives you the page a search result would be on.
 
                 @Code(name: "main.swift", file: "own-index-08.swift")

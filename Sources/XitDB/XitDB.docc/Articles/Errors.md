@@ -106,7 +106,6 @@ Nothing public raises these, so you can leave them out of your handling. They ar
 package-level path API:
 
 - ``XitDBError/writeNotAllowed``, ``XitDBError/pathPartMustBeAtEnd`` and ``XitDBError/notImplemented``, which only that API raises.
-- ``XitDBError/expectedSlotPosition``, which nothing raises at all. The original's byte reader needed it, and this one does not.
 
 A `switch` over ``XitDBError`` still has to handle them, so give it a `default`. More cases will arrive before the first release.
 

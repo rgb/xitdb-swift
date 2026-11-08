@@ -109,15 +109,17 @@ import XitDB
         }
     }
 
-    @Test func writeIfEmptyGoesByTheSnapshot() throws {
+    @Test func writeIfEmptyGoesByTheSlot() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         try database.withTransaction { cursor in
             let map = try HashMap<ReadWrite>(cursor)
             var first = try map.putCursor(forHash: sha256("a"))
             var second = try map.putCursor(forHash: sha256("a"))
             try first.write(.uint(1))
+            // `second` still holds its snapshot of the empty slot, but the
+            // write goes by the slot as it is now
             try second.writeIfEmpty(.uint(2))
-            #expect(try map.cursor(forHash: sha256("a"))!.readUInt64() == 2)
+            #expect(try map.cursor(forHash: sha256("a"))!.readUInt64() == 1)
         }
     }
 

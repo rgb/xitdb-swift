@@ -150,8 +150,8 @@ try map.put(.uint(25), forHash: sha256("age"))
 try map.putKey(.bytes(Array("age".utf8)), forHash: sha256("age"))
 ```
 
-A map stores the value under the hash and, unless you ask, not the key. ``HashMap/putKey(_:forHash:)-(_,Collection<UInt8>)``
-stores the key beside it, and is what makes keys readable when you iterate. ``HashMap/remove(forHash:)-(Collection<UInt8>)``
+A map stores the value under the hash and, unless you ask, not the key. ``HashMap/putKey(_:forHash:)-(_,Sequence<UInt8>)``
+stores the key beside it, and is what makes keys readable when you iterate. ``HashMap/remove(forHash:)-(Sequence<UInt8>)``
 returns whether there was an entry to remove, and the result may be ignored.
 
 A set holds keys:
@@ -162,7 +162,7 @@ let tags = try HashSet<ReadWrite>(database.rootCursor)
 try tags.insert(.bytes(Array("swift".utf8)), forHash: sha256("swift"))
 ```
 
-and answers ``HashSet/contains(hash:)-(Collection<UInt8>)``.
+and answers ``HashSet/contains(hash:)-(Sequence<UInt8>)``.
 
 ### The counted forms
 

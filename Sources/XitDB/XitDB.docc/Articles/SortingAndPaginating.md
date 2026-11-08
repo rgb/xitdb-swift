@@ -101,7 +101,7 @@ for the page count, and it reads only a header.
 
 ### Seeking to a key
 
-An index can also seek to a key, which is what a list can never do. ``SortedMap/iterator(fromKey:)-(Collection<UInt8>)`` starts
+An index can also seek to a key, which is what a list can never do. ``SortedMap/iterator(fromKey:)-(Sequence<UInt8>)`` starts
 at the first key that is not below the one you give, and that key does not have to exist. This is a type-ahead search:
 
 ```swift
@@ -119,7 +119,7 @@ while let cursor = try iterator.next() {
 
 ### Positions
 
-A sorted collection can answer in both directions between keys and positions. ``SortedMap/rank(of:)-(Collection<UInt8>)``
+A sorted collection can answer in both directions between keys and positions. ``SortedMap/rank(of:)-(Sequence<UInt8>)``
 gives the number of keys below a key, which is the position it has or would have. ``SortedMap/entry(at:)`` gives the entry at
 a position, and a negative position counts from the end:
 
@@ -212,7 +212,7 @@ A remove leaves an empty place in its leaf and does not rebalance the tree. Posi
 
 You can keep as many indexes over one primary store as you have orders to show, each a ``SortedMap`` in the moment, each
 written in the same transactions. An index that holds no value is a ``SortedSet``, which has the same iterators, positions and
-ranks, and ``SortedSet/contains(_:)-(Collection<UInt8>)``:
+ranks, and ``SortedSet/contains(_:)-(Sequence<UInt8>)``:
 
 ```swift
 let usernames = try SortedSet<ReadWrite>(database.rootCursor)

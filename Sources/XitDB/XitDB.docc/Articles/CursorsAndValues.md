@@ -176,7 +176,7 @@ while let cursor = try iterator.next() {
 }
 ```
 
-A map only has a key to give if one was stored with ``HashMap/putKey(_:forHash:)-(_,Collection<UInt8>)``; a value
+A map only has a key to give if one was stored with ``HashMap/putKey(_:forHash:)-(_,Sequence<UInt8>)``; a value
 alone is found by its hash, and a hash cannot be turned back into a key. An ``Entry`` is read-only whatever the
 collection was, since a key is what the collection is ordered or indexed by. ``Entry/hash`` gives the entry's hash
 as a new array, and ``Entry/withHash(_:)`` lets you look at it without one.

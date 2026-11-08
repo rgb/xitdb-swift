@@ -61,7 +61,7 @@ many bytes and eighteen more.
 ### Two keys, one hash
 
 If two keys have the same hash, they are the same key. The database compares hashes and nothing else, so the second
-``HashMap/put(_:forHash:)-(_,Collection<UInt8>)`` replaces the first without an error. To show it, here is a database with a hash size of 1, and a hash that collides easily:
+``HashMap/put(_:forHash:)-(_,Sequence<UInt8>)`` replaces the first without an error. To show it, here is a database with a hash size of 1, and a hash that collides easily:
 
 ```swift
 let database = try Database(creating: MemoryStorage(), hashSize: 1)
@@ -82,7 +82,7 @@ let value = try map.cursor(forHash: weakHash("ab"))!.readBytes()
 With a good hash of 20 bytes or more, this does not happen by accident. Whether it can happen on purpose is the
 question to ask when your keys come from someone else, and it is why 32 bytes is the default to reach for.
 
-If you use a shorter hash and need to know, store each key with ``HashMap/putKey(_:forHash:)-(_,Collection<UInt8>)``.
+If you use a shorter hash and need to know, store each key with ``HashMap/putKey(_:forHash:)-(_,Sequence<UInt8>)``.
 It writes only once, so what you read back is the first key that had that hash, and you can compare:
 
 ```swift

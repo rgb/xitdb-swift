@@ -88,10 +88,10 @@ that reads as Swift. If you are coming from the original's documentation:
 | `db.runContext(ctx)` | ``Database/withTransaction(_:)`` |
 | `list.appendContext(data, ctx)` | ``ArrayList/append(_:_:)`` |
 | `list.getCursor(i)`, `list.getSlot(i)` | ``ArrayList/cursor(at:)``, ``ArrayList/slot(at:)`` |
-| `map.getCursor(hash)`, `map.put(hash, data)` | ``HashMap/cursor(forHash:)-(Collection<UInt8>)``, ``HashMap/put(_:forHash:)-(_,Collection<UInt8>)`` |
-| `set.put(hash, data)`, `sorted_set.put(key)` | ``HashSet/insert(_:forHash:)-(_,Collection<UInt8>)``, ``SortedSet/insert(_:)-(Collection<UInt8>)`` |
+| `map.getCursor(hash)`, `map.put(hash, data)` | ``HashMap/cursor(forHash:)-(Sequence<UInt8>)``, ``HashMap/put(_:forHash:)-(_,Sequence<UInt8>)`` |
+| `set.put(hash, data)`, `sorted_set.put(key)` | ``HashSet/insert(_:forHash:)-(_,Sequence<UInt8>)``, ``SortedSet/insert(_:)-(Sequence<UInt8>)`` |
 | `list.concat(slot)`, `list.slice(offset, size)` | ``LinkedArrayList/append(contentsOf:)-(LinkedArrayList<CursorAccess>)``, ``LinkedArrayList/formSlice(offset:count:)`` |
-| `sorted.iteratorFrom(key)`, `sorted.iteratorFromIndex(i)` | ``SortedMap/iterator(fromKey:)-(Collection<UInt8>)``, ``SortedMap/iterator(fromIndex:)`` |
+| `sorted.iteratorFrom(key)`, `sorted.iteratorFromIndex(i)` | ``SortedMap/iterator(fromKey:)-(Sequence<UInt8>)``, ``SortedMap/iterator(fromIndex:)`` |
 | `cursor.readUint()`, `cursor.readInt()`, `cursor.readFloat()` | ``Cursor/readUInt64()``, ``Cursor/readInt64()``, ``Cursor/readDouble()`` |
 | `cursor.readBytesAlloc(allocator, max)` | ``Cursor/readBytes(maxCount:)`` |
 | `cursor.readKeyValuePair()`, `kv.key_cursor`, `kv.value_cursor` | ``Cursor/readEntry()``, ``Entry/key``, ``Entry/value`` |
