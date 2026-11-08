@@ -1,6 +1,6 @@
-import CryptoKit
 import Foundation
 import Testing
+import XitDBTestSupport
 
 @testable import XitDB
 
@@ -299,12 +299,13 @@ import Testing
         }
     }
 
-    /// A CryptoKit digest is a sequence of bytes and not a collection, and
-    /// the methods that take a hash take it as it is (D21 item 3, amended):
+    /// A digest, CryptoKit's or the support target's, is a sequence of bytes
+    /// and not a collection, and the methods that take a hash take it as it
+    /// is (D21 item 3, amended):
     /// a SHA-1 digest goes straight into a map with a hash size of twenty,
     /// and names the same entry as the array of its bytes. A digest of
     /// another size is refused as any hash of the wrong size is.
-    @Test func aCryptoKitDigestGoesStraightIn() throws {
+    @Test func aDigestGoesStraightIn() throws {
         let database = try makeDatabase()
         let digest = Insecure.SHA1.hash(data: Data("k".utf8))
         let bytes = Array(digest)

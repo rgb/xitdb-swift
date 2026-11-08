@@ -1,7 +1,12 @@
-import CryptoKit
 import Foundation
 import Testing
 import XitDB
+
+#if canImport(CryptoKit)
+    import CryptoKit
+#else
+    import XitDBTestSupport
+#endif
 
 @Suite("Bring your own hashes") struct HashingExamples {
     @Test func aHashHasTheSizeOfTheDatabase() throws {

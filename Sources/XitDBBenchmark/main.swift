@@ -18,9 +18,9 @@
 // read-only database over it, instead of the database itself: the cost of
 // reading through a snapshot (D25).
 
-import CryptoKit
 import Foundation
 import XitDB
+import XitDBTestSupport
 
 struct BenchmarkFailure: Error, CustomStringConvertible {
     let description: String

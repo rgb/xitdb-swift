@@ -1,6 +1,11 @@
-import CryptoKit
 import Testing
 import XitDB
+
+#if canImport(CryptoKit)
+    import CryptoKit
+#else
+    import XitDBTestSupport
+#endif
 
 @Suite("Tutorial: Your first database") struct YourFirstDatabaseTutorial {
     @Test func theWholeProgramTwice() throws {

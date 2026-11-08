@@ -40,12 +40,20 @@ let package = Package(
             name: "XitDB",
             swiftSettings: languageSettings + [.strictMemorySafety()]
         ),
+        // SHA-256 and SHA-1 for the tests, the benchmark and the fuzzer, which
+        // hash their keys: CryptoKit is not on Linux, and the package takes no
+        // dependency. Written to the standard of a public target, since M10
+        // promotes it to the XitDBHashing target; nothing in it is a product.
+        .target(
+            name: "XitDBTestSupport",
+            swiftSettings: languageSettings + [.strictMemorySafety()]
+        ),
         // The benchmark of spec/benchmarks.md. An executable target is an
         // implicit product, so a client could build it; nothing outside this
         // package is meant to, and it brings no dependency.
         .executableTarget(
             name: "XitDBBenchmark",
-            dependencies: ["XitDB"],
+            dependencies: ["XitDB", "XitDBTestSupport"],
             swiftSettings: languageSettings
         ),
         // The corruption fuzzer, which checks that a damaged file gives an error
@@ -53,12 +61,17 @@ let package = Package(
         // `scripts/fuzz.sh`, and no more meant for a client than the benchmark.
         .executableTarget(
             name: "XitDBFuzz",
-            dependencies: ["XitDB"],
+            dependencies: ["XitDB", "XitDBTestSupport"],
+            swiftSettings: languageSettings
+        ),
+        .testTarget(
+            name: "XitDBTestSupportTests",
+            dependencies: ["XitDBTestSupport"],
             swiftSettings: languageSettings
         ),
         .testTarget(
             name: "XitDBTests",
-            dependencies: ["XitDB"],
+            dependencies: ["XitDB", "XitDBTestSupport"],
             exclude: ["Resources/fixtures-source.txt"],
             resources: [
                 .copy("Resources/test.db"),
@@ -69,9 +82,11 @@ let package = Package(
         // Every code block of the README, the articles and the tutorials, as a test
         // that runs it, importing the library as a client does: the proof that the
         // public surface is enough for what the documentation shows.
+        // On Linux the examples hash with the support target, where the
+        // articles' readers on Apple platforms have CryptoKit.
         .testTarget(
             name: "XitDBExamples",
-            dependencies: ["XitDB"],
+            dependencies: ["XitDB", "XitDBTestSupport"],
             swiftSettings: languageSettings
         ),
     ],
