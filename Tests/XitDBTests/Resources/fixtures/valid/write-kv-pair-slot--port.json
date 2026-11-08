@@ -1,0 +1,36 @@
+{
+  "format": "xitdb-script/1",
+  "description": "write-kv-pair-slot with what the port does. A kv_pair slot is part of a hash map's structure, and Zig writes it wherever it's given, which tests/invalid keeps out as an undefined use. The port refuses a write of one with StructuralSlot before anything is written (finding 3), by write, write_if_empty whatever the slot holds, or a path, before any of its parts run, so the transaction goes on and commits, and nothing is poisoned. Through the root, it's refused before a transaction begins. Below the root with no transaction going, write and write_path raise the engine's ExpectedTxStart first, as they don't get that far, and write_if_empty raises StructuralSlot, as it doesn't try to write. What the port writes is what Zig writes with those writes left out.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f000000000001f",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "a" } } }, { "write": { "uint": 1 } }] },
+    { "op": "read_path_slot", "on": "root", "path": [{ "hash_map_get": { "kv_pair": { "sha1": "a" } } }], "as": "pair", "expect": { "tag": "kv_pair" } },
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "ctx": { "as": "m", "ops": [
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "b" } } }], "as": "b" },
+      { "op": "write", "on": "b", "data": { "slot": { "var": "pair" } }, "expect_error": "StructuralSlot", "note": "as a value, where the map would take it for a pair of its own" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "kv_pair": { "sha1": "c" } } }], "as": "c_entry" },
+      { "op": "write", "on": "c_entry", "data": { "slot": { "var": "pair" } }, "expect_error": "StructuralSlot", "note": "and over another key's entry" },
+      { "op": "write_if_empty", "on": "b", "data": { "slot": { "var": "pair" } }, "expect_error": "StructuralSlot", "note": "on an empty slot" },
+      { "op": "write", "on": "b", "data": { "uint": 2 }, "note": "nothing was written, so the transaction isn't poisoned" },
+      { "op": "write_if_empty", "on": "b", "data": { "slot": { "var": "pair" } }, "expect_error": "StructuralSlot", "note": "and on one with a value, which it wouldn't write anyway" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "d" } } }, { "write": { "slot": { "var": "pair" } } }], "expect_error": "StructuralSlot", "note": "a path is refused before its parts run, so d isn't made" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "e" } } }, { "write": { "uint": 5 } }] }
+    ] } }] },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "d" } } }], "expect_null": true },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "e" } } }], "as": "e_now" },
+    { "op": "read_uint", "on": "e_now", "expect": 5 },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "b" } } }], "as": "b_now" },
+    { "op": "read_uint", "on": "b_now", "expect": 2 },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "a" } } }], "as": "a_now" },
+    { "op": "read_uint", "on": "a_now", "expect": 1 },
+    { "op": "write", "on": "root", "data": { "slot": { "var": "pair" } }, "expect_error": "StructuralSlot", "note": "a write to the root is a transaction of its own, refused before it begins" },
+    { "op": "write_path", "on": "root", "path": [{ "write": { "slot": { "var": "pair" } } }], "expect_error": "StructuralSlot" },
+    { "op": "write_if_empty", "on": "root", "data": { "slot": { "var": "pair" } }, "expect_error": "StructuralSlot" },
+    { "op": "write", "on": "b", "data": { "slot": { "var": "pair" } }, "expect_error": "ExpectedTxStart", "note": "below the root with no transaction going, as any write" },
+    { "op": "write_path", "on": "b", "path": [{ "write": { "slot": { "var": "pair" } } }], "expect_error": "ExpectedTxStart" },
+    { "op": "write_if_empty", "on": "b", "data": { "slot": { "var": "pair" } }, "expect_error": "StructuralSlot", "note": "which doesn't try to write, so it gets as far as the slot" },
+    { "op": "slot", "on": "root", "expect": { "tag": "hash_map" } }
+  ]
+}

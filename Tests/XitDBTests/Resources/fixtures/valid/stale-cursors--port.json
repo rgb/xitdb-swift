@@ -1,0 +1,95 @@
+{
+  "format": "xitdb-script/1",
+  "description": "Every way to write through each kind of stale cursor, which the port refuses with StaleCursor before writing anything: one from an earlier transaction, an init through it included; one from before a db_freeze, unless the path begins with an init; one from before a concat, where what the concat gives back is fresh; and one from a rolled-back transaction, which can't be read either, by any way to read. Reads through a cursor from before a freeze stay valid. Nothing refused writes anything, so nothing is poisoned, and each transaction commits. Nothing writes after the concat in its transaction, so the bytes don't depend on whether a concat freezes. What the port writes is what Zig writes with the refused ops left out.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f0000000000023",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "ctx": { "as": "m", "ops": [
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "kept" } } }, { "write": { "uint": 1 } }], "as": "kept" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "list" } } }, "array_list_init", "array_list_append", { "write": { "uint": 1 } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "list" } } }], "as": "kept_list" }
+    ] } }] },
+
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "ctx": { "as": "n", "ops": [
+      { "op": "write", "on": "kept", "data": { "uint": 2 }, "expect_error": "StaleCursor", "note": "from an earlier transaction" },
+      { "op": "write_if_empty", "on": "kept", "data": { "uint": 2 }, "expect_error": "StaleCursor" },
+      { "op": "writer", "on": "kept", "steps": [{ "write": "x" }], "expect_error": "StaleCursor" },
+      { "op": "write_path", "on": "kept", "path": [], "expect_error": "StaleCursor", "note": "an empty path would give it a fresh cursor" },
+      { "op": "write_path", "on": "kept_list", "path": ["array_list_init", "array_list_append", { "write": { "uint": 2 } }], "expect_error": "StaleCursor", "note": "an init too, as it would rewrite a committed slot" },
+      { "op": "read_uint", "on": "kept", "expect": 1, "note": "reading it is fine" },
+      { "op": "write_path", "on": "n", "path": [{ "hash_map_get": { "value": { "sha1": "kept" } } }, { "write": { "uint": 2 } }], "note": "the way: from this transaction's root" }
+    ] } }] },
+
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "ctx": { "as": "p", "ops": [
+      { "op": "write_path", "on": "p", "path": [{ "hash_map_get": { "value": { "sha1": "inner" } } }, { "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "x" } } }, { "write": { "uint": 1 } }] },
+      { "op": "write_path", "on": "p", "path": [{ "hash_map_get": { "value": { "sha1": "inner" } } }], "as": "inner" },
+      { "op": "write_path", "on": "p", "path": [{ "hash_map_get": { "value": { "sha1": "inner" } } }, { "hash_map_get": { "value": { "sha1": "x" } } }], "as": "x" },
+      { "op": "db_freeze" },
+      { "op": "write", "on": "x", "data": { "uint": 2 }, "expect_error": "StaleCursor", "note": "from before the freeze" },
+      { "op": "write_if_empty", "on": "x", "data": { "uint": 2 }, "expect_error": "StaleCursor" },
+      { "op": "writer", "on": "x", "steps": [{ "write": "x" }], "expect_error": "StaleCursor" },
+      { "op": "write_path", "on": "x", "path": [], "expect_error": "StaleCursor" },
+      { "op": "write_path", "on": "inner", "path": [{ "hash_map_get": { "value": { "sha1": "y" } } }, { "write": { "uint": 3 } }], "expect_error": "StaleCursor", "note": "a path that doesn't begin with an init" },
+      { "op": "read_uint", "on": "x", "expect": 1, "note": "reads through it stay valid" },
+      { "op": "read_path", "on": "inner", "path": [{ "hash_map_get": { "value": { "sha1": "x" } } }], "as": "x_again" },
+      { "op": "read_uint", "on": "x_again", "expect": 1 },
+      { "op": "write_path", "on": "inner", "path": [{ "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "y" } } }], "as": "y", "note": "the way on: an init through it, and what follows goes through what that made" },
+      { "op": "write", "on": "y", "data": { "uint": 3 } }
+    ] } }] },
+
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "ctx": { "as": "q", "ops": [
+      { "op": "write_path", "on": "q", "path": [{ "hash_map_get": { "value": { "sha1": "la" } } }, "linked_array_list_init", "linked_array_list_append", { "write": { "uint": 1 } }] },
+      { "op": "write_path", "on": "q", "path": [{ "hash_map_get": { "value": { "sha1": "lb" } } }, "linked_array_list_init", "linked_array_list_append", { "write": { "uint": 2 } }] },
+      { "op": "read_path_slot", "on": "q", "path": [{ "hash_map_get": { "value": { "sha1": "lb" } } }], "as": "lb_slot" },
+      { "op": "write_path", "on": "q", "path": [{ "hash_map_get": { "value": { "sha1": "other" } } }, { "write": { "uint": 5 } }], "as": "other" },
+      { "op": "write_path", "on": "q", "path": [{ "hash_map_get": { "value": { "sha1": "la" } } }, "linked_array_list_init"], "as": "la" },
+      { "op": "write_path", "on": "la", "path": [{ "linked_array_list_concat": { "list": { "var": "lb_slot" } } }], "as": "joined", "note": "a concat freezes, and what it gives back is made after the freeze" },
+      { "op": "write_path", "on": "joined", "path": [], "as": "joined_again", "note": "so it's fresh" },
+      { "op": "write", "on": "other", "data": { "uint": 6 }, "expect_error": "StaleCursor", "note": "and one from before it isn't" },
+      { "op": "write_path", "on": "la", "path": [], "expect_error": "StaleCursor" },
+      { "op": "count", "on": "la", "expect": 2, "note": "reading through it is fine, and it goes by its slot as it is now" },
+      { "op": "count", "on": "joined_again", "expect": 2 }
+    ] } }] },
+
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "ctx": { "as": "r", "ops": [
+      { "op": "write_path", "on": "r", "path": [{ "hash_map_get": { "value": { "sha1": "gone" } } }, { "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "z" } } }, { "write": { "uint": 1 } }] },
+      { "op": "write_path", "on": "r", "path": [{ "hash_map_get": { "value": { "sha1": "gone" } } }], "as": "gone" },
+      { "op": "read_path", "on": "r", "path": [{ "hash_map_get": { "value": { "sha1": "gone" } } }], "as": "gone_ro" },
+      { "op": "read_only", "on": "gone", "as": "gone_view" },
+      { "op": "iterator", "on": "gone", "as": "gone_it" },
+      { "op": "write_path", "on": "r", "path": [{ "hash_map_remove": { "sha1": "never there" } }], "note": "this fails, nothing handles it, and the transaction is rolled back" }
+    ] } }], "expect_error": "KeyNotFound" },
+    { "op": "write", "on": "gone", "data": { "uint": 1 }, "expect_error": "ExpectedTxStart", "note": "from a rolled-back transaction, with no transaction going" },
+    { "op": "count", "on": "gone_ro", "expect_error": "StaleCursor" },
+    { "op": "count", "on": "gone_view", "expect_error": "StaleCursor" },
+    { "op": "read_only", "on": "gone", "as": "gone_view_after", "note": "a view made now is still of the rolled-back cursor" },
+    { "op": "count", "on": "gone_view_after", "expect_error": "StaleCursor" },
+    { "op": "next", "on": "gone_it", "expect_error": "StaleCursor" },
+    { "op": "iterator", "on": "gone_ro", "as": "gone_it_after", "expect_error": "StaleCursor" },
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "ctx": { "as": "s", "ops": [
+      { "op": "write", "on": "gone", "data": { "uint": 1 }, "expect_error": "StaleCursor", "note": "and during one" },
+      { "op": "write_path", "on": "gone", "path": [], "expect_error": "StaleCursor" },
+      { "op": "write_path", "on": "gone", "path": [{ "hash_map_init": {} }], "expect_error": "StaleCursor" },
+      { "op": "writer", "on": "gone", "steps": [{ "write": "x" }], "expect_error": "StaleCursor" },
+      { "op": "read_path", "on": "gone", "path": [{ "hash_map_get": { "value": { "sha1": "z" } } }], "expect_error": "StaleCursor" },
+      { "op": "count", "on": "gone_view", "expect_error": "StaleCursor" },
+      { "op": "next", "on": "gone_it", "expect_error": "StaleCursor" },
+      { "op": "write_path", "on": "s", "path": [{ "hash_map_get": { "value": { "sha1": "kept" } } }, { "write": { "uint": 7 } }], "note": "none of those wrote anything, so the transaction isn't poisoned" }
+    ] } }] },
+
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "kept" } } }], "as": "kept_now" },
+    { "op": "read_uint", "on": "kept_now", "expect": 7 },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "list" } } }], "as": "list_now" },
+    { "op": "count", "on": "list_now", "expect": 1 },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "inner" } } }, { "hash_map_get": { "value": { "sha1": "x" } } }], "as": "x_now" },
+    { "op": "read_uint", "on": "x_now", "expect": 1 },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "inner" } } }, { "hash_map_get": { "value": { "sha1": "y" } } }], "as": "y_now" },
+    { "op": "read_uint", "on": "y_now", "expect": 3 },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "la" } } }], "as": "la_now" },
+    { "op": "count", "on": "la_now", "expect": 2 },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "other" } } }], "as": "other_now" },
+    { "op": "read_uint", "on": "other_now", "expect": 5 },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "gone" } } }], "expect_null": true }
+  ]
+}

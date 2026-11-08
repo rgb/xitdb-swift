@@ -1,0 +1,39 @@
+{
+  "format": "xitdb-sidecar/1",
+  "file_id": "c0f0000000000022",
+  "initial_size": 62,
+  "file_size": 1073,
+  "databases": {
+    "main": {"file_id": "c0f0000000000022", "file_size": 1073, "trailers": [
+      {"position": 231, "commit_id": "2b235fbb033591a0", "file_id": "c0f0000000000022"},
+      {"position": 466, "commit_id": "c8940b8e5ad1998e", "file_id": "c0f0000000000022"},
+      {"position": 660, "commit_id": "f677a3843354953f", "file_id": "c0f0000000000022"},
+      {"position": 854, "commit_id": "477efb847827d9a0", "file_id": "c0f0000000000022"},
+      {"position": 1048, "commit_id": "cef1850da324cc68", "file_id": "c0f0000000000022"}
+    ]},
+    "empty_target": {"file_id": "00000000000000a1", "file_size": 62, "trailers": []},
+    "sliced": {"file_id": "00000000000000a0", "file_size": 256, "trailers": [
+      {"position": 231, "commit_id": "973e96a96a2ff1bc", "file_id": "00000000000000a0"}
+    ]}
+  },
+  "ops": [
+    {"committed_size": 256, "commit_id": "2b235fbb033591a0"},
+    {"committed_size": 491, "commit_id": "c8940b8e5ad1998e"},
+    {"committed_size": 685, "commit_id": "f677a3843354953f"},
+    {"committed_size": 685, "commit_id": null},
+    {"committed_size": 685, "commit_id": null},
+    {"committed_size": 685, "commit_id": null},
+    {"committed_size": 685, "commit_id": null},
+    {"committed_size": 879, "commit_id": "477efb847827d9a0"},
+    {"committed_size": 879, "commit_id": null},
+    {"committed_size": 879, "commit_id": null},
+    {"committed_size": 1073, "commit_id": "cef1850da324cc68"},
+    {"db": "sliced", "committed_size": 256, "commit_id": "973e96a96a2ff1bc"},
+    {"db": "sliced", "committed_size": 256, "commit_id": null},
+    {"db": "sliced", "committed_size": 256, "commit_id": null},
+    {"db": "sliced", "committed_size": 256, "commit_id": null},
+    {"db": "empty_target", "committed_size": 62, "commit_id": null},
+    {"db": "empty_target", "committed_size": 62, "commit_id": null},
+    {"db": "empty_target", "committed_size": 62, "commit_id": null}
+  ]
+}

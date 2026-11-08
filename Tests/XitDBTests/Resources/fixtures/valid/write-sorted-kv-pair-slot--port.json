@@ -1,0 +1,39 @@
+{
+  "format": "xitdb-script/1",
+  "description": "write-sorted-kv-pair-slot with what the port does. A sorted_kv_pair slot is part of a sorted map's structure, and the port refuses a write of one with StructuralSlot before anything is written (finding 3), by write, write_if_empty or a path, where Zig writes it wherever it's given. A key through a pair can't be written either, by any way to write, the byte writer included (finding 2), where Zig writes it and breaks the order. Neither poisons the transaction, which goes on and commits. What the port writes is what Zig writes with those writes left out.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f0000000000020",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [{ "sorted_map_init": {} }, { "sorted_map_get": { "value": "a" } }, { "write": { "uint": 1 } }] },
+    { "op": "read_path_slot", "on": "root", "path": [{ "sorted_map_get_index": 0 }], "as": "pair", "expect": { "tag": "sorted_kv_pair" } },
+    { "op": "write_path", "on": "root", "path": [{ "sorted_map_init": {} }, { "ctx": { "as": "sm", "ops": [
+      { "op": "write_path", "on": "sm", "path": [{ "sorted_map_get": { "value": "b" } }], "as": "b" },
+      { "op": "write", "on": "b", "data": { "slot": { "var": "pair" } }, "expect_error": "StructuralSlot", "note": "as a value, where the tree would take it for an entry" },
+      { "op": "write_if_empty", "on": "b", "data": { "slot": { "var": "pair" } }, "expect_error": "StructuralSlot" },
+      { "op": "write", "on": "b", "data": { "uint": 2 } },
+      { "op": "write_path", "on": "sm", "path": [{ "sorted_map_get": { "value": "c" } }, { "write": { "slot": { "var": "pair" } } }], "expect_error": "StructuralSlot", "note": "before the get makes c" },
+      { "op": "write_path", "on": "sm", "path": [{ "sorted_map_get": { "value": "a key longer than a slot" } }, { "write": { "uint": 3 } }] },
+      { "op": "write_path", "on": "sm", "path": [{ "sorted_map_get": { "kv_pair": "a key longer than a slot" } }], "as": "long_pair" },
+      { "op": "read_key_value_pair", "on": "long_pair", "key_as": "k", "value_as": "v" },
+      { "op": "write", "on": "k", "data": { "bytes": "z" }, "expect_error": "CursorNotWriteable", "note": "a key through a pair, which would break the order" },
+      { "op": "write_if_empty", "on": "k", "data": { "bytes": "z" }, "expect_error": "CursorNotWriteable" },
+      { "op": "writer", "on": "k", "steps": [{ "write": "a longer key that would sort last" }], "expect_error": "CursorNotWriteable", "note": "and through the byte writer" },
+      { "op": "write_path", "on": "k", "path": [{ "write": { "bytes": "z" } }], "expect_error": "CursorNotWriteable" },
+      { "op": "write", "on": "v", "data": { "uint": 4 }, "note": "its value can be written, and nothing above poisoned the transaction" }
+    ] } }] },
+    { "op": "count", "on": "root", "expect": 3 },
+    { "op": "read_path", "on": "root", "path": [{ "sorted_map_get_index": 2 }], "as": "last" },
+    { "op": "read_key_value_pair", "on": "last", "key_as": "last_key", "value_as": "last_value" },
+    { "op": "read_bytes", "on": "last_key", "expect": "b" },
+    { "op": "read_uint", "on": "last_value", "expect": 2 },
+    { "op": "read_path", "on": "root", "path": [{ "sorted_map_get": { "value": "a key longer than a slot" } }], "as": "long_value" },
+    { "op": "read_uint", "on": "long_value", "expect": 4 },
+    { "op": "rank", "on": "root", "key": "b", "expect": 2 },
+    { "op": "write", "on": "root", "data": { "slot": { "var": "pair" } }, "expect_error": "StructuralSlot", "note": "through the root, before a transaction begins" },
+    { "op": "write", "on": "b", "data": { "slot": { "var": "pair" } }, "expect_error": "ExpectedTxStart", "note": "below the root with no transaction going, the engine's error comes first" },
+    { "op": "write_path", "on": "b", "path": [{ "write": { "slot": { "var": "pair" } } }], "expect_error": "ExpectedTxStart" },
+    { "op": "write_if_empty", "on": "b", "data": { "slot": { "var": "pair" } }, "expect_error": "StructuralSlot", "note": "and not for this, which doesn't try to write" },
+    { "op": "count", "on": "root", "expect": 3 }
+  ]
+}
