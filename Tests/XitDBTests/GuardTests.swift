@@ -714,11 +714,13 @@ import Testing
 
     /// Every public read, through a cursor from a transaction that did not
     /// commit, is `staleCursor`: the cursor's own reads, its reader and its
-    /// iterator, the read-only view, and every read of every read-only
-    /// collection made from it, before and after a later transaction has
-    /// reused the offsets. The table names each entry point, so that a new
-    /// one is added here and not forgotten; the two that escaped the check
-    /// before this test (`reader()`, `rank(of:)`) are in it.
+    /// iterator, the read-only view, every read of every read-only
+    /// collection made from it, and the reads of an iterator and a byte
+    /// reader made through the cursor before the rollback, before and after
+    /// a later transaction has reused the offsets. The table names each
+    /// entry point, so that a new one is added here and not forgotten; the
+    /// ones that escaped the check before this test (`reader()`,
+    /// `rank(of:)`, the kept iterator and reader) are in it.
     @Test(arguments: storageKinds)
     func everyReadThroughARolledBackCursorIsRefused(kind: StorageKind) throws {
         struct Cancel: Error {}
@@ -727,15 +729,19 @@ import Testing
         let hash = sha1("k").bytes
         let key = utf8("k")
         var kept: [String: Cursor<ReadWrite>] = [:]
+        var keptIterator: CollectionIterator?
+        var keptReader: ByteReader?
         let outcome = Result { () throws -> Void in
             try database.withTransaction { cursor in
                 kept["number"] = try cursor.writePath([.hashMapGet(.value, sha1("number")), .write(.uint(7))])
                 kept["bytes"] = try cursor.writePath([
                     .hashMapGet(.value, sha1("bytes")), .write(.bytes(utf8("a value too long for a slot"))),
                 ])
+                keptReader = try kept["bytes"]?.reader()
                 let list = try ArrayList<ReadWrite>(try cursor.writePath([.hashMapGet(.value, sha1("list"))]))
                 try list.append(.uint(1))
                 kept["list"] = list.cursor
+                keptIterator = try list.iterator()
                 let linked = try LinkedArrayList<ReadWrite>(
                     try cursor.writePath([.hashMapGet(.value, sha1("linked"))]))
                 try linked.append(.uint(1))
@@ -782,8 +788,45 @@ import Testing
         let countedSet = try CountedHashSet<ReadOnly>(try stale("countedSet"))
         let sorted = try SortedMap<ReadOnly>(try stale("sorted"))
         let sortedSet = try SortedSet<ReadOnly>(try stale("sortedSet"))
+        guard let staleIterator = keptIterator, let staleReader = keptReader else {
+            Issue.record("the iterator and the reader were not kept")
+            return
+        }
 
         let reads: [(String, () throws -> Void)] = [
+            // the two handles that are not cursors, made before the rollback
+            (
+                "CollectionIterator.next",
+                {
+                    var iterator = staleIterator
+                    _ = try iterator.next()
+                }
+            ),
+            (
+                "ByteReader.read(into:)",
+                {
+                    var reader = staleReader
+                    var buffer = [UInt8](repeating: 0, count: 8)
+                    var span = buffer.mutableSpan
+                    _ = try reader.read(into: &span)
+                }
+            ),
+            (
+                "ByteReader.readAll(into:)",
+                {
+                    var reader = staleReader
+                    var buffer = [UInt8](repeating: 0, count: 8)
+                    var span = buffer.mutableSpan
+                    try reader.readAll(into: &span)
+                }
+            ),
+            (
+                "ByteReader.readRemaining",
+                {
+                    var reader = staleReader
+                    _ = try reader.readRemaining()
+                }
+            ),
             ("Cursor.count", { _ = try list.cursor.count }),
             ("Cursor.readUInt64", { _ = try number.readUInt64() }),
             ("Cursor.readInt64", { _ = try number.readInt64() }),
@@ -880,6 +923,83 @@ import Testing
             }
         }
         expectAllRefused("after a later transaction reused the offsets")
+    }
+
+    /// A structural slot is refused before any part of the path runs: a path
+    /// that would first create an entry or a list writes nothing, and so do
+    /// the collection methods, whose paths write an entry or a list's header
+    /// before they arrive at the value (a put on a new key and on a key
+    /// committed earlier, the appends, a sorted put, a counted put, the
+    /// sets' inserts and the maps' putKey, which write the key inside a
+    /// callback); the transaction is not poisoned and goes on; `writeIfEmpty`
+    /// refuses it whatever the slot holds; through the root cursor outside a
+    /// transaction nothing is written and no transaction begins; below the
+    /// root outside a transaction `expectedTxStart` comes first.
+    @Test(arguments: storageKinds)
+    func aStructuralSlotIsRefusedBeforeAnyPartRuns(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        let database = fixture.database
+        let structural = WritableData.slot(Slot(value: 100, tag: .kvPair))
+        try HashMap<ReadWrite>(database.rootCursor).put(.uint(1), forHash: sha1("committed").bytes)
+        var outside: Cursor<ReadWrite>?
+        try database.withTransaction { cursor in
+            // the collection methods: each path writes before the value
+            let moment = try HashMap<ReadWrite>(cursor)
+            try fixture.expectRefused(.structuralSlot) { try moment.put(structural, forHash: sha1("put").bytes) }
+            try fixture.expectRefused(.structuralSlot) {
+                try moment.put(structural, forHash: sha1("committed").bytes)
+            }
+            let list = try ArrayList<ReadWrite>(try moment.putCursor(forHash: sha1("alist").bytes))
+            try fixture.expectRefused(.structuralSlot) { try list.append(structural) }
+            let linked = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: sha1("linked").bytes))
+            try fixture.expectRefused(.structuralSlot) { try linked.append(structural) }
+            let sorted = try SortedMap<ReadWrite>(try moment.putCursor(forHash: sha1("sorted").bytes))
+            try fixture.expectRefused(.structuralSlot) { try sorted.put(structural, forKey: utf8("k")) }
+            let counted = try CountedHashMap<ReadWrite>(try moment.putCursor(forHash: sha1("counted").bytes))
+            try fixture.expectRefused(.structuralSlot) { try counted.put(structural, forHash: sha1("k").bytes) }
+            let set = try HashSet<ReadWrite>(try moment.putCursor(forHash: sha1("set").bytes))
+            try fixture.expectRefused(.structuralSlot) { try set.insert(structural, forHash: sha1("k").bytes) }
+            let countedSet = try CountedHashSet<ReadWrite>(try moment.putCursor(forHash: sha1("cset").bytes))
+            try fixture.expectRefused(.structuralSlot) {
+                try countedSet.insert(structural, forHash: sha1("k").bytes)
+            }
+            try fixture.expectRefused(.structuralSlot) { try moment.putKey(structural, forHash: sha1("key").bytes) }
+            try fixture.expectRefused(.structuralSlot) {
+                try counted.putKey(structural, forHash: sha1("key").bytes)
+            }
+            #expect(!database.poisoned)
+
+            // a path that would write before it arrives at the write part
+            try fixture.expectRefused(.structuralSlot) {
+                _ = try cursor.writePath([.hashMapGet(.value, sha1("new")), .write(structural)])
+            }
+            try fixture.expectRefused(.structuralSlot) {
+                _ = try cursor.writePath([
+                    .hashMapGet(.value, sha1("list")), .arrayListInit, .arrayListAppend, .write(structural),
+                ])
+            }
+            // writeIfEmpty, on an empty slot and on a written one
+            var empty = try cursor.writePath([.hashMapGet(.value, sha1("empty"))])
+            try fixture.expectRefused(.structuralSlot) { try empty.writeIfEmpty(structural) }
+            var written = try cursor.writePath([.hashMapGet(.value, sha1("written")), .write(.uint(1))])
+            try fixture.expectRefused(.structuralSlot) { try written.writeIfEmpty(structural) }
+            #expect(!database.poisoned)
+            _ = try cursor.writePath([.hashMapGet(.value, sha1("after")), .write(.uint(2))])
+            outside = written
+        }
+        #expect(try fixture.value("after").readUInt64() == 2)
+        #expect(try fixture.value("written").readUInt64() == 1)
+        #expect(try database.rootCursor.readPath([.hashMapGet(.value, sha1("new"))]) == nil)
+
+        // the root cursor outside a transaction: refused before a transaction begins
+        var root = database.rootCursor
+        try fixture.expectRefused(.structuralSlot) { try root.write(structural) }
+        try fixture.expectRefused(.structuralSlot) { try root.writeIfEmpty(structural) }
+
+        // below the root outside a transaction, the missing transaction comes first
+        var kept = try #require(outside)
+        try fixture.expectRefused(.expectedTxStart) { try kept.write(structural) }
+        try fixture.expectRefused(.structuralSlot) { try kept.writeIfEmpty(structural) }
     }
 
 }

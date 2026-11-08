@@ -9,8 +9,17 @@
 /// storage, so read in parts of a useful size rather than a byte at a time.
 /// A value of up to eight bytes is stored in the cursor's slot, and reading
 /// it does not touch the storage.
+///
+/// A reader is as stale as the cursor it was made from: one made through a
+/// cursor from a transaction that did not commit is refused with
+/// ``XitDBError/staleCursor`` on every read, since the bytes it would read
+/// are gone and their offsets reused.
 public struct ByteReader {
-    private let database: DatabaseReader
+    private let database: Database
+
+    /// The transaction of the cursor the reader was made from, or zero for
+    /// a root cursor, which is never stale.
+    private let transaction: UInt64
 
     /// Where the value's bytes start in the storage. Not used for a short
     /// value.
@@ -27,19 +36,27 @@ public struct ByteReader {
     public private(set) var position: UInt64 = 0
 
     /// A reader of a value that is stored in the storage.
-    init(database: DatabaseReader, startPosition: UInt64, size: UInt64) {
+    init(database: Database, transaction: UInt64, startPosition: UInt64, size: UInt64) {
         self.database = database
+        self.transaction = transaction
         self.startPosition = startPosition
         self.shortBytes = nil
         self.size = size
     }
 
     /// A reader of a value that is stored in a slot.
-    init(database: DatabaseReader, shortBytes: InlineArray<8, UInt8>, size: Int) {
+    init(database: Database, transaction: UInt64, shortBytes: InlineArray<8, UInt8>, size: Int) {
         self.database = database
+        self.transaction = transaction
         self.startPosition = 0
         self.shortBytes = shortBytes
         self.size = UInt64(size)
+    }
+
+    /// Refuses a reader made through a cursor from a transaction that did
+    /// not commit, as the cursor's own reads are refused.
+    private func checkReadable() throws(XitDBError) {
+        if transaction != 0 && database.transactionFailed(transaction) { throw .staleCursor }
     }
 
     /// Reads as many bytes as fit in `buffer` and are left in the value,
@@ -50,8 +67,11 @@ public struct ByteReader {
     /// - Returns: The number of bytes read, which is zero at the end of the
     ///   value and beyond it.
     /// - Throws: ``XitDBError/endOfStream`` if the database ends before the
-    ///   value does, which only a damaged file does.
+    ///   value does, which only a damaged file does, or
+    ///   ``XitDBError/staleCursor`` if the reader was made through a cursor
+    ///   from a transaction that did not commit.
     public mutating func read(into buffer: inout MutableSpan<UInt8>) throws(XitDBError) -> Int {
+        try checkReadable()
         guard position < size else { return 0 }
         let count = Int(min(UInt64(buffer.count), size - position))
         guard count > 0 else { return 0 }
@@ -77,7 +97,10 @@ public struct ByteReader {
     ///   holds are left in the value. The bytes that were left have then
     ///   been read into the start of `buffer`, and the position is at the
     ///   end of the value or where a ``seek(to:)`` beyond it put it.
+    ///   ``XitDBError/staleCursor`` if the reader was made through a cursor
+    ///   from a transaction that did not commit.
     public mutating func readAll(into buffer: inout MutableSpan<UInt8>) throws(XitDBError) {
+        try checkReadable()
         let read = try read(into: &buffer)
         if read != buffer.count { throw .endOfStream }
     }
@@ -90,9 +113,11 @@ public struct ByteReader {
     /// - Returns: The bytes, which are none at the end of the value and
     ///   beyond it.
     /// - Throws: ``XitDBError/streamTooLong`` if more than `maxCount` bytes
-    ///   are left, or ``XitDBError/endOfStream`` if the database ends before
-    ///   the value does.
+    ///   are left, ``XitDBError/endOfStream`` if the database ends before
+    ///   the value does, or ``XitDBError/staleCursor`` if the reader was
+    ///   made through a cursor from a transaction that did not commit.
     public mutating func readRemaining(maxCount: Int? = nil) throws(XitDBError) -> [UInt8] {
+        try checkReadable()
         guard position < size else { return [] }
         let remaining = size - position
         if let maxCount, remaining > UInt64(max(maxCount, 0)) { throw .streamTooLong }
@@ -135,18 +160,20 @@ extension Cursor {
         let slot = try resolved().slot
         switch slot.tag {
         case .none:
-            return ByteReader(database: database.reader, startPosition: 0, size: 0)
+            return ByteReader(database: database, transaction: isRoot ? 0 : transaction, startPosition: 0, size: 0)
         case .bytes:
             let size = try database.reader.uint64(at: slot.value)
             let start = try slot.value.offset(by: ByteArrayFormat.lengthByteCount)
-            return ByteReader(database: database.reader, startPosition: start, size: size)
+            return ByteReader(
+                database: database, transaction: isRoot ? 0 : transaction, startPosition: start, size: size)
         case .shortBytes:
             // The value is in the slot, so it is read from there, whether
             // or not the slot has a position. Zig reads it from the slot's
             // position in the file, which fails for a slot without one and
             // gives other bytes once the slot has been overwritten.
             return ByteReader(
-                database: database.reader,
+                database: database,
+                transaction: isRoot ? 0 : transaction,
                 shortBytes: ByteArrayFormat.valueBytes(of: slot),
                 size: ByteArrayFormat.shortByteCount(of: slot)
             )

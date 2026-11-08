@@ -127,4 +127,22 @@ public enum WritableData: Sendable {
 
     /// A byte array, with a format tag stored alongside if one is given.
     case bytes(_ value: [UInt8], formatTag: FormatTag? = nil)
+
+    /// Whether this is a slot with one of the trees' own tags, `index`,
+    /// `kvPair` or `sortedKvPair`, which a value may not carry: such a slot
+    /// in a value builds a tree the engine cannot read (finding 3). A write
+    /// checks it before anything else runs.
+    var isStructuralSlot: Bool {
+        if case .slot(let given?) = self {
+            return given.tag == .index || given.tag == .kvPair || given.tag == .sortedKvPair
+        }
+        return false
+    }
+
+    /// Refuses a structural slot, for a write whose data is not a part of
+    /// its path: called after the cursor's own checks and before the path
+    /// runs, as ``Cursor`` does for a write part.
+    func checkIsValue() throws(XitDBError) {
+        if isStructuralSlot { throw .structuralSlot }
+    }
 }
