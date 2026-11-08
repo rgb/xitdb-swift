@@ -763,15 +763,16 @@ extension Database {
     /// transaction. Each access gives a new cursor, which costs one read of
     /// the root header.
     ///
-    /// The cursor is read-write on every storage, as in the original. A
-    /// reader opens
-    /// its storage with ``FileAccess/readOnly`` and wraps ``Cursor/readOnly``
-    /// in the read-only collections, or gives the cursor to their read-only
-    /// inits; a write through the root cursor on a read-only storage fails
-    /// with the storage's write error and truncates nothing. Two processes
-    /// on one file use the file's lock: a reader that opened read-write is a
-    /// second writer, and starting a write-mode collection on its root cursor
-    /// discards whatever the other process's transaction has written so far.
+    /// The cursor is read-write on every storage, as in the original. A reader
+    /// opens its storage with ``FileAccess/readOnly`` and wraps
+    /// ``Cursor/readOnly`` in the read-only collections, or gives the cursor to
+    /// their read-only inits; a write through the root cursor on a read-only
+    /// storage fails with the storage's write error and truncates nothing. Two
+    /// processes on one file use the file's lock: a reader that opened
+    /// read-write is a second writer, and starting a write-mode collection on
+    /// its root cursor discards whatever the other process's transaction has
+    /// written so far. <doc:ConcurrencyAndSnapshots> says which types cross
+    /// threads and how readers share a file with a writer.
     public var rootCursor: Cursor<ReadWrite> {
         // The cursor only holds a snapshot of the root slot, and everything
         // that starts at it reads the root again. If this read fails, the

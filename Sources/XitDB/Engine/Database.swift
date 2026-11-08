@@ -279,13 +279,13 @@ public final class Database {
     /// immutable, as if it had been committed: later writes copy it instead
     /// of changing it in place.
     ///
-    /// Within a transaction, data the transaction created is changed in
-    /// place, because nothing committed can refer to it. That stops being
-    /// safe once a slot has been copied to a second place: both places then
-    /// name the same data, and a change through one shows through the
-    /// other. Freezing after the copy protects what the copy points at
-    /// from writes through the original; the article on cloning says what
-    /// it does not protect.
+    /// Within a transaction, data the transaction created is changed in place,
+    /// because nothing committed can refer to it. That stops being safe once a
+    /// slot has been copied to a second place: both places then name the same
+    /// data, and a change through one shows through the other. Freezing after
+    /// the copy protects what the copy points at from writes through the
+    /// original; <doc:CloningFreezeAndStaleHandles> says what it does not
+    /// protect.
     ///
     /// The caller's part: finish any ``Cursor/writeBytes(formatTag:_:)``
     /// before freezing, since a byte array grows only while it is the last
