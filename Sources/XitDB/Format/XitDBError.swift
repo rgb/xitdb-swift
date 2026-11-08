@@ -35,9 +35,11 @@ public enum XitDBError: Error, Sendable {
 
     /// The data is not a valid xitdb database.
     ///
-    /// The file does not start with the xitdb magic bytes, its recorded size
-    /// is too small to hold a database, or the checksum of the trailer that
-    /// ends its committed data does not match.
+    /// The storage is empty or does not start with the magic bytes, no
+    /// trailer in it verifies, or the bytes given to a sync do not end with
+    /// a trailer that verifies. A file whose root header cannot be trusted
+    /// while some trailer verifies is ``untrustedRootHeader(lastVerified:)``
+    /// instead.
     case invalidDatabase
 
     /// The file was written with a format version this implementation does
@@ -48,7 +50,11 @@ public enum XitDBError: Error, Sendable {
     /// the file.
     case invalidHashSize
 
-    /// The file is shorter than the committed size it records.
+    /// The storage of a database already open is shorter than the committed
+    /// size it records, as a sync at zero that failed leaves it, or a sync at
+    /// zero brought bytes that stop short of their own committed size. A
+    /// file cut short before it is opened is
+    /// ``untrustedRootHeader(lastVerified:)`` instead.
     case truncatedDatabase
 
     /// A slot's tag byte is not one of the values in ``Slot/Tag``.

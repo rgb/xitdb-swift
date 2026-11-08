@@ -21,8 +21,18 @@ step() { printf '\n==> %s\n' "$*"; }
 # path dependency (see the comment there).
 strict=(-Xswiftc -warnings-as-errors)
 
+# The gate runs on one compiler, Xcode's, which `.swift-version` selects for every clone
+# and worktree; a scratch copy elsewhere may pick up another toolchain and measure or
+# build something else. The version is checked, not only printed: two builds compared
+# across toolchains once showed differences that were the compilers', not the code's.
+expected_swift="6.4.2"
+
 step "Toolchain"
 swift --version
+swift --version 2>&1 | grep -q "Swift version $expected_swift " || {
+    echo "error: the gate needs Swift $expected_swift, Xcode's toolchain (.swift-version selects it)"
+    exit 1
+}
 
 step "Debug build and tests"
 swift build "${strict[@]}"
@@ -120,6 +130,10 @@ swift package generate-documentation --target XitDB --warnings-as-errors
 # here so that a mismatch with the "Toolchain" step above would show.
 step "iOS compile check"
 xcrun swiftc --version
+xcrun swiftc --version 2>&1 | grep -q "Swift version $expected_swift " || {
+    echo "error: xcodebuild would use another compiler than the gate: Swift $expected_swift expected"
+    exit 1
+}
 # The scheme is the library's. Xcode makes one scheme per product once a package has more
 # than one, and none named after the package, which is what this used before the benchmark
 # became the second product.

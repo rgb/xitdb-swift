@@ -79,9 +79,9 @@ public struct CountedHashSet<Access: CursorAccess> {
     /// entry for it or the entry's key was never written.
     ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
-    ///   size, in any sequence of bytes: an array, a CryptoKit digest, a
-    ///   slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
-    ///   already borrowed.
+    ///   size, in any sequence of bytes: an array, a CryptoKit digest, a slice,
+    ///   `Data`, a string's `utf8`. Anything but an array is copied once; the
+    ///   `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or set (a
     ///   slot that holds nothing checks no hash and has no entry for it, as in
@@ -116,9 +116,9 @@ public struct CountedHashSet<Access: CursorAccess> {
     /// entry for it or the entry's key was never written.
     ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
-    ///   size, in any sequence of bytes: an array, a CryptoKit digest, a
-    ///   slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
-    ///   already borrowed.
+    ///   size, in any sequence of bytes: an array, a CryptoKit digest, a slice,
+    ///   `Data`, a string's `utf8`. Anything but an array is copied once; the
+    ///   `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or set (a
     ///   slot that holds nothing checks no hash and has no entry for it, as in
@@ -158,9 +158,9 @@ public struct CountedHashSet<Access: CursorAccess> {
     /// the cursor, does not count.
     ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
-    ///   size, in any sequence of bytes: an array, a CryptoKit digest, a
-    ///   slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
-    ///   already borrowed.
+    ///   size, in any sequence of bytes: an array, a CryptoKit digest, a slice,
+    ///   `Data`, a string's `utf8`. Anything but an array is copied once; the
+    ///   `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/invalidHashSize`` if `hash` does not have as many
     ///   bytes as the database's hash size, once the slot holds a map or set (a
     ///   slot that holds nothing checks no hash and has no entry for it, as in
@@ -283,10 +283,10 @@ extension CountedHashSet where Access == ReadWrite {
     ///
     /// - Parameters:
     ///   - key: The key.
-    ///   - hash: The key's hash, as many bytes as the database's hash size,
-    ///     in any sequence of bytes: an array, a CryptoKit digest, a slice,
-    ///     `Data`, a string's `utf8`. The `Span` overload takes bytes already
-    ///     borrowed.
+    ///   - hash: The key's hash, as many bytes as the database's hash size, in
+    ///     any sequence of bytes: an array, a CryptoKit digest, a slice,
+    ///     `Data`, a string's `utf8`. Anything but an array is copied once; the
+    ///     `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not the
     ///   root cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
@@ -337,9 +337,9 @@ extension CountedHashSet where Access == ReadWrite {
     /// ``XitDBError/expectedTxStart``.
     ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
-    ///   size, in any sequence of bytes: an array, a CryptoKit digest, a
-    ///   slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
-    ///   already borrowed.
+    ///   size, in any sequence of bytes: an array, a CryptoKit digest, a slice,
+    ///   `Data`, a string's `utf8`. Anything but an array is copied once; the
+    ///   `Span` overload takes bytes already borrowed.
     /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not the
     ///   root cursor and no transaction is in progress,
     ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
@@ -386,9 +386,9 @@ extension CountedHashSet where Access == ReadWrite {
     /// Removes the entry stored under a hash.
     ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
-    ///   size, in any sequence of bytes: an array, a CryptoKit digest, a
-    ///   slice, `Data`, a string's `utf8`. The `Span` overload takes bytes
-    ///   already borrowed.
+    ///   size, in any sequence of bytes: an array, a CryptoKit digest, a slice,
+    ///   `Data`, a string's `utf8`. Anything but an array is copied once; the
+    ///   `Span` overload takes bytes already borrowed.
     /// - Returns: Whether there was an entry to remove.
     /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not the
     ///   root cursor and no transaction is in progress,

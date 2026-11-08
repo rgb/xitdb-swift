@@ -341,10 +341,12 @@ extension Database {
 
     /// One node on the way down to a key, with the child the way goes
     /// through.
-    private struct SortedFrame {
+    private struct SortedFrame: FrameStackElement {
         var position: UInt64
         var node: SortedNode
         var index: Int
+
+        static var placeholder: SortedFrame { SortedFrame(position: 0, node: .placeholder, index: 0) }
     }
 
     /// Descends from `rootPtr` to the leaf that `key` falls in, keeping the
@@ -355,8 +357,8 @@ extension Database {
     private func sortedDescend(
         from rootPtr: UInt64,
         key: Span<UInt8>
-    ) throws(XitDBError) -> (branches: [SortedFrame], leafPtr: UInt64, leaf: SortedNode) {
-        var branches: [SortedFrame] = []
+    ) throws(XitDBError) -> (branches: FrameStack<SortedFrame>, leafPtr: UInt64, leaf: SortedNode) {
+        var branches = FrameStack<SortedFrame>()
         var nodePtr = rootPtr
         while branches.count <= BTree.maxHeight {
             let node = try reader.sortedNode(at: nodePtr)
@@ -439,7 +441,9 @@ extension Database {
             }
         }
 
-        for frame in branches.reversed() {
+        for index in stride(from: branches.count - 1, through: 0, by: -1) {
+
+            let frame = branches[index]
             // Nothing below changed: this branch, and all above it, stay.
             // Zig gives the subtree's count in this result; here it is zero,
             // which is harmless today: a result's count is read only by the
@@ -525,7 +529,9 @@ extension Database {
         }
         var childPtr = try writeNodeVersion(written, oldPtr: leafPtr, frozenAt: frozenAt)
 
-        for frame in branches.reversed() {
+        for index in stride(from: branches.count - 1, through: 0, by: -1) {
+
+            let frame = branches[index]
             var branch = frame.node
             branch.setChild(Slot(value: childPtr, tag: .index), at: frame.index)
             // A count that is already zero disagrees with the entry just

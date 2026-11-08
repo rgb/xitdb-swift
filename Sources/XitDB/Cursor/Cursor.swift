@@ -603,8 +603,10 @@ extension Cursor where Access == ReadWrite {
     ///
     /// The bytes that `body` writes are appended to the database as they
     /// come. When `body` returns, the array is completed and the slot is
-    /// pointed at it. If `body` throws, the slot is left as it was, and the
-    /// bytes already written stay behind unused.
+    /// pointed at it. If `body` throws, the slot is left as it was, the
+    /// bytes already written stay behind unused, and the transaction is
+    /// poisoned, even when `body` wrote nothing: the record's length was
+    /// appended before `body` ran, and a write issued is what poisons.
     ///
     /// A value written this way always gets a record of its own, however
     /// short it is.

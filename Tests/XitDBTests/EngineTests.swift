@@ -1115,4 +1115,43 @@ import Testing
             }
         }
     }
+
+    /// A hash longer than the sixty-four bytes `KeyHash` keeps inline takes
+    /// its other path, an array behind the inline storage, which only the
+    /// fuzzer exercised before this: a map of hundred-byte hashes puts,
+    /// reads back, iterates and removes, an entry gives its hash back whole,
+    /// and the hash type itself compares and copies the long form.
+    @Test func aHashLongerThanTheInlineCapacityWorks() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 100)
+        func hash(_ byte: UInt8) -> [UInt8] { [UInt8](repeating: byte, count: 100) }
+        let map = try HashMap<ReadWrite>(database.rootCursor)
+        for byte: UInt8 in 1...3 {
+            try map.put(.uint(UInt64(byte)), forHash: hash(byte))
+        }
+        #expect(try map.cursor(forHash: hash(2))?.readUInt64() == 2)
+        #expect(try map.entry(forHash: hash(3))?.hash == hash(3))
+        var seen: Set<UInt64> = []
+        var iterator = try map.iterator()
+        while let entry = try iterator.next() {
+            let pair = try entry.readEntry()
+            #expect(pair.hash == hash(UInt8(try pair.value.readUInt64())))
+            seen.insert(try pair.value.readUInt64())
+        }
+        #expect(seen == [1, 2, 3])
+        try map.remove(forHash: hash(1))
+        #expect(try map.cursor(forHash: hash(1)) == nil)
+        #expect(try map.cursor(forHash: hash(2))?.readUInt64() == 2)
+        #expect(throws: XitDBError.invalidHashSize) { try map.put(.uint(9), forHash: [UInt8](repeating: 9, count: 64)) }
+
+        let long = KeyHash(hash(7))
+        #expect(long.count == 100)
+        #expect(long.bytes == hash(7))
+        #expect(long == KeyHash(hash(7)))
+        #expect(long != KeyHash(hash(8)))
+        #expect(long != KeyHash([UInt8](repeating: 7, count: 64)))
+        var copy = [UInt8](repeating: 0, count: 100)
+        var span = copy.mutableSpan
+        long.copyBytes(into: &span)
+        #expect(copy == hash(7))
+    }
 }
