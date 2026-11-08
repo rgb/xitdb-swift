@@ -279,6 +279,7 @@ extension Database {
     /// 0, discards what lies past the committed bytes at the committed
     /// size, and refuses any other start.
     private func beginApplying(at start: UInt64) throws(XitDBError) {
+        if readsSnapshot { throw .cursorNotWritable }
         if start == 0 {
             try storage.truncate(to: 0)
         } else if start == (try reader.committedSize) {

@@ -37,19 +37,41 @@ final class DatabaseIdentity {
 ///
 /// Code that only reads depends on this and not on ``Database``, so that the
 /// same code can later read a snapshot of committed data from any thread.
-struct DatabaseReader {
-    let storage: any ReadableStorage
+///
+/// A class and not a struct: as a struct of three fields over
+/// ``BuiltInStorage`` the optimiser compiled its methods with `self` taken
+/// apart into those fields, and the sorted map paid about an eighth of its
+/// read time for it (decision D23); a reference is passed whole. There is
+/// no state to copy either way, since every field is a `let`.
+final class DatabaseReader {
+    /// The bytes, as the engine holds a storage. Only its reads are used
+    /// here.
+    let storage: BuiltInStorage
     /// The hash size, which a replication cannot change.
     let hashSize: UInt16
     private let identity: DatabaseIdentity
 
+    /// The root header of the one commit a snapshot's database reads, which
+    /// ``rootHeader()`` returns instead of reading one; `nil` for a live
+    /// database, whose root header is read at every use.
+    let pinnedRoot: RootHeader?
+
+    /// For a snapshot's database, the commit's own root slot, which the
+    /// pinned root is unless the snapshot is of a sub-collection.
+    let pinnedCommitRoot: Slot?
+
     /// The file ID, which the trailers' checksums cover.
     var fileID: UInt64 { identity.header.fileID }
 
-    init(storage: any ReadableStorage, identity: DatabaseIdentity) {
+    init(
+        storage: BuiltInStorage, identity: DatabaseIdentity, pinnedRoot: RootHeader? = nil,
+        pinnedCommitRoot: Slot? = nil
+    ) {
         self.storage = storage
         hashSize = identity.header.hashSize
         self.identity = identity
+        self.pinnedRoot = pinnedRoot
+        self.pinnedCommitRoot = pinnedCommitRoot
     }
 
     // MARK: Records
@@ -138,13 +160,15 @@ struct DatabaseReader {
     ///
     /// Only the size is read from the root header. The root slot beside it
     /// is a cache that a concurrent commit may be halfway through
-    /// rewriting, so it is never looked at.
+    /// rewriting, so it is never looked at. A snapshot's reader has its
+    /// commit pinned and reads nothing here.
     ///
     /// - Throws: `invalidDatabase` if the size is too small to hold a
     ///   database or the trailer's checksum does not match,
     ///   `truncatedDatabase` if the storage is shorter than the size, or
     ///   `endOfStream` if the storage ends inside the root header.
     func rootHeader() throws(XitDBError) -> RootHeader {
+        if let pinnedRoot { return pinnedRoot }
         let fileSize = try uint64(at: RootHeader.fileSizePosition)
         if fileSize < RootHeader.minimumFileSize { throw .invalidDatabase }
         if try storage.length < fileSize { throw .truncatedDatabase }

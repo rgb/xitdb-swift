@@ -266,6 +266,11 @@ final class ScriptRunner {
     /// Whether each `compact` uses the offset map the script does not name.
     var otherOffsetMap = false
 
+    /// The database the last `apply_replicated` at 0 was asked of, whether
+    /// or not it went through: the snapshot proof needs to know, since its
+    /// `start` may be a bound number. Cleared by the caller.
+    var zeroSyncTarget: String?
+
     init(storage: ScriptStorage, random: FixedRandom) {
         self.random = random
         databases = ["main": ScriptDatabase(storage: storage)]
@@ -305,6 +310,17 @@ final class ScriptRunner {
     /// The names of the script's databases.
     var databaseNames: [String] {
         databases.keys.sorted()
+    }
+
+    /// The name of the current database, which every op without an `on`
+    /// acts on.
+    var currentName: String {
+        current
+    }
+
+    /// A database of the script while it is open, or `nil`.
+    func openDatabase(named name: String) -> Database? {
+        databases[name]?.database
     }
 
     /// Creates the database a script asks for and returns the script's ops.
@@ -625,6 +641,8 @@ final class ScriptRunner {
         case .staleCursor: "StaleCursor"
         case .immutableBytes: "ImmutableBytes"
         case .byteWriterOpen: "ByteWriterOpen"
+        case .snapshotOverwritten: "SnapshotOverwritten"
+        case .subCollectionSnapshot: "SubCollectionSnapshot"
         case .structuralSlot: "StructuralSlot"
         case .poisonedTransaction: "PoisonedTransaction"
         case .untrustedRootHeader: "UntrustedRootHeader"
@@ -1177,6 +1195,7 @@ final class ScriptRunner {
         case "apply_replicated":
             try op.allow("op", "note", "expect_error", "start", "bytes", "short_by")
             let start = try number(op.fields["start"], "start")
+            if start == 0 { zeroSyncTarget = current }
             let bytesName = try op.string("bytes")
             guard case .committedBytes(let bytes) = try bound(bytesName) else {
                 throw ScriptFailure("'\(bytesName)' does not hold committed bytes")
@@ -1378,7 +1397,13 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
     /// With `otherOffsetMap`, every `compact` uses the offset map the
     /// script does not name, which must change nothing in what is written:
     /// the conformance `check.sh` holds the scripts to that the same way.
-    func run(on kind: StorageKind, otherOffsetMap: Bool = false) throws {
+    ///
+    /// With `proving`, a passing script also runs the snapshot proof: a
+    /// snapshot of every open database after every op, held to its copy at
+    /// the end (`SnapshotProof`). The proof costs many times the replay in
+    /// a debug build, so it has a suite of its own, which the gate runs in
+    /// release.
+    func run(on kind: StorageKind, otherOffsetMap: Bool = false, proving: Bool = false) throws {
         let script = try JSONSerialization.jsonObject(with: Data(try fixtureFile(script)))
 
         guard mustPass else {
@@ -1430,8 +1455,17 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
         }
         guard ops.count == steps.count else { throw ScriptFailure("the sidecar has another number of ops") }
 
+        // The snapshot proof: a snapshot of every open database after
+        // every op, held to its copy at the end (D25).
+        let proof = proving ? SnapshotProof(kind: kind) : nil
         for (index, op) in ops.enumerated() {
+            if let proof {
+                let opObject = try ScriptObject(op, "an op")
+                try proof.before(op: try opObject.string("op"), on: runner.currentName)
+            }
+            runner.zeroSyncTarget = nil
             try runner.run(op, topLevel: true)
+            if let proof, let target = runner.zeroSyncTarget { proof.zeroSynced(target) }
             let expected: UInt64? =
                 steps[index].isNull("committed_size") ? nil : try steps[index].unsigned("committed_size")
             // An entry is about the database the op committed in, or the
@@ -1443,6 +1477,7 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
                     "after op \(index) the committed size of \(about ?? "main") is \(String(describing: actual)), and Zig's was \(String(describing: expected))"
                 )
             }
+            try proof?.after(step: index, runner)
         }
 
         guard random.remaining == 0, !random.exhausted else {
@@ -1478,6 +1513,16 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
             if let difference = firstDifference(other, try fixtureFile(expectedFile)) {
                 throw ScriptFailure("the database \(name) differs from Zig's: \(difference)")
             }
+        }
+
+        // Every snapshot against its copy, and against the final files.
+        if let proof {
+            var expectedFiles = ["main": try fixtureFile(try #require(database))]
+            for (name, expectedFile) in otherDatabases {
+                expectedFiles[name] = try fixtureFile(expectedFile)
+            }
+            try proof.finish(expectedFiles: expectedFiles)
+            guard proof.checked > 0 else { throw ScriptFailure("the snapshot proof checked nothing") }
         }
     }
 }

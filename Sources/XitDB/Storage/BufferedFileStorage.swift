@@ -15,8 +15,15 @@
 /// The storage opens its file itself and is the only thing that writes
 /// through it: a file written by anything else while the window holds
 /// bytes would lose them or keep stale ones.
+///
+/// A ``Snapshot`` of a database in this storage reads the file through the
+/// file storage underneath, so the file stays open, and any lock held,
+/// until the storage and the last snapshot have gone. Every byte a
+/// snapshot reads is in the file: a commit flushes the window before it
+/// rewrites the root header, and the window holds only what came after.
 public final class BufferedFileStorage: WritableStorage {
-    private let file: FileStorage
+    /// The file underneath, which a snapshot reads through.
+    let file: FileStorage
 
     /// The window: bytes written and not yet flushed, which belong in the
     /// file from `memoryPosition` on.

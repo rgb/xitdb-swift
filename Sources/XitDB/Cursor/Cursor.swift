@@ -94,6 +94,9 @@ public struct Cursor<Access: CursorAccess> {
     /// ``XitDBError/expectedTxStart`` as it always was, and an empty path
     /// works.
     func checkWritable(_ path: Span<PathPart>) throws(XitDBError) {
+        // A snapshot's database is read and never written: refused before
+        // anything, the root cursor's transaction included.
+        if database.readsSnapshot { throw .cursorNotWritable }
         if database.transactionStart == nil {
             if !isRoot && path.count > 0 { throw .expectedTxStart }
             return
@@ -602,6 +605,7 @@ extension Cursor where Access == ReadWrite {
         // cursors included; outside one, a slot that is not empty is left
         // alone without an error, as it always was, and an empty one gets
         // the write's expectedTxStart.
+        if database.readsSnapshot { throw .cursorNotWritable }
         let path: InlineArray<1, PathPart> = [.write(data)]
         if database.transactionStart != nil {
             try checkWritable(path.span)
@@ -771,8 +775,11 @@ extension Database {
     /// processes on one file use the file's lock: a reader that opened
     /// read-write is a second writer, and starting a write-mode collection on
     /// its root cursor discards whatever the other process's transaction has
-    /// written so far. <doc:ConcurrencyAndSnapshots> says which types cross
-    /// threads and how readers share a file with a writer.
+    /// written so far. On a database made with ``init(reading:)`` the cursor
+    /// reads the snapshot's commit and every write through it is refused
+    /// with ``XitDBError/cursorNotWritable``. <doc:ConcurrencyAndSnapshots>
+    /// says which types cross threads and how readers share a file with a
+    /// writer.
     public var rootCursor: Cursor<ReadWrite> {
         // The cursor only holds a snapshot of the root slot, and everything
         // that starts at it reads the root again. If this read fails, the

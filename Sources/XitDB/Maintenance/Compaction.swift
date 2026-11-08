@@ -37,7 +37,10 @@ extension Database {
     ///   - target: The database to write into.
     ///   - offsetMap: Where the copy remembers what went where. It is reset
     ///     first, and holds every mapping when the call returns.
-    /// - Throws: ``XitDBError/emptyLastMoment`` if the root is a list
+    /// - Throws: ``XitDBError/cursorNotWritable`` if `target` reads a
+    ///   snapshot, and ``XitDBError/subCollectionSnapshot`` if this database
+    ///   reads a snapshot of a sub-collection, both before anything is done;
+    ///   ``XitDBError/emptyLastMoment`` if the root is a list
     ///   whose last element is empty, which is checked before
     ///   anything else, so that the target and the offset map are as they
     ///   were; ``XitDBError/targetNotEmpty`` if the target's root holds
@@ -56,6 +59,9 @@ extension Database {
     ///   then, the next transaction discards it. Errors of the two
     ///   storages and of the offset map are passed on.
     public func compact<Map: OffsetMap>(into target: Database, offsetMap: inout Map) throws(XitDBError) {
+        // A target reading a snapshot is never written: refused before the
+        // source is looked at or the offset map touched.
+        if target.readsSnapshot { throw .cursorNotWritable }
         let source = try compactionSource()
         try compact(source, into: target, offsetMap: &offsetMap)
     }
@@ -122,6 +128,9 @@ extension Database {
     /// one. It runs before anything is done to the target or the offset
     /// map, so that the refusal writes nothing.
     private func compactionSource() throws(XitDBError) -> CompactionSource {
+        // a snapshot of one collection has no commit to compact: its root
+        // is not the commit's, and a list there is not a history
+        if readsSubCollection { throw .subCollectionSnapshot }
         // an empty root compacts to a new database. a root explicitly set
         // to nothing isn't empty, so it is remapped.
         let root = try rootCursor.slot
@@ -177,7 +186,7 @@ extension Database {
 /// Zig's `Compactor`, with its recursion as a stack of frames.
 struct Compactor {
     private let source: DatabaseReader
-    private let target: any WritableStorage
+    private let target: BuiltInStorage
     /// A branch's worth of zeros, what a reserve writes.
     private let zeros = InlineArray<418, UInt8>(repeating: 0)
 

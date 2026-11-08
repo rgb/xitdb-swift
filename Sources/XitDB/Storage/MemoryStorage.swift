@@ -90,6 +90,11 @@ struct MemoryBuffer {
 /// ``bytes`` can be sent elsewhere and opened there, which makes an in-memory
 /// database usable as a serialization format.
 ///
+/// A ``Snapshot`` of a database in this storage shares the array: taking
+/// one is free, and the first write after it copies the array once, as the
+/// first write after ``bytes`` does. A writer that keeps a snapshot alive
+/// across every commit therefore copies the whole database at each one.
+///
 /// Flushing and syncing do nothing.
 public final class MemoryStorage: WritableStorage {
     // The engine calls a storage several times for every slot it follows,

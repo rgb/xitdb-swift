@@ -11,10 +11,13 @@
 ///
 /// A database is not `Sendable`. It belongs to one thread or task at a time.
 /// Only one database at a time may write to a storage; any number may read
-/// from it, through storages of their own.
+/// from it, through storages of their own. A ``Snapshot`` is read from any
+/// thread, and is told of a rewrite of its file only through the storage
+/// object it was taken from, never through another one on the same path.
 public final class Database {
-    /// Where the database's bytes are kept.
-    let storage: any WritableStorage
+    /// Where the database's bytes are kept, as the engine holds a storage:
+    /// a built-in one by its class, any other behind the protocol.
+    let storage: BuiltInStorage
 
     /// The read side of the engine over this database's storage.
     let reader: DatabaseReader
@@ -198,6 +201,7 @@ public final class Database {
         let header = try Self.readHeader(of: storage)
         if let hashSize, Int(header.hashSize) != hashSize { throw .invalidHashSize }
 
+        let storage = BuiltInStorage(storage)
         self.storage = storage
         identity = DatabaseIdentity(header: header)
         self.reader = DatabaseReader(storage: storage, identity: identity)
@@ -240,6 +244,7 @@ public final class Database {
             hashSize: hashSize
         )
 
+        let storage = BuiltInStorage(storage)
         self.storage = storage
         identity = DatabaseIdentity(header: header)
         self.reader = DatabaseReader(storage: storage, identity: identity)
@@ -258,6 +263,34 @@ public final class Database {
         // depend only on its header.
         try commitRoot(Slot(), commitID: 0)
         try storage.sync(.afterRootHeader)
+    }
+
+    /// Opens a read-only database over a snapshot, at no I/O cost.
+    ///
+    /// The database reads the snapshot's commit, whatever the writer has
+    /// done since; every write through it is refused with
+    /// ``XitDBError/cursorNotWritable`` before anything is done, and its
+    /// ``snapshot()`` gives the same snapshot back. Its replication reads
+    /// serve the whole commit's bytes, a sub-collection snapshot's too, and
+    /// compaction from a sub-collection snapshot is refused with
+    /// ``XitDBError/subCollectionSnapshot``. Like every database it
+    /// belongs to one thread or task at a time: each task that reads a
+    /// snapshot opens a database of its own over it, which costs a few small
+    /// objects and no read.
+    ///
+    /// - Parameter snapshot: The commit to read.
+    public init(reading snapshot: Snapshot) {
+        let storage = BuiltInStorage.snapshot(snapshot.storage)
+        self.storage = storage
+        identity = DatabaseIdentity(header: snapshot.header)
+        reader = DatabaseReader(
+            storage: storage,
+            identity: identity,
+            pinnedRoot: RootHeader(root: snapshot.root, fileSize: snapshot.committedSize),
+            pinnedCommitRoot: snapshot.commitRoot
+        )
+        transactionStart = nil
+        random = RandomSource(SystemRandomNumberGenerator())
     }
 
     /// The number of bytes that belong to committed transactions.
@@ -313,6 +346,7 @@ public final class Database {
     ///   ``XitDBError/byteWriterOpen`` while a byte writer's body is
     ///   running.
     public func freeze() throws(XitDBError) {
+        if readsSnapshot { throw .cursorNotWritable }
         guard transactionStart != nil else { throw .expectedTxStart }
         guard openByteWriters == 0 else { throw .byteWriterOpen }
         transactionStart = try storage.length

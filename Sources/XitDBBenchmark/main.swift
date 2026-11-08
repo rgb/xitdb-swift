@@ -12,6 +12,11 @@
 // run over and over for a number of seconds:
 //
 //     XitDBBenchmark --repeat <seconds> <workload> <kind> <write|read|iterate>
+//
+// With `--snapshot`, the read and iterate phases of every workload whose
+// phases only read run through a snapshot of the database, on a fresh
+// read-only database over it, instead of the database itself: the cost of
+// reading through a snapshot (D25).
 
 import CryptoKit
 import Foundation
@@ -145,6 +150,10 @@ func iterateMap(_ moment: Cursor<ReadOnly>, _ keys: Keys) throws {
     }
 }
 
+/// Whether the read and iterate phases run through a snapshot of the
+/// database (`--snapshot`).
+let readThroughSnapshot = CommandLine.arguments.contains("--snapshot")
+
 /// One workload: how to write it and how to read it back.
 ///
 /// A run gets a new, empty storage. `prepare` makes what the write phase
@@ -169,6 +178,10 @@ struct Workload {
     /// cost time the phase does not.
     var afterWrite: (Database, Any) throws -> Void = { _, _ in }
     var afterRead: (Database, Any) throws -> Void = { _, _ in }
+    /// Whether the read or iterate phase writes to the database, as a
+    /// replication's second sync does, so that `--snapshot` leaves this
+    /// workload on the database itself.
+    var readPhasesWrite = false
     /// What the read phase needs put back before it runs, off the clock,
     /// for a phase that changes the database it reads and is run again
     /// on the same one under `--repeat`.
@@ -268,7 +281,10 @@ func listAppend(_ size: Int, kinds: [StorageKind]) -> Workload {
 /// Writes `transactions` transactions of ten keys each, every one a new
 /// moment of the history: `map_transactions`' write phase. The keys are
 /// the ten of each transaction, counted from `first`.
-func writeTransactions(_ transactions: Int, into database: Database, _ keys: Keys, from first: Int = 0) throws {
+func writeTransactions(
+    _ transactions: Int, into database: Database, _ keys: Keys, from first: Int = 0,
+    afterCommit: (Database) throws -> Void = { _ in }
+) throws {
     let hashes = keys.hashes
     for transaction in first..<(first + transactions) {
         let lastPath: InlineArray<1, PathPart> = [.arrayListGet(-1)]
@@ -282,6 +298,62 @@ func writeTransactions(_ transactions: Int, into database: Database, _ keys: Key
                     .hashMapGet(.value, hashes[index]), .write(.uint(UInt64(index))),
                 ]
                 _ = try cursor.writePath(put.span)
+            }
+        }
+        try afterCommit(database)
+    }
+}
+
+/// `map_transactions` with a snapshot taken after every commit and held
+/// until the next one: what a writer that publishes each commit to readers
+/// pays, which in memory is a copy of the array per commit (D25).
+func mapTransactionsSnapshot(_ transactions: Int, kinds: [StorageKind]) -> Workload {
+    Workload(
+        name: "map_transactions_snapshot", size: transactions, kinds: kinds, keyKind: .hashes,
+        keyCount: transactions * 10
+    ) { database, keys in
+        var held: Snapshot? = nil
+        try writeTransactions(transactions, into: database, keys) { database in
+            held = try database.snapshot()
+        }
+        guard let held, held.committedSize == (try database.committedSize) else {
+            throw BenchmarkFailure(description: "the last snapshot is not of the last commit")
+        }
+    } read: { database, hashes in
+        try readMap(try lastMoment(database), hashes)
+    } iterate: { database, hashes in
+        try iterateMap(try lastMoment(database), hashes)
+    }
+}
+
+/// The cost of a snapshot, per kind: the write phase makes a database with
+/// a map of a thousand keys; the read phase takes `size` snapshots of it,
+/// each dropped at once; the iterate phase takes one, opens a database over
+/// it and reads one key, `size` times, which is what a task pays to look at
+/// a snapshot.
+func snapshotTake(_ size: Int, kinds: [StorageKind]) -> Workload {
+    Workload(name: "snapshot_take", size: size, kinds: kinds, keyKind: .hashes, keyCount: 1_000) { database, keys in
+        let hashes = keys.hashes
+        let path: InlineArray<4, PathPart> = [.arrayListInit, .arrayListAppend, .hashMapInit(), .ctx]
+        _ = try database.rootCursor.writePath(path.span) { cursor in
+            for index in hashes.indices {
+                let put: InlineArray<2, PathPart> = [.hashMapGet(.value, hashes[index]), .write(.uint(UInt64(index)))]
+                _ = try cursor.writePath(put.span)
+            }
+        }
+    } read: { database, _ in
+        for _ in 0..<size {
+            _ = try database.snapshot()
+        }
+    } iterate: { database, keys in
+        let hashes = keys.hashes
+        for index in 0..<size {
+            let reading = Database(reading: try database.snapshot())
+            let key = index % hashes.count
+            let path: InlineArray<1, PathPart> = [.hashMapGet(.value, hashes[key])]
+            guard let cursor = try lastMoment(reading).readPath(path.span), try cursor.readUInt64() == UInt64(key)
+            else {
+                throw BenchmarkFailure(description: "key-\(key) does not read back through a snapshot")
             }
         }
     }
@@ -388,6 +460,7 @@ func replicate(_ transactions: Int, kinds: [StorageKind]) -> Workload {
             throw BenchmarkFailure(description: "the full sync did not bring the replica to the source's size")
         }
     }
+    workload.readPhasesWrite = true
     workload.afterRead = { replica, prepared in
         let run = prepared as! ReplicationRun
         guard run.start == run.sizeAfterFirst else {
@@ -550,6 +623,9 @@ let workloads: [Workload] = [
     mapCompact(sized(200), kinds: [.file]),
     replicate(sized(2_000), kinds: [.memory, .bufferedFile]),
     replicate(sized(200), kinds: [.file]),
+    snapshotTake(sized(10_000), kinds: [.memory, .bufferedFile]),
+    snapshotTake(sized(1_000), kinds: [.file]),
+    mapTransactionsSnapshot(sized(2_000), kinds: [.memory, .bufferedFile]),
 ]
 
 func median(_ values: [Double]) -> Double {
@@ -580,9 +656,13 @@ func run(_ workload: Workload) throws {
             guard let database else { throw BenchmarkFailure(description: "the write phase gave no database") }
             try workload.afterWrite(database, prepared)
             try workload.beforeRead(database, prepared)
-            readTimes.append(try milliseconds { try workload.read(database, keys, prepared) })
+            // With --snapshot the reading phases see one snapshot, taken off
+            // the clock, through a fresh read-only database.
+            let reading =
+                readThroughSnapshot && !workload.readPhasesWrite ? Database(reading: try database.snapshot()) : database
+            readTimes.append(try milliseconds { try workload.read(reading, keys, prepared) })
             try workload.afterRead(database, prepared)
-            iterateTimes.append(try milliseconds { try workload.iterate(database, keys, prepared) })
+            iterateTimes.append(try milliseconds { try workload.iterate(reading, keys, prepared) })
             // the file as the phases leave it: reads change nothing, and
             // a replication's read phase is its second sync
             let size = try storage.storage.length
@@ -711,6 +791,7 @@ let arguments: [String] = {
     if let index = arguments.firstIndex(of: "--divide"), index + 1 < arguments.count {
         arguments.removeSubrange(index...(index + 1))
     }
+    arguments.removeAll { $0 == "--snapshot" }
     return arguments
 }()
 if arguments.first == "--count" {

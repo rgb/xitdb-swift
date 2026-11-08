@@ -24,7 +24,10 @@ public enum XitDBError: Error, Sendable {
     case writeNotAllowed
 
     /// The cursor has no position in the file, so nothing can be written
-    /// through it.
+    /// through it; or its database reads a ``Snapshot``, which nothing
+    /// writes to. Every write through such a database is refused with this
+    /// before anything is done, ``Database/applyReplicated(at:bytes:)`` on
+    /// it included.
     case cursorNotWritable
 
     /// A write below the root was attempted outside a transaction.
@@ -151,8 +154,9 @@ public enum XitDBError: Error, Sendable {
     /// refused, inits included: an init through a held cursor rewrites its slot
     /// in place, in a record a copy may have left behind, and lost writes
     /// silently. A write that would land below the freeze by any other route is
-    /// ``immutableBytes``, refused before anything is written.
-    /// <doc:CloningFreezeAndStaleHandles> has the whole of it.
+    /// ``immutableBytes``, refused before that write; a write the operation
+    /// made before it, as a hash map's get makes a new entry's record, poisons
+    /// the transaction. <doc:CloningFreezeAndStaleHandles> has the whole of it.
     case staleCursor
 
     /// A write would change committed or frozen bytes in place: its position
@@ -174,6 +178,25 @@ public enum XitDBError: Error, Sendable {
     /// throws, since the writer had appended before the body ran. Finish
     /// byte writers before freezing.
     case byteWriterOpen
+
+    /// The file a ``Snapshot`` reads was rewritten below the snapshot's
+    /// committed size, so that its bytes are no longer the commit's: a
+    /// replication from zero through the database that writes the file,
+    /// ``Database/applyReplicated(at:bytes:)`` at 0, or a write or a
+    /// truncation through the caller's own reference to the storage. Every
+    /// read through the snapshot reports this from then on, the one under
+    /// way included; take a new snapshot. A snapshot of a database in memory
+    /// keeps the commit's bytes and never reports it. Only a rewrite through
+    /// the storage object the snapshot was taken from is seen: one through
+    /// another storage on the same path, or by another process, is not.
+    case snapshotOverwritten
+
+    /// The database reads a snapshot of one collection, made with
+    /// ``Snapshot/init(_:)`` from a cursor inside a commit, and the
+    /// operation needs the whole commit: compacting such a database is
+    /// refused before anything is written to the target. Its replication
+    /// reads serve the whole commit's bytes, the file being the unit.
+    case subCollectionSnapshot
 
     /// A slot whose tag is `index`, `kvPair` or `sortedKvPair` was given to
     /// write as a value. Those tags are the trees' own; such a slot in a
