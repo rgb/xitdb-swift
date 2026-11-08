@@ -268,7 +268,9 @@ public final class Database {
     /// place, because nothing committed can refer to it. That stops being
     /// safe once a slot has been copied to a second place: both places then
     /// name the same data, and a change through one shows through the
-    /// other. Freezing after the copy makes them independent.
+    /// other. Freezing after the copy protects what the copy points at
+    /// from writes through the original; the article on cloning says what
+    /// it does not protect.
     ///
     /// The caller's part: finish any ``Cursor/writeBytes(formatTag:_:)``
     /// before freezing, since a byte array grows only while it is the last
@@ -276,14 +278,16 @@ public final class Database {
     /// the freeze is stale: it still points into data that is now frozen,
     /// so a write through it is refused with ``XitDBError/staleCursor``
     /// before anything is written, while its reads go on working. To go
-    /// on writing, run the collection's init on the cursor you hold, by
-    /// making the collection again from it, or take a new cursor from the
-    /// transaction's root cursor: a path that begins with an init part is
-    /// allowed through a stale cursor of the same transaction, because the
-    /// init copies the collection's header or first block into the
-    /// transaction, and the cursor and collection it gives are fresh.
-    /// ``LinkedArrayList/append(contentsOf:)-(Slot)`` freezes the same
-    /// way, and refreshes the list that called it.
+    /// on writing, take a new cursor from the transaction's root cursor.
+    /// A path that begins with an init part is allowed through a stale
+    /// cursor of the same transaction as well, by making the collection
+    /// again from the cursor you hold: the init copies the collection's
+    /// header or first block into the transaction, and the cursor and
+    /// collection it gives are fresh, but it writes the cursor's slot in
+    /// place, in a record from before the freeze, so it is safe only for
+    /// the cloned structure itself, or for a handle into nothing that was
+    /// cloned. ``LinkedArrayList/append(contentsOf:)-(Slot)`` freezes the
+    /// same way, and refreshes the list that called it.
     ///
     /// - Throws: ``XitDBError/expectedTxStart`` outside a transaction.
     public func freeze() throws(XitDBError) {

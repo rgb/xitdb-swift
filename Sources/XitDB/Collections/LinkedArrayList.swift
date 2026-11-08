@@ -26,8 +26,10 @@
 /// after ``Database/freeze()``, with the same part for the caller: the
 /// list that made the call is refreshed, and every other collection or
 /// cursor made before it is stale, refused with ``XitDBError/staleCursor``
-/// at its next write until the collection is made again from the cursor
-/// it holds, or a new cursor is taken from the transaction's root cursor.
+/// at its next write. The way on is a new cursor from the transaction's
+/// root cursor; making the collection again from the cursor it holds is
+/// allowed, but safe only for the cloned structure itself, or for a
+/// handle into nothing that was cloned.
 public struct LinkedArrayList<Access: CursorAccess> {
     /// The cursor at the slot that holds the list.
     /// The cursor the list is a view of. ``append(contentsOf:)-(Slot)``
@@ -340,9 +342,11 @@ extension LinkedArrayList where Access == ReadWrite {
     /// This freezes the transaction: every write after it copies what was
     /// written before it, as after ``Database/freeze()``, and every other
     /// collection or cursor made before the call is stale, refused with
-    /// ``XitDBError/staleCursor`` at its next write until the collection is
-    /// made again from the cursor it holds, or a new cursor is taken from
-    /// the transaction's root cursor.
+    /// ``XitDBError/staleCursor`` at its next write. The way on is a new
+    /// cursor from the transaction's root cursor; making the collection
+    /// again from the cursor it holds is allowed, but safe only for the
+    /// cloned structure itself, or for a handle into nothing that was
+    /// cloned.
     ///
     /// - Parameter list: The other list, which may be one that can only
     ///   read.
@@ -369,9 +373,11 @@ extension LinkedArrayList where Access == ReadWrite {
     /// This freezes the transaction: every write after it copies what was
     /// written before it, as after ``Database/freeze()``, and every other
     /// collection or cursor made before the call is stale, refused with
-    /// ``XitDBError/staleCursor`` at its next write until the collection is
-    /// made again from the cursor it holds, or a new cursor is taken from
-    /// the transaction's root cursor.
+    /// ``XitDBError/staleCursor`` at its next write. The way on is a new
+    /// cursor from the transaction's root cursor; making the collection
+    /// again from the cursor it holds is allowed, but safe only for the
+    /// cloned structure itself, or for a handle into nothing that was
+    /// cloned.
     ///
     /// - Parameter list: The slot of the other list, from its ``slot``,
     ///   in this database.

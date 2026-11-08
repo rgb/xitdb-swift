@@ -134,10 +134,13 @@ public enum XitDBError: Error, Sendable {
     /// ``LinkedArrayList/append(contentsOf:)-(Slot)``) or in an earlier
     /// transaction, since a write through it would change bytes that other
     /// things refer to or that are committed; for a read, one made in a
-    /// transaction that did not commit, whose bytes are gone. A path that
-    /// begins with a collection's init part is still allowed through a cursor
-    /// from before a freeze in the same transaction: that is how a
-    /// transaction goes on after a freeze.
+    /// transaction that did not commit, whose bytes are gone. The way on
+    /// after a freeze is a new cursor from the transaction's root cursor.
+    /// A path that begins with a collection's init part is still allowed
+    /// through a cursor from before a freeze in the same transaction, but
+    /// it writes the cursor's slot in place, so it is safe only for the
+    /// cloned structure itself, or for a handle into nothing that was
+    /// cloned.
     case staleCursor
 
     /// A slot whose tag is `index`, `kvPair` or `sortedKvPair` was given to
