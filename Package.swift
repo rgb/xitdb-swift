@@ -58,6 +58,14 @@ let package = Package(
             ],
             swiftSettings: languageSettings
         ),
+        // Every code block of the README, the articles and the tutorials, as a test
+        // that runs it, importing the library as a client does: the proof that the
+        // public surface is enough for what the documentation shows.
+        .testTarget(
+            name: "XitDBExamples",
+            dependencies: ["XitDB"],
+            swiftSettings: languageSettings
+        ),
     ],
     swiftLanguageModes: [.v6]
 )

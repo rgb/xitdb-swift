@@ -1,0 +1,128 @@
+@Tutorial(time: 10) {
+    @Intro(title: "Keeping history") {
+        Change a database over several moments, read any of them, go back to one, and see what that costs.
+
+        This tutorial keeps its database in memory, since none of it depends on where the bytes are. You should have done
+        <doc:YourFirstDatabase>.
+    }
+
+    @Section(title: "Make some history") {
+        @ContentAndMedia {
+            Here the database is a price list. Each moment is the list as it stood after one change.
+        }
+
+        @Steps {
+            @Step {
+                Make a database in memory, with a list at the root.
+
+                @Code(name: "main.swift", file: "keeping-history-01.swift")
+            }
+
+            @Step {
+                Set two prices in the first moment.
+
+                @Code(name: "main.swift", file: "keeping-history-02.swift")
+            }
+
+            @Step {
+                Change one price in a second moment. The moment starts from the last one, so the price of pears is still
+                there without anyone writing it again.
+
+                @Code(name: "main.swift", file: "keeping-history-03.swift")
+            }
+
+            @Step {
+                Remove a price in a third moment.
+
+                @Code(name: "main.swift", file: "keeping-history-04.swift")
+            }
+        }
+    }
+
+    @Section(title: "Read the past") {
+        @ContentAndMedia {
+            A moment is an element of a list, and an earlier one reads exactly like the latest.
+        }
+
+        @Steps {
+            @Step {
+                Read the latest moment. Apples are 150, and there are no pears.
+
+                @Code(name: "main.swift", file: "keeping-history-05.swift")
+            }
+
+            @Step {
+                Read the first moment, by its index. Removing the pears from a later moment did nothing to this one.
+
+                @Code(name: "main.swift", file: "keeping-history-06.swift")
+            }
+
+            @Step {
+                Walk the whole history. The list's iterator gives a read-only cursor at each moment.
+
+                @Code(name: "main.swift", file: "keeping-history-07.swift")
+            }
+        }
+    }
+
+    @Section(title: "Go back") {
+        @ContentAndMedia {
+            There is no undo operation, and none is needed. A moment is one slot, and a slot can be copied.
+        }
+
+        @Steps {
+            @Step {
+                Append the slot of the second moment. There is no body, because nothing changes: the new moment is that
+                moment.
+
+                @Code(name: "main.swift", file: "keeping-history-08.swift")
+            }
+
+            @Step {
+                Read the new latest moment. The pears are back. And the history has four elements, because going back did
+                not lose anything: the moment you undid is still element 2, if you change your mind.
+
+                @Code(name: "main.swift", file: "keeping-history-09.swift")
+            }
+
+            @Step {
+                See what it cost. However large the moment you went back to, the transaction appended 194 bytes: a copy of
+                the root slot, a copy of the list's header and first block, and the trailer that ends a transaction. Every
+                moment costs at least that, and more as the history grows, 338 bytes past 16 moments, so the file only grows.
+                <doc:MomentsAndHistory> has the numbers, and compacting is how to get the space back.
+
+                @Code(name: "main.swift", file: "keeping-history-10.swift")
+            }
+        }
+    }
+
+    @Assessments {
+        @MultipleChoice {
+            You remove a key from the latest moment. Where is its value now?
+
+            @Choice(isCorrect: false) {
+                Nowhere: its bytes are gone from the file.
+
+                @Justification(reaction: "Try again.") {
+                    A transaction never changes committed bytes. Only compacting the database leaves them behind.
+                }
+            }
+
+            @Choice(isCorrect: true) {
+                Still in the file, and readable through every earlier moment.
+
+                @Justification(reaction: "That's right.") {
+                    The key is gone from the new moment. The earlier moments are as they were.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                Marked as deleted, in every moment.
+
+                @Justification(reaction: "Try again.") {
+                    Nothing is marked. Earlier moments are not touched by anything a later one does.
+                }
+            }
+        }
+    }
+}
