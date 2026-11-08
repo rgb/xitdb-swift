@@ -183,6 +183,10 @@ extension Database {
         default: throw .unexpectedTag
         }
         let header = try reader.arrayListHeader(at: pointer.slot.value)
+        // In write mode the get ends by writing into the root block, the
+        // element's slot or a copied child's pointer: a frozen or committed
+        // one is refused here, before any block is copied.
+        try checkPosition(header.ptr)
         guard let key = DatabaseReader.arrayListKey(index: index, size: header.size) else { throw .indexOutOfRange }
         // The size is at least one, since the index names an element.
         let shift = Trie.arrayListShift(lastIndex: header.size - 1)

@@ -70,6 +70,10 @@ extension Database {
         }
         let headerPtr = pointer.slot.value
         let header = try reader.bTreeHeader(at: headerPtr)
+        // In write mode the get rewrites the header for a copied leaf: a
+        // frozen or committed header is refused here, before any node is
+        // copied.
+        try checkPosition(headerPtr)
         guard let rank = DatabaseReader.linkedArrayListRank(index: index, size: header.size) else {
             throw .indexOutOfRange
         }

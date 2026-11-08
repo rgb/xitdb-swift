@@ -389,9 +389,12 @@ public final class Database {
     /// write into it in place would change what another handle, a clone or
     /// an earlier moment refers to. The transaction's own slot is the
     /// exception, the engine's own record that nothing else reaches; a
-    /// write that leaves the bytes unchanged is exempted by its caller.
+    /// write that leaves the bytes unchanged is exempted by its caller. A
+    /// position inside the file's headers is not frozen data but a damaged
+    /// pointer, which the reads that follow report as a damaged file.
     func checkPosition(_ position: UInt64) throws(XitDBError) {
-        if let start = transactionStart, position < start, position != bodyPosition { throw .immutableBytes }
+        guard let start = transactionStart, position >= RootHeader.endPosition else { return }
+        if position < start, position != bodyPosition { throw .immutableBytes }
     }
 
     /// Writes a slot back from an init part, which always writes its slot:
