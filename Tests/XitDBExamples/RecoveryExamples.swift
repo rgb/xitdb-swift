@@ -33,6 +33,12 @@ import XitDB
 
     @Test func whatOpeningDoesWithEachKindOfRootHeader() throws {
         let (good, after) = try threeMoments()
+        // Before the moments: the new database, then the empty history.
+        let storage = MemoryStorage()
+        let database = try Database(creating: storage, hashSize: 32)
+        #expect(storage.bytes.count == 62)
+        _ = try ArrayList<ReadWrite>(database.rootCursor)
+        #expect(storage.bytes.count == 256)
         // The commits end at 644, 1,032 and 1,420.
         #expect(after.map(\.count) == [644, 1032, 1420])
 
@@ -73,6 +79,15 @@ import XitDB
         let noTrailer = withCommittedSize(1420, Array(good[..<37]) + [UInt8](repeating: 0, count: 100))
         #expect(throws: XitDBError.invalidDatabase) {
             try Database(opening: MemoryStorage(bytes: noTrailer))
+        }
+        // A damaged file ID: every trailer's checksum covers it.
+        var otherFileID = good
+        otherFileID[15] ^= 1
+        #expect(throws: XitDBError.invalidDatabase) {
+            try Database(opening: MemoryStorage(bytes: otherFileID))
+        }
+        #expect(throws: XitDBError.invalidDatabase) {
+            try Database.recover(MemoryStorage(bytes: otherFileID))
         }
     }
 
@@ -183,6 +198,22 @@ import XitDB
         let end = try source.committedSize
         try replica.applyReplicated(at: start, bytes: try source.readCommitted(from: start, to: end))
         #expect(replicaStorage.bytes == good)
+
+        // The source's first commit is its first 62 bytes: the new database.
+        let first = MemoryStorage()
+        var afterFirst = DroppingSource(bytes: good, dropAt: 70)
+        #expect(throws: XitDBError.self) {
+            try Database(creating: first, hashSize: 32)
+                .applyReplicated(at: 0, from: &afterFirst, count: UInt64(good.count))
+        }
+        #expect(try Database.recover(first).committedSize == 62)
+        let beforeFirst = MemoryStorage()
+        var early40 = DroppingSource(bytes: good, dropAt: 40)
+        #expect(throws: XitDBError.self) {
+            try Database(creating: beforeFirst, hashSize: 32)
+                .applyReplicated(at: 0, from: &early40, count: UInt64(good.count))
+        }
+        #expect(throws: XitDBError.invalidDatabase) { try Database.recover(beforeFirst) }
 
         // A sync that failed before the first commit arrived leaves nothing to recover.
         let empty = MemoryStorage()

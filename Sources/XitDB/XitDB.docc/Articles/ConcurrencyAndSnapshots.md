@@ -22,7 +22,7 @@ nothing left behind can use it. A database has no lock inside, so do not get aro
 ### Readers and a writer
 
 Each task, or each process, opens a storage and a database of its own. The writer opens the file read-write, and takes the
-exclusive lock so that no second writer can start. A reader opens it read-only:
+exclusive lock so that no second writer that also asks for the lock can start. A reader opens it read-only:
 
 ```swift
 // A reader: a storage opened read-only, and a database of its own.
@@ -47,14 +47,14 @@ writing the same number under both keys, and no reader ever found the two differ
 The lock, the read-only access mode and why a reader that opened the file read-write is a second writer are in <doc:Storage>.
 
 A database in memory has no file to share. Its ``MemoryStorage`` belongs to one thread or task at a time, as the database does,
-so no other thread can read it.
+so no other thread can read it at the same time.
 
 ### Cursors from other transactions
 
 A cursor belongs to the transaction it was made in, and to the ``Database`` that made it. Once that transaction is over:
 
-- **If it committed**, a read through the cursor reads the commit it came from, which nothing changes, whatever has been committed
-  since:
+- **If it committed**, a read through the cursor reads what the cursor saw when it was made or last written through, as any
+  cursor read does. Once committed, those bytes never change, whatever is committed since:
 
   ```swift
   // A cursor from that commit goes on reading it.
@@ -65,7 +65,8 @@ A cursor belongs to the transaction it was made in, and to the ``Database`` that
   `count` still reads 1. A write through such a cursor is refused with ``XitDBError/staleCursor``: see
   <doc:CloningFreezeAndStaleHandles>.
 - **If it did not commit**, its bytes were cut off and the next transaction writes in their place, so a read through it is
-  refused with ``XitDBError/staleCursor`` too. Only its ``Cursor/slot``, which touches no bytes, still reads.
+  refused with ``XitDBError/staleCursor`` too, and so is a read through an iterator or a byte reader made from it before the
+  rollback. Only its ``Cursor/slot``, which touches no bytes, still reads.
 
 The ``Database/rootCursor`` is never stale: every read through it looks up the last commit.
 

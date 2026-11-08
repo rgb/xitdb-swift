@@ -88,6 +88,7 @@ import XitDB
 
         // Its bytes were cut off, and the next transaction reuses their place.
         #expect(throws: XitDBError.staleCursor) { try unfinished!.readBytes() }
+        #expect(throws: XitDBError.staleCursor) { try unfinished!.reader() }
         // Its snapshot of the slot touches no bytes, and stays readable.
         #expect(try unfinished!.slot.tag == .bytes)
     }

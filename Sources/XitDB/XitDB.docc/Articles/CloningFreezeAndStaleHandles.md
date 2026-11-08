@@ -102,7 +102,8 @@ After ``Database/freeze()``, every cursor and collection made before it in the t
 - **A write through it is refused** with ``XitDBError/staleCursor``. The guard runs before anything is written, so the
   transaction is not harmed and goes on. That covers every write: a value, an append, a `putCursor`, a byte array.
 - **A read through it works**, and reads what the handle points at, which the freeze keeps as it is. It does not see what
-  fresh handles write afterwards, since they write copies.
+  fresh handles write afterwards, since they write copies, unless a collection is made again from a cursor held below it,
+  which writes in place: see below.
 - **A collection made again from it is fresh.** Making a collection runs its initialiser, which copies the collection's header,
   or its first block, into the transaction, and that is allowed through a stale cursor of the same transaction. The cursors
   and collections it gives are fresh.

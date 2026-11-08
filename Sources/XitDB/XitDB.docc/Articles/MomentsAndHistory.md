@@ -126,7 +126,8 @@ Three things follow that are easy to get wrong:
   discards the history (``Database/compact(into:offsetMap:)``), and delete the old file.
 - **A cursor belongs to its transaction.** A write through one kept from an earlier transaction is refused with
   ``XitDBError/staleCursor``, which is what keeps committed bytes, and every earlier moment, as they are. Make a new
-  cursor in each transaction. A read through a kept cursor still works, and reads the moment it came from.
+  cursor in each transaction. A read through a kept cursor still works if its transaction committed, and reads what the
+  cursor saw.
 
 ### What it costs
 

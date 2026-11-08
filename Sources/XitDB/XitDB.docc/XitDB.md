@@ -31,8 +31,8 @@ Three things in that code are not what you might assume. You hash your own keys,
 in a read-only and a read-write form: see <doc:TheCollections>. And the file only grows until you compact it:
 see <doc:MomentsAndHistory> for what that costs.
 
-A database whose last commit is damaged does not open. Opening names the last commit that verifies, and one
-explicit call, the only one that can lose a commit, cuts the file back to it: see <doc:Recovery>.
+A database whose root header or last trailer is damaged does not open. Opening names the last commit that
+verifies, and one explicit call cuts the file back to it, which can lose the commits after it: see <doc:Recovery>.
 
 To start, take the tutorials, or read the four articles under Essentials in order. After those, each article stands
 on its own.

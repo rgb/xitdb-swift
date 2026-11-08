@@ -215,8 +215,8 @@ let byte: UInt8 = 0
 
 A hash, or a sorted collection's key, is `some Sequence<UInt8>` at the call site: a CryptoKit digest as it is, an array, a
 slice, a string's `utf8`, or Foundation's `Data`. The call makes an array of it, which costs nothing for an array and is a copy
-for anything else. Each method also has an overload taking a `Span<UInt8>`, for bytes you already have borrowed, which copies
-nothing:
+for anything else. Each method also has an overload taking a `Span<UInt8>`, for bytes you already have borrowed, which allocates
+nothing for a hash or key of up to 64 bytes:
 
 ```swift
 let sorted = try SortedMap<ReadWrite>(database.rootCursor)

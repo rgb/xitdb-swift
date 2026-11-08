@@ -7,15 +7,15 @@ What this package does differently from xitdb in Zig, and what it does the same 
 The port's first rule is that it writes the same bytes: given the same file ID, the same commit IDs and the same operations, it
 produces the same file as the original. That is checked with 219 conformance scripts. In 121 the file must match byte for byte the
 one the original writes, or, for the few operations the port deliberately does differently, the one the original writes when it is
-made to do the same. In the other 98 the script must fail where the original fails.
+made to do the same. The other 98 must fail, as they do with the original: they check that a runner catches what is wrong.
 
 The second rule is that where the original's behaviour looks wrong, the port does what is correct. The differences are of three
-kinds: the port refuses with an error what would damage data in the original; it gives an error or a sensible result where the
+kinds: the port refuses with an error, or decides differently, what would damage data in the original; it gives an error or a sensible result where the
 original crashes or disagrees with itself; and it recovers, when asked, a file the original cannot open. Two of them change the
 bytes of operations that are valid in both, the writes after a join and ``Cursor/writeIfEmpty(_:)``. Each of those was made in a
 branch of the original first, and the port's files are compared with that branch's.
 
-### Refused where the original lets data be damaged
+### Where the original lets data be damaged
 
 - **A cursor kept from an earlier transaction.** In the original, a write through it changes committed bytes in place, so an
   earlier moment changes, and if the transaction then rolls back, a committed slot can point past the end of the file. The port
@@ -41,7 +41,7 @@ branch of the original first, and the port's files are compared with that branch
 ### An error or a sensible result where the original crashes or disagrees
 
 - **An offset past any a file can have** aborts the original's process. The port throws an error.
-- **A tree whose header disagrees with its nodes**, which a damaged file or the original's freeze hazards produce, crashes the
+- **A tree whose header disagrees with its nodes**, which a damaged file or the original's freeze hazards produce, can crash the
   original. The port throws an error where it comes across one, and never traps: see <doc:Errors>.
 - **The key and value slots of a hashed entry** are read without checking their tags in the original. The port checks them.
 - **With 64-byte hashes**, the original's depth counter overflows at 64 levels. The port goes as deep as the hash allows, and then

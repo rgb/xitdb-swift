@@ -70,7 +70,7 @@ alone does not count.
 An operation that fails before it writes anything leaves the transaction as it was, and the body can catch the error and go on.
 Every guard is of that kind: a write through a stale cursor, a structural slot, an index that names no element, a collection of
 the wrong kind for its slot. What poisons is a failure partway: a storage that fails or runs out of room, a byte array whose body
-throws after writing, or an ``ArrayList/append(_:_:)`` whose body throws, as the element is already there. The original commits
+throws, or an ``ArrayList/append(_:_:)`` whose body throws, as the element is already there. The original commits
 what such an operation left: see <doc:DifferencesFromTheOriginal>.
 
 ### A write through the root is a transaction
@@ -149,8 +149,8 @@ progress, because it would commit before the transaction ended. Both are errors:
 
 A cursor belongs to the transaction that made it. Do not keep one for the next transaction; make a new one from
 the root. With no transaction running, a write through it throws ``XitDBError/expectedTxStart``, and during a later
-transaction ``XitDBError/staleCursor``. A read through it still works, and reads the commit it came from. A collection at
-the root is the exception, because it reads the root again each time.
+transaction ``XitDBError/staleCursor``. A read through it still works if its transaction committed, and reads what the
+cursor saw. A collection at the root is the exception, because it reads the root again each time.
 
 ### What a commit does to the file
 

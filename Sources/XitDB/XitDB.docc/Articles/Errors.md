@@ -36,8 +36,8 @@ These mean the code asked for something it should not have. Most are worth fixin
   written behind it; or a seek went beyond any position a storage can have.
 - ``XitDBError/storageNotEmpty``: Creating a database in a storage that has bytes.
 - ``XitDBError/targetNotEmpty``: Compacting into a database whose root holds something.
-- ``XitDBError/emptyLastMoment``: Compacting a database whose root is a list with no elements, or whose last element was
-  appended and never written, which would keep nothing of it: see <doc:Compaction>.
+- ``XitDBError/emptyLastMoment``: Compacting a database whose root is an array list with no elements, or whose last element
+  was appended and never written, which would keep nothing of it: see <doc:Compaction>.
 - ``XitDBError/invalidRange``: A range of committed bytes that makes no sense: past the committed size, starting inside the root header, or a replica's start that is neither 0 nor its size.
 - ``XitDBError/invalidLength``: Cutting a storage to more than its length.
 
@@ -46,15 +46,15 @@ These mean the code asked for something it should not have. Most are worth fixin
 These mean the bytes are not what they should be. Catch them where you open a file you did not write, or where a file might have
 been damaged.
 
-- ``XitDBError/invalidDatabase``: It is not a database, it is empty, or no trailer in it verifies, so it holds no commit. Also
-  bytes given to a sync that do not end with a trailer that verifies.
+- ``XitDBError/invalidDatabase``: It is not a database, it is empty, or no trailer in it verifies, which a damaged file ID in
+  its header also causes. Also bytes given to a sync that do not end with a trailer that verifies.
 - ``XitDBError/untrustedRootHeader(lastVerified:)``: Its root header cannot be trusted: the committed size is past the end, too
   small, or not at a trailer that verifies. `lastVerified` is where the last commit that does verify ends, and
   ``Database/recover(_:)`` cuts the file back to it: see <doc:Recovery>.
 - ``XitDBError/invalidVersion``: It was written with a format version this package does not read.
 - ``XitDBError/truncatedDatabase``: The storage of a database already open has become shorter than the committed size it
   records, as a sync at 0 that failed leaves it; or a sync at 0 brought bytes that stop short of their own. A file cut short
-  before it is opened gives ``XitDBError/untrustedRootHeader(lastVerified:)`` instead.
+  before it is opened gives ``XitDBError/untrustedRootHeader(lastVerified:)`` instead, as long as one commit is left whole.
 - ``XitDBError/endOfStream``: It ended before a value did, or is too short to hold its headers, which is 37 bytes. Also a
   ``ByteSource`` that runs out, and ``ByteReader/readAll(into:)`` with fewer bytes left than the buffer holds.
 - ``XitDBError/invalidEnumTag``: A slot's tag is not a known one.

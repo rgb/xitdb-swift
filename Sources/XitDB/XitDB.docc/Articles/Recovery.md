@@ -10,11 +10,12 @@ position, the root slot and the commit's ID. So a trailer that verifies is the e
 
 Opening reads the header, then the root header, and checks that the committed size ends at a trailer that verifies. It writes
 nothing. A root header that fails the check is refused, and ``Database/recover(_:)`` is the one call that does anything about
-it. That call can lose a commit, and nothing else in the package can.
+it. That call cuts a database back to an earlier commit of its own, which can lose the commits after it.
 
 ### What a root header can be
 
-The examples are a history of three moments, whose commits end at 644, 1,032 and 1,420 bytes.
+The examples are a history of three moments. Its commits end at 62 bytes (the new database), 256 (the empty history),
+and 644, 1,032 and 1,420 (one moment each).
 
 - **Sound.** The committed size is inside the file and ends at a trailer that verifies. The file opens. Bytes past the committed
   size, if there are any, are what an unfinished transaction left, and the next transaction discards them.
@@ -23,8 +24,9 @@ The examples are a history of three moments, whose commits end at 644, 1,032 and
   `lastVerified` is where the last trailer that verifies ends: 1,420 here, as nothing else is wrong.
 - **Pointing at a damaged trailer**, or past the end of a file that was cut short. Opening throws the same error, and
   `lastVerified` is the end of the commit before: 1,032.
-- **In a file that holds no commit.** If the file does not start with a database's header, or no trailer in it verifies, opening
-  throws ``XitDBError/invalidDatabase``, as there is nothing to recover to. A file too short for its headers throws
+- **In a file with no commit to go back to.** If the file does not start with a database's header, or no trailer in it verifies,
+  opening throws ``XitDBError/invalidDatabase``, as there is nothing to recover to. A damaged file ID in the header does that too,
+  since every trailer's checksum covers it, even with every commit intact. A file too short for its headers throws
   ``XitDBError/endOfStream``.
 
 The trailers are checksummed and the data is not. A changed byte in a value, with the root header and the trailers intact, opens
@@ -61,7 +63,8 @@ What to know before calling it:
   moments recovers to three. So call it only after opening has refused the file.
 - **It needs to write.** On a storage opened read-only it fails with ``XitDBError/storageFailure(errno:)``, `EBADF`, at the write
   of the root header, and the file is as it was.
-- **It refuses what holds no commit**, with ``XitDBError/invalidDatabase``, and leaves the storage as it was.
+- **It refuses a file with no commit to go back to**, with ``XitDBError/invalidDatabase``, or ``XitDBError/endOfStream`` if the
+  storage is too short for a header, and leaves the storage as it was.
 
 ### What a power loss can leave
 
@@ -71,8 +74,9 @@ commit that reached the disk, or an earlier one. What can still happen is a root
 refuses and recovering repairs, keeping the commit whose trailer made it.
 
 Without that order, the root header can reach the disk ahead of the commit it names. That is ``Durability/none``, and a volume
-on which the storage has to settle for plain `fsync` on macOS. Opening then refuses the file, and recovering takes it back to the
-last commit whose trailer reached the disk. The original does not open such a file at all.
+on which the storage has to settle for plain `fsync` on macOS. If the trailer it names did not arrive, opening refuses the file,
+and recovering takes it back to the last commit whose trailer did. The original does not open such a file at all. If the trailer
+arrived and some of the data before it did not, opening accepts the file, and the missing bytes read as whatever is there.
 
 Recovering checks trailers and nothing else. Where writes are not kept in order, a trailer can reach the disk before some of the
 data it ends, and recovering keeps that commit with whatever the missing bytes read as. Use ``Durability/ordered`` or
@@ -81,7 +85,7 @@ data it ends, and recovering keeps that commit with whatever the missing bytes r
 ### A replica after a failed sync at 0
 
 A sync at 0 empties the replica first and writes the source's file from its start, so one that fails partway leaves the start of
-the source's file, and no database: ``Database/replicaState`` throws ``XitDBError/truncatedDatabase``. If what arrived reaches past
+the source's file, and no database: ``Database/replicaState`` throws, usually ``XitDBError/truncatedDatabase``. If what arrived reaches past
 the end of one of the source's commits, it holds that commit whole, and recovering keeps the last such commit. The source can then
 send only the rest:
 
@@ -93,8 +97,8 @@ let end = try source.committedSize
 try replica.applyReplicated(at: start, bytes: try source.readCommitted(from: start, to: end))
 ```
 
-With a source whose commits end at 644, 1,032 and 1,420, a connection that drops after 1,100 bytes recovers to 1,032, and the sync
-sends the last 388. If the sync failed before the first of the source's commits arrived, there is nothing to recover, recovering
+With the history above as the source, a connection that drops after 1,100 bytes recovers to 1,032, and the sync sends the last
+388. If the sync failed before the source's first commit, its first 62 bytes, arrived, there is nothing to recover: recovering
 throws, and the sync starts again from 0. See <doc:Replication>.
 
 ## See Also

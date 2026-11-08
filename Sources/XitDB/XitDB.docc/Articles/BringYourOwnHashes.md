@@ -35,8 +35,8 @@ try map.put(.uint(1), forHash: SHA256.hash(data: Array("alice".utf8)))
 
 A hash parameter takes any sequence of bytes: a digest as it is, an array, a slice, `Data`, or a string's `utf8` if it
 happens to have the right length. Each one is made into an array for the call, which for an array costs nothing and for
-anything else is a copy of the hash. Every method also has an overload that takes a `Span<UInt8>`, which copies nothing: see
-<doc:TheCollections>.
+anything else is a copy of the hash. Every method also has an overload that takes a `Span<UInt8>`, which allocates nothing for a hash of up
+to 64 bytes: see <doc:TheCollections>.
 
 A hash of any other size throws ``XitDBError/invalidHashSize`` as soon as there is a map to look in. That includes a
 SHA-1 hash in a database of SHA-256 hashes.
