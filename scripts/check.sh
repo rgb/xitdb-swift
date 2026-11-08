@@ -34,9 +34,11 @@ swift --version 2>&1 | grep -q "Swift version $expected_swift " || {
     exit 1
 }
 
+# The snapshot proof over the fixtures (SnapshotProofTests) costs many times the
+# replay in a debug build; it runs in the release tests below.
 step "Debug build and tests"
 swift build "${strict[@]}"
-swift test "${strict[@]}"
+swift test --skip SnapshotProofTests "${strict[@]}"
 
 # The snapshot concurrency suite under the thread sanitizer, in a build of its
 # own: a race in a snapshot's read half would be a wrong read that no plain run
