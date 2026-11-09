@@ -333,7 +333,7 @@ package struct Dumper {
             case .int:
                 return (Node(.int, text: String(try cursor.readInt64())), [])
             case .float:
-                return (Node(.float, text: Self.float(try cursor.readDouble())), [])
+                return (Node(.float, text: Self.float(bits: try cursor.readDouble().bitPattern)), [])
             case .bytes, .shortBytes:
                 return (try bytes(cursor, slot: slot), [])
             case .kvPair, .sortedKvPair:
@@ -596,10 +596,29 @@ package struct Dumper {
         return String(repeating: "0", count: 16 - digits.count) + digits
     }
 
-    /// A double as the dump prints it: whole values with ".0", the rest as
-    /// Swift prints them.
-    package static func float(_ value: Double) -> String {
-        if value.isFinite, value == value.rounded(), abs(value) < 1e15 { return String(Int64(value)) + ".0" }
+    /// A double as the dump prints it, from its bits alone, so that the same
+    /// bytes give the same text on every machine: whole finite values with
+    /// ".0", other finite values as Swift prints them, "inf" and "-inf", and
+    /// a NaN as "nan", or "snan" when its quiet bit is clear, with the rest
+    /// of its mantissa in hex when that is not zero, "nan(0x28047692a8cb)".
+    /// `Double`'s own description shows a NaN's payload on some machines and
+    /// not others, and leaves out the bit below the quiet bit; here every
+    /// bit of the file shows.
+    package static func float(bits: UInt64) -> String {
+        let exponent = (bits >> 52) & 0x7FF
+        let mantissa = bits & ((1 << 52) - 1)
+        let negative = bits >> 63 == 1
+        if exponent == 0x7FF {
+            if mantissa == 0 { return negative ? "-inf" : "inf" }
+            let quiet = mantissa & (1 << 51) != 0
+            let payload = mantissa & ((1 << 51) - 1)
+            let name = quiet ? "nan" : "snan"
+            return payload == 0 ? name : "\(name)(0x\(String(payload, radix: 16)))"
+        }
+        let value = Double(bitPattern: bits)
+        if value == value.rounded(), abs(value) < 1e15 {
+            return (negative && value == 0 ? "-" : "") + String(Int64(value)) + ".0"
+        }
         return "\(value)"
     }
 }

@@ -181,7 +181,7 @@ moment 8: map (17 entries)
     #0: bytes 45 "uyxqggczwvuyrewmjnhhnfbnjcglbuzrjvfdkgfbwwajd"
     #1: bytes 4 "bpmz"
     #2: bytes 3 0x6100e1
-    #3: float nan
+    #3: float nan(0x428047692a8cb)
     #4: bytes 1 tag be "o"
     #5: float -3.054539323587856e+43
     #6: bytes 7 "cbjjdej"

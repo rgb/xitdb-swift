@@ -232,6 +232,27 @@ import XitDBDumpKit
         #expect(checked == 131, "every fixture with a sidecar")
     }
 
+    /// Floats print from their bits, the same on every machine: the two
+    /// patterns the first Actions run of 0.2.1 printed differently on the
+    /// runner Mac, and the rest of the forms.
+    @Test func floatsPrintFromTheirBits() {
+        #expect(Dumper.float(bits: 0x7FF0_0000_0000_0001) == "snan(0x1)")
+        #expect(Dumper.float(bits: 0x7FF8_2804_7692_A8CB) == "nan(0x28047692a8cb)")
+        #expect(
+            Dumper.float(bits: 0x7FF4_0000_0000_0001) == "snan(0x4000000000001)", "the bit below the quiet bit shows")
+        #expect(Dumper.float(bits: 0x7FF8_0000_0000_0000) == "nan")
+        #expect(Dumper.float(bits: 0xFFF8_0000_0000_0000) == "nan")
+        #expect(Dumper.float(bits: 0x7FF0_0000_0000_0000) == "inf")
+        #expect(Dumper.float(bits: 0xFFF0_0000_0000_0000) == "-inf")
+        #expect(Dumper.float(bits: (2.0).bitPattern) == "2.0")
+        #expect(Dumper.float(bits: (-0.0).bitPattern) == "-0.0")
+        #expect(Dumper.float(bits: (0.0).bitPattern) == "0.0")
+        #expect(Dumper.float(bits: (1.5).bitPattern) == "1.5")
+        #expect(Dumper.float(bits: (-3.25).bitPattern) == "-3.25")
+        #expect(Dumper.float(bits: (1e300).bitPattern) == "1e+300")
+        #expect(Dumper.float(bits: Double.pi.bitPattern) == "3.141592653589793")
+    }
+
     /// A file that is not xitdb exits with 2 and says why.
     @Test func filesThatAreNotXitdb() throws {
         for bytes in [[UInt8](), Array("hello, not a database".utf8), [UInt8](repeating: 0, count: 100)] {
@@ -260,7 +281,7 @@ enum JSONTree {
             if let text = object["value"] as? String {
                 node.text = text
             } else if let number = object["value"] as? NSNumber {
-                node.text = Dumper.float(number.doubleValue)
+                node.text = Dumper.float(bits: number.doubleValue.bitPattern)
             }
         case .bytes:
             if let utf8 = object["utf8"] as? String { node.text = utf8 }
