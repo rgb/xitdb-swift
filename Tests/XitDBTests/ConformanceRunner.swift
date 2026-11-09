@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import XitDBTestSupport
+import XitDBHashing
 
 @testable import XitDB
 
@@ -652,6 +652,7 @@ final class ScriptRunner {
         case .structuralSlot: "StructuralSlot"
         case .poisonedTransaction: "PoisonedTransaction"
         case .untrustedRootHeader: "UntrustedRootHeader"
+        case .hashSizeMismatch: "HashSizeMismatch"
         case .invalidRange: "InvalidRange"
         case .invalidLength: "InvalidLength"
         case .targetNotEmpty: "TargetNotEmpty"

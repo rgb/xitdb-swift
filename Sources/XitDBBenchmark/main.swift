@@ -20,7 +20,7 @@
 
 import Foundation
 import XitDB
-import XitDBTestSupport
+import XitDBHashing
 
 struct BenchmarkFailure: Error, CustomStringConvertible {
     let description: String

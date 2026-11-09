@@ -1,11 +1,6 @@
 import Testing
 import XitDB
-
-#if canImport(CryptoKit)
-    import CryptoKit
-#else
-    import XitDBTestSupport
-#endif
+import XitDBHashing
 
 @Suite("Tutorial: Keeping a replica in step") struct KeepingAReplicaInStepTutorial {
     @Test func theWholeProgram() throws {

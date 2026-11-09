@@ -1,11 +1,6 @@
 import Foundation
 import XitDB
-
-#if canImport(CryptoKit)
-    import CryptoKit
-#else
-    import XitDBTestSupport
-#endif
+import XitDBHashing
 
 // The hash the examples key their maps with.
 func sha256(_ key: String) -> SHA256Digest {

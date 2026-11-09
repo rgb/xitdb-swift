@@ -1,11 +1,6 @@
 import Testing
 import XitDB
-
-#if canImport(CryptoKit)
-    import CryptoKit
-#else
-    import XitDBTestSupport
-#endif
+import XitDBHashing
 
 @Suite("Tutorial: Keeping history") struct KeepingHistoryTutorial {
     @Test func theWholeProgram() throws {

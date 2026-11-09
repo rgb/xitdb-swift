@@ -1,5 +1,5 @@
 import Testing
-import XitDBTestSupport
+import XitDBHashing
 
 /// The pattern's digests at the lengths where the padding changes shape,
 /// computed once by Python's hashlib, so that the boundaries are checked on
@@ -40,11 +40,11 @@ struct BoundaryVectorTests {
 
     @Test("SHA-256 at the boundaries", arguments: vectors)
     func sha256(vector: (length: Int, sha256: String, sha1: String)) {
-        #expect(SHA256.hash(data: pattern(count: vector.length)).description == vector.sha256)
+        #expect(PortableSHA256.hash(pattern(count: vector.length)).hex == vector.sha256)
     }
 
     @Test("SHA-1 at the boundaries", arguments: vectors)
     func sha1(vector: (length: Int, sha256: String, sha1: String)) {
-        #expect(Insecure.SHA1.hash(data: pattern(count: vector.length)).description == vector.sha1)
+        #expect(PortableSHA1.hash(pattern(count: vector.length)).hex == vector.sha1)
     }
 }

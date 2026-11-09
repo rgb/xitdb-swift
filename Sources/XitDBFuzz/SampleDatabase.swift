@@ -6,7 +6,7 @@
 // next and a seed names the same damaged file, byte for byte, everywhere.
 
 import XitDB
-import XitDBTestSupport
+import XitDBHashing
 
 /// The hash of a key as the sample database stores it: the SHA-256 of the
 /// text, repeated and cut to `size` bytes, for whatever hash size the

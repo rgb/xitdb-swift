@@ -1,9 +1,12 @@
-// What SHA-1 and SHA-256 share: the block loop with its padding, the words
-// of a block, the bytes a digest is made of and the hex they print as.
+// What the portable SHA-1 and SHA-256 share: the block loop with its
+// padding, the words of a block, the bytes a digest is made of and the hex
+// they print as. The portable implementations are compiled on every
+// platform and tested against CryptoKit where it exists; they stand behind
+// the public names only where it does not.
 
-/// The bytes of a digest, with everything both digest types do with them:
+/// The bytes of a digest, with everything a digest type does with them:
 /// comparison, hashing, copying out and printing.
-struct DigestStorage<let byteCount: Int>: Equatable, Hashable, Sendable {
+package struct DigestStorage<let byteCount: Int>: Equatable, Hashable, Sendable {
     let storage: InlineArray<byteCount, UInt8>
 
     /// The bytes, `byte(index)` for each index in order.
@@ -12,7 +15,7 @@ struct DigestStorage<let byteCount: Int>: Equatable, Hashable, Sendable {
     }
 
     /// The bytes, copied into a new array.
-    var bytes: [UInt8] {
+    package var bytes: [UInt8] {
         var bytes = [UInt8](repeating: 0, count: byteCount)
         for index in storage.indices {
             bytes[index] = storage[index]
@@ -21,7 +24,7 @@ struct DigestStorage<let byteCount: Int>: Equatable, Hashable, Sendable {
     }
 
     /// The bytes as lowercase hex, two characters a byte.
-    var hex: String {
+    package var hex: String {
         let digits = Array("0123456789abcdef".utf8)
         var characters: [UInt8] = []
         characters.reserveCapacity(2 * byteCount)
@@ -33,14 +36,14 @@ struct DigestStorage<let byteCount: Int>: Equatable, Hashable, Sendable {
         return String(decoding: characters, as: UTF8.self)
     }
 
-    static func == (lhs: Self, rhs: Self) -> Bool {
+    package static func == (lhs: Self, rhs: Self) -> Bool {
         for index in lhs.storage.indices where lhs.storage[index] != rhs.storage[index] {
             return false
         }
         return true
     }
 
-    func hash(into hasher: inout Hasher) {
+    package func hash(into hasher: inout Hasher) {
         for index in storage.indices {
             hasher.combine(storage[index])
         }

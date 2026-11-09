@@ -1,11 +1,6 @@
 import Testing
 import XitDB
-
-#if canImport(CryptoKit)
-    import CryptoKit
-#else
-    import XitDBTestSupport
-#endif
+import XitDBHashing
 
 @Suite("Tutorial: An index of your own") struct AnIndexOfYourOwnTutorial {
     @Test func theWholeProgram() throws {

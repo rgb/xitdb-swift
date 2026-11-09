@@ -1,48 +1,21 @@
 // SHA-256 as FIPS 180-4 defines it, in Swift that needs only the standard
-// library. It is here because CryptoKit is not on Linux.
+// library. Where CryptoKit exists, ``SHA256`` is CryptoKit's and this stands
+// behind it only in the tests; elsewhere it is what ``SHA256`` computes.
 
-/// SHA-256 (FIPS 180-4).
-///
-/// One shot only: there is no incremental update. A `String` is hashed
-/// through its `utf8`; a `Data` or an array slice passes as it is.
-public enum SHA256: Sendable {
+/// The portable SHA-256: the algorithm behind ``SHA256`` where CryptoKit is
+/// absent, compiled everywhere so that the tests can hold it against
+/// CryptoKit where it exists.
+package enum PortableSHA256: Sendable {
     /// The number of bytes in a digest: 32.
-    public static let byteCount = 32
+    package static let byteCount = 32
 
-    /// The digest of `data`.
-    ///
-    /// The sequence is read once, in full, before the hashing starts, so a
-    /// sequence that can be read only once is fine, and a large one costs
-    /// its size in memory while it is hashed.
-    public static func hash(data: some Sequence<UInt8>) -> SHA256Digest {
+    /// The digest of `message`, read once and in full before the hashing
+    /// starts.
+    package static func hash(_ message: some Sequence<UInt8>) -> DigestStorage<32> {
         var state = SHA256State()
-        state.absorb(Array(data))
-        return SHA256Digest(state)
+        state.absorb(Array(message))
+        return DigestStorage { stateByte($0, of: state.words) }
     }
-}
-
-/// The 32 bytes of a SHA-256 digest.
-///
-/// It iterates over its bytes in order. `description` is the digest as
-/// lowercase hex and nothing more, where CryptoKit's puts "SHA256 digest: "
-/// in front; a caller that parses the printed form must not expect that
-/// prefix.
-public struct SHA256Digest: Sequence, Equatable, Hashable, Sendable, CustomStringConvertible {
-    let storage: DigestStorage<32>
-
-    init(_ state: SHA256State) {
-        storage = DigestStorage { stateByte($0, of: state.words) }
-    }
-
-    /// The bytes, copied into a new array.
-    public var bytes: [UInt8] { storage.bytes }
-
-    /// The digest as 64 lowercase hex characters.
-    public var description: String { storage.hex }
-
-    /// An iterator over the bytes in order: the same iterator type as
-    /// CryptoKit's digests have, over a copy of the bytes.
-    public func makeIterator() -> IndexingIterator<[UInt8]> { bytes.makeIterator() }
 }
 
 /// The working state of SHA-256: the eight words H0 to H7 of FIPS 180-4,

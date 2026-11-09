@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import XitDBTestSupport
+import XitDBHashing
 
 @testable import XitDB
 
@@ -299,7 +299,7 @@ import XitDBTestSupport
         }
     }
 
-    /// A digest, CryptoKit's or the support target's, is a sequence of bytes
+    /// A digest, CryptoKit's or the hashing target's, is a sequence of bytes
     /// and not a collection, and the methods that take a hash take it as it
     /// is (D21 item 3, amended):
     /// a SHA-1 digest goes straight into a map with a hash size of twenty,

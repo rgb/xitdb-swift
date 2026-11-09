@@ -24,7 +24,8 @@ let package = Package(
         .iOS(.v26),
     ],
     products: [
-        .library(name: "XitDB", targets: ["XitDB"])
+        .library(name: "XitDB", targets: ["XitDB"]),
+        .library(name: "XitDBHashing", targets: ["XitDBHashing"]),
     ],
     dependencies: [
         // Build-time only: the command plugin that builds the documentation. No
@@ -40,12 +41,13 @@ let package = Package(
             name: "XitDB",
             swiftSettings: languageSettings + [.strictMemorySafety()]
         ),
-        // SHA-256 and SHA-1 for the tests, the benchmark and the fuzzer, which
-        // hash their keys: CryptoKit is not on Linux, and the package takes no
-        // dependency. Written to the standard of a public target, since M10
-        // promotes it to the XitDBHashing target; nothing in it is a product.
+        // The hashes a store names: SHA-256 and SHA-1 as CryptoKit's where it
+        // exists and as the portable implementations where it does not, and
+        // SipHash-128; each conforms to XitDB's KeyHashing. No dependency: the
+        // package takes none (D15).
         .target(
-            name: "XitDBTestSupport",
+            name: "XitDBHashing",
+            dependencies: ["XitDB"],
             swiftSettings: languageSettings + [.strictMemorySafety()]
         ),
         // The benchmark of spec/benchmarks.md. An executable target is an
@@ -53,7 +55,7 @@ let package = Package(
         // package is meant to, and it brings no dependency.
         .executableTarget(
             name: "XitDBBenchmark",
-            dependencies: ["XitDB", "XitDBTestSupport"],
+            dependencies: ["XitDB", "XitDBHashing"],
             swiftSettings: languageSettings
         ),
         // The corruption fuzzer, which checks that a damaged file gives an error
@@ -61,17 +63,17 @@ let package = Package(
         // `scripts/fuzz.sh`, and no more meant for a client than the benchmark.
         .executableTarget(
             name: "XitDBFuzz",
-            dependencies: ["XitDB", "XitDBTestSupport"],
+            dependencies: ["XitDB", "XitDBHashing"],
             swiftSettings: languageSettings
         ),
         .testTarget(
-            name: "XitDBTestSupportTests",
-            dependencies: ["XitDBTestSupport"],
+            name: "XitDBHashingTests",
+            dependencies: ["XitDBHashing"],
             swiftSettings: languageSettings
         ),
         .testTarget(
             name: "XitDBTests",
-            dependencies: ["XitDB", "XitDBTestSupport"],
+            dependencies: ["XitDB", "XitDBHashing"],
             exclude: ["Resources/fixtures-source.txt"],
             resources: [
                 .copy("Resources/test.db"),
@@ -82,11 +84,11 @@ let package = Package(
         // Every code block of the README, the articles and the tutorials, as a test
         // that runs it, importing the library as a client does: the proof that the
         // public surface is enough for what the documentation shows.
-        // On Linux the examples hash with the support target, where the
-        // articles' readers on Apple platforms have CryptoKit.
+        // The examples hash with CryptoKit where it exists, as the articles'
+        // readers on Apple platforms do, and with XitDBHashing where it does not.
         .testTarget(
             name: "XitDBExamples",
-            dependencies: ["XitDB", "XitDBTestSupport"],
+            dependencies: ["XitDB", "XitDBHashing"],
             swiftSettings: languageSettings
         ),
     ],

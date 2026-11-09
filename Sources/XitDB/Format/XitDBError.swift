@@ -206,6 +206,13 @@ public enum XitDBError: Error, Sendable {
     /// transaction can only roll back. Its commit fails with this too.
     case poisonedTransaction
 
+    /// The database's header records a hash size other than the one the
+    /// store's hash produces: `XitDBStore` refuses to open it, before anything
+    /// is read or written through the store. The size a ``KeyHashing`` hash
+    /// produces is its ``KeyHashing/size``; the database's is the one it was
+    /// created with. Only the store layer raises it.
+    case hashSizeMismatch
+
     /// The root header of a database being opened cannot be trusted: its
     /// size is past the end of the file, smaller than a database can be, or
     /// does not end at a trailer whose checksum verifies. `lastVerified` is

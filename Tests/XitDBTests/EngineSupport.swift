@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import XitDBTestSupport
+import XitDBHashing
 
 @testable import XitDB
 
