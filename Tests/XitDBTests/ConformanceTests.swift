@@ -36,8 +36,8 @@ import Testing
     /// this test.
     @Test func everyScriptRuns() {
         let all = ConformanceFixture.all
-        #expect(all.count == 226)
-        #expect(all.filter { $0.mustPass }.count == 128)
+        #expect(all.count == 229)
+        #expect(all.filter { $0.mustPass }.count == 131)
         #expect(all.filter { !$0.mustPass }.count == 98)
 
         // the failing scripts whose description pins the engine error that

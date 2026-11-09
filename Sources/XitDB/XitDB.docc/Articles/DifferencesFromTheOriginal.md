@@ -5,7 +5,7 @@ What this package does differently from xitdb in Zig, and what it does the same 
 ## Overview
 
 The port's first rule is that it writes the same bytes: given the same file ID, the same commit IDs and the same operations, it
-produces the same file as the original. That is checked with 226 conformance scripts. In 128 the file must match byte for byte
+produces the same file as the original. That is checked with 229 conformance scripts. In 131 the file must match byte for byte
 the one the original writes, or, for the few operations the port deliberately does differently, the one the original writes when
 it is made to do the same. The other 98 must fail, as they do with the original: they check that a runner catches what is wrong.
 

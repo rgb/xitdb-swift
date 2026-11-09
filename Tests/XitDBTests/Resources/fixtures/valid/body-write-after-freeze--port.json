@@ -1,0 +1,63 @@
+{
+  "format": "xitdb-script/1",
+  "description": "body-write-after-freeze with what the port still refuses through the body after a freeze put in (D24 item 3). Through the transaction's body, or another cursor at its slot, a path whose first part is a write, a plain write and write_if_empty go on after a db_freeze or a concat, as a path that begins with an init does. Still refused with StaleCursor, before anything is written: a byte writer through the body, a path through it whose first part is neither an init nor a write, an empty path, and a write first, a plain write or write_if_empty through any other cursor from before the freeze, what a concat gives back and the cursor it was called on included. Nothing refused writes anything, so nothing is poisoned and each transaction commits. What the port writes is what Zig writes with the refused ops left out, which is body-write-after-freeze.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f0000000000025",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "ctx": { "as": "m", "ops": [
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "a" } } }, { "write": { "uint": 1 } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "a" } } }], "as": "held" },
+      { "op": "write_path", "on": "m", "path": [], "as": "body_again", "note": "another cursor at the body's slot" },
+      { "op": "db_freeze" },
+      { "op": "writer", "on": "m", "steps": [{ "write": "x" }], "expect_error": "StaleCursor", "note": "a byte writer through the body stays refused" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "a" } } }, { "write": { "uint": 8 } }], "expect_error": "StaleCursor", "note": "and so does a path whose first part is neither an init nor a write" },
+      { "op": "write_path", "on": "m", "path": [], "expect_error": "StaleCursor", "note": "and an empty path, which would give m a fresh cursor" },
+      { "op": "write_path", "on": "held", "path": [{ "write": { "uint": 7 } }], "expect_error": "StaleCursor", "note": "a write first through any other cursor from before the freeze stays refused" },
+      { "op": "write", "on": "held", "data": { "uint": 7 }, "expect_error": "StaleCursor" },
+      { "op": "write_if_empty", "on": "held", "data": { "uint": 7 }, "expect_error": "StaleCursor" },
+      { "op": "write_path", "on": "body_again", "path": [{ "write": { "uint": 9 } }], "note": "the exception goes by the slot, so this goes on too" },
+      { "op": "write", "on": "m", "data": { "uint": 10 }, "note": "a plain write through the body, which also gives m its new slot" },
+      { "op": "write_if_empty", "on": "m", "data": { "uint": 11 }, "note": "m and its slot both hold 10, so this writes nothing" },
+      { "op": "read_uint", "on": "m", "expect": 10 },
+      { "op": "write_path", "on": "m", "path": [{ "write": { "slot": null } }, { "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "b" } } }, { "write": { "uint": 2 } }], "note": "a write first, and the init goes through what it wrote" },
+      { "op": "read_uint", "on": "held", "expect": 1, "note": "a read through a cursor from before the freeze is a snapshot read" }
+    ] } }] },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": 0 }, { "hash_map_get": { "value": { "sha1": "b" } } }], "as": "b_now" },
+    { "op": "read_uint", "on": "b_now", "expect": 2 },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": 0 }, { "hash_map_get": { "value": { "sha1": "a" } } }], "expect_null": true, "note": "the write of nothing took the map away" },
+
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "ctx": { "as": "n", "ops": [
+      { "op": "db_freeze", "note": "what's frozen is the append. n's slot is empty, and so is its snapshot" },
+      { "op": "writer", "on": "n", "steps": [{ "write": "x" }], "expect_error": "StaleCursor", "note": "a byte writer through the body stays refused" },
+      { "op": "write_if_empty", "on": "n", "data": { "uint": 20 }, "note": "so this writes" },
+      { "op": "write_if_empty", "on": "n", "data": { "uint": 21 }, "note": "and this doesn't" },
+      { "op": "read_uint", "on": "n", "expect": 20 },
+      { "op": "write", "on": "n", "data": { "bytes": "a value too long for a slot, written after a freeze" }, "note": "its bytes go at the end, and then the body's slot" }
+    ] } }] },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": 1 }], "as": "second" },
+    { "op": "read_bytes", "on": "second", "expect": "a value too long for a slot, written after a freeze" },
+
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "hash_map_init": {} }, { "ctx": { "as": "q", "ops": [
+      { "op": "write_path", "on": "q", "path": [{ "hash_map_get": { "value": { "sha1": "la" } } }, "linked_array_list_init", "linked_array_list_append", { "write": { "uint": 1 } }] },
+      { "op": "write_path", "on": "q", "path": [{ "hash_map_get": { "value": { "sha1": "lb" } } }, "linked_array_list_init", "linked_array_list_append", { "write": { "uint": 2 } }] },
+      { "op": "read_path_slot", "on": "q", "path": [{ "hash_map_get": { "value": { "sha1": "lb" } } }], "as": "lb_slot" },
+      { "op": "write_path", "on": "q", "path": [{ "hash_map_get": { "value": { "sha1": "la" } } }, "linked_array_list_init"], "as": "la" },
+      { "op": "write_path", "on": "la", "path": [{ "linked_array_list_concat": { "list": { "var": "lb_slot" } } }], "as": "joined", "note": "a concat, which freezes" },
+      { "op": "writer", "on": "q", "steps": [{ "write": "x" }], "expect_error": "StaleCursor", "note": "a byte writer through the body stays refused after a concat too" },
+      { "op": "write_path", "on": "joined", "path": [{ "write": { "uint": 9 } }], "expect_error": "StaleCursor", "note": "what the concat gave back isn't at the body's slot, so a write first through it is refused" },
+      { "op": "write", "on": "la", "data": { "uint": 9 }, "expect_error": "StaleCursor", "note": "nor is la, the cursor the concat was called on" },
+      { "op": "read_path_slot", "on": "q", "path": [], "as": "q_slot", "note": "the map, which the concat changed in place" },
+      { "op": "write", "on": "q", "data": { "slot": { "var": "q_slot" } }, "note": "a plain write through the body after the concat, of what's there" },
+      { "op": "write_if_empty", "on": "q", "data": { "uint": 1 }, "note": "q and its slot both hold the map, so this writes nothing" },
+      { "op": "write_path", "on": "q", "path": [{ "write": { "slot": { "var": "q_slot" } } }, { "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "after" } } }, { "write": { "uint": 3 } }], "note": "a write first, and then into the map it wrote, which the init copies" }
+    ] } }] },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": 2 }, { "hash_map_get": { "value": { "sha1": "after" } } }], "as": "after_now" },
+    { "op": "read_uint", "on": "after_now", "expect": 3 },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": 2 }, { "hash_map_get": { "value": { "sha1": "la" } } }], "as": "la_now" },
+    { "op": "count", "on": "la_now", "expect": 2 },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": 2 }, { "hash_map_get": { "value": { "sha1": "lb" } } }], "as": "lb_now" },
+    { "op": "count", "on": "lb_now", "expect": 1 },
+    { "op": "count", "on": "root", "expect": 3 }
+  ]
+}

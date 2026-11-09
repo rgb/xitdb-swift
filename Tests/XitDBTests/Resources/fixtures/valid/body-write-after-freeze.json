@@ -1,0 +1,53 @@
+{
+  "format": "xitdb-script/1",
+  "description": "Going on after a freeze through the transaction's body by writing first, which the port allows as it allows an init first (D24 item 3): a path whose first part is a write, with what follows going through what it wrote, a plain write, which is a one-part write path, and write_if_empty, which calls it. After a db_freeze in the first two transactions, and after a concat in the third. The body's slot is in the transaction's own record, which nothing in it can copy, so none of these can be lost. write_if_empty is only used where the body cursor's snapshot and its slot agree, so it doesn't depend on finding 17. tests/port-variants/body-write-after-freeze--port is this with what the port still refuses through the body put in.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f0000000000025",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "ctx": { "as": "m", "ops": [
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "a" } } }, { "write": { "uint": 1 } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "a" } } }], "as": "held" },
+      { "op": "write_path", "on": "m", "path": [], "as": "body_again", "note": "another cursor at the body's slot" },
+      { "op": "db_freeze" },
+      { "op": "write_path", "on": "body_again", "path": [{ "write": { "uint": 9 } }], "note": "the exception goes by the slot, so this goes on too" },
+      { "op": "write", "on": "m", "data": { "uint": 10 }, "note": "a plain write through the body, which also gives m its new slot" },
+      { "op": "write_if_empty", "on": "m", "data": { "uint": 11 }, "note": "m and its slot both hold 10, so this writes nothing" },
+      { "op": "read_uint", "on": "m", "expect": 10 },
+      { "op": "write_path", "on": "m", "path": [{ "write": { "slot": null } }, { "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "b" } } }, { "write": { "uint": 2 } }], "note": "a write first, and the init goes through what it wrote" },
+      { "op": "read_uint", "on": "held", "expect": 1, "note": "a read through a cursor from before the freeze is a snapshot read" }
+    ] } }] },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": 0 }, { "hash_map_get": { "value": { "sha1": "b" } } }], "as": "b_now" },
+    { "op": "read_uint", "on": "b_now", "expect": 2 },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": 0 }, { "hash_map_get": { "value": { "sha1": "a" } } }], "expect_null": true, "note": "the write of nothing took the map away" },
+
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "ctx": { "as": "n", "ops": [
+      { "op": "db_freeze", "note": "what's frozen is the append. n's slot is empty, and so is its snapshot" },
+      { "op": "write_if_empty", "on": "n", "data": { "uint": 20 }, "note": "so this writes" },
+      { "op": "write_if_empty", "on": "n", "data": { "uint": 21 }, "note": "and this doesn't" },
+      { "op": "read_uint", "on": "n", "expect": 20 },
+      { "op": "write", "on": "n", "data": { "bytes": "a value too long for a slot, written after a freeze" }, "note": "its bytes go at the end, and then the body's slot" }
+    ] } }] },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": 1 }], "as": "second" },
+    { "op": "read_bytes", "on": "second", "expect": "a value too long for a slot, written after a freeze" },
+
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "hash_map_init": {} }, { "ctx": { "as": "q", "ops": [
+      { "op": "write_path", "on": "q", "path": [{ "hash_map_get": { "value": { "sha1": "la" } } }, "linked_array_list_init", "linked_array_list_append", { "write": { "uint": 1 } }] },
+      { "op": "write_path", "on": "q", "path": [{ "hash_map_get": { "value": { "sha1": "lb" } } }, "linked_array_list_init", "linked_array_list_append", { "write": { "uint": 2 } }] },
+      { "op": "read_path_slot", "on": "q", "path": [{ "hash_map_get": { "value": { "sha1": "lb" } } }], "as": "lb_slot" },
+      { "op": "write_path", "on": "q", "path": [{ "hash_map_get": { "value": { "sha1": "la" } } }, "linked_array_list_init"], "as": "la" },
+      { "op": "write_path", "on": "la", "path": [{ "linked_array_list_concat": { "list": { "var": "lb_slot" } } }], "as": "joined", "note": "a concat, which freezes" },
+      { "op": "read_path_slot", "on": "q", "path": [], "as": "q_slot", "note": "the map, which the concat changed in place" },
+      { "op": "write", "on": "q", "data": { "slot": { "var": "q_slot" } }, "note": "a plain write through the body after the concat, of what's there" },
+      { "op": "write_if_empty", "on": "q", "data": { "uint": 1 }, "note": "q and its slot both hold the map, so this writes nothing" },
+      { "op": "write_path", "on": "q", "path": [{ "write": { "slot": { "var": "q_slot" } } }, { "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "after" } } }, { "write": { "uint": 3 } }], "note": "a write first, and then into the map it wrote, which the init copies" }
+    ] } }] },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": 2 }, { "hash_map_get": { "value": { "sha1": "after" } } }], "as": "after_now" },
+    { "op": "read_uint", "on": "after_now", "expect": 3 },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": 2 }, { "hash_map_get": { "value": { "sha1": "la" } } }], "as": "la_now" },
+    { "op": "count", "on": "la_now", "expect": 2 },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": 2 }, { "hash_map_get": { "value": { "sha1": "lb" } } }], "as": "lb_now" },
+    { "op": "count", "on": "lb_now", "expect": 1 },
+    { "op": "count", "on": "root", "expect": 3 }
+  ]
+}

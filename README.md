@@ -41,7 +41,7 @@ It builds for macOS 26, iOS 26 and Linux, and is tested on macOS, on Linux and o
 ## How it is tested
 
 - **Conformance scripts**, written from the original's source and the file format by a separate project that never
-  reads the port. There are 226. In 128 of them the port must write the file the original writes, byte for byte, or,
+  reads the port. There are 229. In 131 of them the port must write the file the original writes, byte for byte, or,
   where the port deliberately does otherwise, the file the original writes when it is made to do the same. The other 98
   must fail, as they do with the original: they check that a runner catches what is wrong, such as an expectation the
   database does not meet or an error nobody handles. Each script runs on every kind of storage it can (the memory
