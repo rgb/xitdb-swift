@@ -1,0 +1,63 @@
+xitdb file: 6017 bytes; hash size 8, hash id 0x00000000, file id 875b9307abf55005
+verify: 11 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 266, id 2a134ab404760f2b, root hashMap
+  commit 2: ends at 651, id 88a80bc6473f9042, root hashMap
+  commit 3: ends at 2433, id 549b01d86f2b89d4, root hashMap
+  commit 4: ends at 2987, id 2b5ff6d2ff7d9453, root hashMap
+  commit 5: ends at 3361, id a3c4d5946d27a66c, root hashMap
+  commit 6: ends at 3736, id dfff7808cde585b2, root hashMap
+  commit 7: ends at 3965, id 942b310270194292, root hashMap
+  commit 8: ends at 5039, id 5de5135a3398be81, root hashMap
+  commit 9: ends at 5643, id 91ec7c7a01721556, root hashMap
+  commit 10: ends at 6017, id 464d577c47ce92d6, root hashMap
+note: the root is not a list of moments; it is dumped as it is
+moment 0: map (17 entries)
+  f527c79294c5f400: map (1 entry)
+    a312ea217ee4d29f: bytes 15 "wuaoltmxkhbedlw"
+  0000000000000001: bytes 18 "cvtllvkxhmxbhzzvit"
+  0000000000000021: bytes 1 "z"
+  0000000000000031: bytes 19 "oczisiyfuqkciykcxzh"
+  0000000000000041: list (1)
+    #0: bytes 12 "mymxptijnczw"
+  0000000000000051: map (1 entry)
+    f527c79294c5f400: int -742
+  0000000000000071: uint 817
+  bfeb734d2eb5d091: map (2 entries)
+    0000000000000001: bytes 3 0x61001f
+    728863308b0b4fa7: float -8.187267182856788e-207
+  a2ab1959c1c3bfa2: bytes 9 tag oj "nawhkbenu"
+  5ef8766de9353244: bytes 1 "c"
+  fe655fc29367d436: bytes 31 "lpsuppdbhhlmcetmyljpzzbxkhhhuvu"
+  91052b1cecbef0d7: list (24)
+    #0: bytes 1 tag aj "u"
+    #1: float -4.1608866015307644e+102
+    #2: nothing
+    #3: uint 938
+    #4: bytes 19 "pgaqxykzayduprdxeka"
+    #5: bytes 1 tag bl "n"
+    #6: float 3.716536618093731e-29
+    #7: bytes 4 "phsx"
+    #8: bytes 8 "fxnjdjxa"
+    #9: nothing
+    #10: float 3.297896146449325e+254
+    #11: bytes 2 "sm"
+    #12: float 2.2239634491635463e+104
+    #13: float -1.535643053066886e+76
+    #14: bytes 2 tag vt "ky"
+    #15: bytes 20 "bkttnfswycaszmkhaldn"
+    #16: bytes 3 0x61003b
+    #17: int 919
+    #18: float -5.545161610805608e+298
+    #19: uint 427
+    #20: bytes 8 "xgmemxrd"
+    #21: bytes 24 "uglowevhxgijkqecvkplydhj"
+    #22: bytes 4 "pfqt"
+    #23: bytes 8 "bkhtvcuz"
+  5dca0c996846a50b: list (1)
+    #0: bytes 58 "xriihlhmfdellefbyushyexuxippterpojimgcyeynflmachcgfmiadmda"
+  4464c0f830bc951c: bytes 34 tag jf "floxuriewmbtdfzhkeawfzwdvlzepksxai"
+  b7070201b82c329c: map (1 entry)
+    0000000000000021: int -980
+  b532a5440dd8422d: float 1.1667404309314812e+221
+  76884bd25765113e: bytes 17 "rcjtqbbbxwchmklvi"

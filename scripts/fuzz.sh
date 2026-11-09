@@ -4,7 +4,7 @@
 # trap or a hang. It builds the tool, then runs it one of two ways.
 #
 #   scripts/fuzz.sh regressions
-#       runs every file in scripts/fuzz-regressions/ through the battery, as the
+#       runs every file in Tests/XitDBTests/Resources/damaged/ through the battery, as the
 #       gate does. A trap or a hang fails it.
 #
 #   scripts/fuzz.sh run <hashSize> <from> <to> [targeted]
@@ -34,7 +34,7 @@ bin=.build/release/XitDBFuzz
 case "${1:-}" in
 regressions)
     [[ $# -eq 1 ]] || usage
-    "$bin" check scripts/fuzz-regressions/*.db
+    "$bin" check Tests/XitDBTests/Resources/damaged/*.db
     ;;
 run)
     [[ $# -eq 4 || ($# -eq 5 && $5 == targeted) ]] || usage

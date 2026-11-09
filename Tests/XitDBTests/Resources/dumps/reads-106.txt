@@ -1,0 +1,61 @@
+xitdb file: 14597 bytes; hash size 20, hash id "sha1", file id 225ac33c6d679b92; 11 moments
+verify: 12 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 627, id 7c7c7679e1b76d12, root arrayList
+  commit 2: ends at 1003, id f49f1ad5ce95dad6, root arrayList
+  commit 3: ends at 2144, id 4c146f4b7b37bee7, root arrayList
+  commit 4: ends at 4356, id 54a6ecaed295c9e9, root arrayList
+  commit 5: ends at 9895, id 8b74548ff1733f82, root arrayList
+  commit 6: ends at 10233, id f19673517336a94f, root arrayList
+  commit 7: ends at 11582, id 1aa3735cae52ea1c, root arrayList
+  commit 8: ends at 12653, id 0b5cff5736686b12, root arrayList
+  commit 9: ends at 12847, id c841bbbf373b2540, root arrayList
+  commit 10: ends at 14049, id 145e1130ab9406f9, root arrayList
+  commit 11: ends at 14597, id 35a5f6ec4acd1839, root arrayList
+moment 10: map (17 entries)
+  0000000000000000: linked (24)
+    #0: float -4.416419629685071e+172
+    #1: bytes 3 0x610051
+    #2: bytes 6 tag hu "dpreqi"
+    #3: bytes 31 tag sz "cyxyawueqjcpgzwvtkmbvhpfcxydbkz"
+    #4: bytes 0 ""
+    #5: bytes 34 "rlibfchwztaymghabgeqllaphiuehjekvo"
+    #6: bytes 18 "jvdvxruwpceruhzbpu"
+    #7: bytes 26 "nnbwjhvpuekpyxrskiinhnqagw"
+    #8: bytes 3 0x6100cb
+    #9: bytes 4 "vypo"
+    #10: bytes 9 "firwttcej"
+    #11: bytes 1 "a"
+    #12: bytes 3 0x61003c
+    #13: bytes 3 0x6100a4
+    #14: bytes 2 "ec"
+    #15: bytes 26 "kehujijehrxvjhlxglyaghzeep"
+    #16: bytes 54 "xvkbgrzapddcuydvdptknzjxlnktizvjgwwwzrkrkvnyjgfeggslmr"
+    #17: uint 137
+    #18: bytes 3 "bkq"
+    #19: bytes 7 "bvwsbxg"
+    #20: float 4.213805171442842e+263
+    #21: bytes 36 tag kb "xodgxdkvdbmzvisyfylqbxppubbvlmbncosi"
+    #22: bytes 4 "iacw"
+    #23: uint 466
+  0000000000000000: map (1 entry)
+    5ef8766de9353244: bytes 3 tag ba "wml"
+  4464c0f830bc951c: bytes 1 "g"
+  "jldaeujqjdgjd" 0000000000000000: empty
+  0000000000000000: bytes 57 "vguqferdtbhsjhqbsnkurbiyvyaxlxlqcpbwfekvoglcovxwdrlmqjygw"
+  46c33180ead412d3: bytes 1 tag zm "u"
+  5dca0c996846a50b: uint 560
+  699de12dc3094b06: bytes 28 "lvldwwelhsikigwtwpmwotklolkn"
+  5ef8766de9353244: counted map (1)
+    0b6b9dfc14e362fc: bytes 3 "lsu"
+  a2ab1959c1c3bfa2: int 800
+  76884bd25765113e: counted map (1)
+    5dca0c996846a50b: bytes 14 "biqjxtfjopjrna"
+  b7070201b82c329c: map (1 entry)
+    5dca0c996846a50b: uint 812
+  f527c79294c5f400: float -4.7484637975627504e-281
+  b532a5440dd8422d: list (1)
+    #0: bytes 43 "slnlzojkxtznzqaebtxtjvjekjhpagqnqmgwkrrqcis"
+  0b6b9dfc14e362fc: bytes 42 "fwytasqlrnzsbhgbehcwxyazjrwsvquajvsfssrrdx"
+  91052b1cecbef0d7: bytes 20 "rinemhaqpaenecjkixck"
+  728863308b0b4fa7: bytes 3 0x6100f8

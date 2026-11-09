@@ -1,0 +1,20 @@
+xitdb file: 6132 bytes; hash size 20, hash id "sha1", file id 50f5647d2380309d; 7 moments
+verify: 8 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 2245, id b379e4082bce7063, root arrayList
+  commit 2: ends at 2621, id 93bb08ba9215413d, root arrayList
+  commit 3: ends at 3573, id ffc1a8301e479e06, root arrayList
+  commit 4: ends at 3767, id ef983ad98358a6d4, root arrayList
+  commit 5: ends at 4287, id 34d56e1e3ca023ae, root arrayList
+  commit 6: ends at 4951, id 044e8273bc987816, root arrayList
+  commit 7: ends at 6132, id db2e792555ef0e9c, root arrayList
+moment 6: map (8 entries)
+  "chlhbhpjobkx" 0000000000000000: bytes 3 "dcd"
+  0000000000000000: bytes 26 "hiokrjmxjyzgkkxhnqqhnvfvha"
+  0000000000000000: nothing
+  0000000000000000: nothing
+  46c33180ead412d3: bytes 3 tag ur "cbd"
+  5ef8766de9353244: sorted set (1)
+    "s30": empty
+  0b6b9dfc14e362fc: bytes 27 "avkkmykivgpgtdgandgcyfaafux"
+  91052b1cecbef0d7: bytes 5 "odbnj"

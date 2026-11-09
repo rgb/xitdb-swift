@@ -1,0 +1,38 @@
+xitdb file: 3471 bytes; hash size 20, hash id "sha1", file id 00000000000000bb; 1 moment
+verify: 2 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 3471, id 159e1ffeccfeba11, root arrayList
+moment 0: map (30 entries)
+  f59de79444401cda: uint 14
+  639f3bb90668aed2: uint 13
+  2c99a8a5263becfa: uint 16
+  64e597917f25ef08: uint 11
+  164cebdb13ce9036: uint 8
+  f2b4da4ccdd495ea: uint 12
+  6f63e2424c19c8cf: uint 103
+  73fc0ead30331005: list (1)
+    #0: bytes 33 "the list's own long value is here"
+  ff539c96a2ed9f72: linked (1)
+    #0: uint 1
+  d917713b7d121a4c: bytes 41 tag ab "a long tagged value that three keys share"
+  e1877f3c11febcad: uint 19
+  e395157caccb6f09: uint 4
+  7d3c20e72da1b3db: uint 17
+  160e76ff060123d6: uint 2
+  b9b253807136d2c2: shared with moment 0/ff539c96a2ed9f72
+  38b62be4bddaa566: shared with moment 0/73fc0ead30331005
+  ec7e91ea994ccc9e: uint 18
+  2488e4809645fbcb: uint 1
+  23c2a19eea342758: uint 6
+  6e6d3eaaa535ad87: uint 5
+  bb5bd99b0c0e1c32: uint 15
+  15e34d64d09726b6: uint 9
+  eb801d52d22f6b43: uint 10
+  cf1bdd40ba1ce8c1: uint 3
+  372ea08cab33e71c: bytes 41 tag ab "a long tagged value that three keys share"
+  5bd8efbf4a47a875: uint 7
+  247774573f4bb987: sorted map (1)
+    "a key that is too long for a slot": uint 1
+  7b244c84cc83e5ec: bytes 41 tag ab "a long tagged value that three keys share"
+  1000e97dfc1cf009: shared with moment 0/247774573f4bb987
+  5b9e51e1e016fc5f: uint 0

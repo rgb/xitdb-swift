@@ -1,0 +1,44 @@
+xitdb file: 9584 bytes; hash size 20, hash id "sha1", file id e2e1275b61e743f7; 5 moments
+verify: 6 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 400, id ce558ba460b0c575, root arrayList
+  commit 2: ends at 3134, id d70e6dc36ef3f89c, root arrayList
+  commit 3: ends at 3998, id d179910cd0299d72, root arrayList
+  commit 4: ends at 4735, id 2283241f2178dc9c, root arrayList
+  commit 5: ends at 9584, id c450dddb508dbdc7, root arrayList
+moment 4: map (13 entries)
+  0000000000000000: bytes 45 "erykcmjrcisesoltqzggxqkppafessijpkedatpmjzsks"
+  fe655fc29367d436: counted set (1)
+    "ggxfggtnafeegv" 0000000000000000: empty
+  0000000000000000: counted map (2)
+    4464c0f830bc951c: float 4.119661882568066e-252
+    728863308b0b4fa7: uint 18446744073709551615
+  0000000000000000: linked (14)
+    #0: bytes 8 "sbhfqnkq"
+    #1: nothing
+    #2: bytes 44 "bberpyupgslxocegacbgglyjuqlyjistyzycxrkhfnpu"
+    #3: bytes 50 "leuvcfxtdyfbkaktnmbkfcgjgqdlagzfujcphmykteltmxkeqt"
+    #4: bytes 3 0x61004d
+    #5: int 701
+    #6: bytes 6 "rsmhxq"
+    #7: bytes 8 "sbhfqnkq"
+    #8: nothing
+    #9: bytes 44 "bberpyupgslxocegacbgglyjuqlyjistyzycxrkhfnpu"
+    #10: bytes 50 "leuvcfxtdyfbkaktnmbkfcgjgqdlagzfujcphmykteltmxkeqt"
+    #11: bytes 3 0x61004d
+    #12: int 701
+    #13: bytes 6 "rsmhxq"
+  0000000000000000: float -1.6099923648847447e+266
+  4464c0f830bc951c: bytes 25 tag yo "bmribmizxekszkiuofsmtggup"
+  0000000000000000: list (1)
+    #0: float 7.750451272525985e+59
+  46c33180ead412d3: map (2 entries)
+    0000000000000000: int 339
+    0000000000000000: bytes 33 "jfdtftfqdslefyvuirinjmhgasbjsrigc"
+  699de12dc3094b06: bytes 37 "lokeabqhtmuhrxhoyjohilbjlspcmanypbjwh"
+  bfeb734d2eb5d091: linked (1)
+    #0: bytes 26 "kcygsuycstrqimcttanshaiuev"
+  b7070201b82c329c: bytes 8 "jofuyvky"
+  f527c79294c5f400: list (1)
+    #0: bytes 53 "lfuljnkqkwnotkmwmnnxukrkhzeizkhjiosgrojrcpbczwramstoq"
+  a312ea217ee4d29f: bytes 3 "lor"

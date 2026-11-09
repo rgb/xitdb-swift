@@ -1,0 +1,9 @@
+xitdb file: 669 bytes; hash size 20, hash id "sha1", file id 0011223344556677
+verify: 3 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 309, id e73a5f385780e054, root hashMap
+  commit 2: ends at 669, id 5f74da4dee3c6ce2, root hashMap
+note: the root is not a list of moments; it is dumped as it is
+moment 0: map (2 entries)
+  e9d71f5ee7c92d6d: uint 2
+  86f7e437faa5a7fc: bytes 23 "a long value to compact"

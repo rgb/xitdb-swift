@@ -1,0 +1,23 @@
+xitdb file: 2125 bytes; hash size 20, hash id "sha1", file id 9089f05fbf88f8e7
+verify: 7 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 312, id da2ae62f2f394cf8, root sortedMap
+  commit 2: ends at 1036, id 26f33686c6fdaecb, root sortedMap
+  commit 3: ends at 1301, id a491b1bba9b22e9d, root sortedMap
+  commit 4: ends at 1515, id 12cb756214265973, root sortedMap
+  commit 5: ends at 1729, id cc8ef832283ed7a1, root sortedMap
+  commit 6: ends at 2125, id 5bf937c409d7d927, root sortedMap
+note: the root is not a list of moments; it is dumped as it is
+moment 0: sorted map (9)
+  0x160016: map (1 entry)
+    fe655fc29367d436: bytes 24 "gtkflkwvpwautifmndfcjqgr"
+  "a sorted key that is too long for a slot 14": bytes 6 "xwkumv"
+  "a sorted key that is too long for a slot 28": int 921
+  "s24": bytes 28 "kkzzqwrnfkcqhsavqcezxfutbjda"
+  "s3": map (1 entry)
+    0000000000000000: bytes 8 "ldcqhdbm"
+  "s30": int -71
+  "s32": sorted map (1)
+    "s25": nothing
+  "s36": nothing
+  "s39": bytes 4 "eoyb"

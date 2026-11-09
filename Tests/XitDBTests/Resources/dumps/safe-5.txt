@@ -1,0 +1,135 @@
+xitdb file: 33262 bytes; hash size 20, hash id "sha1", file id 63033b0ca389c35a; 12 moments
+verify: 13 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 3266, id 96f5b9dca730316e, root arrayList
+  commit 2: ends at 4084, id 5bb83b99f21f9f04, root arrayList
+  commit 3: ends at 5703, id b3b738d7bf9b4c7b, root arrayList
+  commit 4: ends at 14042, id 737e5b539e884980, root arrayList
+  commit 5: ends at 15945, id f0f648790b7f1fcb, root arrayList
+  commit 6: ends at 16139, id 2d7cbf0a5e6c35dc, root arrayList
+  commit 7: ends at 16739, id 9e7acaab729d8d83, root arrayList
+  commit 8: ends at 21694, id a0a75fb4fdf3832d, root arrayList
+  commit 9: ends at 22176, id 2e91287f4b4ec1d7, root arrayList
+  commit 10: ends at 25866, id 442e00e9ecc29c41, root arrayList
+  commit 11: ends at 28627, id 52c63488c446c2cc, root arrayList
+  commit 12: ends at 33262, id e35a87c4c83f203a, root arrayList
+moment 11: map (19 entries)
+  0000000000000000: bytes 41 "jzyznwyfnfwehmesywjwwqlqtecofyjdvfbtxsncn"
+  0000000000000000: sorted map (16)
+    0x0b000b: int -142
+    0x210021: bytes 3 0x610021
+    "a sorted key that is too long for a slot 14": bytes 3 0x61008e
+    "a sorted key that is too long for a slot 35": int -500
+    "s10": bytes 1 "f"
+    "s12": bytes 19 "yeltzazxchnxlpeporf"
+    "s16": int 688
+    "s20": int 576
+    "s23": bytes 3 0x610041
+    "s25": bytes 0 ""
+    "s29": int 435
+    "s30": uint 369
+    "s32": bytes 8 "ruyfnano"
+    "s37": int -36
+    "s6": uint 405
+    "s8": bytes 36 tag tn "jomspcoanlvyapkjecuykbnjjhimufawxarh"
+  fe655fc29367d436: float -6.006437555532811e+304
+  "lrdvvndvliuab" 0000000000000000: list (30)
+    #0: bytes 0 tag dk ""
+    #1: bytes 29 "cdalrseyisilpnxdnsicrlcysqazd"
+    #2: uint 481
+    #3: float -4.56450137041056e-178
+    #4: bytes 3 "cno"
+    #5: bytes 3 0x6100d2
+    #6: bytes 14 "fxopjtycenkoly"
+    #7: bytes 21 tag of "obdtbbnpmjttumaesiifn"
+    #8: bytes 7 "ghprmkf"
+    #9: bytes 15 tag up "pfnzlaofojipdea"
+    #10: float 5.2943163350477455e-261
+    #11: bytes 21 tag qa "hqhzxqpiftaupkcnuhdsi"
+    #12: bytes 18 "kyapuukquxreprkpmp"
+    #13: nothing
+    #14: nothing
+    #15: nothing
+    #16: bytes 1 "q"
+    #17: bytes 5 tag me "qjbrp"
+    #18: bytes 8 "titlizto"
+    #19: bytes 36 "bdeqhuzmgwnbrttmyzsroopdlyspseznxsbx"
+    #20: bytes 3 0x61002e
+    #21: nothing
+    #22: nothing
+    #23: bytes 3 0x610052
+    #24: float 4.380100819762863e-47
+    #25: bytes 53 "jbhsdsoqpxlnbmkknxzvfxmlpexzemzlagogrpwexjhfwmlsmdowo"
+    #26: float -4.339617716512716e-19
+    #27: bytes 5 "dihus"
+    #28: bytes 4 "mqvy"
+    #29: bytes 37 "yyslbbzbykdfydgwuaguxitknttfvanqjdqkk"
+  0000000000000000: linked (0)
+  0000000000000000: bytes 38 tag xo "ggiytakpmfnhsmghprdegctmapagpinbponafd"
+  4464c0f830bc951c: sorted map (33)
+    0x160016: bytes 1 tag co "e"
+    0x210021: bytes 0 ""
+    "a sorted key that is too long for a slot 14": bytes 3 0x6100ea
+    "a sorted key that is too long for a slot 21": float 1.3107361322841845e-77
+    "a sorted key that is too long for a slot 28": bytes 14 tag mk "gktrnmfqrfoyla"
+    "a sorted key that is too long for a slot 35": bytes 42 "gooyssquwxkuwoqbgdjwaesxhahsibzmesuiyezxbe"
+    "a sorted key that is too long for a slot 7": nothing
+    "s1": float -2.829324523362318e-292
+    "s10": float -7.460189956164061e+76
+    "s12": int -991
+    "s15": bytes 8 "tpkmhkhq"
+    "s17": bytes 44 "ggeqkpkxgxgggmirjtfuixbruqpejiedlywsourzpxnl"
+    "s18": uint 326
+    "s2": int -190
+    "s20": bytes 0 tag az ""
+    "s23": bytes 38 "mqgenkawznwlwpjjbdkdnrcfnnnuwgvpbkqitn"
+    "s24": bytes 2 "cr"
+    "s26": bytes 10 tag bk "shvzfjqcrg"
+    "s27": bytes 3 0x6100bf
+    "s29": bytes 3 0x610010
+    "s3": bytes 0 ""
+    "s30": bytes 3 0x61001e
+    "s31": int 256
+    "s32": bytes 3 "hyu"
+    "s34": bytes 3 0x61009d
+    "s36": float 124026505913732.11
+    "s37": bytes 3 0x610019
+    "s38": bytes 0 ""
+    "s39": bytes 0 tag oi ""
+    "s4": bytes 17 tag zs "pehfpoceoqxoxfoha"
+    "s5": nothing
+    "s6": bytes 48 "zbwwrfbwqnkyvgopippnalrjsfoiijurasydtrtcpyvozoxx"
+    "s8": bytes 3 0x61001c
+  46c33180ead412d3: int -548
+  5dca0c996846a50b: int -476
+  699de12dc3094b06: float -1.5306060315110375e-10
+  bfeb734d2eb5d091: uint 451
+  a2ab1959c1c3bfa2: nothing
+  76884bd25765113e: linked (19)
+    #0: bytes 0 ""
+    #1: bytes 0 ""
+    #2: bytes 0 ""
+    #3: bytes 8 "sundqlwh"
+    #4: bytes 20 tag ke "xzlhafynvtldwvwftlyi"
+    #5: bytes 3 "sgz"
+    #6: bytes 5 "falfz"
+    #7: bytes 3 0x610028
+    #8: bytes 3 tag ru "bwp"
+    #9: bytes 26 "mjewssqyovzfjbuoydjtgzhpjo"
+    #10: bytes 3 0x61008a
+    #11: bytes 40 "wyilysvhjhkaekynjiwhknaeuxcmqiaprvaiqtri"
+    #12: nothing
+    #13: int -278
+    #14: bytes 4 tag aw "yrlj"
+    #15: bytes 29 "fihnfqsgouguqvquzehgmbrinayvo"
+    #16: bytes 0 tag ij ""
+    #17: bytes 3 0x610066
+    #18: bytes 1 "z"
+  b7070201b82c329c: list (1)
+    #0: bytes 24 "ghoilrjfpgykqcdeobgwhuze"
+  f527c79294c5f400: sorted map (1)
+    "s20": bytes 7 "hgssbeb"
+  b532a5440dd8422d: nothing
+  91052b1cecbef0d7: int 551
+  728863308b0b4fa7: nothing
+  a312ea217ee4d29f: list (0)

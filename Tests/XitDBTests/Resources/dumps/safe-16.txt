@@ -1,0 +1,51 @@
+xitdb file: 12561 bytes; hash size 20, hash id "sha1", file id 5de186dcba779207; 8 moments
+verify: 9 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 438, id 4edc2bc5da16d861, root arrayList
+  commit 2: ends at 2289, id fdb7d8523b9d982f, root arrayList
+  commit 3: ends at 5952, id f594461dfecf9825, root arrayList
+  commit 4: ends at 6885, id fd0cc856a14da9fa, root arrayList
+  commit 5: ends at 7595, id 2eee984606c908c4, root arrayList
+  commit 6: ends at 11665, id 66742ea0505ab010, root arrayList
+  commit 7: ends at 11859, id 3375e9d1a86c8ae0, root arrayList
+  commit 8: ends at 12561, id 6a4a38108212fe38, root arrayList
+moment 7: map (11 entries)
+  0000000000000000: bytes 3 0x6100fb
+  fe655fc29367d436: list (24)
+    #0: uint 663
+    #1: uint 125
+    #2: uint 918
+    #3: uint 396
+    #4: uint 781
+    #5: uint 800
+    #6: uint 529
+    #7: uint 26
+    #8: uint 640
+    #9: uint 521
+    #10: uint 502
+    #11: uint 696
+    #12: uint 330
+    #13: uint 690
+    #14: uint 201
+    #15: uint 174
+    #16: uint 91
+    #17: uint 428
+    #18: uint 698
+    #19: uint 179
+    #20: uint 497
+    #21: uint 564
+    #22: uint 882
+    #23: uint 311
+  0000000000000000: uint 435
+  0000000000000000: counted map (1)
+    0000000000000000: uint 13
+  46c33180ead412d3: map (1 entry)
+    46c33180ead412d3: bytes 1 tag ny "x"
+  bfeb734d2eb5d091: bytes 43 tag zj "dgkvyqyjfpaxazuxgmhsuaywdbnexljppfbmonfypqc"
+  5ef8766de9353244: bytes 0 ""
+  a2ab1959c1c3bfa2: uint 883
+  76884bd25765113e: bytes 14 "qwxkzkcfoilwxe"
+  f527c79294c5f400: map (1 entry)
+    0000000000000000: float 2.75980604345023e+38
+  91052b1cecbef0d7: map (1 entry)
+    5dca0c996846a50b: bytes 3 0x6100f1

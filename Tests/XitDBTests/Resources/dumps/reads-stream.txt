@@ -1,0 +1,19 @@
+xitdb file: 2350 bytes; hash size 20, hash id "sha1", file id 0011223344556677; 2 moments
+verify: 3 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 1754, id 0ca3a4fe9bfe8847, root arrayList
+  commit 2: ends at 2350, id d65b75c43749b39a, root arrayList
+moment 1: map (13 entries)
+  ee3a3453b099c042: bytes 3 tag xy "abc"
+  a0f4ea7d91495df9: bytes 2 "yo"
+  1fc3e9742aa84c9a: bytes 6 tag xy "abcdef"
+  fc1b867349083a9d: bytes 0 ""
+  37745ed7a0f005fb: map (0 entries)
+  aa8c41330509455e: bytes 3 0x610062
+  1b152ded3a3e0272: bytes 29 tag ab "a tagged value that won't fit"
+  bd3027fa569ea15c: bytes 30 "a different long value to read"
+  fe0a6723bb24e25b: bytes 0 ""
+  53b0a1b2fadf4e04: uint 5
+  93552f48fec6fb55: bytes 36 "written in this transaction and long"
+  d479fa0ef92542c8: bytes 8 "12345678"
+  10e4e3aabbb9e12c: bytes 2 "hi"

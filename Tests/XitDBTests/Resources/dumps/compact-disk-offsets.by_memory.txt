@@ -1,0 +1,14 @@
+xitdb file: 1170 bytes; hash size 20, hash id "sha1", file id 00000000000000b3; 1 moment
+verify: 2 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 1170, id d24f6c14ac54d96b, root arrayList
+moment 0: map (6 entries)
+  40380bc1d358a6f8: cycle back to moment 0
+  ff539c96a2ed9f72: linked (1)
+    #0: uint 2
+  38b62be4bddaa566: list (1)
+    #0: uint 1
+  372ea08cab33e71c: bytes 32 "a long value that two keys share"
+  247774573f4bb987: sorted map (1)
+    "k": uint 3
+  7b244c84cc83e5ec: bytes 32 "a long value that two keys share"

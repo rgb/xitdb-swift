@@ -1,0 +1,29 @@
+xitdb file: 21963 bytes; hash size 20, hash id "sha1", file id b5145f14d921c666; 13 moments
+verify: 14 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 893, id 9b5f536ae003bf1c, root arrayList
+  commit 2: ends at 2396, id be0a3434b8b7a2c7, root arrayList
+  commit 3: ends at 4828, id 123c0f1673454a06, root arrayList
+  commit 4: ends at 7219, id 2fc56b29f18ccbbf, root arrayList
+  commit 5: ends at 10642, id 464a616aebb29f88, root arrayList
+  commit 6: ends at 11162, id 8ebd0c8e46456184, root arrayList
+  commit 7: ends at 11500, id c69fed0070e262a1, root arrayList
+  commit 8: ends at 11838, id e8ecad7441d637a9, root arrayList
+  commit 9: ends at 16023, id 50abd4f89308169a, root arrayList
+  commit 10: ends at 17260, id 8cc29570899181ca, root arrayList
+  commit 11: ends at 17940, id fa58a635fcf2f82a, root arrayList
+  commit 12: ends at 18134, id e313001027364a25, root arrayList
+  commit 13: ends at 21963, id b212c9baf7402634, root arrayList
+moment 12: map (7 entries)
+  0000000000000000: linked (1)
+    #0: nothing
+  0000000000000000: list (2)
+    #0: bytes 1 "b"
+    #1: bytes 5 tag db "ijjbt"
+  4464c0f830bc951c: bytes 1 tag eu "q"
+  0000000000000000: bytes 13 "fnamktglfyjpo"
+  76884bd25765113e: counted map (1)
+    0000000000000000: nothing
+  f527c79294c5f400: linked (1)
+    #0: bytes 9 "sgwsrkels"
+  728863308b0b4fa7: bytes 44 tag ky "jqnhqonxgugsaxijfqowugjsrgocylbnoonuiswucjda"

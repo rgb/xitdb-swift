@@ -1,0 +1,36 @@
+xitdb file: 3673 bytes; hash size 20, hash id "sha1", file id ffffffffffffffff; 1 moment
+verify: 2 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 3673, id 936a9ee772f80a8c, root arrayList
+moment 0: map (12 entries)
+  65c10dc3549fe074: set (2 entries)
+    "one" 0000000000000000: empty
+    "seventeen" 0000000000000000: empty
+  19edc1210777ba4d: list (3)
+    #0: uint 1
+    #1: uint 20
+    #2: uint 30
+  453ca94c1e10b385: map (6 entries)
+    2a0728860409cd66: bytes 2 tag ab "hi"
+    9168d19e00d63155: int 9223372036854775807
+    0beec7b5ea3f0fdb: bytes 0 ""
+    d25af6a2a05de768: counted map (0)
+    4f7e48d6aff60985: bytes 13 "no format tag"
+    ef6866ce0a7d40aa: uint 5
+  2ff3376f5af337c6: empty
+  895e4a9bcd73e80a: uint 1
+  ef6866ce0a7d40aa: uint 1
+  2632a20982e1e951: counted set (1)
+    "x" 11f6ad8ec52a2984: empty
+  a397e1ca94d9c880: map (5 entries)
+    8ba8ee8a061ebc09: bytes 6 tag 0x0000 "123456"
+    0ade7c2cf97f75d0: bytes 9 "123456789"
+    81f0c4ab9b567996: bytes 7 "é😀"
+    b6589fc6ab0dc82c: bytes 0 ""
+    fe5dbbcea5ce7e29: bytes 8 "12345678"
+  88f2baedfb0a00b4: map (1 entry)
+    "x" 11f6ad8ec52a2984: uint 11
+  1b3768c200f41ab6: counted map (1)
+    95cb0bfd2977c761: uint 3
+  81bf0145c8f2cc44: bytes 5 0x6162000063
+  c82e3d7279efa3ec: bytes 3 "hi!"

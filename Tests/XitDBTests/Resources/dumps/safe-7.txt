@@ -1,0 +1,114 @@
+xitdb file: 19238 bytes; hash size 8, hash id 0x00000000, file id 63cbe1e459320dd7; 13 moments
+verify: 14 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 1590, id b1d0ab1d15b96933, root arrayList
+  commit 2: ends at 1954, id 8fc9ffe7d65544f0, root arrayList
+  commit 3: ends at 5306, id 4a75932f93fe1f3b, root arrayList
+  commit 4: ends at 6021, id 2a31020d4293428e, root arrayList
+  commit 5: ends at 6402, id 8290734c49966d28, root arrayList
+  commit 6: ends at 6740, id bbd56ff85064874a, root arrayList
+  commit 7: ends at 7459, id 561d3be48074a170, root arrayList
+  commit 8: ends at 7967, id 99254acbd7e75d57, root arrayList
+  commit 9: ends at 9603, id 54a8d0e10581709e, root arrayList
+  commit 10: ends at 14979, id 1b224eaba6751499, root arrayList
+  commit 11: ends at 15487, id 86bf13095da03841, root arrayList
+  commit 12: ends at 18610, id 387b6cff85d11cac, root arrayList
+  commit 13: ends at 19238, id 281dd3dd5e2f57c2, root arrayList
+moment 12: map (21 entries)
+  f527c79294c5f400: int -469
+  0000000000000001: bytes 6 "maumnv"
+  0000000000000011: uint 858
+  0000000000000021: bytes 33 "zhfabaffhkbqsthlltmqjjreiydhwqekg"
+  0000000000000031: bytes 5 "sgpeh"
+  0000000000000041: bytes 34 tag ua "lzfkxhzmruvhmrvyxxqaqcxepkbdkdanty"
+  0000000000000051: map (1 entry)
+    0000000000000031: bytes 2 "pc"
+  0000000000000071: bytes 6 "douvti"
+  bfeb734d2eb5d091: float -1.0728284067892596e-137
+  a2ab1959c1c3bfa2: linked (22)
+    #0: float -1.055120430403946e+251
+    #1: float -1.7591516749053497e-144
+    #2: bytes 0 ""
+    #3: bytes 3 0x61004d
+    #4: bytes 1 "i"
+    #5: float 4.233289407589113e-282
+    #6: uint 858
+    #7: bytes 3 tag hk "tnn"
+    #8: uint 532
+    #9: nothing
+    #10: bytes 5 "rczqu"
+    #11: bytes 22 "zazdwjxtlpddrzrubjxwsw"
+    #12: nothing
+    #13: nothing
+    #14: bytes 3 0x610012
+    #15: bytes 3 0x610090
+    #16: bytes 49 "nktbgplssgwczdagsgjvdgdbhkcqkjdcyxsdfwxamvtgujizj"
+    #17: bytes 3 0x6100c8
+    #18: bytes 34 tag uh "qyyhzbrgxewrfwuancbqfgulfdzmanjseq"
+    #19: bytes 3 "blx"
+    #20: nothing
+    #21: bytes 56 "ighkdgwjqtcbhtpiniolwhropytokigoeqsjugeieizzjuezpiqbcjdd"
+  46c33180ead412d3: int 704
+  5ef8766de9353244: bytes 4 tag ea "obzo"
+  699de12dc3094b06: bytes 0 tag nu ""
+  fe655fc29367d436: list (25)
+    #0: int -31
+    #1: bytes 2 "ck"
+    #2: bytes 1 tag wl "m"
+    #3: bytes 25 "ambjixyqxhnupxphulrpxrcrl"
+    #4: bytes 1 "h"
+    #5: bytes 2 "su"
+    #6: bytes 35 "kjuixemdapjsewydvhkvcvggzmwbhvssooe"
+    #7: bytes 3 "ipz"
+    #8: bytes 4 "parw"
+    #9: bytes 4 tag vi "lxil"
+    #10: bytes 5 tag op "zdaty"
+    #11: bytes 21 "vaowgqbjjqykcqhbjwgup"
+    #12: int -335
+    #13: float -2.8954709244212424e-218
+    #14: bytes 51 "hokfhdeigotacfnxcdxrebeevkdjtvtqhilnukupggbpkelgvdz"
+    #15: bytes 41 tag xb "fqxlnjjsujywpzsvxseloyqcjgsdblkxthgvnfgpy"
+    #16: bytes 2 tag de "op"
+    #17: nothing
+    #18: bytes 47 "frxbyaylbtgacavozrilejcqssfkirkigkdgnegwtxdudje"
+    #19: bytes 3 0x61003d
+    #20: float 5.953282845817569e+86
+    #21: bytes 2 "ii"
+    #22: int -251
+    #23: bytes 44 "cesbzikwugmcuxvczrxvnprlhohxmmsyjeupmwcxbppt"
+    #24: bytes 6 "kwnadt"
+  728863308b0b4fa7: bytes 34 "ghlypqwpagkiweixmoawfadwoiuuwdfbfr"
+  5dca0c996846a50b: list (21)
+    #0: uint 289
+    #1: nothing
+    #2: bytes 19 tag dy "iciycemxbwbsxfxbvlv"
+    #3: bytes 3 0x610024
+    #4: bytes 6 "mhjcgp"
+    #5: bytes 2 "uw"
+    #6: uint 996
+    #7: bytes 43 "wtwvtdvcudfbktahawjvcrbswlosdhzionmphnvpchk"
+    #8: bytes 26 "ymbpgxuouplbugkshnggascilf"
+    #9: bytes 54 "sizmvyyrfoisyybeactbhjfhjvanabplwzkeclktvwibcqrdbjtwcs"
+    #10: uint 18446744073709551615
+    #11: bytes 2 "uf"
+    #12: bytes 6 tag rq "ddzxia"
+    #13: uint 639
+    #14: int 225
+    #15: nothing
+    #16: int -503
+    #17: int -67
+    #18: nothing
+    #19: bytes 13 "utuueqixsdcxq"
+    #20: int -794
+  4464c0f830bc951c: list (1)
+    #0: bytes 4 "ctcq"
+  b7070201b82c329c: int 976
+  0b6b9dfc14e362fc: bytes 6 "fypbwi"
+  b532a5440dd8422d: linked (6)
+    #0: bytes 3 0x610079
+    #1: bytes 3 "cix"
+    #2: bytes 7 "jmyxlqq"
+    #3: bytes 7 "bxxeuck"
+    #4: bytes 23 tag vh "dgzfdmhrqxjrlxmfstctzzp"
+    #5: float -9.025146353730406e+20
+  76884bd25765113e: bytes 7 tag wh "pddrirc"

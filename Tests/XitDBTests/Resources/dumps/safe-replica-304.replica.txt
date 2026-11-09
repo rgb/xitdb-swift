@@ -1,0 +1,162 @@
+xitdb file: 20942 bytes; hash size 20, hash id "sha1", file id e2e1275b61e743f7; 10 moments
+verify: 11 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 400, id 42ccccf1772d3a5b, root arrayList
+  commit 2: ends at 5419, id d66dd1dae6dc679c, root arrayList
+  commit 3: ends at 6769, id 7ceaf9a8edef77b6, root arrayList
+  commit 4: ends at 8449, id 0a65a7b50419e1e0, root arrayList
+  commit 5: ends at 13986, id 05c62b4012d7f7e2, root arrayList
+  commit 6: ends at 15070, id 89f4392ce6ebd1ae, root arrayList
+  commit 7: ends at 15628, id d64e7026138d20ee, root arrayList
+  commit 8: ends at 16482, id c0e84a62b07ff26a, root arrayList
+  commit 9: ends at 17173, id dcf84fb73b824989, root arrayList
+  commit 10: ends at 20942, id 7636ee4edac3c2e4, root arrayList
+moment 9: map (21 entries)
+  0000000000000000: bytes 14 "bjwldmzxwbntjq"
+  0000000000000000: bytes 2 "ky"
+  0000000000000000: list (1)
+    #0: int 772
+  fe655fc29367d436: int 980
+  0000000000000000: linked (0)
+  0000000000000000: bytes 3 "mag"
+  0000000000000000: counted map (1)
+    76884bd25765113e: bytes 3 "shf"
+  4464c0f830bc951c: uint 646
+  0000000000000000: bytes 1 "i"
+  46c33180ead412d3: bytes 4 "eesm"
+  5dca0c996846a50b: counted map (2)
+    0000000000000000: float 9.744660513562455e+138
+    76884bd25765113e: bytes 3 "shf"
+  699de12dc3094b06: linked (38)
+    #0: bytes 4 tag cl "igby"
+    #1: bytes 15 "rwwgkabwbverozr"
+    #2: bytes 3 0x61006f
+    #3: bytes 3 tag mf "wqj"
+    #4: bytes 38 tag qr "mhocozheevgamqeruxbtsiqomlkhjqkzcftejj"
+    #5: bytes 6 tag yj "hptdix"
+    #6: bytes 3 0x610017
+    #7: nothing
+    #8: bytes 38 "fgilciozuguqkqirrcxsxgvlhlawwqkhfxvcqf"
+    #9: nothing
+    #10: uint 232
+    #11: bytes 10 tag fz "vwqimhwtjb"
+    #12: bytes 4 "kfyy"
+    #13: int -742
+    #14: bytes 45 "lbznfmcoqpamabwmznckxqyshokqhfmetmoexotraozzl"
+    #15: nothing
+    #16: bytes 58 "ezoogockhfymaqbftrgxmmjocstduzyotkudmmfjzgyhcjwzqwhwhpjmea"
+    #17: bytes 5 tag gq "exehf"
+    #18: int 233
+    #19: uint 988
+    #20: float 1.11935699701287e-20
+    #21: bytes 33 tag yj "rygbbbfcnxfzftepunifyykvetourriwe"
+    #22: bytes 3 0x6100b5
+    #23: bytes 0 ""
+    #24: bytes 26 "ijquaktcciolpisqxdvvwhturm"
+    #25: float 7.018887085769982e-30
+    #26: bytes 1 "g"
+    #27: uint 759
+    #28: bytes 38 tag bl "lelrexyqrcvzmoawjhlymhwzzdfmyvpidxobyx"
+    #29: float -2.534120036114227e+234
+    #30: bytes 3 "raw"
+    #31: float 3.4727417176062404e+134
+    #32: nothing
+    #33: int 278
+    #34: uint 18446744073709551615
+    #35: bytes 24 tag yt "wkpusgtwnqumltlaobyqstzg"
+    #36: bytes 22 "tvaivtcbooccvvasrgsixo"
+    #37: bytes 4 tag bc "yuqe"
+  bfeb734d2eb5d091: bytes 6 tag xq "ltqzgg"
+  5ef8766de9353244: counted set (3)
+    "bi" 0000000000000000: empty
+    "vpchkrnfw" fe655fc29367d436: empty
+    "cmxz" 0000000000000000: empty
+  a2ab1959c1c3bfa2: bytes 27 "pklvrtcfjrkwvlhrpcpiaixmgju"
+  b7070201b82c329c: list (18)
+    #0: int -646
+    #1: bytes 3 0x61009a
+    #2: uint 486
+    #3: int -600
+    #4: bytes 6 tag hw "dsjxol"
+    #5: int 931
+    #6: bytes 21 "cxahadqhgoyoltzqxjknv"
+    #7: nothing
+    #8: uint 761
+    #9: nothing
+    #10: bytes 4 "vrar"
+    #11: bytes 11 "vivoouwiysu"
+    #12: bytes 2 "hg"
+    #13: bytes 3 0x61001d
+    #14: int 676
+    #15: float -2.5484149429854168e+172
+    #16: nothing
+    #17: nothing
+  b532a5440dd8422d: float -1.0759498557251589e-165
+  0b6b9dfc14e362fc: counted map (1)
+    0000000000000000: bytes 5 "iwaie"
+  91052b1cecbef0d7: nothing
+  728863308b0b4fa7: list (63)
+    #0: bytes 3 "mer"
+    #1: float 4.757174308723799e-308
+    #2: bytes 25 "vvfeyogkthpdtmauemchlktsa"
+    #3: bytes 2 tag kz "po"
+    #4: int 166
+    #5: uint 375
+    #6: bytes 9 "qtvhahbmu"
+    #7: bytes 5 "zmuos"
+    #8: int -337
+    #9: bytes 3 "rys"
+    #10: int 113
+    #11: bytes 21 "wmbmxktdhlointhegxoia"
+    #12: bytes 55 "rtvryrqwhbpctwnirxxiagyghdzyujglgvdqhmctxvwjsfxgnfzkqlt"
+    #13: bytes 50 "ayjoryxtnapcabxxzvakwqscysojayubdcskdtpfqrjrtwlqou"
+    #14: bytes 46 "nwqcguizoyxcjmbzsihpdphjyjcqrawiftzygltdshgktg"
+    #15: bytes 11 "gjrkrwcpmnq"
+    #16: nothing
+    #17: bytes 4 tag tx "hmme"
+    #18: bytes 39 tag xo "saxkmqobzfmjvqnwlfuwukghlfkjfyfwlyhtpml"
+    #19: nothing
+    #20: bytes 3 0x61001a
+    #21: bytes 57 "dhkqxkggughbiyafnyoufwejvmyeihmmygcztqvpgdmmrrqnngkrmtien"
+    #22: bytes 43 "yaqzgojwrizymtyfaeweuwuhxtoimhwsxpzefssohmz"
+    #23: int 286
+    #24: bytes 40 tag iw "qderfzlovzhwjhltidjsgdrhvzgwrpwgcjutepft"
+    #25: bytes 1 "o"
+    #26: bytes 32 "aincpwefrxzhfrbshstwfnwyvbhbwfkr"
+    #27: bytes 37 "ythydyifrwylhyxmsoemzgosukpridnffkaye"
+    #28: bytes 32 "dcjisygztqidtgkayuwpowrtvelwvirv"
+    #29: bytes 32 "kblehafknnbzrzupyzcujxdpgwphbrpv"
+    #30: uint 316
+    #31: bytes 3 0x6100b9
+    #32: bytes 7 tag ch "vyurxxc"
+    #33: bytes 0 ""
+    #34: bytes 3 "nzt"
+    #35: float 1.484743164474171e-19
+    #36: int 493
+    #37: bytes 6 tag lt "akrruy"
+    #38: nothing
+    #39: bytes 41 tag ag "xgodebayenwjfywdnarfdvroediqtkjrlthdujdsr"
+    #40: float 3.2713285038807963e+221
+    #41: bytes 29 "npexaakpgdkpmcvofmltrfelwrjuj"
+    #42: bytes 2 "sb"
+    #43: bytes 36 "gcibdzzpuwtrrvbqbzfyismvvzfqyyqwbjtx"
+    #44: bytes 0 tag ss ""
+    #45: bytes 0 tag um ""
+    #46: int -41
+    #47: bytes 3 tag up "roz"
+    #48: bytes 8 "igdfbirn"
+    #49: float -3.8665093825915864e+24
+    #50: bytes 3 0x610033
+    #51: int 179
+    #52: nothing
+    #53: bytes 1 tag kr "k"
+    #54: int -45
+    #55: bytes 0 tag jk ""
+    #56: bytes 8 "bdwzgowz"
+    #57: bytes 49 "dvnskdaagiqdnvkxtjusmhpmztcghzidfnvhxmrrtuntttftt"
+    #58: bytes 47 "vjfbflckznzxhnttxmhipmfvzwpwprcavspxhiygpnjuroj"
+    #59: bytes 3 0x6100fb
+    #60: nothing
+    #61: uint 540
+    #62: bytes 1 tag wp "m"
+  "lcwsuxkhwtfw" a312ea217ee4d29f: float -1.8256376523549514e+43

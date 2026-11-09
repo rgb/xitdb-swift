@@ -1,0 +1,83 @@
+xitdb file: 7816 bytes; hash size 8, hash id 0x00000000, file id 875b9307abf55005
+verify: 11 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 266, id 2504f37e0e7ffc5e, root hashMap
+  commit 2: ends at 651, id 71cdf518c5d8c60d, root hashMap
+  commit 3: ends at 2438, id 0868cac4afed3b5f, root hashMap
+  commit 4: ends at 2964, id bad8a69bc1e9498d, root hashMap
+  commit 5: ends at 3561, id 9f1ff0a61b0c0a87, root hashMap
+  commit 6: ends at 3765, id 2dbdf5677f12c10e, root hashMap
+  commit 7: ends at 4124, id 02c4f418c10c0bf4, root hashMap
+  commit 8: ends at 4680, id 5b5d9693406cc6ff, root hashMap
+  commit 9: ends at 7287, id 12c4473c3fe7d129, root hashMap
+  commit 10: ends at 7816, id 703041b0818019eb, root hashMap
+note: the root is not a list of moments; it is dumped as it is
+moment 0: map (21 entries)
+  f527c79294c5f400: bytes 19 tag tx "yfmsfhqwjbzggzglefh"
+  0000000000000001: bytes 27 "ptuufrvoakjjhamgixshznifpgl"
+  0000000000000011: map (1 entry)
+    0b6b9dfc14e362fc: bytes 30 "kpxretnwpubafxxqvyvehjqdrenixv"
+  0000000000000021: bytes 6 "dgtmtw"
+  0000000000000031: map (1 entry)
+    0000000000000021: bytes 3 0x61009a
+  0000000000000041: list (23)
+    #0: bytes 5 tag mx "jqvcm"
+    #1: int -927
+    #2: bytes 17 tag bo "cubxrxdoluedgxjeo"
+    #3: bytes 6 "ntkzhq"
+    #4: bytes 5 tag ji "dxjlo"
+    #5: nothing
+    #6: bytes 5 "nuope"
+    #7: int -211
+    #8: bytes 9 tag yu "rsmzppcbo"
+    #9: bytes 5 tag bf "upjoa"
+    #10: uint 991
+    #11: bytes 16 tag wy "enhdkdhvxqbxhgex"
+    #12: uint 735
+    #13: nothing
+    #14: int -124
+    #15: uint 18446744073709551615
+    #16: int -733
+    #17: bytes 3 0x6100bb
+    #18: bytes 29 "fibdinqgeoctmscyivbyswtbggjam"
+    #19: bytes 3 0x6100c0
+    #20: int -456
+    #21: bytes 2 "nl"
+    #22: uint 18446744073709551615
+  0000000000000071: uint 487
+  bfeb734d2eb5d091: bytes 3 0x61008d
+  46c33180ead412d3: uint 462
+  5ef8766de9353244: float -3.460710745758025e-170
+  699de12dc3094b06: bytes 12 "iswoynrusntq"
+  fe655fc29367d436: bytes 20 "cqsdbjpsypyoizcxtcii"
+  728863308b0b4fa7: float -7.293706216221719e+55
+  91052b1cecbef0d7: list (8)
+    #0: bytes 4 "mdky"
+    #1: bytes 3 0x6100fd
+    #2: bytes 10 "scrctnredz"
+    #3: bytes 3 tag mk "tbi"
+    #4: uint 491
+    #5: bytes 12 "mymxptijnczw"
+    #6: uint 108
+    #7: uint 376
+  5dca0c996846a50b: nothing
+  4464c0f830bc951c: bytes 1 "p"
+  "rdduthtbvdxt" b7070201b82c329c: empty
+  0b6b9dfc14e362fc: counted set (1)
+    "f" a2ab1959c1c3bfa2: empty
+  b532a5440dd8422d: bytes 56 "itjilomealksixjhzbsuozxbboxfniazsdmagqinlpoquhijavwkcthn"
+  76884bd25765113e: float 2.2609176095563832e+77
+  a312ea217ee4d29f: list (13)
+    #0: bytes 58 "fbixgfutghxbufqfblpkfqmvsvviefrjlpqemkkivdgjdocwjhhowfayqo"
+    #1: uint 624
+    #2: bytes 0 tag zp ""
+    #3: bytes 3 0x6100e9
+    #4: float 3.756738487917076e+94
+    #5: bytes 3 0x6100b5
+    #6: bytes 19 "ufsdafeocksvuntqqkg"
+    #7: bytes 54 "onatquvnocvleejibfppedjvyymqouimezautekrvxnotbmyibveny"
+    #8: float -1.9219562285478944e+108
+    #9: bytes 30 tag sf "pzoqlemraxqdsydooegqnkdbkvtbll"
+    #10: bytes 35 tag gc "wudsdevnniehmhoewcgijuxutlwswhyjlih"
+    #11: bytes 3 0x61003f
+    #12: uint 165

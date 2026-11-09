@@ -1,0 +1,115 @@
+xitdb file: 18908 bytes; hash size 20, hash id "sha1", file id cd19f198025ce714; 11 moments
+verify: 12 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 965, id 305b70ce92b26f50, root arrayList
+  commit 2: ends at 3056, id f1d338647afa03f7, root arrayList
+  commit 3: ends at 3250, id b42692adb3bd22b5, root arrayList
+  commit 4: ends at 3444, id 426c242956f4604d, root arrayList
+  commit 5: ends at 4606, id dc3a4041a174e5e2, root arrayList
+  commit 6: ends at 6756, id 632120b77f034701, root arrayList
+  commit 7: ends at 7837, id 609b561402462f34, root arrayList
+  commit 8: ends at 11443, id eab88d0a615bac81, root arrayList
+  commit 9: ends at 14995, id c6ffe0e29442d1eb, root arrayList
+  commit 10: ends at 17147, id 1714f951fc8c62aa, root arrayList
+  commit 11: ends at 18908, id cf916437e449da5a, root arrayList
+moment 10: map (22 entries)
+  0000000000000000: bytes 8 "bbqznrwc"
+  0000000000000000: bytes 3 0x61007b
+  0000000000000000: list (46)
+    #0: bytes 23 "hexaomjfyeyqwafwmgvhxez"
+    #1: bytes 0 ""
+    #2: int 106
+    #3: bytes 1 "k"
+    #4: uint 684
+    #5: nothing
+    #6: int -613
+    #7: bytes 26 "itblficiysqdenlcamrxazexrr"
+    #8: bytes 36 "fuvtzirdsazqrbhcsnwguhhpqryylzemozqn"
+    #9: int 290
+    #10: int -548
+    #11: nothing
+    #12: bytes 3 0x610092
+    #13: bytes 21 "ghuplouwriieujkoecgkc"
+    #14: float 2.5242403285885988e+153
+    #15: nothing
+    #16: bytes 3 0x6100c6
+    #17: float 8.389177505579382e+239
+    #18: bytes 37 tag fz "aonsxjynykxqlrkbuplddiahhtwrnvfzxgakf"
+    #19: int -468
+    #20: bytes 8 "uhxepvlp"
+    #21: bytes 2 "on"
+    #22: bytes 3 "xdn"
+    #23: bytes 17 "kxfzkxebiyxmujvee"
+    #24: bytes 31 tag go "keifalujydrwxulahwwuqgkodrkydue"
+    #25: bytes 3 tag oh "ulc"
+    #26: bytes 37 "uzekxrtgyfnerwbbgipigmflglrfypdddzxfv"
+    #27: bytes 5 tag zt "wvqhk"
+    #28: bytes 3 0x61009a
+    #29: bytes 3 0x6100b2
+    #30: float 2.031626622742351e-16
+    #31: bytes 3 0x610034
+    #32: bytes 3 0x6100e0
+    #33: bytes 4 tag et "hvpq"
+    #34: bytes 8 "whtxylgg"
+    #35: bytes 3 0x610091
+    #36: bytes 27 "azrtjaqjfvvywockmfppmnxihim"
+    #37: bytes 44 "tiqwlzfrxhdnrqgundzadsqazsevlkodfcsbgvkfvdzt"
+    #38: bytes 3 0x6100de
+    #39: bytes 3 "ndd"
+    #40: nothing
+    #41: bytes 45 "dneayvdfwulgkwpkqmgsbmwuewdmlcabdeidjaoxoxvqx"
+    #42: bytes 14 tag cw "xlsdswpmsjmvqu"
+    #43: bytes 7 "ogouxge"
+    #44: bytes 57 "koaqzxiqvwmscbfoeanviirgvtoucpsuoqmspzreqwwfjeimrczqfqbxp"
+    #45: bytes 8 "drxtlfje"
+  fe655fc29367d436: map (1 entry)
+    0000000000000000: bytes 3 "aha"
+  0000000000000000: list (6)
+    #0: bytes 52 "kzebnqcqscyfxsvpfghrbluworbysdzmoggdlhrkxinckoqarxya"
+    #1: bytes 11 tag hu "jprbfcikkbc"
+    #2: float 2.6549621067902962e+175
+    #3: int 622
+    #4: bytes 4 "vvvf"
+    #5: nothing
+  0000000000000000: bytes 3 0x6100c1
+  0000000000000000: map (1 entry)
+    0000000000000000: nothing
+  4464c0f830bc951c: map (1 entry)
+    0000000000000000: nothing
+  0000000000000000: bytes 19 tag mq "rlkduotjlishtwhdiet"
+  46c33180ead412d3: list (1)
+    #0: bytes 31 "rdevqnupikhknsaccapujonkwhcldtt"
+  5dca0c996846a50b: map (1 entry)
+    0000000000000000: bytes 3 0x610097
+  bfeb734d2eb5d091: uint 483
+  5ef8766de9353244: bytes 57 "sbzvnqefsihpbxnleahvjhshfsnnmjmjckxclyniivmkvofpfzskkthzt"
+  a2ab1959c1c3bfa2: bytes 28 tag ii "higojolazzxulrwgoihzoaoembmi"
+  76884bd25765113e: bytes 27 tag hx "ncqgiobooujkkslkxxnjtdrdnie"
+  b7070201b82c329c: list (15)
+    #0: nothing
+    #1: float -5.8440759111184066e+97
+    #2: bytes 39 "nwrjanpdofmsijsfqymbdazpafmnuzorrrdjsom"
+    #3: bytes 49 "hfgkxmasmcvwehzgfcsfqpurkwlsemytufulkvsaivxeziktf"
+    #4: bytes 14 tag kj "ubaaywqxqndgyi"
+    #5: uint 917
+    #6: bytes 3 0x6100c7
+    #7: bytes 3 "aog"
+    #8: bytes 0 ""
+    #9: bytes 0 tag ea ""
+    #10: uint 224
+    #11: bytes 3 tag iy "uob"
+    #12: uint 421
+    #13: float 4.225376884953192e+161
+    #14: bytes 8 "lqmtfxse"
+  f527c79294c5f400: set (2 entries)
+    "bwlqchrq" b7070201b82c329c: empty
+    "pfy" 0b6b9dfc14e362fc: empty
+  b532a5440dd8422d: bytes 31 tag bp "rjxwntloqflactcgflmsbhtjlxftwut"
+  0b6b9dfc14e362fc: bytes 1 "z"
+  91052b1cecbef0d7: set (2 entries)
+    "vbpokxmv" 699de12dc3094b06: empty
+    "pfy" 0b6b9dfc14e362fc: empty
+  728863308b0b4fa7: bytes 10 "uafmruympi"
+  a312ea217ee4d29f: map (2 entries)
+    0000000000000000: bytes 3 0x610097
+    76884bd25765113e: bytes 29 tag gc "slyeilubatongyzfaabgosrsrwtwc"

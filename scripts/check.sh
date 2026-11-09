@@ -84,7 +84,7 @@ echo "ok"
 # directly and not through the restarting driver, so that a trap fails the gate;
 # each file has twenty seconds before the tool's alarm ends it.
 step "Corruption fuzzer"
-.build/release/XitDBFuzz check scripts/fuzz-regressions/*.db
+.build/release/XitDBFuzz check Tests/XitDBTests/Resources/damaged/*.db
 .build/release/XitDBFuzz run 32 1 2001 targeted
 .build/release/XitDBFuzz run 2 1 1001 targeted
 .build/release/XitDBFuzz run 65 1 501 targeted

@@ -62,6 +62,7 @@ share one, and the snapshot that hands one commit to other tasks are here too.
 
 - <doc:Storage>
 - <doc:Recovery>
+- <doc:ReadingAFileWithXitdbDump>
 - <doc:ConcurrencyAndSnapshots>
 - ``Database``
 - ``Snapshot``

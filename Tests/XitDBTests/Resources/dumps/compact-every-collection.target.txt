@@ -1,0 +1,84 @@
+xitdb file: 6388 bytes; hash size 20, hash id "sha1", file id 00000000000000bb; 2 moments
+verify: 3 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 5868, id 3c87a52e9885029e, root arrayList
+  commit 2: ends at 6388, id ae764b57f0462321, root arrayList
+moment 1: map (28 entries)
+  c34bf5a9ecca6edc: float 3.14
+  a90108078540b6b9: linked (3)
+    #0: bytes 5 "task1"
+    #1: bytes 5 "task2"
+    #2: bytes 35 "task3, which is too long for a slot"
+  feaa67f3ae5a0970: set (2 entries)
+    "x" 11f6ad8ec52a2984: empty
+    "y, which is too long for a slot" 95cb0bfd2977c761: empty
+  40380bc1d358a6f8: map (27 entries)
+    c34bf5a9ecca6edc: float 3.14
+    a90108078540b6b9: shared with moment 1/a90108078540b6b9
+    feaa67f3ae5a0970: shared with moment 1/feaa67f3ae5a0970
+    40380bc1d358a6f8: cycle back to moment 1/40380bc1d358a6f8
+    439918dbfac87673: sorted map (0)
+    ee3a3453b099c042: bytes 3 tag xy "abc"
+    6a7657443d82b5a4: sorted set (2)
+      "a set's key that is too long for a slot": empty
+      "foo": empty
+    cb89811dfef4acce: map (1 entry)
+      3a4ef399b99ea150: map (1 entry)
+        cb89811dfef4acce: cycle back to moment 1/40380bc1d358a6f8/cb89811dfef4acce
+    ec21a2ec2537a5ef: counted set (2)
+      "q" 22ea1c649c82946a: empty
+      "p" 516b9783fca517ee: empty
+    a0f4ea7d91495df9: bytes 2 "hi"
+    1910e93064bf1ebf: list (4)
+      #0: bytes 5 "apple"
+      #1: bytes 6 "banana"
+      #2: bytes 28 "a cherry too long for a slot"
+      #3: empty
+    1073ab6cda4b991c: bytes 11 "final_value"
+    "a long key that's written with a value" af065e03e22fe1f5: uint 5
+    d25af6a2a05de768: counted map (2)
+      e9d71f5ee7c92d6d: uint 2
+      "a" 86f7e437faa5a7fc: uint 1
+    3b88ea816c78ec10: int -42
+    3e17248e196aa745: linked (0)
+    8e1ec218dc7ecaad: bytes 30 tag bi "this is a long tagged string!!"
+    3a4ef399b99ea150: shared with moment 1/40380bc1d358a6f8/cb89811dfef4acce/3a4ef399b99ea150
+    0dc50f9d63da837c: list (0)
+    247774573f4bb987: sorted map (3)
+      "a cherry whose key is too long for a slot": bytes 40 "with a value that is too long for a slot"
+      "apple": uint 1
+      "banana": uint 2
+    87ba78e0f03afcef: uint 200
+    059713e42b1ae5a2: sorted map (1)
+      "self": cycle back to moment 1/40380bc1d358a6f8/059713e42b1ae5a2
+    87d8cae0c7a8c46e: list (1)
+      #0: cycle back to moment 1/40380bc1d358a6f8/87d8cae0c7a8c46e
+    6df64c6a3da6da4c: linked (1)
+      #0: cycle back to moment 1/40380bc1d358a6f8/6df64c6a3da6da4c
+    4f7143fc84dde26b: bytes 37 "a long value that no later moment has"
+    66b8c9e342ba90c6: nothing
+    9d355a4035ba2371: bytes 0 ""
+  439918dbfac87673: shared with moment 1/40380bc1d358a6f8/439918dbfac87673
+  ee3a3453b099c042: bytes 3 tag xy "abc"
+  6a7657443d82b5a4: shared with moment 1/40380bc1d358a6f8/6a7657443d82b5a4
+  cb89811dfef4acce: shared with moment 1/40380bc1d358a6f8/cb89811dfef4acce
+  ec21a2ec2537a5ef: shared with moment 1/40380bc1d358a6f8/ec21a2ec2537a5ef
+  a0f4ea7d91495df9: bytes 2 "hi"
+  1910e93064bf1ebf: shared with moment 1/40380bc1d358a6f8/1910e93064bf1ebf
+  1073ab6cda4b991c: bytes 11 "final_value"
+  "a long key that's written with a value" af065e03e22fe1f5: uint 5
+  73228b9a9a7e40de: bytes 8 "new_data"
+  d25af6a2a05de768: shared with moment 1/40380bc1d358a6f8/d25af6a2a05de768
+  3b88ea816c78ec10: int -42
+  3e17248e196aa745: shared with moment 1/40380bc1d358a6f8/3e17248e196aa745
+  8e1ec218dc7ecaad: bytes 30 tag bi "this is a long tagged string!!"
+  3a4ef399b99ea150: shared with moment 1/40380bc1d358a6f8/cb89811dfef4acce/3a4ef399b99ea150
+  0dc50f9d63da837c: shared with moment 1/40380bc1d358a6f8/0dc50f9d63da837c
+  247774573f4bb987: shared with moment 1/40380bc1d358a6f8/247774573f4bb987
+  87ba78e0f03afcef: uint 200
+  059713e42b1ae5a2: shared with moment 1/40380bc1d358a6f8/059713e42b1ae5a2
+  87d8cae0c7a8c46e: shared with moment 1/40380bc1d358a6f8/87d8cae0c7a8c46e
+  6df64c6a3da6da4c: shared with moment 1/40380bc1d358a6f8/6df64c6a3da6da4c
+  4f7143fc84dde26b: bytes 37 "a long value that no later moment has"
+  66b8c9e342ba90c6: nothing
+  9d355a4035ba2371: bytes 0 ""

@@ -1,0 +1,201 @@
+xitdb file: 18453 bytes; hash size 20, hash id "sha1", file id 738032f6d1fb2e3a; 9 moments
+verify: 10 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 4064, id d38847965794d49f, root arrayList
+  commit 2: ends at 4828, id 2b54e59eb928e947, root arrayList
+  commit 3: ends at 5348, id 1314f424973a60c9, root arrayList
+  commit 4: ends at 5686, id d58156d64fb4c1e5, root arrayList
+  commit 5: ends at 7737, id 6118b8c95d65074e, root arrayList
+  commit 6: ends at 8310, id 4579cbc4cf3c9178, root arrayList
+  commit 7: ends at 11748, id feb55cd37ddc5baa, root arrayList
+  commit 8: ends at 17933, id 725240c6f3faec56, root arrayList
+  commit 9: ends at 18453, id 12410c6986c9f9cf, root arrayList
+moment 8: map (19 entries)
+  0000000000000000: set (1 entry)
+    "usubpkwkyylg" 0000000000000000: empty
+  fe655fc29367d436: map (1 entry)
+    0000000000000000: bytes 41 "vfbkfotfzotagkmmownzvyqdqwavbeoarxbangneq"
+  0000000000000000: nothing
+  0000000000000000: bytes 5 tag wp "bjsyu"
+  0000000000000000: set (1 entry)
+    "zeyxhfcqbk" 91052b1cecbef0d7: empty
+  4464c0f830bc951c: int 232
+  0000000000000000: list (1)
+    #0: bytes 28 tag op "cjxgibfmcxjykctimexdxbfwjudv"
+  0000000000000000: linked (2)
+    #0: int -670
+    #1: bytes 1 "z"
+  46c33180ead412d3: list (140)
+    #0: uint 54
+    #1: uint 52
+    #2: uint 522
+    #3: uint 83
+    #4: uint 354
+    #5: uint 433
+    #6: uint 659
+    #7: uint 626
+    #8: uint 938
+    #9: uint 270
+    #10: uint 69
+    #11: uint 872
+    #12: uint 210
+    #13: uint 738
+    #14: uint 721
+    #15: uint 580
+    #16: uint 898
+    #17: uint 191
+    #18: uint 434
+    #19: uint 401
+    #20: uint 178
+    #21: uint 51
+    #22: uint 640
+    #23: uint 36
+    #24: uint 119
+    #25: uint 678
+    #26: uint 2
+    #27: uint 682
+    #28: uint 250
+    #29: uint 851
+    #30: uint 973
+    #31: uint 683
+    #32: uint 556
+    #33: uint 571
+    #34: uint 845
+    #35: uint 433
+    #36: uint 856
+    #37: uint 362
+    #38: uint 980
+    #39: uint 202
+    #40: uint 333
+    #41: uint 625
+    #42: uint 416
+    #43: uint 513
+    #44: uint 571
+    #45: uint 148
+    #46: uint 507
+    #47: uint 903
+    #48: uint 445
+    #49: uint 190
+    #50: uint 796
+    #51: uint 757
+    #52: uint 932
+    #53: uint 202
+    #54: uint 952
+    #55: uint 483
+    #56: uint 381
+    #57: uint 170
+    #58: uint 956
+    #59: uint 709
+    #60: uint 577
+    #61: uint 859
+    #62: uint 794
+    #63: uint 262
+    #64: uint 170
+    #65: uint 605
+    #66: uint 502
+    #67: uint 655
+    #68: uint 294
+    #69: uint 818
+    #70: uint 624
+    #71: uint 660
+    #72: uint 400
+    #73: uint 677
+    #74: uint 813
+    #75: uint 623
+    #76: uint 231
+    #77: uint 499
+    #78: uint 8
+    #79: uint 741
+    #80: uint 807
+    #81: uint 609
+    #82: uint 894
+    #83: uint 162
+    #84: uint 518
+    #85: uint 550
+    #86: uint 98
+    #87: uint 686
+    #88: uint 391
+    #89: uint 145
+    #90: uint 873
+    #91: bytes 10 tag zb "dmfssudixa"
+    #92: uint 605
+    #93: uint 921
+    #94: uint 652
+    #95: uint 277
+    #96: uint 264
+    #97: uint 652
+    #98: uint 873
+    #99: uint 886
+    #100: uint 398
+    #101: uint 493
+    #102: uint 164
+    #103: uint 716
+    #104: uint 26
+    #105: uint 393
+    #106: uint 854
+    #107: uint 349
+    #108: uint 139
+    #109: uint 260
+    #110: uint 963
+    #111: uint 757
+    #112: uint 228
+    #113: uint 74
+    #114: uint 997
+    #115: uint 102
+    #116: uint 290
+    #117: uint 665
+    #118: uint 532
+    #119: uint 431
+    #120: uint 982
+    #121: uint 959
+    #122: uint 992
+    #123: uint 320
+    #124: uint 714
+    #125: uint 27
+    #126: uint 145
+    #127: uint 750
+    #128: uint 237
+    #129: uint 787
+    #130: uint 313
+    #131: uint 700
+    #132: uint 905
+    #133: uint 585
+    #134: uint 287
+    #135: uint 54
+    #136: uint 140
+    #137: uint 916
+    #138: uint 797
+    #139: uint 862
+  5dca0c996846a50b: list (1)
+    #0: bytes 4 tag wk "lyyv"
+  699de12dc3094b06: int 762
+  bfeb734d2eb5d091: float 2.2069817036444168e-95
+  5ef8766de9353244: linked (1)
+    #0: bytes 7 "xkbodly"
+  76884bd25765113e: list (17)
+    #0: float -8.635266340279228e+162
+    #1: nothing
+    #2: bytes 6 "vkmhjq"
+    #3: int 587
+    #4: nothing
+    #5: float 7.033859105738792e+102
+    #6: bytes 3 0x61007d
+    #7: int -356
+    #8: int -714
+    #9: bytes 2 tag hp "mi"
+    #10: bytes 1 "y"
+    #11: nothing
+    #12: nothing
+    #13: bytes 4 "cpxt"
+    #14: bytes 48 "othvuynqdunjsxalnkqrprkpgzkccifhnmjahlwoegnnbdlb"
+    #15: bytes 31 "xlsfyorjgaerphuuevunagirrpregjc"
+    #16: bytes 2 "zb"
+  b7070201b82c329c: nothing
+  b532a5440dd8422d: list (1)
+    #0: bytes 38 "joezcztyenekblrxqisqurftnisvwxvuukwaae"
+  91052b1cecbef0d7: set (2 entries)
+    "usubpkwkyylg" 0000000000000000: empty
+    "wpfggytr" 5dca0c996846a50b: empty
+  728863308b0b4fa7: list (0)
+  a312ea217ee4d29f: map (1 entry)
+    0000000000000000: bytes 0 ""

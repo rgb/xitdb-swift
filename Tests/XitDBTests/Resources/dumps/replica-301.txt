@@ -1,0 +1,41 @@
+xitdb file: 5434 bytes; hash size 20, hash id "sha1", file id e525d2a3b2002e14; 9 moments
+verify: 10 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 1305, id f762839285ffb944, root arrayList
+  commit 2: ends at 1681, id 43784ff05ebe747b, root arrayList
+  commit 3: ends at 2201, id 8402004fd51f776b, root arrayList
+  commit 4: ends at 2577, id 55910c14d8bc4c4b, root arrayList
+  commit 5: ends at 2771, id d2ccfbca92447cfc, root arrayList
+  commit 6: ends at 3841, id a54c84f2c8c2f2ef, root arrayList
+  commit 7: ends at 4576, id 7bbebdbbedd11eb3, root arrayList
+  commit 8: ends at 4914, id cff2464fc7f30a45, root arrayList
+  commit 9: ends at 5434, id c0e90fd091dd685b, root arrayList
+moment 8: map (9 entries)
+  0000000000000000: uint 707
+  0000000000000000: bytes 20 "cwujspwjslaplpnqiguo"
+  0000000000000000: bytes 3 tag jt "iat"
+  0000000000000000: bytes 39 "zbyvtexyovvmovdayfpeqhpflkirghnluthmoro"
+  0000000000000000: bytes 5 tag ax "wshsb"
+  0000000000000000: map (2 entries)
+    0000000000000000: bytes 3 0x610068
+    b532a5440dd8422d: map (1 entry)
+      76884bd25765113e: int 722
+  "eecpc" 76884bd25765113e: list (16)
+    #0: bytes 4 "kqjh"
+    #1: bytes 10 tag yg "ckjgkyimzo"
+    #2: bytes 3 0x6100c9
+    #3: bytes 22 "jubxrwzseqvlinrcwtsuws"
+    #4: bytes 15 "zkaryffpzkscgvg"
+    #5: float 3.996072276058971e+20
+    #6: float -9.556188755898155e+187
+    #7: bytes 2 "gi"
+    #8: bytes 23 "lhczwoegsjcwjnbcvcshwrx"
+    #9: float -2.0437284560142195e+82
+    #10: bytes 5 "nbkpg"
+    #11: int -125
+    #12: bytes 6 "lworlv"
+    #13: bytes 25 "mkgwuxvwhustyizfhlxigyrxd"
+    #14: float 3.942601255499029e-202
+    #15: uint 776
+  91052b1cecbef0d7: int -852
+  728863308b0b4fa7: shared with moment 8/0000000000000000

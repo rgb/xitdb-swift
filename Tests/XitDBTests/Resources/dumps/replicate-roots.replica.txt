@@ -1,0 +1,316 @@
+xitdb file: 50352 bytes; hash size 20, hash id "sha1", file id 0011223344556677
+verify: 107 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 240, id ce6107eede5082f3, root hashMap
+  commit 2: ends at 456, id 77610443b16b9a70, root hashMap
+  commit 3: ends at 816, id 394b58c09c12d48f, root hashMap
+  commit 4: ends at 1032, id 314a6a0faef27915, root hashMap
+  commit 5: ends at 1248, id e8c308bec1882a47, root hashMap
+  commit 6: ends at 1608, id ca084c1d5c010115, root hashMap
+  commit 7: ends at 1968, id 895b6f33cf35496a, root hashMap
+  commit 8: ends at 2184, id 776a549a0433d56b, root hashMap
+  commit 9: ends at 2400, id 9d244f086c303c79, root hashMap
+  commit 10: ends at 2616, id f1b26f643c761de4, root hashMap
+  commit 11: ends at 2976, id e5d7334441871837, root hashMap
+  commit 12: ends at 3192, id 2780fc0bed60f172, root hashMap
+  commit 13: ends at 3408, id 01b158039a25c527, root hashMap
+  commit 14: ends at 3624, id 68b1466259bb2bbb, root hashMap
+  commit 15: ends at 3840, id 935e931e8be0e263, root hashMap
+  commit 16: ends at 4200, id 78bad6e99f64afcc, root hashMap
+  commit 17: ends at 4560, id 8b19ab3f3b0b047a, root hashMap
+  commit 18: ends at 4776, id a8fe232d2e27dd8a, root hashMap
+  commit 19: ends at 5136, id e10aa0db9f7c5596, root hashMap
+  commit 20: ends at 5352, id bac28016afa4f29e, root hashMap
+  commit 21: ends at 5712, id f7ec623da427b831, root hashMap
+  commit 22: ends at 6072, id f11deb968962ab9b, root hashMap
+  commit 23: ends at 6432, id 735ff87b5c52a170, root hashMap
+  commit 24: ends at 6648, id ac9f184a78696794, root hashMap
+  commit 25: ends at 7008, id 459968ef55b77716, root hashMap
+  commit 26: ends at 7368, id ac6e702f2c600d29, root hashMap
+  commit 27: ends at 7728, id d4119a0493d29760, root hashMap
+  commit 28: ends at 8088, id 7e97f2bf3118f576, root hashMap
+  commit 29: ends at 8448, id a20aa234df69fdcd, root hashMap
+  commit 30: ends at 8808, id e531b8b46be4b9b7, root hashMap
+  commit 31: ends at 9168, id fa727fd6019eb023, root hashMap
+  commit 32: ends at 9528, id 36388449aa44efbe, root hashMap
+  commit 33: ends at 9888, id 0fd17d1e0b3b0d09, root hashMap
+  commit 34: ends at 10248, id 837918a68ff9b3ed, root hashMap
+  commit 35: ends at 10608, id 67e2772869211d3d, root hashMap
+  commit 36: ends at 10968, id a6f90a31656f3348, root hashMap
+  commit 37: ends at 11328, id a6fad0ddb9ed5499, root hashMap
+  commit 38: ends at 11688, id 0a6eb2263b30e3c1, root hashMap
+  commit 39: ends at 12048, id 7cbb691fee6d59b1, root hashMap
+  commit 40: ends at 12408, id ba076ce96f1f1768, root hashMap
+  commit 41: ends at 12768, id ae22ff7a425604d6, root hashMap
+  commit 42: ends at 13128, id 2591965add8b926d, root hashMap
+  commit 43: ends at 13488, id 6dee103bd3953a20, root hashMap
+  commit 44: ends at 13848, id 927db9f206002cff, root hashMap
+  commit 45: ends at 14208, id 0c5b8d9c2159c8c0, root hashMap
+  commit 46: ends at 14568, id 2a39b57ccf6357f4, root hashMap
+  commit 47: ends at 15072, id 080b3afec4410d5e, root hashMap
+  commit 48: ends at 15432, id ae90aae1735804ce, root hashMap
+  commit 49: ends at 15648, id 57656aac6c0fd715, root hashMap
+  commit 50: ends at 16008, id 7973844974f5447e, root hashMap
+  commit 51: ends at 16512, id 459ddd56738ef126, root hashMap
+  commit 52: ends at 16872, id 1883e4da30a819f4, root hashMap
+  commit 53: ends at 17194, id d7a8710932234bf8, root hashMap
+  commit 54: ends at 17698, id 295996f0d20a5b9b, root hashMap
+  commit 55: ends at 18058, id ef852360e51923b8, root hashMap
+  commit 56: ends at 18418, id 7f56d5c5078c7524, root hashMap
+  commit 57: ends at 18922, id 4cada3687526fa2c, root hashMap
+  commit 58: ends at 19138, id 41f1a00c3b993b0f, root hashMap
+  commit 59: ends at 19642, id b00a6d9276f85fb7, root hashMap
+  commit 60: ends at 20146, id 57eb241427f4eba9, root hashMap
+  commit 61: ends at 20506, id 6641d3092372904f, root hashMap
+  commit 62: ends at 20722, id 1746fdf04caeec59, root hashMap
+  commit 63: ends at 21082, id bd1aa236a71bfa9d, root hashMap
+  commit 64: ends at 21442, id e1dbaf9100f20d59, root hashMap
+  commit 65: ends at 21802, id 6c160cdb91274b8b, root hashMap
+  commit 66: ends at 22162, id 87fc14c5d96832e6, root hashMap
+  commit 67: ends at 22522, id a97dfc9440257693, root hashMap
+  commit 68: ends at 22882, id 9a4a3a4cd4fb44c5, root hashMap
+  commit 69: ends at 23242, id 68309d350e48a241, root hashMap
+  commit 70: ends at 23602, id 1adc5c342c410dcf, root hashMap
+  commit 71: ends at 23962, id 4db94768c35e2892, root hashMap
+  commit 72: ends at 24466, id 037c63817903a44c, root hashMap
+  commit 73: ends at 24970, id 97ac8a4a6d5b8e92, root hashMap
+  commit 74: ends at 25474, id c7c1395f509dcbcc, root hashMap
+  commit 75: ends at 25834, id 48fa5e8b0b193274, root hashMap
+  commit 76: ends at 26338, id 70a2453ca863e3b0, root hashMap
+  commit 77: ends at 26842, id 18c99798686fe23a, root hashMap
+  commit 78: ends at 27202, id 7e333bc37452359b, root hashMap
+  commit 79: ends at 27562, id 71d462c17b64881a, root hashMap
+  commit 80: ends at 27922, id a9c1e18df16779f0, root hashMap
+  commit 81: ends at 28282, id 2c83f674de6eef18, root hashMap
+  commit 82: ends at 28642, id 6ea787ffe6cbd10f, root hashMap
+  commit 83: ends at 29002, id 98a1e64677a52323, root hashMap
+  commit 84: ends at 29362, id ff1c519a57b353c7, root hashMap
+  commit 85: ends at 29722, id 8aef9ce239a671f8, root hashMap
+  commit 86: ends at 30226, id eb30985ef5be6156, root hashMap
+  commit 87: ends at 30730, id d08300e81d16571b, root hashMap
+  commit 88: ends at 31090, id e8836b1d043fa593, root hashMap
+  commit 89: ends at 31450, id 82e75910b946d174, root hashMap
+  commit 90: ends at 31810, id 2fd649ecdeef9e78, root hashMap
+  commit 91: ends at 32170, id ced4f639b0ce8b45, root hashMap
+  commit 92: ends at 32530, id 2eacd581614ffb99, root hashMap
+  commit 93: ends at 32890, id 372c31d84b475322, root hashMap
+  commit 94: ends at 33394, id 25b5cc18e96396d4, root hashMap
+  commit 95: ends at 33754, id c03127c932c39c89, root hashMap
+  commit 96: ends at 34258, id 6150b98dae80173c, root hashMap
+  commit 97: ends at 34762, id 50349d7e6c04bbf0, root hashMap
+  commit 98: ends at 35122, id 2646132c7eca1fe0, root hashMap
+  commit 99: ends at 35482, id 757e16bc7559f296, root hashMap
+  commit 100: ends at 35842, id ecbd93804819e38e, root hashMap
+  commit 101: ends at 36202, id da9e81d11372a893, root hashMap
+  commit 102: ends at 36562, id dddfa30fcdbc78f3, root hashMap
+  commit 103: ends at 37066, id 1c9f1861ccc07dd9, root hashMap
+  commit 104: ends at 37806, id a70550dca83eabca, root hashMap
+  commit 105: ends at 49992, id 61bfab7c9d88c4a0, root hashMap
+  commit 106: ends at 50352, id 47bfa3799a834cdc, root hashMap
+note: the root is not a list of moments; it is dumped as it is
+moment 0: map (201 entries)
+  d244d358e797d1fc: uint 15
+  87766c954c762bc7: uint 38
+  ea982351df2aa162: uint 99
+  c72ed931c726bb5b: uint 79
+  c02c246743b4f8a0: uint 6
+  c169ff53dc795441: uint 31
+  03466ac9a2b7caf5: uint 2
+  1795003f974576ba: uint 24
+  d19323540c171d7f: uint 8
+  2b6c6976bbd39872: uint 37
+  06943f50be1fa361: uint 58
+  dd4d8f75c354e910: uint 7
+  edf215e92bc4f0f5: uint 82
+  92331c68b3cd27ff: uint 31
+  da621f5f6319b058: uint 76
+  87134a71d78cac69: uint 84
+  649d3bf6a594debf: uint 54
+  050b94066723289d: uint 43
+  a186ebb09300e552: uint 17
+  15dbae2b29f88212: uint 56
+  ce9a9db5f7a74e21: uint 62
+  c85a1b359c05ebd1: uint 75
+  cea79da7e7a1a2ba: uint 88
+  c9df3b78ae299a80: uint 69
+  bea9ea0a6ac11d8e: uint 68
+  d7fec00815ccda82: uint 33
+  63f35a390cf43a62: uint 46
+  bd2adf228dca5e62: uint 67
+  76fbb9676cfacdb3: uint 29
+  a9b070f758f4f6cd: uint 35
+  ccc7682bd0fbdbdc: uint 70
+  841652b7fdec40dc: uint 65
+  0bab99ca7e2a9047: uint 12
+  5e04335a2aab98f5: uint 13
+  b7c463c9e853de62: uint 55
+  f40fcfc045f80b3f: uint 14
+  cb3a4a993e421251: uint 59
+  1749269448e783fe: uint 95
+  03a9fe33c1b93e96: uint 46
+  292624d848b3c389: uint 71
+  19ff9d39734c2307: uint 4
+  ffc5478483098799: uint 36
+  cc4b9d196abc3a6b: uint 62
+  9aa8eba88a32c178: uint 39
+  f2f72ed02e0b1cc3: uint 40
+  bff0301a08349e83: uint 9
+  1c8cd9956aff3d58: uint 45
+  185fd9855c75ff22: uint 93
+  e7f1b4f3f646f8cc: uint 85
+  a82215fc5db3907e: uint 65
+  90be1a59561b66bf: uint 73
+  a90dff8ba6472d73: uint 2
+  9a1f6eab85b1124b: uint 76
+  46a935fba0d4f18b: uint 95
+  9bee56fa03517888: uint 43
+  da8c9cf4aad4ec63: uint 51
+  d3d8d22bcaf47494: uint 29
+  88b253305206f9b3: uint 88
+  0e5dc996739c7a2d: uint 4
+  2a4be7424cfbdfa4: uint 8
+  80643a29eb482df7: uint 74
+  932364e7cf5ca7f3: uint 84
+  feda2f37c80b65a7: uint 48
+  8cb48cf47bfdd90a: uint 45
+  e514263a3251cf47: uint 69
+  3769e3ac291d3e6b: uint 89
+  91026ff7743ecffc: uint 80
+  29be16a55822b489: uint 77
+  badcae6d0bdb454c: uint 52
+  5365b75e3406dbd4: uint 34
+  0ad2a77b4b94bd7a: uint 99
+  cd561f81a6ef4623: uint 33
+  fd30402cb9dfedb2: uint 35
+  42ca37b8017b3f96: uint 11
+  d666ff25769d0d60: uint 40
+  9ab73e5110b25f61: uint 87
+  52bdb8b1c23f8d2c: uint 89
+  e1d88c51c23266a2: uint 91
+  c0fb8b768f57ad08: uint 78
+  01bb5e42dc73218d: uint 85
+  73d77bd77ef619a6: uint 10
+  4864d3dfbd0e87a8: uint 59
+  cdcec8ab2879bec7: uint 19
+  e0372026746c6f8b: uint 61
+  f9fdb1800b13d781: uint 49
+  8d77e1df1541a05d: uint 66
+  13041614ce2d9f4a: uint 64
+  fb92c18b5acca984: uint 60
+  c038d393472de810: uint 82
+  9d7bca7ae04bf50e: uint 18
+  5520b0911910d2f1: uint 91
+  ce983badd9b2b36f: uint 63
+  d2aef3c1f370b500: map (2 entries)
+    0beec7b5ea3f0fdb: bytes 3 "foo"
+    38b62be4bddaa566: list (2)
+      #0: uint 1
+      #1: uint 2
+  0a0f706dd4a8f069: uint 37
+  0dd9f933743d39fa: uint 83
+  ed29eaebb16fe823: uint 73
+  8aec7e492b378c56: uint 57
+  3ba2ff48611f077c: uint 80
+  8c945b1e1192b7ab: uint 42
+  fff7607cabb79bd0: uint 20
+  19f4b8080b5f0efb: uint 16
+  339d3b72a2cd0bdc: uint 57
+  2df3aa45348b67c9: uint 44
+  1d86a4744c292b5c: uint 26
+  6de3569aad6866ee: uint 98
+  e453674b6ab56069: uint 90
+  38da0907b98af76f: uint 50
+  61ec3012a9929aee: uint 27
+  7265968c2cbd47a4: uint 96
+  1dfb726c0d2d4f4e: uint 12
+  ffca513aa0d8b363: uint 71
+  db0682bcec6441db: uint 32
+  d2ae8dd1b007e1e3: uint 49
+  d46dfe50abe605ff: uint 94
+  4ca73beb94dd0b30: uint 5
+  40f70d4544e170c3: uint 30
+  c5c46171c3376481: uint 21
+  f7c291db8d5f7d0c: uint 6
+  acaaebe75b216a0d: uint 72
+  eabf2fe753895af2: uint 3
+  3f775ca33048df2a: uint 9
+  00d384fda3946700: uint 72
+  3ec18c09247c74b3: uint 48
+  9be90ffdb5755de3: uint 30
+  463baca28f4a6bff: uint 22
+  0f0d4ae8e0cad7b3: uint 90
+  9427bfda40f0a179: uint 81
+  5be84897a1e0dc58: uint 97
+  22d69d569c321203: uint 15
+  1a80e62aec323a33: uint 20
+  fbb36f741c773d99: uint 38
+  b61219aefb036ec5: uint 23
+  1c0f3d90659a4891: uint 54
+  b7e8dc87f6de44bd: uint 3
+  2fd1ee498935c24c: uint 52
+  3a0e297a2e38bbb4: uint 92
+  a622b0af6d3fc384: uint 79
+  07841c763e63f74c: uint 64
+  8ef848d8837c2db9: uint 44
+  a73a403fce3182b3: uint 21
+  1530195bfd13a364: uint 5
+  c506c629bc602a56: uint 78
+  7fa9286534b71b44: uint 68
+  eb28c15a7ef03c8a: uint 94
+  e7c8fa315d54b8ff: uint 98
+  "key-1" 9e52503a0984e613: uint 1
+  0d8cf6d7ae290e6e: uint 51
+  7400470a92851939: uint 50
+  5bc8ee5784ee5a1c: uint 0
+  6cf94e69c1754a89: uint 14
+  9e8e7a75030cd6ab: uint 23
+  a5731786d028896f: uint 87
+  d5ecae5cfecefaa7: uint 7
+  307e84bd4aef6d95: uint 93
+  291d3d405592b269: uint 24
+  40b448d92dd593e4: uint 75
+  9d06ac93dd71f24d: uint 42
+  7711d2cb3ae9b0ff: uint 96
+  90a72c03200c500d: uint 16
+  0851234957269ca9: uint 41
+  399a2441451c5b3d: uint 41
+  59ac45512fa26bd2: uint 36
+  35b1c3e0d2dc7d08: uint 58
+  8ca674eebf1cdf3a: uint 81
+  07630220e062dbaf: uint 97
+  f22997a9d604c560: uint 26
+  6c57636789dd0a02: uint 70
+  e395975aeb4dbff7: uint 11
+  268b72a80323ac4d: uint 27
+  9f47df58c3b2c7a8: uint 19
+  0bc91c15a4f1ff21: uint 13
+  6c128d238cb489cd: uint 28
+  be43f0eb354c8898: uint 83
+  0f116d6301fdc5fd: uint 86
+  630dde9da38ac07d: uint 77
+  e648e94b0d7cd748: uint 53
+  ddd3fc5ba8a21ad0: uint 28
+  5fd838714701658c: uint 39
+  7784b7603c7b3223: uint 34
+  f3b2402110420238: uint 17
+  27471a206e46e19f: uint 0
+  d5e4292be95c613d: uint 25
+  fc6c131d2693c52d: uint 1
+  f11f2b7db0824bea: uint 10
+  d6bf93a1677313e5: uint 63
+  c8b63c2206eaf142: uint 92
+  690eca99fe642bc3: uint 18
+  6c793d7e693177a5: uint 47
+  7c060d4ba4b8166d: uint 61
+  5d6200f8cf98af47: empty
+  6056b466017500df: uint 47
+  fc5b741fd062ccea: uint 86
+  f98e3227fd2d31b1: uint 60
+  cadb0a4795d555f4: uint 32
+  e4cb62101f49c024: uint 53
+  2c6fb3169be5a237: uint 55
+  724cb4e5ecd6c4db: uint 22
+  1785e33c5faa580c: uint 56
+  cb9eba74b5349167: uint 67
+  3858d1fcd94fa2fd: uint 66
+  4bfd4c7a3c3f1fb9: uint 74

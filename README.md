@@ -184,6 +184,9 @@ python3 -m http.server --directory .build/docs-site
 
 The preview is then at <http://localhost:8000/documentation/xitdb/>.
 
+To look at a file itself, `swift run xitdb-dump FILE` prints it as it is on disk, moment by moment; the article
+"Reading a file with xitdb-dump" shows the output and the options.
+
 ## Developing
 
 `scripts/check.sh` is the gate: the debug and release builds and tests with warnings as errors, a smoke run of the

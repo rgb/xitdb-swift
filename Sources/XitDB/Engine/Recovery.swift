@@ -187,3 +187,70 @@ extension Database {
         return try Database(opening: storage, hashSize: nil, random: random)
     }
 }
+
+/// A commit of a file whose trailer verifies: where it ends, its random
+/// commit ID and the root slot it committed; what a tool that shows a
+/// file's history of commits reports.
+package struct VerifiedCommit: Equatable, Sendable {
+    /// The position after the commit's trailer: the file's size as of this
+    /// commit.
+    package let end: UInt64
+    /// The commit's ID: zero for the first, random after it.
+    package let commitID: UInt64
+    /// The root slot the commit left.
+    package let root: Slot
+}
+
+extension Database {
+    /// Every commit in a storage whose trailer verifies, in file order,
+    /// found by trying every position from the first trailer's to the end,
+    /// as recovery's scan does from the end; the file ID the header names is
+    /// part of every checksum, so a trailer of another file does not count.
+    /// For a tool that shows a file as it is: a sound file's last commit
+    /// ends at the storage's length, a damaged one's before it.
+    ///
+    /// - Throws: `invalidDatabase` if the storage does not start with a
+    ///   database header, `invalidVersion` for a version this
+    ///   implementation does not read, `endOfStream` if it ends before its
+    ///   length said, or ``XitDBError/storageFailure(errno:)`` if the storage
+    ///   fails.
+    package static func verifiedCommits(in storage: any ReadableStorage) throws(XitDBError) -> [VerifiedCommit] {
+        let header = try readHeader(of: storage)
+        let length = try storage.length
+        let trailerSize = Int(RootTrailer.byteCount)
+        guard length >= RootHeader.minimumFileSize else { return [] }
+        var fileChecksum = CRC64XZ()
+        fileChecksum.updateBigEndian(header.fileID)
+        var commits: [VerifiedCommit] = []
+        let window = DatabaseReader.scanWindow
+        var buffer = [UInt8](repeating: 0, count: window)
+        var start = RootHeader.endPosition
+        while start + UInt64(trailerSize) <= length {
+            let count = Int(min(UInt64(window), length - start))
+            var span = buffer.mutableSpan
+            let read = try storage.read(into: &span, range: 0..<count, at: start)
+            guard read == count else { throw .endOfStream }
+            var offset = 0
+            while offset + trailerSize <= count {
+                let position = start + UInt64(offset)
+                var checksum = fileChecksum
+                checksum.updateBigEndian(position)
+                checksum.update(buffer.span, at: offset, count: 17)
+                let recorded: UInt64 = buffer.span.bigEndian(at: offset + 17)
+                if checksum.checksum == recorded {
+                    let trailer = try RootTrailer(
+                        decoding: buffer.span, at: offset, fileID: header.fileID, position: position)
+                    commits.append(
+                        VerifiedCommit(
+                            end: position + RootTrailer.byteCount, commitID: trailer.commitID, root: trailer.root))
+                }
+                offset += 1
+            }
+            // The next window overlaps this one by a trailer less a byte, so
+            // that a trailer across the edge is seen whole.
+            if start + UInt64(count) >= length { break }
+            start += UInt64(count - (trailerSize - 1))
+        }
+        return commits
+    }
+}

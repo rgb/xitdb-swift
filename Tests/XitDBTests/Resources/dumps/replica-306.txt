@@ -1,0 +1,51 @@
+xitdb file: 5332 bytes; hash size 20, hash id "sha1", file id 8e2382c336e58251; 4 moments
+verify: 5 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 2341, id 1f73c0636ff919c0, root arrayList
+  commit 2: ends at 4330, id c5c1098d190d1dcb, root arrayList
+  commit 3: ends at 5138, id 3636b3aa6c2bb779, root arrayList
+  commit 4: ends at 5332, id 75db2460383c6e1f, root arrayList
+moment 3: map (8 entries)
+  0000000000000000: int 756
+  0000000000000000: float -2.5241977174696552e+151
+  46c33180ead412d3: set (1 entry)
+    "k" 46c33180ead412d3: empty
+  699de12dc3094b06: map (1 entry)
+    4464c0f830bc951c: uint 151
+  bfeb734d2eb5d091: bytes 0 ""
+  a2ab1959c1c3bfa2: uint 667
+  b7070201b82c329c: list (33)
+    #0: nothing
+    #1: float -1.339391236294835e-262
+    #2: bytes 3 0x61003f
+    #3: bytes 4 tag zt "yafg"
+    #4: uint 17
+    #5: uint 442
+    #6: bytes 6 tag qt "wgpdvd"
+    #7: bytes 10 "eyzhmsiund"
+    #8: bytes 54 "qpmmirhqdcokfgtwvybbsnwxzsscwqgnumewdwtvvgxbeifdzxgnck"
+    #9: bytes 8 "fpdyvkuk"
+    #10: bytes 7 "kipvdrv"
+    #11: bytes 18 tag tk "nvgveuhzskikrxbdoe"
+    #12: uint 13
+    #13: bytes 15 "wmsnycdaivahlhc"
+    #14: nothing
+    #15: bytes 14 tag sl "wddqtysahbnlla"
+    #16: bytes 19 tag si "rodmpsaiwejgagbmgne"
+    #17: bytes 8 "umrtfsna"
+    #18: bytes 33 "xockjiwrzpsegirxazcokjvhbssaiusmh"
+    #19: bytes 8 "yzvcolxq"
+    #20: uint 102
+    #21: bytes 16 "oskltxmhggyezawp"
+    #22: bytes 3 0x61007d
+    #23: bytes 3 0x61006b
+    #24: nothing
+    #25: bytes 32 "gaebvdocnfczbfpcngskegtsckllociw"
+    #26: uint 699
+    #27: nothing
+    #28: bytes 5 tag qg "pkcwo"
+    #29: bytes 3 0x6100d3
+    #30: bytes 54 "xfhehdghhdxidaacolwyixsfulhjnjtbgscxzqpanineqfogyoqvay"
+    #31: nothing
+    #32: bytes 3 0x6100f6
+  b532a5440dd8422d: bytes 3 "xhe"

@@ -1,0 +1,73 @@
+xitdb file: 18603 bytes; hash size 20, hash id "sha1", file id 230275d791e422cc; 11 moments
+verify: 12 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 4081, id 3529728e82581b64, root arrayList
+  commit 2: ends at 4503, id dbd1a455011fcbbc, root arrayList
+  commit 3: ends at 5442, id 5a59fd08b3d74bef, root arrayList
+  commit 4: ends at 6616, id 698ef8ffc687bbe9, root arrayList
+  commit 5: ends at 12886, id 818060f73bce9de6, root arrayList
+  commit 6: ends at 14311, id 37bd8a88fa4e4d2e, root arrayList
+  commit 7: ends at 14649, id 37ee1e7d2a069a21, root arrayList
+  commit 8: ends at 15025, id ff6bbad66f9e810b, root arrayList
+  commit 9: ends at 16335, id 0679d93629528149, root arrayList
+  commit 10: ends at 17528, id add1a3fb080a7ad6, root arrayList
+  commit 11: ends at 18603, id f3206cb7c5b97047, root arrayList
+moment 10: map (17 entries)
+  0000000000000000: bytes 4 "snwy"
+  0000000000000000: bytes 3 0x610074
+  "act" 0000000000000000: bytes 0 tag aa ""
+  0000000000000000: nothing
+  46c33180ead412d3: sorted map (1)
+    "s27": bytes 5 tag yp "mtqtg"
+  5dca0c996846a50b: linked (1)
+    #0: bytes 24 "haglwujvqbzchkpjyknznfvv"
+  699de12dc3094b06: sorted map (3)
+    0x160016: map (1 entry)
+      a312ea217ee4d29f: bytes 3 "joa"
+    "a sorted key that is too long for a slot 14": uint 747
+    "s27": bytes 29 "fkkjzlzirdubuzcpeortluxcbyraf"
+  bfeb734d2eb5d091: counted map (1)
+    0000000000000000: bytes 2 "ms"
+  5ef8766de9353244: bytes 3 0x610088
+  a2ab1959c1c3bfa2: int 33
+  b7070201b82c329c: sorted map (22)
+    0x000000: bytes 4 tag pd "jagy"
+    0x0b000b: int -872
+    0x210021: bytes 0 ""
+    "a sorted key that is too long for a slot 28": uint 550
+    "a sorted key that is too long for a slot 35": bytes 3 tag jc "gnz"
+    "s1": bytes 0 ""
+    "s10": bytes 3 0x61003d
+    "s12": bytes 4 "zfuy"
+    "s15": bytes 3 0x6100bc
+    "s16": bytes 5 "erhng"
+    "s19": float -2.0012338756208582e+230
+    "s2": bytes 36 tag lc "ghermutyvcycqmnnzdmoywunpahxzpqmafiw"
+    "s23": bytes 2 tag rj "ka"
+    "s25": bytes 5 tag kd "pdami"
+    "s27": bytes 27 "kkgjnbtzkmgxhcztrzmssmcogvk"
+    "s3": bytes 3 tag et "ews"
+    "s31": bytes 38 "bbdlyusknctkkkhqzjptpazffqfpcaoodmaevi"
+    "s34": float -1.679408749348169e-146
+    "s36": bytes 1 "t"
+    "s6": bytes 8 "brdjoaur"
+    "s8": bytes 3 0x61005b
+    "s9": bytes 3 0x610077
+  f527c79294c5f400: int 449
+  b532a5440dd8422d: bytes 3 0x610093
+  0b6b9dfc14e362fc: bytes 3 0x610026
+  91052b1cecbef0d7: linked (12)
+    #0: bytes 4 "trtl"
+    #1: bytes 23 "yhkabefcnyhbgfslycdhcww"
+    #2: bytes 3 0x610099
+    #3: nothing
+    #4: nothing
+    #5: nothing
+    #6: bytes 3 0x61003e
+    #7: bytes 35 "scbvgfkghivcsqczstuxcgvduezvfwjifiw"
+    #8: nothing
+    #9: bytes 1 "z"
+    #10: float -1.0788024058862722e-126
+    #11: bytes 3 0x610081
+  728863308b0b4fa7: int 349
+  a312ea217ee4d29f: bytes 3 "hfb"

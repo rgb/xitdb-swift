@@ -1,5 +1,8 @@
 # Fuzzer regression inputs
 
+These live among the test resources so that `xitdb-dump`'s tests reach them on every platform; the gate's
+fuzzer step and `scripts/fuzz.sh` read them here.
+
 The fourteen damaged files that trapped the library when the corruption fuzzer
 (`Sources/XitDBFuzz`) first ran, before the guards branch fixed them. Each is the
 fuzzer's sample database with the one to three changes of one seed:

@@ -1,0 +1,61 @@
+xitdb file: 15943 bytes; hash size 20, hash id "sha1", file id d1024a5fad64d717; 9 moments
+verify: 10 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 3428, id d73c567f9c64d0b8, root arrayList
+  commit 2: ends at 5214, id 6b6a7a165f6c7659, root arrayList
+  commit 3: ends at 6823, id d71a75daaa0a4130, root arrayList
+  commit 4: ends at 11400, id c0ce03621b93f613, root arrayList
+  commit 5: ends at 12625, id 4163e3fa7133db19, root arrayList
+  commit 6: ends at 12819, id 19e99484055e4134, root arrayList
+  commit 7: ends at 14636, id 19b852f7341bad5b, root arrayList
+  commit 8: ends at 15216, id f05d01c58672adb9, root arrayList
+  commit 9: ends at 15943, id f8d95c1d656ab5cd, root arrayList
+moment 8: map (17 entries)
+  0000000000000000: bytes 8 "xzmmmvua"
+  0000000000000000: list (19)
+    #0: int 925
+    #1: bytes 32 "atjfzaxoyfziykruqucwbrgoacqvmwlq"
+    #2: bytes 17 tag wq "skzkupylyfhmnzyzk"
+    #3: float 1.7717242327864258e+75
+    #4: bytes 34 "kifctdthdfadsoujyvfstizjrudnvorfaw"
+    #5: int -900
+    #6: bytes 11 tag sx "ylrvigmgech"
+    #7: bytes 29 "gulxvakjoamlwbwtviapfbveznejt"
+    #8: bytes 49 "qevffvgeornagsrjgbhwilnggwcxsukvasrfxtexghatykmpy"
+    #9: int 209
+    #10: bytes 3 "dpz"
+    #11: float -4.4622197709159926e-262
+    #12: uint 196
+    #13: nothing
+    #14: float 1.2878015692167537e+190
+    #15: bytes 8 "lhyvohjd"
+    #16: int 65
+    #17: bytes 7 tag xb "xygxytu"
+    #18: bytes 19 "brxztkweclrvnmzlhtf"
+  0000000000000000: bytes 1 "t"
+  "rellpbnxipn" 0000000000000000: bytes 18 "lqptmxvgqrubptvmyo"
+  0000000000000000: sorted set (2)
+    "s18": empty
+    "s32": empty
+  4464c0f830bc951c: float -2.844721433020336e+143
+  0000000000000000: sorted set (1)
+    "a sorted key that is too long for a slot 21": empty
+  0000000000000000: nothing
+  46c33180ead412d3: bytes 15 tag dp "xxrvepqtypfyzfe"
+  5dca0c996846a50b: map (1 entry)
+    728863308b0b4fa7: bytes 29 tag qg "xhdulbhxewkwwsqmifhzvzlitfnfb"
+  699de12dc3094b06: sorted map (1)
+    "s6": float 1.3903621648241781e+147
+  bfeb734d2eb5d091: sorted set (1)
+    "a sorted key that is too long for a slot 7": empty
+  a2ab1959c1c3bfa2: bytes 3 0x610062
+  b7070201b82c329c: sorted map (1)
+    "s29": bytes 19 "xnvmoruhubsrtjiyuwy"
+  b532a5440dd8422d: sorted set (4)
+    0x160016: empty
+    "a sorted key that is too long for a slot 7": empty
+    "s19": empty
+    "s8": empty
+  0b6b9dfc14e362fc: map (1 entry)
+    a312ea217ee4d29f: bytes 3 0x6100c3
+  728863308b0b4fa7: bytes 14 "tucwhlvtftwapu"

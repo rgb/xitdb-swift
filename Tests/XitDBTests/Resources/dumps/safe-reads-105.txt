@@ -1,0 +1,66 @@
+xitdb file: 7511 bytes; hash size 20, hash id "sha1", file id bba2aa66f998b193
+verify: 9 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 278, id 35666eea97f352ae, root hashMap
+  commit 2: ends at 684, id 45c862bc3333a37e, root hashMap
+  commit 3: ends at 1966, id b634311cae8e8590, root hashMap
+  commit 4: ends at 2182, id 43dffdbb5a3c9cc1, root hashMap
+  commit 5: ends at 2398, id b30903af50060f6b, root hashMap
+  commit 6: ends at 2929, id 77a42a57309e249f, root hashMap
+  commit 7: ends at 3471, id 2c2298da036181d5, root hashMap
+  commit 8: ends at 7511, id edfdfab47335338e, root hashMap
+note: the root is not a list of moments; it is dumped as it is
+moment 0: map (9 entries)
+  0000000000000000: bytes 7 "vtrmvou"
+  0000000000000000: list (2)
+    #0: bytes 3 0x610085
+    #1: bytes 3 "vzd"
+  4464c0f830bc951c: map (1 entry)
+    0000000000000000: bytes 1 tag ak "g"
+  bfeb734d2eb5d091: nothing
+  b7070201b82c329c: float 2.3502502879844958e-300
+  b532a5440dd8422d: list (15)
+    #0: bytes 7 "ltwcujk"
+    #1: bytes 2 tag wq "cv"
+    #2: int -508
+    #3: bytes 3 0x6100e6
+    #4: bytes 28 "uftxyeiylrtsycpermilyohsuwjr"
+    #5: float 8.182241204927097e+149
+    #6: float -1.0106514756231788e-37
+    #7: bytes 13 "pspmhpprdfozz"
+    #8: bytes 3 0x61000b
+    #9: nothing
+    #10: nothing
+    #11: bytes 3 0x610033
+    #12: nothing
+    #13: bytes 5 tag hq "wmeba"
+    #14: bytes 0 ""
+  0b6b9dfc14e362fc: list (26)
+    #0: uint 914
+    #1: uint 272
+    #2: uint 64
+    #3: uint 605
+    #4: uint 96
+    #5: uint 900
+    #6: uint 128
+    #7: uint 803
+    #8: uint 284
+    #9: uint 546
+    #10: uint 43
+    #11: uint 977
+    #12: uint 877
+    #13: bytes 15 "leponzsebzbbhop"
+    #14: uint 768
+    #15: uint 810
+    #16: uint 327
+    #17: uint 166
+    #18: uint 652
+    #19: uint 2
+    #20: uint 398
+    #21: uint 57
+    #22: uint 206
+    #23: uint 488
+    #24: uint 594
+    #25: uint 989
+  91052b1cecbef0d7: float 5.870242237809861e-158
+  a312ea217ee4d29f: float 1.2408791348678436e+100

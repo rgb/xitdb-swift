@@ -27,6 +27,7 @@ let package = Package(
         .library(name: "XitDB", targets: ["XitDB"]),
         .library(name: "XitDBHashing", targets: ["XitDBHashing"]),
         .library(name: "XitDBStore", targets: ["XitDBStore"]),
+        .executable(name: "xitdb-dump", targets: ["XitDBDump"]),
     ],
     dependencies: [
         // Build-time only: the command plugin that builds the documentation. No
@@ -74,6 +75,21 @@ let package = Package(
             dependencies: ["XitDB", "XitDBHashing"],
             swiftSettings: languageSettings
         ),
+        // xitdb-dump, which prints any xitdb file as it is on disk (M11). The
+        // reading, the tree and its renderings are a library target, so that
+        // the tests hold the dump of every fixture without an executable in
+        // the test bundle, which iOS could not carry; the executable is the
+        // arguments and the exit code.
+        .target(
+            name: "XitDBDumpKit",
+            dependencies: ["XitDB", "XitDBHashing"],
+            swiftSettings: languageSettings
+        ),
+        .executableTarget(
+            name: "XitDBDump",
+            dependencies: ["XitDBDumpKit"],
+            swiftSettings: languageSettings
+        ),
         .testTarget(
             name: "XitDBHashingTests",
             dependencies: ["XitDBHashing"],
@@ -86,11 +102,12 @@ let package = Package(
         ),
         .testTarget(
             name: "XitDBTests",
-            dependencies: ["XitDB", "XitDBHashing", "XitDBStore"],
+            dependencies: ["XitDB", "XitDBHashing", "XitDBStore", "XitDBDumpKit"],
             exclude: ["Resources/fixtures-source.txt"],
             resources: [
                 .copy("Resources/test.db"),
                 .copy("Resources/fixtures"), .copy("Resources/port-differs"), .copy("Resources/zig"),
+                .copy("Resources/dumps"), .copy("Resources/damaged"),
             ],
             swiftSettings: languageSettings
         ),

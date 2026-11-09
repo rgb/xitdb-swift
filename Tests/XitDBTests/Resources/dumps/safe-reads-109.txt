@@ -1,0 +1,12 @@
+xitdb file: 750 bytes; hash size 20, hash id "sha1", file id b32f0f46fbfbccde
+verify: 8 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 159, id 3b3d877fe2fe433e, root float
+  commit 2: ends at 389, id 54d60fa913c59b31, root bytes
+  commit 3: ends at 423, id a1408be15d942cda, root shortBytes
+  commit 4: ends at 457, id ff619822b5303f12, root shortBytes
+  commit 5: ends at 662, id 7f9f0a03a84763d8, root bytes
+  commit 6: ends at 696, id 8f809b7e49e05a48, root float
+  commit 7: ends at 750, id 1d32560bef5aec48, root bytes
+note: the root is not a list of moments; it is dumped as it is
+moment 0: bytes 12 "dmzhyahjzgxt"

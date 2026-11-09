@@ -1,0 +1,64 @@
+xitdb file: 5590 bytes; hash size 20, hash id "sha1", file id 953ddf9a1edc63d8; 3 moments
+verify: 4 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 2575, id 6988ed6f9980305c, root arrayList
+  commit 2: ends at 5032, id 4b3478cdd7cead94, root arrayList
+  commit 3: ends at 5590, id 45bb4ecfa759fbf2, root arrayList
+moment 2: map (11 entries)
+  0000000000000000: nothing
+  0000000000000000: bytes 3 "sfr"
+  0000000000000000: linked (33)
+    #0: bytes 5 "cvrss"
+    #1: bytes 3 0x61000c
+    #2: bytes 27 tag rs "gxkvfpmogtzmnuiydpurzvjpxzx"
+    #3: uint 320
+    #4: nothing
+    #5: float 5.813870753034202e-22
+    #6: bytes 3 0x6100b4
+    #7: nothing
+    #8: bytes 1 tag ix "y"
+    #9: bytes 4 "rnhq"
+    #10: bytes 0 tag ud ""
+    #11: bytes 51 "qlkvyfptzhmvngcifhjskmdztzhmnpkmmiuxnwaurjhbepnoayd"
+    #12: bytes 44 "xnfbwcmydycqvnxfyyjfljkqtddewevegcnvcegsjqni"
+    #13: bytes 6 tag jo "jfawqm"
+    #14: bytes 43 "guaolpwvgukpsgtwmhrinrmpxwbomwrmbafibdgxsjr"
+    #15: bytes 16 tag hj "hwyuhgladhiojiki"
+    #16: bytes 9 tag qw "ttezdtrlv"
+    #17: bytes 3 0x6100c9
+    #18: int -863
+    #19: bytes 7 "aqniveu"
+    #20: bytes 3 0x6100e1
+    #21: nothing
+    #22: int 710
+    #23: bytes 29 "fuzjwmxaazfiygggzrymqnvuevkke"
+    #24: nothing
+    #25: bytes 3 0x610074
+    #26: bytes 6 tag pr "yqqmrj"
+    #27: bytes 7 "cehbhhd"
+    #28: uint 18446744073709551615
+    #29: int -739
+    #30: int -35
+    #31: uint 414
+    #32: bytes 34 tag np "nwmdkkrehmiukneqibvcutqkenimkvigih"
+  "myxqi" 0000000000000000: empty
+  0000000000000000: float 5.4001100164296816e-225
+  46c33180ead412d3: bytes 11 "ijlyitiwuxy"
+  699de12dc3094b06: sorted map (1)
+    "s24": float -2.9118015180923316e+132
+  f527c79294c5f400: map (2 entries)
+    f527c79294c5f400: int -329
+    91052b1cecbef0d7: float -3.0113909537161844e-214
+  0b6b9dfc14e362fc: sorted map (1)
+    "a sorted key that is too long for a slot 35": float -1.4089356668515907e+26
+  91052b1cecbef0d7: list (9)
+    #0: uint 18446744073709551615
+    #1: bytes 5 tag nz "ovbna"
+    #2: bytes 3 0x6100c9
+    #3: uint 497
+    #4: float 5.460270896908655e-231
+    #5: bytes 5 "jmemz"
+    #6: bytes 7 "zonjhbi"
+    #7: bytes 1 "j"
+    #8: bytes 7 "cljvyfc"
+  728863308b0b4fa7: bytes 4 tag ya "zfcj"

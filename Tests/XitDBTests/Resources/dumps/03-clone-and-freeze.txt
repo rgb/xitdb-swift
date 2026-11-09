@@ -1,0 +1,31 @@
+xitdb file: 4307 bytes; hash size 20, hash id "sha1", file id c0f0000000000003; 7 moments
+verify: 9 commits verify, the last ending at the file's end
+  commit 0: ends at 62, id 0000000000000000, root none
+  commit 1: ends at 256, id 2e211b6bca39b8da, root arrayList
+  commit 2: ends at 792, id 74137f3e26f71a97, root arrayList
+  commit 3: ends at 1472, id a66f68748b24b7f9, root arrayList
+  commit 4: ends at 2133, id 618b87a87ecef116, root arrayList
+  commit 5: ends at 2327, id b35ff010e9e31493, root arrayList
+  commit 6: ends at 3148, id 94ea6525bf164c19, root arrayList
+  commit 7: ends at 3342, id 5dbd5eecde9e89d3, root arrayList
+  commit 8: ends at 4307, id 044164664c0a8909, root arrayList
+moment 6: map (4 entries)
+  39ccb32d95edfdbc: list (6)
+    #0: bytes 5 "apple"
+    #1: bytes 4 "pear"
+    #2: bytes 5 "grape"
+    #3: bytes 4 "eggs"
+    #4: bytes 4 "rice"
+    #5: bytes 4 "fish"
+  1910e93064bf1ebf: list (3)
+    #0: bytes 5 "apple"
+    #1: bytes 4 "pear"
+    #2: bytes 5 "grape"
+  7dabe30eba211b80: list (4)
+    #0: bytes 12 "New York, NY"
+    #1: bytes 15 "Los Angeles, CA"
+    #2: bytes 14 "Charleston, SC"
+    #3: bytes 14 "Louisville, KY"
+  3c77aa2ec5e1c166: list (2)
+    #0: bytes 12 "New York, NY"
+    #1: bytes 15 "Los Angeles, CA"
