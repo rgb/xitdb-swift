@@ -102,20 +102,22 @@ freeze, and a write through either is refused, and so is making `bigCities` agai
 
 ### What a freeze does to the handles you hold
 
-After ``Database/freeze()``, every cursor and collection made before it in the transaction is stale, the cursor the
-transaction's body was given included:
+After ``Database/freeze()``, every cursor and collection made before it in the transaction is stale, with one exception,
+the cursor the transaction's body was given, described below:
 
 - **A write through it is refused** with ``XitDBError/staleCursor``: a value, an append, a
   ``HashMap/putCursor(forHash:)-(Sequence<UInt8>)``, a byte array, and making a collection again from its cursor. The guard runs
   before anything is written, so the transaction is not poisoned (see <doc:Transactions>) and goes on.
 - **A read through it works**, and reads what the handle points at, which the freeze keeps as it is. It does not see what
   fresh handles write afterwards, since they write copies.
-- **The cursor the body was given can still make a collection.** Its slot is in a record the engine keeps for the
-  transaction, the copy of the root slot, or in ``ArrayList/append(_:_:)`` on a history the new element's slot in the
-  history's block, and nothing in the transaction can copy that record. So making a collection from it is allowed after a
-  freeze, and the cursors and collections that gives are fresh. A value written through it is refused like any other write.
-  The engine goes by the slot, so the cursor of a collection made from it, such as `moment.cursor`, can make a collection
-  too, whenever the collection was made. Writes through the collection itself are refused all the same.
+- **The cursor the body was given goes on.** Its slot is in a record the engine keeps for the transaction, the copy of
+  the root slot, or in ``ArrayList/append(_:_:)`` on a history the new element's slot in the history's block, and nothing in
+  the transaction can copy that record. So making a collection from it is allowed after a freeze, and so is a write of a
+  value through it, ``Cursor/write(_:)`` and ``Cursor/writeIfEmpty(_:)`` and a path that begins with a write, which rewrite
+  that slot in place as the original does; the cursors and collections that gives are fresh. A byte writer through it is
+  refused like any other write. The engine goes by the slot, so the cursor of a collection made from it, such as
+  `moment.cursor`, can make a collection too, whenever the collection was made. Writes through the collection itself are
+  refused all the same.
 
 The way on is the one in step 3: start from the cursor the body was given, which is at the top of everything the transaction
 writes, and make each collection again on the way down to where you write.

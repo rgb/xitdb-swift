@@ -73,6 +73,9 @@ struct MakeTests {
             #expect(throws: XitDBError.unexpectedTag) { try moment["list"].make(.map) }
             #expect(throws: XitDBError.unexpectedTag) { try moment["map"].make(.list) }
             #expect(throws: XitDBError.unexpectedTag) { try moment["map"].make(.countedMap) }
+            #expect(throws: XitDBError.unexpectedTag) { try moment["map"].make(.keySet) }
+            #expect(throws: XitDBError.unexpectedTag) { try moment["map"].make(.countedKeySet) }
+            #expect(throws: XitDBError.unexpectedTag) { try moment["map"].make(.sortedMap) }
             #expect(throws: XitDBError.unexpectedTag) { try moment["list"].make(.linkedList) }
             try moment["n"].set(UInt64(1))
             #expect(throws: XitDBError.unexpectedTag) { try moment["n"].make(.map) }

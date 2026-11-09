@@ -88,7 +88,7 @@ public struct Cursor<Access: CursorAccess> {
     /// begins with a get, and for the empty path of a byte writer), a
     /// cursor from an earlier transaction, a cursor from before the last
     /// freeze (unless it is the transaction's own cursor and `path` begins
-    /// with an init part, the way to go on after a freeze).
+    /// with an init part or a write, the ways to go on after a freeze).
     ///
     /// A root cursor is never stale: it resolves itself through the root
     /// header. Outside a transaction nothing is stale either: a write is
@@ -108,14 +108,17 @@ public struct Cursor<Access: CursorAccess> {
         if transaction != engine.transactionNumber { throw .staleCursor }
         if freezeCount < engine.freezeNumber {
             // After a freeze the one way on through a cursor from before it
-            // is a path that begins with an init part through the
-            // transaction's own cursor (D24): its slot is the engine's own
-            // record, which nothing inside the transaction can copy, and the
-            // init copies the collection's header into the transaction and
-            // gives a fresh cursor. Every other write through a cursor from
+            // is the transaction's own cursor, with a path that begins with
+            // an init part or a write (D24, item 3 as refined): its slot is
+            // the engine's own record, which nothing inside the transaction
+            // can copy. The init copies the collection's header into the
+            // transaction and gives a fresh cursor; the write rewrites that
+            // slot in place, as the original does; the parts after either
+            // go on from there. Every other write through a cursor from
             // before the freeze is stale, inits through other cursors
             // included.
-            guard let body = engine.bodyPosition, slotPointer.position == body, path.count > 0, path[0].isInit
+            guard let body = engine.bodyPosition, slotPointer.position == body, path.count > 0,
+                path[0].isInit || path[0].isWrite
             else { throw .staleCursor }
         }
     }

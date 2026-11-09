@@ -15,29 +15,30 @@ public import XitDB
 /// moves, the handle keeps the cursor it resolved. Descending with the
 /// subscripts, `handle[key]` and `handle[index:]`, treats the place as a
 /// plain hash map or an array list and makes one if the place is empty;
-/// through a counted map, a set or a linked list, descend from the typed
-/// collection instead. The moment's root place is its map and takes no
-/// value: ``set(_:)`` there is refused with `XitDBError.unexpectedTag`,
-/// while ``clear()`` there empties the moment, which a write then makes a
-/// map again. Writing through a handle of a read-only moment is refused
-/// with `XitDBError.expectedTxStart`.
+/// through a counted map or a linked list, descend from the typed
+/// collection, which makes its own kind. The moment's root place is its
+/// map: ``set(_:)`` there, and every collection but a plain map there, is
+/// refused with `XitDBError.unexpectedTag`, while ``clear()`` there empties
+/// the moment, which a write then makes a map again. Writing through a
+/// handle of a read-only moment is refused with `XitDBError.expectedTxStart`.
 public struct Handle {
     let base: Root
     let hasher: KeyHasher
-    let index: Int
     let steps: [Step]
-    let cache: Cache
+    /// What a read-only handle resolved, kept for good; nil in a writable
+    /// moment, whose handles resolve on every use.
+    let cache: Cache?
     /// The writable moment's shared cache; nil in a read-only moment, which
     /// has no use for it and no allocation.
     let shared: SharedCache?
 
-    /// One level of the path.
+    /// One level of the path, with the kind to make if the place is empty.
     enum Step {
-        /// Through a hash map, by the key's hash; `counted` says which kind
-        /// to make if the place is empty.
+        /// Through a hash map, plain or counted, by the key's hash.
         case key([UInt8], counted: Bool)
-        /// Through an array list, by index, negative from the end.
-        case index(Int)
+        /// Through an array list or a linked array list, by index, negative
+        /// from the end.
+        case index(Int, linked: Bool)
     }
 
     /// The cursor a read-only handle resolved, kept for good: a read-only
@@ -57,13 +58,16 @@ public struct Handle {
         var map: (map: HashMap<ReadWrite>, epoch: Epoch)?
     }
 
-    init(base: Root, hasher: KeyHasher, index: Int, steps: [Step], shared: SharedCache?) {
+    init(base: Root, hasher: KeyHasher, steps: [Step], shared: SharedCache?) {
         self.base = base
         self.hasher = hasher
-        self.index = index
         self.steps = steps
         self.shared = shared
-        cache = Cache()
+        if case .reading = base {
+            cache = Cache()
+        } else {
+            cache = nil
+        }
     }
 
     /// The handle one level down, through the hash map at this place, for
@@ -75,9 +79,7 @@ public struct Handle {
     /// The handle one level down through a hash map, plain or counted, which
     /// is made if the place is empty.
     subscript(key: some KeyRepresentable, counted counted: Bool) -> Handle {
-        Handle(
-            base: base, hasher: hasher, index: index, steps: steps + [.key(hasher.hash(key), counted: counted)],
-            shared: shared)
+        Handle(base: base, hasher: hasher, steps: steps + [.key(hasher.hash(key), counted: counted)], shared: shared)
     }
 
     /// The handle one level down, through the array list at this place, at
@@ -85,7 +87,13 @@ public struct Handle {
     /// is an integer: `handle[index: 0]` is the first element, `handle[0]`
     /// the entry for the key `0`.
     public subscript(index index: Int) -> Handle {
-        Handle(base: base, hasher: hasher, index: self.index, steps: steps + [.index(index)], shared: shared)
+        self[index: index, linked: false]
+    }
+
+    /// The handle one level down through a list, an array list or a linked
+    /// one, which is made if the place is empty.
+    subscript(index index: Int, linked linked: Bool) -> Handle {
+        Handle(base: base, hasher: hasher, steps: steps + [.index(index, linked: linked)], shared: shared)
     }
 
     // MARK: Resolving
@@ -95,9 +103,9 @@ public struct Handle {
     func read() throws(XitDBError) -> Cursor<ReadOnly>? {
         switch base {
         case .reading(let root):
-            if cache.resolved.done { return cache.resolved.cursor }
+            if let cache, cache.resolved.done { return cache.resolved.cursor }
             let cursor = try Self.resolve(from: root, steps)
-            cache.resolved = (cursor, true)
+            cache?.resolved = (cursor, true)
             return cursor
         case .writing(let element):
             // The element's cursor keeps the slot it was made with; what is
@@ -116,7 +124,7 @@ public struct Handle {
                 case .countedHashMap: next = try CountedHashMap<ReadOnly>(cursor).cursor(forHash: hash)
                 default: next = try HashMap<ReadOnly>(cursor).cursor(forHash: hash)
                 }
-            case .index(let index):
+            case .index(let index, _):
                 switch try cursor.slot.tag {
                 case .linkedArrayList: next = try LinkedArrayList<ReadOnly>(cursor).cursor(at: index)
                 default: next = try ArrayList<ReadOnly>(cursor).cursor(at: index)
@@ -130,11 +138,12 @@ public struct Handle {
 
     /// The moment's map, for a writable moment whose element holds a plain
     /// hash map, as the transaction made it: the cached wrapper while the
-    /// epoch holds, made anew through the element otherwise.
+    /// epoch holds, made anew through the element otherwise, by the kind the
+    /// element holds now and not the one its cursor was made with.
     private func momentMap(at element: Cursor<ReadWrite>) throws(XitDBError) -> HashMap<ReadWrite>? {
         let epoch = element.database.epoch
         if let cached = shared?.map, cached.epoch == epoch { return cached.map }
-        switch try element.slot.tag {
+        switch try element.refreshed().slot.tag {
         case .none, .hashMap:
             let map = try HashMap<ReadWrite>(element)
             shared?.map = (map, epoch)
@@ -171,9 +180,10 @@ public struct Handle {
                 case .none where counted: cursor = try CountedHashMap<ReadWrite>(cursor).putCursor(forHash: hash)
                 default: cursor = try HashMap<ReadWrite>(cursor).putCursor(forHash: hash)
                 }
-            case .index(let index):
+            case .index(let index, let linked):
                 switch tag {
                 case .linkedArrayList: cursor = try LinkedArrayList<ReadWrite>(cursor).putCursor(at: index)
+                case .none where linked: cursor = try LinkedArrayList<ReadWrite>(cursor).putCursor(at: index)
                 default: cursor = try ArrayList<ReadWrite>(cursor).putCursor(at: index)
                 }
             }
@@ -181,14 +191,34 @@ public struct Handle {
         return cursor
     }
 
+    /// The cursor at this place for writing a collection of a kind there:
+    /// the moment's root place takes a plain map and nothing else.
+    ///
+    /// - Throws: `XitDBError.unexpectedTag` for any kind but a plain map at
+    ///   the root place, and what ``write()`` throws.
+    func write(as kind: CollectionKind) throws(XitDBError) -> Cursor<ReadWrite> {
+        if steps.isEmpty, kind != .map { throw .unexpectedTag }
+        return try write()
+    }
+
     // MARK: Elements
 
-    /// Appends an empty element to the array list at this place, making the
-    /// list if the place is empty, and gives the element's handle.
-    func appendElement() throws(XitDBError) -> Handle {
-        let list = try ArrayList<ReadWrite>(try write())
-        _ = try list.appendCursor()
-        return self[index: try exactInt(try list.count) - 1]
+    /// Appends an empty element to the list at this place, an array list or
+    /// a linked one, making the list if the place is empty, and gives the
+    /// element's handle.
+    func appendElement(linked: Bool = false) throws(XitDBError) -> Handle {
+        let cursor = try write(as: linked ? .linkedList : .list)
+        let count: UInt64
+        if linked {
+            let list = try LinkedArrayList<ReadWrite>(cursor)
+            _ = try list.appendCursor()
+            count = try list.count
+        } else {
+            let list = try ArrayList<ReadWrite>(cursor)
+            _ = try list.appendCursor()
+            count = try list.count
+        }
+        return self[index: try exactInt(count) - 1, linked: linked]
     }
 
     // MARK: Values
@@ -215,7 +245,8 @@ public struct Handle {
     }
 
     /// Removes what is at this place: the place then holds nothing. At the
-    /// moment's root place it empties the moment.
+    /// moment's root place it empties the moment, after a join or a freeze
+    /// in the transaction too.
     ///
     /// - Throws: `XitDBError.expectedTxStart` in a read-only moment.
     public func clear() throws(XitDBError) {
@@ -225,14 +256,22 @@ public struct Handle {
         if steps.isEmpty { shared?.map = nil }
     }
 
+    /// Whether something is at this place.
+    public var exists: Bool {
+        get throws(XitDBError) {
+            guard let cursor = try read() else { return false }
+            return try cursor.slot.tag != .none
+        }
+    }
+
     // MARK: Collections
 
     /// Makes an empty collection of a kind at this place, as the format's
     /// own init does: a place that holds nothing gets the collection, one
-    /// that holds a collection of the kind keeps it as it is. The
-    /// collections are otherwise made by their first write, so this is for
-    /// one that must exist while it is empty, say a record's list with no
-    /// elements yet.
+    /// that holds a collection of the kind keeps it as it is, and one that
+    /// holds anything else is refused. The collections are otherwise made by
+    /// their first write, so this is for one that must exist while it is
+    /// empty, say a record's list with no elements yet.
     ///
     /// - Throws: `XitDBError.unexpectedTag` if the place holds a value or a
     ///   collection of another kind, or for any kind but ``CollectionKind/map``
@@ -240,6 +279,9 @@ public struct Handle {
     ///   `XitDBError.expectedTxStart` in a read-only moment.
     public func make(_ kind: CollectionKind) throws(XitDBError) {
         if steps.isEmpty, kind != .map { throw .unexpectedTag }
+        // The format's init takes some other kinds over, a set over a map
+        // say, where the structure is the same; the maker does not.
+        if let cursor = try read(), try !Self.holds(kind, cursor) { throw .unexpectedTag }
         let cursor = try write()
         switch kind {
         case .map: _ = try HashMap<ReadWrite>(cursor)
@@ -253,11 +295,19 @@ public struct Handle {
         }
     }
 
-    /// Whether something is at this place.
-    public var exists: Bool {
-        get throws(XitDBError) {
-            guard let cursor = try read() else { return false }
-            return try cursor.slot.tag != .none
+    /// Whether the cursor's place holds nothing or a collection of the kind.
+    private static func holds(_ kind: CollectionKind, _ cursor: Cursor<ReadOnly>) throws(XitDBError) -> Bool {
+        let tag = try cursor.slot.tag
+        if tag == .none { return true }
+        switch kind {
+        case .map: return tag == .hashMap
+        case .countedMap: return tag == .countedHashMap
+        case .keySet: return tag == .hashSet
+        case .countedKeySet: return tag == .countedHashSet
+        case .list: return tag == .arrayList
+        case .linkedList: return tag == .linkedArrayList
+        case .sortedMap: return tag == .sortedMap
+        case .sortedSet: return tag == .sortedSet
         }
     }
 }

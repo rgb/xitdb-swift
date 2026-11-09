@@ -90,7 +90,7 @@ let package = Package(
             exclude: ["Resources/fixtures-source.txt"],
             resources: [
                 .copy("Resources/test.db"),
-                .copy("Resources/fixtures"), .copy("Resources/port-differs"),
+                .copy("Resources/fixtures"), .copy("Resources/port-differs"), .copy("Resources/zig"),
             ],
             swiftSettings: languageSettings
         ),

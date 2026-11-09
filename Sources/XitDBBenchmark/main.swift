@@ -101,6 +101,11 @@ struct Keys {
 /// The hash of the store workloads: the key's bytes are the hash, so that
 /// the keys are the faithful workloads' precomputed hashes and the
 /// comparison shows the layer's own cost, not the hashing's.
+/// The key of the map the store workloads keep their records under: a
+/// hash already, since `PrecomputedHash` passes keys through as they are,
+/// the SHA-1 of "users" so that it is the size the database expects.
+let usersKey = Array(Insecure.SHA1.hash(Array("users".utf8)))
+
 struct PrecomputedHash: KeyHashing {
     static var size: Int { 20 }
 
@@ -110,9 +115,11 @@ struct PrecomputedHash: KeyHashing {
 }
 
 /// `map_insert` through the store layer: the same keys and values, put and
-/// read through handles. `resolving` reads through a fresh moment and handle
-/// for every key, which resolves the path from the root each time, where
-/// the plain form keeps one handle, which caches its cursor in a read-only
+/// read through a map under a key of the moment, `usersKey`, as application
+/// code keeps its records, so that every put goes through the moment's map
+/// and its cache. `resolving` reads through a fresh moment and handle for
+/// every key, which resolves the path from the root each time, where the
+/// plain form keeps one handle, which caches its cursor in a read-only
 /// moment. The difference between the two bounds the read cache's worth
 /// from above and does not isolate it: the resolving form also pays for a
 /// moment per key, the history lookup and the moment's own making.
@@ -121,7 +128,7 @@ func storeMapInsert(_ size: Int, kinds: [StorageKind], resolving: Bool) -> Workl
     return Workload(name: name, size: size, kinds: kinds, keyKind: .hashes, keyCount: size) { database, keys in
         let store = try Store(database, hashing: PrecomputedHash.self)
         try store.transaction { moment in
-            let map = moment.root.map([UInt8].self, UInt64.self)
+            let map = moment[usersKey].map([UInt8].self, UInt64.self)
             for (index, key) in keys.hashBytes.enumerated() {
                 try map.put(UInt64(index), forKey: key)
             }
@@ -130,13 +137,13 @@ func storeMapInsert(_ size: Int, kinds: [StorageKind], resolving: Bool) -> Workl
         if resolving {
             for (index, key) in keys.hashBytes.enumerated() {
                 let moment = try reading.storeMoment(hashing: PrecomputedHash.self)
-                guard try moment.root.map([UInt8].self, UInt64.self)[key] == UInt64(index) else {
+                guard try moment[usersKey].map([UInt8].self, UInt64.self)[key] == UInt64(index) else {
                     throw BenchmarkFailure(description: "key \(index) does not read back through a fresh handle")
                 }
             }
         } else {
             let moment = try reading.storeMoment(hashing: PrecomputedHash.self)
-            let map = moment.root.map([UInt8].self, UInt64.self)
+            let map = moment[usersKey].map([UInt8].self, UInt64.self)
             for (index, key) in keys.hashBytes.enumerated() {
                 guard try map[key] == UInt64(index) else {
                     throw BenchmarkFailure(description: "key \(index) does not read back through the store")
@@ -145,7 +152,7 @@ func storeMapInsert(_ size: Int, kinds: [StorageKind], resolving: Bool) -> Workl
         }
     } iterate: { reading, keys in
         let moment = try reading.storeMoment(hashing: PrecomputedHash.self)
-        var values = try moment.root.map([UInt8].self, UInt64.self).values()
+        var values = try moment[usersKey].map([UInt8].self, UInt64.self).values()
         var count = 0
         while try values.next() != nil {
             count += 1

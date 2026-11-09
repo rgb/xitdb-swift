@@ -18,7 +18,7 @@ public struct SortedMap<K: KeyRepresentable, V: StorableValue> {
     }
 
     func writing() throws(XitDBError) -> XitDB.SortedMap<ReadWrite> {
-        try XitDB.SortedMap<ReadWrite>(try handle.write())
+        try XitDB.SortedMap<ReadWrite>(try handle.write(as: .sortedMap))
     }
 
     /// How many entries the map has.
@@ -97,7 +97,7 @@ public struct SortedSet<K: KeyRepresentable> {
     }
 
     func writing() throws(XitDBError) -> XitDB.SortedSet<ReadWrite> {
-        try XitDB.SortedSet<ReadWrite>(try handle.write())
+        try XitDB.SortedSet<ReadWrite>(try handle.write(as: .sortedSet))
     }
 
     /// How many keys the set has.

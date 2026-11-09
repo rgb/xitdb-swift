@@ -242,4 +242,51 @@ struct HandleCacheTests {
             throughStore.bytes == throughCalls.bytes,
             "lengths \(throughStore.bytes.count) and \(throughCalls.bytes.count)")
     }
+
+    /// The root clears after a join and after a freeze in the transaction:
+    /// the write goes through the body's own cursor, which the engine lets
+    /// go on with a write as with an init; bytes against the canonical body.
+    @Test func theRootClearsAfterAJoinAndAFreeze() throws {
+        let throughStore = MemoryStorage()
+        let store = try Store(try seeded(throughStore), hashing: SHA256.self)
+        try store.transaction { moment in
+            try moment["a"].set(UInt64(1))
+            try moment["la"].linkedList(UInt64.self).append(1)
+            try moment["lb"].linkedList(UInt64.self).append(2)
+            try moment["la"].linkedList(UInt64.self).join(moment["lb"].linkedList(UInt64.self))
+            try moment.root.clear()
+            #expect(try !moment["a"].exists)
+            try moment["b"].set(UInt64(2))
+            try store.database.freeze()
+            try moment.root.clear()
+            #expect(try !moment["b"].exists)
+            try moment["c"].set(UInt64(3))
+            #expect(try moment["c"].value(UInt64.self) == 3)
+        }
+        #expect(try store.latest["c"].value(UInt64.self) == 3)
+        #expect(try !store.latest["a"].exists)
+        #expect(try !store.latest["la"].exists)
+
+        let throughCalls = MemoryStorage()
+        let database = try seeded(throughCalls)
+        try canonical(database) { cursor in
+            var moment = try HashMap<ReadWrite>(cursor)
+            try moment.put(.uint(1), forHash: sha("a"))
+            try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: sha("la"))).append(.uint(1))
+            let other = try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: sha("lb")))
+            try other.append(.uint(2))
+            try LinkedArrayList<ReadWrite>(try moment.putCursor(forHash: sha("la"))).append(
+                contentsOf: other.readOnly)
+            try cursor.write(.slot(nil))
+            moment = try HashMap<ReadWrite>(cursor)
+            try moment.put(.uint(2), forHash: sha("b"))
+            try database.freeze()
+            try cursor.write(.slot(nil))
+            moment = try HashMap<ReadWrite>(cursor)
+            try moment.put(.uint(3), forHash: sha("c"))
+        }
+        #expect(
+            throughStore.bytes == throughCalls.bytes,
+            "lengths \(throughStore.bytes.count) and \(throughCalls.bytes.count)")
+    }
 }

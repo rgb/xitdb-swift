@@ -47,7 +47,9 @@ public enum SHA256: Sendable, KeyHashing {
 
 #if canImport(CryptoKit)
     /// The 32 bytes of a SHA-256 digest: CryptoKit's type, a sequence of its
-    /// bytes that prints as "SHA256 digest: " and the hex.
+    /// bytes that prints as "SHA256 digest: " and the hex. Its members
+    /// beyond the sequence, `byteCount` among them, are CryptoKit's: a file
+    /// that uses them imports CryptoKit, as member import visibility asks.
     public typealias SHA256Digest = CryptoKit.SHA256Digest
 #else
     /// The 32 bytes of a SHA-256 digest.
@@ -110,7 +112,8 @@ public enum Insecure {
 
     #if canImport(CryptoKit)
         /// The 20 bytes of a SHA-1 digest: CryptoKit's type, a sequence of
-        /// its bytes that prints as "SHA1 digest: " and the hex.
+        /// its bytes that prints as "SHA1 digest: " and the hex; its members
+        /// beyond the sequence are CryptoKit's, reached by importing it.
         public typealias SHA1Digest = CryptoKit.Insecure.SHA1Digest
     #else
         /// The 20 bytes of a SHA-1 digest.

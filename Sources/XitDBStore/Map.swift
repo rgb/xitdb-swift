@@ -21,7 +21,7 @@ public struct Map<K: KeyRepresentable, V: StorableValue> {
     }
 
     func writing() throws(XitDBError) -> HashMap<ReadWrite> {
-        try HashMap<ReadWrite>(try handle.write())
+        try HashMap<ReadWrite>(try handle.write(as: .map))
     }
 
     /// The value for a key, or nil if there is none.
@@ -81,7 +81,7 @@ public struct CountedMap<K: KeyRepresentable, V: StorableValue> {
     }
 
     func writing() throws(XitDBError) -> CountedHashMap<ReadWrite> {
-        try CountedHashMap<ReadWrite>(try handle.write())
+        try CountedHashMap<ReadWrite>(try handle.write(as: .countedMap))
     }
 
     /// How many entries the map has; zero if it does not exist yet.

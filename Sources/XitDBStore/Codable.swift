@@ -43,6 +43,10 @@ public struct XitDBEncoder {
     ///
     /// At the moment's root place only a keyed value can go: a single value
     /// or an unkeyed one there is refused with `XitDBError.unexpectedTag`.
+    /// Encoding `nil`, an optional that is none, clears the place, and at
+    /// the root place empties the moment. If a write fails midway, the place
+    /// has been cleared and holds what was written before the failure: let
+    /// the error out of the transaction's body, and the moment rolls back.
     ///
     /// - Throws: `XitDBError.expectedTxStart` in a read-only moment, the
     ///   error of a write that fails, or what the value's own `encode(to:)`
@@ -194,7 +198,7 @@ struct KeyedStoreEncoding<Key: CodingKey>: KeyedEncodingContainerProtocol {
         self.options = options
         self.fault = fault
         do {
-            _ = try HashMap<ReadWrite>(try handle.write())
+            _ = try HashMap<ReadWrite>(try handle.write(as: .map))
         } catch {
             fault.record(error)
         }
@@ -266,13 +270,8 @@ struct UnkeyedStoreEncoding: UnkeyedEncodingContainer {
         self.codingPath = codingPath
         self.options = options
         self.fault = fault
-        // The moment's root place is its map, and takes no list.
-        guard !handle.steps.isEmpty else {
-            fault.record(XitDBError.unexpectedTag)
-            return
-        }
         do {
-            _ = try ArrayList<ReadWrite>(try handle.write())
+            _ = try ArrayList<ReadWrite>(try handle.write(as: .list))
         } catch {
             fault.record(error)
         }
@@ -467,21 +466,23 @@ struct KeyedStoreDecoding<Key: CodingKey>: KeyedDecodingContainerProtocol {
 
     private func place(_ key: Key) -> Handle { handle[key.stringValue] }
 
-    /// Whether the key has an entry. The protocol lets this throw nothing:
-    /// a read that fails says the key is not there, and the decode that
-    /// follows reports the error.
+    /// Whether the key has an entry with a value. The protocol lets this
+    /// throw nothing: a read that fails says the key is there, so that the
+    /// decode that follows reports the error instead of an optional
+    /// decoding as nil.
     func contains(_ key: Key) -> Bool {
-        (try? place(key).exists) ?? false
+        (try? place(key).exists) ?? true
     }
 
     func decodeNil(forKey key: Key) throws -> Bool {
         try !place(key).exists
     }
 
-    /// The place for a key that must have an entry.
+    /// The place for a key that must have an entry; the entry's value may
+    /// be none, which is how an optional in a dictionary is nil.
     private func present(_ key: Key) throws -> Handle {
         let place = place(key)
-        guard try place.exists else {
+        guard try place.read() != nil else {
             throw DecodingError.keyNotFound(
                 key, DecodingError.Context(codingPath: codingPath, debugDescription: "no entry for the key"))
         }

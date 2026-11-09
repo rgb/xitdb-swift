@@ -1,0 +1,311 @@
+{
+ "format": "xitdb-script/1",
+ "description": "D24 item 3 refined: after a join, a plain write, a writeIfEmpty and a write-first path through the transaction body's own cursor pass, as Zig writes them; the writeIfEmpty finds the moment's map and writes nothing.",
+ "hash_size": 20,
+ "hash_id": null,
+ "file_id": "0000000000000008",
+ "ops": [
+  {
+   "op": "write_path",
+   "on": "root",
+   "path": [
+    "array_list_init",
+    "array_list_append",
+    {
+     "write": {
+      "slot": null
+     }
+    },
+    {
+     "ctx": {
+      "as": "m",
+      "ops": [
+       {
+        "op": "write_path",
+        "on": "m",
+        "path": [
+         {
+          "hash_map_init": {}
+         },
+         {
+          "hash_map_get": {
+           "value": {
+            "sha1": "la"
+           }
+          }
+         },
+         "linked_array_list_init",
+         "linked_array_list_append",
+         {
+          "write": {
+           "uint": 1
+          }
+         }
+        ]
+       },
+       {
+        "op": "write_path",
+        "on": "m",
+        "path": [
+         {
+          "hash_map_init": {}
+         },
+         {
+          "hash_map_get": {
+           "value": {
+            "sha1": "lb"
+           }
+          }
+         },
+         "linked_array_list_init",
+         "linked_array_list_append",
+         {
+          "write": {
+           "uint": 2
+          }
+         }
+        ]
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "op": "read_path_slot",
+   "on": "root",
+   "path": [
+    {
+     "array_list_get": -1
+    }
+   ],
+   "as": "last"
+  },
+  {
+   "op": "write_path",
+   "on": "root",
+   "path": [
+    "array_list_init",
+    "array_list_append",
+    {
+     "write": {
+      "slot": {
+       "var": "last"
+      }
+     }
+    },
+    {
+     "ctx": {
+      "as": "n",
+      "ops": [
+       {
+        "op": "write_path",
+        "on": "n",
+        "path": [
+         {
+          "hash_map_init": {}
+         },
+         {
+          "hash_map_get": {
+           "value": {
+            "sha1": "lb"
+           }
+          }
+         }
+        ],
+        "as": "lb_cursor"
+       },
+       {
+        "op": "slot",
+        "on": "lb_cursor",
+        "as": "lb_slot"
+       },
+       {
+        "op": "write_path",
+        "on": "n",
+        "path": [
+         {
+          "hash_map_init": {}
+         },
+         {
+          "hash_map_get": {
+           "value": {
+            "sha1": "la"
+           }
+          }
+         },
+         "linked_array_list_init",
+         {
+          "linked_array_list_concat": {
+           "list": {
+            "var": "lb_slot"
+           }
+          }
+         }
+        ],
+        "note": "a join, which freezes"
+       },
+       {
+        "op": "write_if_empty",
+        "on": "n",
+        "data": {
+         "uint": 9
+        },
+        "note": "writeIfEmpty through the body's cursor after a join: the moment is a map, so nothing is written, and nothing is refused"
+       },
+       {
+        "op": "write",
+        "on": "n",
+        "data": {
+         "slot": null
+        },
+        "note": "a plain write through the body's cursor after a join"
+       },
+       {
+        "op": "write_path",
+        "on": "n",
+        "path": [
+         {
+          "hash_map_init": {}
+         },
+         {
+          "hash_map_get": {
+           "value": {
+            "sha1": "la"
+           }
+          }
+         },
+         "linked_array_list_init",
+         "linked_array_list_append",
+         {
+          "write": {
+           "uint": 3
+          }
+         }
+        ]
+       },
+       {
+        "op": "write_path",
+        "on": "n",
+        "path": [
+         {
+          "hash_map_init": {}
+         },
+         {
+          "hash_map_get": {
+           "value": {
+            "sha1": "lb"
+           }
+          }
+         },
+         "linked_array_list_init",
+         "linked_array_list_append",
+         {
+          "write": {
+           "uint": 4
+          }
+         }
+        ]
+       },
+       {
+        "op": "write_path",
+        "on": "n",
+        "path": [
+         {
+          "hash_map_init": {}
+         },
+         {
+          "hash_map_get": {
+           "value": {
+            "sha1": "lb"
+           }
+          }
+         }
+        ],
+        "as": "lb_cursor2"
+       },
+       {
+        "op": "slot",
+        "on": "lb_cursor2",
+        "as": "lb_slot2"
+       },
+       {
+        "op": "write_path",
+        "on": "n",
+        "path": [
+         {
+          "hash_map_init": {}
+         },
+         {
+          "hash_map_get": {
+           "value": {
+            "sha1": "la"
+           }
+          }
+         },
+         "linked_array_list_init",
+         {
+          "linked_array_list_concat": {
+           "list": {
+            "var": "lb_slot2"
+           }
+          }
+         }
+        ],
+        "note": "a second join"
+       },
+       {
+        "op": "write_path",
+        "on": "n",
+        "path": [
+         {
+          "write": {
+           "slot": null
+          }
+         },
+         {
+          "hash_map_init": {}
+         },
+         {
+          "hash_map_get": {
+           "value": {
+            "sha1": "c"
+           }
+          }
+         },
+         {
+          "write": {
+           "uint": 3
+          }
+         }
+        ],
+        "note": "a write-first path through the body's cursor after a join, its later parts passing"
+       },
+       {
+        "op": "write_path",
+        "on": "n",
+        "path": [
+         {
+          "hash_map_init": {}
+         },
+         {
+          "hash_map_get": {
+           "value": {
+            "sha1": "d"
+           }
+          }
+         },
+         {
+          "write": {
+           "uint": 4
+          }
+         }
+        ]
+       }
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}

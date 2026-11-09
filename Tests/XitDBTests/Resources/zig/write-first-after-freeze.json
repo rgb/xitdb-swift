@@ -1,0 +1,187 @@
+{
+ "format": "xitdb-script/1",
+ "description": "D24 item 3 refined: after a db-level freeze, a writeIfEmpty, a plain write and a write-first path through the transaction body's own cursor pass, as Zig writes them.",
+ "hash_size": 20,
+ "hash_id": null,
+ "file_id": "0000000000000007",
+ "ops": [
+  {
+   "op": "write_path",
+   "on": "root",
+   "path": [
+    "array_list_init",
+    "array_list_append",
+    {
+     "ctx": {
+      "as": "m",
+      "ops": [
+       {
+        "op": "db_freeze"
+       },
+       {
+        "op": "write_if_empty",
+        "on": "m",
+        "data": {
+         "uint": 5
+        },
+        "note": "writeIfEmpty through the body's cursor after a freeze"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "op": "read_path",
+   "on": "root",
+   "path": [
+    {
+     "array_list_get": -1
+    }
+   ],
+   "as": "last_ro"
+  },
+  {
+   "op": "read_path_slot",
+   "on": "root",
+   "path": [
+    {
+     "array_list_get": -1
+    }
+   ],
+   "as": "last"
+  },
+  {
+   "op": "write_path",
+   "on": "root",
+   "path": [
+    "array_list_init",
+    "array_list_append",
+    {
+     "write": {
+      "slot": {
+       "var": "last"
+      }
+     }
+    },
+    {
+     "ctx": {
+      "as": "n",
+      "ops": [
+       {
+        "op": "write_path",
+        "on": "n",
+        "path": [
+         {
+          "write": {
+           "slot": null
+          }
+         },
+         {
+          "hash_map_init": {}
+         },
+         {
+          "hash_map_get": {
+           "value": {
+            "sha1": "a"
+           }
+          }
+         },
+         {
+          "write": {
+           "uint": 1
+          }
+         }
+        ],
+        "note": "a write-first path before any freeze"
+       },
+       {
+        "op": "db_freeze"
+       },
+       {
+        "op": "write",
+        "on": "n",
+        "data": {
+         "slot": null
+        },
+        "note": "a plain write through the body's cursor after a freeze"
+       },
+       {
+        "op": "write_path",
+        "on": "n",
+        "path": [
+         {
+          "hash_map_init": {}
+         },
+         {
+          "hash_map_get": {
+           "value": {
+            "sha1": "b"
+           }
+          }
+         },
+         {
+          "write": {
+           "uint": 2
+          }
+         }
+        ]
+       },
+       {
+        "op": "db_freeze"
+       },
+       {
+        "op": "write_path",
+        "on": "n",
+        "path": [
+         {
+          "write": {
+           "slot": null
+          }
+         },
+         {
+          "hash_map_init": {}
+         },
+         {
+          "hash_map_get": {
+           "value": {
+            "sha1": "c"
+           }
+          }
+         },
+         {
+          "write": {
+           "uint": 3
+          }
+         }
+        ],
+        "note": "a write-first path through the body's cursor after a freeze, its later parts passing"
+       },
+       {
+        "op": "write_path",
+        "on": "n",
+        "path": [
+         {
+          "hash_map_init": {}
+         },
+         {
+          "hash_map_get": {
+           "value": {
+            "sha1": "d"
+           }
+          }
+         },
+         {
+          "write": {
+           "uint": 4
+          }
+         }
+        ]
+       }
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}

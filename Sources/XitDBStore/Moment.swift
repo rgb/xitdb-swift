@@ -59,7 +59,7 @@ public struct Moment {
 
     /// The handle of the moment's map itself.
     public var root: Handle {
-        Handle(base: base, hasher: hasher, index: index, steps: [], shared: shared)
+        Handle(base: base, hasher: hasher, steps: [], shared: shared)
     }
 
     /// The handle one level down, through the root map, for a key.

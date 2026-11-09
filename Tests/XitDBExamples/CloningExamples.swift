@@ -163,9 +163,10 @@ import XitDB
             try list.append(.uint(1))
             var value = try moment.putCursor(forHash: sha256("bytes"))
             try cursor.database.freeze()
-            // The body's own cursor is refused too, for anything but making a collection.
-            #expect(throws: XitDBError.staleCursor) { try cursor.write(.uint(1)) }
-            #expect(throws: XitDBError.staleCursor) { try cursor.writeIfEmpty(.uint(1)) }
+            // The body's own cursor goes on, through an init or a write: this
+            // writeIfEmpty passes the guard and, the root being a map, writes nothing.
+            try cursor.writeIfEmpty(.uint(1))
+            // A byte writer through it is refused like every other cursor's write.
             #expect(throws: XitDBError.staleCursor) { try cursor.writeBytes { writer in try writer.write([1]) } }
             #expect(throws: XitDBError.staleCursor) {
                 try value.writeBytes { writer in try writer.write([1, 2, 3]) }

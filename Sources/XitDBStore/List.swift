@@ -17,7 +17,7 @@ public struct List<V: StorableValue> {
     }
 
     func writing() throws(XitDBError) -> ArrayList<ReadWrite> {
-        try ArrayList<ReadWrite>(try handle.write())
+        try ArrayList<ReadWrite>(try handle.write(as: .list))
     }
 
     /// How many elements the list has.
@@ -93,7 +93,7 @@ public struct LinkedList<V: StorableValue> {
     }
 
     func writing() throws(XitDBError) -> LinkedArrayList<ReadWrite> {
-        try LinkedArrayList<ReadWrite>(try handle.write())
+        try LinkedArrayList<ReadWrite>(try handle.write(as: .linkedList))
     }
 
     /// How many elements the list has.
@@ -129,8 +129,7 @@ public struct LinkedList<V: StorableValue> {
     /// collection nested in the list.
     @discardableResult
     public func append() throws(XitDBError) -> Handle {
-        _ = try writing().appendCursor()
-        return handle[index: try count - 1]
+        try handle.appendElement(linked: true)
     }
 
     /// Inserts an element before the one at an index, negative from the
@@ -165,7 +164,7 @@ public struct LinkedList<V: StorableValue> {
 
     /// The handle one level down, for a nested collection at an index.
     public subscript(handleAt index: Int) -> Handle {
-        handle[index: index]
+        handle[index: index, linked: true]
     }
 
     /// The elements in order.

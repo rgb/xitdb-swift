@@ -73,7 +73,8 @@ public final class Store {
         return result
     }
 
-    /// The last committed moment, read-only.
+    /// The last committed moment, read-only; inside a transaction, the
+    /// commit before it.
     ///
     /// - Throws: `XitDBError.indexOutOfRange` if nothing has been
     ///   committed yet.

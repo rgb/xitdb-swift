@@ -18,7 +18,7 @@ public struct KeySet<K: KeyRepresentable> {
     }
 
     func writing() throws(XitDBError) -> HashSet<ReadWrite> {
-        try HashSet<ReadWrite>(try handle.write())
+        try HashSet<ReadWrite>(try handle.write(as: .keySet))
     }
 
     /// Adds a key, making the set first if the place is empty; a key that
@@ -57,7 +57,7 @@ public struct CountedKeySet<K: KeyRepresentable> {
     }
 
     func writing() throws(XitDBError) -> CountedHashSet<ReadWrite> {
-        try CountedHashSet<ReadWrite>(try handle.write())
+        try CountedHashSet<ReadWrite>(try handle.write(as: .countedKeySet))
     }
 
     /// How many keys the set has; zero if it does not exist yet.

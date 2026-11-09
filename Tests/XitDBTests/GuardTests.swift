@@ -89,12 +89,13 @@ import Testing
 
     /// After `Database.freeze()` no cursor from before it writes, inits
     /// included, with one exception: a path that begins with an init part
-    /// through the transaction's own cursor, which is how the transaction
-    /// goes on (D24). A value cursor, a map cursor and a wrapper from before
-    /// the freeze are refused for everything, an init through them too; the
-    /// transaction's cursor is refused for a plain path and an empty one and
-    /// writes through an init part, and everything made from it afterwards
-    /// is fresh.
+    /// or a write through the transaction's own cursor, which is how the
+    /// transaction goes on (D24; `BodyCursorWriteTests` has the writes). A
+    /// value cursor, a map cursor and a wrapper from before the freeze are
+    /// refused for everything, an init through them too; the transaction's
+    /// cursor is refused for a path that begins with a get and for an empty
+    /// one and writes through an init part, and everything made from it
+    /// afterwards is fresh.
     @Test(arguments: storageKinds)
     func afterAFreezeOnlyTheTransactionsCursorGoesOnThroughAnInit(kind: StorageKind) throws {
         let fixture = try Fixture(kind)

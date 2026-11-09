@@ -169,6 +169,7 @@ struct CodableTests {
         var set: Set<Int>
         var events: [Event]
         var nested: [[String]]
+        var optionals: [String: Int?]
     }
 
     /// An empty collection is written and comes back empty: the containers
@@ -177,10 +178,14 @@ struct CodableTests {
     @Test func emptyCollectionsComeBackEmpty() throws {
         let store = try makeStore()
         let empties = Empties(
-            strings: [], numbers: [:], bytes: [], data: Data(), nothing: Nothing(), set: [], events: [], nested: [[]])
+            strings: [], numbers: [:], bytes: [], data: Data(), nothing: Nothing(), set: [], events: [], nested: [[]],
+            optionals: ["none": nil, "some": 1])
         try store.transaction { moment in
             try moment["e"].set(encoding: empties)
             #expect(try moment["e"].value(decoding: Empties.self) == empties)
+            #expect(
+                try !moment["e"]["optionals"]["none"].exists, "a nil in a dictionary is an entry with nothing in it")
+            #expect(try moment["e"]["optionals"]["some"].value(Int64.self) == 1)
             #expect(try moment["e"]["strings"].exists)
             #expect(try moment["e"]["strings"].list(String.self).count == 0)
             #expect(try moment["e"]["numbers"].exists)
@@ -221,6 +226,16 @@ struct CodableTests {
             }
         }
         #expect(try store.latest.root.value(decoding: Address.self) == Address(street: "Lane", number: 1))
+        // after a join in the same transaction, the root still takes a record
+        try store.transaction { moment in
+            try moment["la"].linkedList(UInt64.self).append(1)
+            try moment["lb"].linkedList(UInt64.self).append(2)
+            try moment["la"].linkedList(UInt64.self).join(moment["lb"].linkedList(UInt64.self))
+            try moment.root.set(encoding: Address(street: "After", number: 4))
+            #expect(try moment.root.value(decoding: Address.self) == Address(street: "After", number: 4))
+            #expect(try !moment["la"].exists)
+        }
+        #expect(try store.latest.root.value(decoding: Address.self) == Address(street: "After", number: 4))
     }
 
     @Test func topLevelScalarsAndLists() throws {

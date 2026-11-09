@@ -169,4 +169,42 @@ struct CollectionEdgeTests {
         #expect(storage.bytes == afterClone.bytes)
         #expect(storage.bytes.count > before.count)
     }
+
+    @Test func theRootTakesAMapOnly() throws {
+        let store = try makeStore()
+        try store.transaction { moment in
+            #expect(throws: XitDBError.unexpectedTag) { try moment.root.list(UInt64.self).append(1) }
+            #expect(throws: XitDBError.unexpectedTag) { try moment.root.linkedList(UInt64.self).append(1) }
+            #expect(throws: XitDBError.unexpectedTag) { try moment.root.keySet(String.self).insert("x") }
+            #expect(throws: XitDBError.unexpectedTag) { try moment.root.countedKeySet(String.self).insert("x") }
+            #expect(throws: XitDBError.unexpectedTag) {
+                try moment.root.countedMap(String.self, UInt64.self).put(1, forKey: "a")
+            }
+            #expect(throws: XitDBError.unexpectedTag) {
+                try moment.root.sortedMap(String.self, UInt64.self).put(1, forKey: "a")
+            }
+            #expect(throws: XitDBError.unexpectedTag) { try moment.root.sortedSet(String.self).insert("x") }
+            #expect(throws: XitDBError.unexpectedTag) { try moment.root.set(encoding: [1, 2]) }
+            #expect(try !moment.root.exists, "nothing was made at the root")
+            try moment.root.map(String.self, UInt64.self).put(1, forKey: "a")
+            #expect(throws: XitDBError.unexpectedTag) { try moment.root.keySet(String.self).insert("x") }
+            #expect(try moment["a"].value(UInt64.self) == 1, "the map root was not retagged")
+        }
+        #expect(try store.latest["a"].value(UInt64.self) == 1)
+    }
+
+    @Test func aLinkedListsHandlesMakeALinkedList() throws {
+        let store = try makeStore()
+        try store.transaction { moment in
+            let linked = moment["l"].linkedList(UInt64.self)
+            #expect(throws: XitDBError.indexOutOfRange) { try linked[handleAt: 0].set(UInt64(1)) }
+            #expect(try moment["l"].exists, "the list was made, of its own kind")
+            #expect(try linked.count == 0)
+            #expect(throws: XitDBError.unexpectedTag) { try moment["l"].list(UInt64.self).count }
+            let element = try linked.append()
+            try element.map(String.self, UInt64.self).put(1, forKey: "a")
+            #expect(try linked[handleAt: 0].map(String.self, UInt64.self)["a"] == 1)
+            #expect(try linked.count == 1)
+        }
+    }
 }
