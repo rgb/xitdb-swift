@@ -18,8 +18,8 @@ public import XitDB
 /// here is data loss. Use it only for keys the program itself produces,
 /// never for keys that come from users or the network; `SHA256` is the
 /// default and the safe choice. One shot only: there is no incremental
-/// update. A `String` is hashed through its `utf8`; an array slice passes as
-/// it is.
+/// update. ``hash(_:)`` takes any collection of bytes, a string's `utf8`,
+/// an array or a slice of one.
 public enum SipHash128: Sendable, KeyHashing {
     /// The number of bytes in a digest: 16.
     public static let byteCount = 16
@@ -51,6 +51,9 @@ public enum SipHash128: Sendable, KeyHashing {
 /// 32 lowercase hex characters; a caller that wants the hex alone, to hold
 /// against the reference implementation's vectors say, drops that prefix.
 public struct SipHash128Digest: Sequence, Equatable, Hashable, Sendable, CustomStringConvertible {
+    /// The number of bytes in a digest: 16, as CryptoKit's digests say it.
+    public static let byteCount = 16
+
     let storage: DigestStorage<16>
 
     /// "SipHash128 digest: " followed by the digest as 32 lowercase hex

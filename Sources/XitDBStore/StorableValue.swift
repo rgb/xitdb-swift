@@ -5,13 +5,15 @@ public import XitDB
 /// A value the store writes to a place and reads back from it.
 ///
 /// The format has scalars (unsigned and signed integers, doubles), byte
-/// arrays, and collections; a conformer says which of them it is written
-/// as. `UInt64`, `Int64` and `Double` are the scalars, `String` is its
-/// UTF-8 as a byte array, `[UInt8]` a byte array as it is, `Bool` an
-/// unsigned integer 0 or 1 (and reads back as `true` from any non-zero
-/// one), an optional writes nothing for `nil`, and the store's collections
-/// are values too, so a map of lists is a type. Reading a value from a
-/// place that holds another kind throws `XitDBError.unexpectedTag`.
+/// arrays, and collections; a conformer says which of the scalars or byte
+/// arrays it is written as. `UInt64`, `Int64` and `Double` are the scalars,
+/// `String` is its UTF-8 as a byte array, `[UInt8]` a byte array as it is,
+/// `Bool` an unsigned integer 0 or 1 (and reads back as `true` from any
+/// non-zero one), and an optional writes nothing for `nil`. The store's
+/// collections are not values: a collection inside a collection is reached
+/// through a ``Handle``, by `handleFor:` on a map or `handleAt:` on a
+/// list. Reading a value from a place that holds another kind throws
+/// `XitDBError.unexpectedTag`.
 public protocol StorableValue {
     /// Reads the value at the cursor.
     init(reading cursor: Cursor<ReadOnly>) throws(XitDBError)

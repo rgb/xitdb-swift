@@ -68,7 +68,10 @@ extension Bytes: KeyRepresentable {
     }
 }
 
-extension RawRepresentable where RawValue: KeyRepresentable {
+/// The key through its raw value, for a type that declares the conformance:
+/// `extension Role: KeyRepresentable {}` is all an enum with a `String` or
+/// an integer raw value needs.
+extension KeyRepresentable where Self: RawRepresentable, RawValue: KeyRepresentable {
     /// The raw value's bytes.
     public var keyBytes: [UInt8] { rawValue.keyBytes }
 

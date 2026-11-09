@@ -42,10 +42,10 @@ let package = Package(
             name: "XitDB",
             swiftSettings: languageSettings + [.strictMemorySafety()]
         ),
-        // The hashes a store names: SHA-256 and SHA-1 as CryptoKit's where it
-        // exists and as the portable implementations where it does not, and
-        // SipHash-128; each conforms to XitDB's KeyHashing. No dependency: the
-        // package takes none (D15).
+        // The hashes a store names, as the module's own types: SHA-256 and
+        // SHA-1 forwarding to CryptoKit where it exists and to the portable
+        // implementations where it does not, and SipHash-128; each conforms to
+        // XitDB's KeyHashing. No dependency: the package takes none (D15).
         .target(
             name: "XitDBHashing",
             dependencies: ["XitDB"],
@@ -97,8 +97,7 @@ let package = Package(
         // Every code block of the README, the articles and the tutorials, as a test
         // that runs it, importing the library as a client does: the proof that the
         // public surface is enough for what the documentation shows.
-        // The examples hash with CryptoKit where it exists, as the articles'
-        // readers on Apple platforms do, and with XitDBHashing where it does not.
+        // The examples hash through XitDBHashing, as the articles' readers do.
         .testTarget(
             name: "XitDBExamples",
             dependencies: ["XitDB", "XitDBHashing"],

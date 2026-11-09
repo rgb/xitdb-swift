@@ -52,10 +52,13 @@ public enum SHA256: Sendable, KeyHashing {
 #else
     /// The 32 bytes of a SHA-256 digest.
     ///
-    /// It iterates over its bytes in order, and `description` is "SHA256
-    /// digest: " followed by the digest as lowercase hex, as CryptoKit's
-    /// prints where that is the type.
+    /// It iterates over its bytes in order, so `Array(digest)` is the bytes,
+    /// and `description` is "SHA256 digest: " followed by the digest as
+    /// lowercase hex, as CryptoKit's prints where that is the type.
     public struct SHA256Digest: Sequence, Equatable, Hashable, Sendable, CustomStringConvertible {
+        /// The number of bytes in a digest: 32.
+        public static let byteCount = 32
+
         let storage: DigestStorage<32>
 
         /// "SHA256 digest: " and 64 lowercase hex characters.
@@ -112,10 +115,13 @@ public enum Insecure {
     #else
         /// The 20 bytes of a SHA-1 digest.
         ///
-        /// It iterates over its bytes in order, and `description` is "SHA1
-        /// digest: " followed by the digest as lowercase hex, as CryptoKit's
-        /// prints where that is the type.
+        /// It iterates over its bytes in order, so `Array(digest)` is the
+        /// bytes, and `description` is "SHA1 digest: " followed by the digest
+        /// as lowercase hex, as CryptoKit's prints where that is the type.
         public struct SHA1Digest: Sequence, Equatable, Hashable, Sendable, CustomStringConvertible {
+            /// The number of bytes in a digest: 20.
+            public static let byteCount = 20
+
             let storage: DigestStorage<20>
 
             /// "SHA1 digest: " and 40 lowercase hex characters.

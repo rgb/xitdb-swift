@@ -1,5 +1,6 @@
 import Testing
 import XitDB
+import XitDBHashing
 import XitDBStore
 
 /// Keys as bytes: the integers order as their values, the same on every
@@ -65,5 +66,31 @@ struct KeyRepresentableTests {
         #expect(Colour.red.keyBytes == "red".keyBytes)
         #expect(Level.low.keyBytes == Int32(-1).keyBytes)
         #expect(Level.high.keyBytes == [0x80, 0, 0, 1])
+    }
+}
+
+/// The raw-value keys are opt-in: a type that declares the conformance
+/// gets them through its raw value, and one that does not is not a key.
+@Suite("raw-value keys opt in")
+struct RawValueKeyTests {
+    enum Declared: Int16, KeyRepresentable {
+        case low = -1
+        case high = 1
+    }
+
+    @Test func aDeclaredConformanceGoesThroughTheRawValue() throws {
+        #expect(Declared.low.keyBytes == Int16(-1).keyBytes)
+        #expect(Declared(keyBytes: Int16(1).keyBytes) == .high)
+        #expect(Declared(keyBytes: Int16(2).keyBytes) == nil)
+        #expect(Declared(keyBytes: [1]) == nil)
+        let store = try Store(try Database(creating: MemoryStorage(), hashSize: 32), hashing: SHA256.self)
+        try store.transaction { moment in
+            let sorted = moment["levels"].sortedMap(Declared.self, UInt64.self)
+            try sorted.put(2, forKey: .high)
+            try sorted.put(1, forKey: .low)
+            var entries = try sorted.entries()
+            #expect(try entries.next()?.key == Declared.low, "signed raw values order as their values do")
+            #expect(try entries.next()?.key == Declared.high)
+        }
     }
 }

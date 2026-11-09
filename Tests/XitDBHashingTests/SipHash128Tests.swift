@@ -103,6 +103,7 @@ struct SipHash128Tests {
     @Test func isSixteenBytes() {
         #expect(SipHash128.size == 16)
         #expect(SipHash128.byteCount == 16)
+        #expect(SipHash128Digest.byteCount == 16)
         let digest = SipHash128.hash(Self.key)
         #expect(Array(digest).count == 16)
         #expect(digest.description.hasPrefix(Self.prefix))
