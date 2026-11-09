@@ -206,6 +206,12 @@ Pull requests from forks run on the same runners, so a public repository should 
 outside collaborators before their workflows run.
 `scripts/bench-compare.py` runs the same comparison by hand.
 
+The tests include model-based ones: random operation sequences run against plain Swift collections and against a
+database of each storage kind, checked against each other after every commit, with compaction, replication,
+snapshots, reopening and recovery on the way, and the same through the store's handles and Codable records. The
+gate runs a fixed set of seeds; `scripts/soak.sh [seconds]` runs fresh seeds for a while. A failure prints the
+shortest sequence that still fails as a conformance-style script.
+
 Commits in this repository carry no `Co-Authored-By` trailer; `scripts/git-hooks/commit-msg` removes one from a
 message. Git runs it once a clone has
 
