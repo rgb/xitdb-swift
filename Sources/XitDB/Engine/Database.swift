@@ -332,11 +332,14 @@ public final class Database {
     /// append handed the body, or any cursor at the same slot, such as the
     /// cursor of a collection made from it: making a collection from it is
     /// allowed, so a collection made again from it is fresh, and so is every
-    /// cursor taken from it; its slot is the engine's own record, which nothing
-    /// inside the transaction can copy, and every write re-reads it. Every
-    /// other cursor from before the freeze is refused for every write, inits
-    /// included: a held handle's init would rewrite its slot in a record that a
-    /// copy may have left behind, which lost writes silently.
+    /// cursor taken from it, and so is writing a value through it, with
+    /// ``Cursor/write(_:)``, ``Cursor/writeIfEmpty(_:)`` or a path that begins
+    /// with a write; its slot is the engine's own record, which nothing inside
+    /// the transaction can copy, and every write re-reads it. A byte writer
+    /// through it is refused, and so is every other cursor from before the
+    /// freeze for every write, inits included: a held handle's init would
+    /// rewrite its slot in a record that a copy may have left behind, which
+    /// lost writes silently.
     /// ``LinkedArrayList/append(contentsOf:)-(Slot)`` freezes the same way and
     /// stales its own list too. Finish any ``Cursor/writeBytes(formatTag:_:)``
     /// first: a freeze while a byte writer's body runs is refused.

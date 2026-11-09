@@ -150,14 +150,16 @@ package enum PathPart: Sendable {
 }
 
 extension PathPart {
-    /// Whether the part is a collection's init part, which copies the
-    /// collection into the transaction: the way to go on after a freeze.
-    /// Whether the part writes data at the slot it is applied to.
+    /// Whether the part writes data at the slot it is applied to: with an
+    /// init part, a way to go on after a freeze through the transaction's
+    /// own cursor.
     var isWrite: Bool {
         if case .write = self { return true }
         return false
     }
 
+    /// Whether the part is a collection's init part, which copies the
+    /// collection into the transaction: a way to go on after a freeze.
     var isInit: Bool {
         switch self {
         case .arrayListInit, .hashMapInit, .linkedArrayListInit, .sortedMapInit: true

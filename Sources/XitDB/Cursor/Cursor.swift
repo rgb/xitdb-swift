@@ -823,9 +823,11 @@ extension Database {
     /// refused guard included, leaves the transaction as it was. The cursor
     /// `body` is given is the transaction's cursor: after a freeze,
     /// ``Database/freeze()`` or a join, it is the one place from before the
-    /// freeze that making a collection may go through, it or any cursor at the
-    /// same slot, such as the cursor of a collection made from it, so a
-    /// collection made again from either is fresh. It and every cursor and
+    /// freeze that a write may go through, making a collection or writing a
+    /// value with ``Cursor/write(_:)`` or ``Cursor/writeIfEmpty(_:)``, a byte
+    /// writer excepted, it or any cursor at the same slot, such as the cursor of a
+    /// collection made from it, so a collection made again from either is
+    /// fresh. It and every cursor and
     /// collection made from it belong to this transaction: a write through one
     /// of them after `body` returns is refused with ``XitDBError/staleCursor``.
     ///

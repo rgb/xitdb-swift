@@ -166,11 +166,14 @@ if [ "$platform" = Darwin ]; then
     # removed when Package.swift or the set of resource files differs from
     # what the last passing gate saw, which a stamp records; a cold simulator
     # step costs minutes more than a warm one, so it is not removed every time.
+    # POSIX tools only: a Mac with GNU coreutils first on its PATH, as the
+    # Actions runner has, reads `stat -f` as a file system query, and `cksum`
+    # prints the same on both.
     stamp=.build/xcodebuild-stamp
     current=$({
         cat Package.swift
-        find Sources Tests -path '*/Resources/*' -type f -exec stat -f '%N %z' {} + | sort
-    } | shasum -a 256 | cut -d' ' -f1)
+        find Sources Tests -path '*/Resources/*' -type f -exec cksum {} + | LC_ALL=C sort
+    } | cksum | cut -d' ' -f1,2)
     if [ ! -f "$stamp" ] || [ "$(cat "$stamp")" != "$current" ]; then
         echo "Package.swift or the resources changed since the last passing gate: xcodebuild starts clean"
         rm -rf .build/xcodebuild .build/xcodebuild-ios .build/xcodebuild-ios-tsan
