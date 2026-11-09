@@ -1,0 +1,16 @@
+@Tutorials(name: "XitDBStore") {
+    @Intro(title: "Learning XitDBStore") {
+        Write and read a database through the store: keys as Swift values, records as `Codable` types, and handles that
+        name a place. The tutorial is one program that grows step by step. The package's tests compile and run the
+        finished program, which holds the code of every step.
+    }
+
+    @Chapter(name: "A store and its history") {
+        Open a store in a file, write a record and read it back, go back to an earlier moment, and hand a commit to
+        another task.
+
+        @Image(source: "store-history-on-dark.svg", alt: "A history of three moments, each a map. The later moments share with the earlier ones the values they did not change.")
+
+        @TutorialReference(tutorial: "doc:YourFirstStore")
+    }
+}

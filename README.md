@@ -13,28 +13,33 @@ inside your program and keeps its data in one file or in memory.
   new file.
 - Readers on other threads and tasks get a snapshot: a `Sendable` value that reads one commit from any task
   while the writer goes on.
+- Over the API that mirrors the original, a Swift layer, `XitDBStore`: keys as Swift values, values as Swift
+  types, `Codable` records stored as maps a field at a time, and handles that name a place in a moment.
 - The port reads and writes the same files as the original, byte for byte. Given the same operations and the
   same IDs, the two produce identical files, apart from the few operations the port deliberately does
   differently, which the article "Where the port differs from the original" lists.
-- It is pure Swift with no run-time dependencies, down to the system's file calls.
+- It is pure Swift with no run-time dependencies, down to the system's file calls. Only the store uses Foundation,
+  for the `Codable` forms of dates, data and URLs.
 
 Immutability has a cost: the file only grows until you compact it. The design leaves two jobs to you as well: you
-hash your own keys, and you keep your own indexes. If you want queries or a schema, use SQLite.
+hash your own keys, unless the store does it for you, and you keep your own indexes. If you want queries or a schema,
+use SQLite.
 
 ## Status
 
 The port does everything the original does. Beyond that, it refuses with an error most of the misuse that the original
 lets through to damage data, such as a cursor kept for a later transaction, a handle held across a freeze, or a write
 after a failure in the same transaction, and it recovers, when asked, a file whose root header or last trailer is
-damaged, which the original cannot open. It also hands one commit to other threads and tasks as a read snapshot. Every
-public symbol is documented, and the documentation has articles for the concepts and four tutorials. Its first
-release is 0.1.0; 0.1.1 added Linux, 0.1.2 the tests on an iOS simulator, and 0.2.0 the hashing target and the store
-layer.
+damaged, which the original cannot open. It also hands one commit to other threads and tasks as a read snapshot.
 
-Not there yet, and planned:
+Two more modules come with it. `XitDBStore` is a Swift layer over the API shown here, and writes through it: string,
+integer and byte keys, typed values, `Codable` records, and handles that name a place rather than hold a cursor.
+`XitDBHashing` has SHA-256, SHA-1 and SipHash-128 under CryptoKit's names on every platform, CryptoKit's own where it
+exists. Every public symbol is documented, and the documentation has articles for the concepts and five tutorials. Its
+first release is 0.1.0; 0.1.1 added Linux, 0.1.2 the tests on an iOS simulator, and 0.2.0 the store and the hashes.
 
-- a tool that shows what a file holds, and tests that check random sequences of operations against Swift's own
-  collections.
+Not there yet, and planned: a tool that shows what a file holds, and tests that check random sequences of operations
+against Swift's own collections.
 
 It builds for macOS 26, iOS 26 and Linux, and is tested on macOS, on Linux and on an iOS simulator.
 
@@ -71,6 +76,9 @@ targets: [
 ]
 ```
 
+For the Swift layer, depend on the product `XitDBStore` instead. It brings `XitDB` and `XitDBHashing` with it, and
+`import XitDBStore` is the one import a file needs.
+
 ## A first look
 
 History as a list of moments, a map in each, a value written and read back:
@@ -93,6 +101,7 @@ let database =
 
 // The root is a list with one element for each transaction, so that
 // every earlier state of the database stays readable: the history.
+// On a new database, making it is a small transaction of its own.
 let history = try ArrayList<ReadWrite>(database.rootCursor)
 
 // A transaction. The new element starts as the last one, and the body
@@ -150,17 +159,20 @@ Every block of code that uses the library, in this README and in the documentati
 
 ## Documentation
 
-The full documentation is a DocC catalogue in
-[`Sources/XitDB/XitDB.docc`](Sources/XitDB/XitDB.docc): a reference curated by task, articles for the
-concepts, and step-by-step tutorials. It is best read through DocC: the articles are Markdown files, but as raw text
-their links show their overloads, links between articles do not resolve, and the diagrams do not appear. Start with
-the article "Moments and history".
+The full documentation is a DocC catalogue for each module: [`Sources/XitDB/XitDB.docc`](Sources/XitDB/XitDB.docc),
+[`Sources/XitDBStore/XitDBStore.docc`](Sources/XitDBStore/XitDBStore.docc) and
+[`Sources/XitDBHashing/XitDBHashing.docc`](Sources/XitDBHashing/XitDBHashing.docc): a reference curated by task,
+articles for the concepts, and step-by-step tutorials. It is best read through DocC: the articles are Markdown files,
+but as raw text their links show their overloads, links between articles do not resolve, and the diagrams do not
+appear. Start with the article "Moments and history" for XitDB, and "Keys, values and handles" for the store.
 
 To read it in a browser:
 
 ```sh
 swift package --disable-sandbox preview-documentation --target XitDB
 ```
+
+with `--target XitDBStore` or `--target XitDBHashing` for the other two.
 
 To build it as a static site, for hosting at a path of your choice, and to look at the result:
 

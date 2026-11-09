@@ -34,6 +34,11 @@ see <doc:MomentsAndHistory> for what that costs.
 A database whose root header or last trailer is damaged does not open. Opening names the last commit that
 verifies, and one explicit call cuts the file back to it, which can lose the commits after it: see <doc:Recovery>.
 
+Two more modules come with the package, each with documentation of its own. `XitDBStore` is a Swift layer over
+this one: keys as Swift values, values as Swift types and `Codable` records, and handles that name a place in a
+moment, all written through the calls documented here. `XitDBHashing` has SHA-256, SHA-1 and SipHash-128 under
+CryptoKit's names on every platform, for the store's keys or for the hashes a map here takes.
+
 To start, take the tutorials, or read the four articles under Essentials in order. After those, each article stands
 on its own.
 

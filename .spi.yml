@@ -1,4 +1,4 @@
-# The Swift Package Index builds the documentation of the XitDB target on macOS and hosts it.
+# The Swift Package Index builds the documentation of the three library targets on macOS and Linux, and hosts it.
 version: 1
 builder:
   configs:

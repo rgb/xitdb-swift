@@ -18,9 +18,10 @@ func sha256(_ key: String) -> SHA256Digest {
 }
 ```
 
-The `XitDBHashing` target has ready-made hashes, SHA-256, SHA-1 and SipHash-128, each a ``KeyHashing``, and the
-`XitDBStore` layer takes string keys and hashes them with one of these. On Linux, where there is no CryptoKit, the
-target computes the hashes itself.
+The package's `XitDBHashing` module has SHA-256 under the same names on every platform, CryptoKit's own where it
+exists, so with `import XitDBHashing` in place of `import CryptoKit` the helper works on Linux too. It has SHA-1 and
+SipHash-128 as well, each a ``KeyHashing``, and the article "Hashing" in its documentation says which to choose. The `XitDBStore` module, a
+Swift layer over this one, takes keys as Swift values and hashes them for you.
 
 ### Giving the hash
 
@@ -52,6 +53,7 @@ many bytes and eighteen more.
 |---|---|---|
 | 32 | SHA-256 | The choice to make if you have no reason to choose. |
 | 20 | SHA-1 | Keys you make yourself, for 12 bytes less per entry. |
+| 16 | SipHash-128 | Keys you make yourself, hashed fast: see `XitDBHashing`. |
 | 64 | SHA-512 | If you already have one. |
 | 8 | Your own 64-bit IDs | Keys that are unique already: see below. |
 

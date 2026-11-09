@@ -21,6 +21,7 @@ import XitDBHashing
 
         // The root is a list with one element for each transaction, so that
         // every earlier state of the database stays readable: the history.
+        // On a new database, making it is a small transaction of its own.
         let history = try ArrayList<ReadWrite>(database.rootCursor)
 
         // A transaction. The new element starts as the last one, and the body

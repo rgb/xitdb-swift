@@ -14,9 +14,9 @@ affordable. A copy of such data is a second name for one mutable thing. ``Databa
 committed kind for the rest of the transaction, so a copy made before the freeze stays as it was.
 
 A freeze also changes the handles you hold. Every cursor and collection made before it can still read, and is refused if it
-tries to write, even to make a collection again from it. The one exception is making a collection from the cursor the
-transaction's body was given, or from another cursor at its slot, and the way on starts there. The rest of this article is
-about why.
+tries to write, even to make a collection again from it. The one exception is the cursor the transaction's body was given, or
+another cursor at its slot, which can still make a collection or write a value, and the way on starts there. The rest of this
+article is about why.
 
 ### A copy of committed data
 
@@ -102,8 +102,8 @@ freeze, and a write through either is refused, and so is making `bigCities` agai
 
 ### What a freeze does to the handles you hold
 
-After ``Database/freeze()``, every cursor and collection made before it in the transaction is stale, with one exception,
-the cursor the transaction's body was given, described below:
+After ``Database/freeze()``, every cursor and collection made before it in the transaction is stale, except the cursor
+the transaction's body was given:
 
 - **A write through it is refused** with ``XitDBError/staleCursor``: a value, an append, a
   ``HashMap/putCursor(forHash:)-(Sequence<UInt8>)``, a byte array, and making a collection again from its cursor. The guard runs
@@ -112,12 +112,11 @@ the cursor the transaction's body was given, described below:
   fresh handles write afterwards, since they write copies.
 - **The cursor the body was given goes on.** Its slot is in a record the engine keeps for the transaction, the copy of
   the root slot, or in ``ArrayList/append(_:_:)`` on a history the new element's slot in the history's block, and nothing in
-  the transaction can copy that record. So making a collection from it is allowed after a freeze, and so is a write of a
-  value through it, ``Cursor/write(_:)`` and ``Cursor/writeIfEmpty(_:)`` and a path that begins with a write, which rewrite
-  that slot in place as the original does; the cursors and collections that gives are fresh. A byte writer through it is
-  refused like any other write. The engine goes by the slot, so the cursor of a collection made from it, such as
-  `moment.cursor`, can make a collection too, whenever the collection was made. Writes through the collection itself are
-  refused all the same.
+  the transaction can copy that record. So after a freeze it can still make a collection, and the cursors and collections
+  that gives are fresh. It can also write a value, with ``Cursor/write(_:)`` or ``Cursor/writeIfEmpty(_:)``, which rewrites
+  that slot in place, as the original does. A byte writer through it is refused like any other write. The engine goes by
+  the slot, so the cursor of a collection made from it, such as `moment.cursor`, can do the same, whenever the collection
+  was made. Writes through the collection itself are refused all the same.
 
 The way on is the one in step 3: start from the cursor the body was given, which is at the top of everything the transaction
 writes, and make each collection again on the way down to where you write.
@@ -219,11 +218,12 @@ second appended nothing: it wrote in place, as writes to what the transaction ha
 elements the join appended 274, taking the list again the same 210, and the first append 1,388. The path, and so the cost of the
 first append, grows with the logarithm of the size.
 
-### Where this is going
+### Handles that name a place
 
-The `XitDBStore` layer's handles do this: a handle remembers its path from the moment's root and resolves it again on
-every use, so that freezing and joining need nothing from you, and a clone is safe without one. See
-<doc:DifferencesFromTheOriginal> for the rest of what the layer adds.
+The package's `XitDBStore` module is a Swift layer over this one. Its handles name a place by its path from the moment's
+root, and in a transaction a handle looks its path up again each time it is used, so a freeze or a join leaves none of them
+stale, and nothing has to be taken again after it. See the article "Keys, values and handles" in that module's
+documentation.
 
 ## See Also
 

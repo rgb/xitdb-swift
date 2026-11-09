@@ -27,8 +27,8 @@ These mean the code asked for something it should not have. Most are worth fixin
 - ``XitDBError/cursorNotWritable``: ``Cursor/writeBytes(formatTag:_:)`` on the ``Database/rootCursor``.
 - ``XitDBError/staleCursor``: A write through a cursor or collection made before the last ``Database/freeze()`` or join
   (``LinkedArrayList/append(contentsOf:)-(LinkedArrayList<CursorAccess>)``) of the transaction, making a collection from it
-  included, except making one from the cursor the transaction's body was given, or from the cursor of a collection made from
-  that; a write through one from an earlier transaction; a read through one from a transaction that did not commit; or a
+  included, except making a collection or writing a value through the cursor the transaction's body was given, or through the
+  cursor of a collection made from that; a write through one from an earlier transaction; a read through one from a transaction that did not commit; or a
   ``Snapshot/init(_:)`` of such a cursor, or of work the running transaction has not committed yet. See
   <doc:CloningFreezeAndStaleHandles>.
 - ``XitDBError/snapshotOverwritten``: A read through a ``Snapshot`` of a file whose bytes below the snapshot's committed size,

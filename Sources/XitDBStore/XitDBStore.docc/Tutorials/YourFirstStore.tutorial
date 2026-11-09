@@ -1,0 +1,167 @@
+@Tutorial(time: 10) {
+    @Intro(title: "Your first store") {
+        Open a store in a file, write a record to it as a `Codable` type, read it back, go back in its history, and read
+        it on another task.
+
+        You need an executable package that depends on `XitDBStore`: `.package(url: "https://github.com/rgb/xitdb-swift", from: "0.2.0")` in its manifest, and `.product(name: "XitDBStore", package: "xitdb-swift")` among its target's dependencies. The code goes in its `main.swift`.
+    }
+
+    @Section(title: "Open a store") {
+        @ContentAndMedia {
+            A store stands over a database, and a database keeps its bytes in a storage, here a file. The store hashes
+            each key for you, with the hash you give it when you make it.
+        }
+
+        @Steps {
+            @Step {
+                Import the store, and open the file. The store brings the rest of the package with it: the database,
+                its storages and the hashes. `FileAccess.create` makes the file if it is not there.
+
+                @Code(name: "main.swift", file: "first-store-01.swift")
+            }
+
+            @Step {
+                Make the database. Creating and opening are different calls, and which one you want depends on whether
+                the file is new. A new one gets a hash size of 32 bytes, the size of a SHA-256 hash, and a note in its
+                header of which hash that is.
+
+                @Code(name: "main.swift", file: "first-store-02.swift")
+            }
+
+            @Step {
+                Make the store, with the hash its keys are hashed by. The store checks that the hash has the size the
+                database records, and throws if it does not.
+
+                @Code(name: "main.swift", file: "first-store-03.swift")
+            }
+        }
+    }
+
+    @Section(title: "Write a record") {
+        @ContentAndMedia {
+            Every write happens in a transaction, which adds a moment to the database's history. The moment starts as a
+            copy of the latest one, and the transaction's body changes it. <doc:KeysValuesAndHandles> says what a
+            moment and a handle are.
+        }
+
+        @Steps {
+            @Step {
+                Declare a record as a `Codable` type. Nothing else is needed for the store to write it.
+
+                @Code(name: "main.swift", file: "first-store-04.swift")
+            }
+
+            @Step {
+                Run a transaction. `moment["people"]["alice"]` is a handle: it names the place for Alice in the map of
+                people, and making it reads and writes nothing. ``Handle/set(encoding:)`` writes the record there as a
+                map with an entry for each field, making the map of people on the way. Everything in the body commits
+                together when the body returns.
+
+                @Code(name: "main.swift", file: "first-store-05.swift")
+            }
+        }
+    }
+
+    @Section(title: "Read it back") {
+        @ContentAndMedia {
+            Reading needs no transaction. ``Store/latest`` is the last committed moment, and it is read-only.
+        }
+
+        @Steps {
+            @Step {
+                Read the record from the latest moment. ``Handle/value(decoding:)`` gives `nil` if nothing is at the
+                place; here the record was just written, so the code unwraps it.
+
+                @Code(name: "main.swift", file: "first-store-06.swift")
+            }
+        }
+    }
+
+    @Section(title: "Go back in the history") {
+        @ContentAndMedia {
+            A transaction leaves the moments before it as they were, so every earlier state of the database stays
+            readable.
+        }
+
+        @Steps {
+            @Step {
+                Write a second moment. A field of the record is an entry of its own, so the transaction writes the age
+                alone, as one of the format's signed integers, which is what the record's `Int` is stored as.
+
+                @Code(name: "main.swift", file: "first-store-07.swift")
+            }
+
+            @Step {
+                Read the moment before. ``Store/moment(at:)`` counts from the end when the index is negative, so `-2` is
+                the moment before the latest, where Alice is still 25.
+
+                @Code(name: "main.swift", file: "first-store-08.swift")
+            }
+        }
+    }
+
+    @Section(title: "Read on another task") {
+        @ContentAndMedia {
+            A store belongs to one thread or task. Another task reads a snapshot of one commit, which is a `Sendable`
+            value, and reads that commit whatever the writer does meanwhile.
+        }
+
+        @Steps {
+            @Step {
+                Take a snapshot, and read it on a task of its own. The closure takes the snapshot with it, and nothing
+                else of the writer's. On the task, ``Moment/init(reading:hashing:)`` gives the latest moment of the
+                snapshot's database. The writer commits again meanwhile, and the reader still reads the commit it was
+                given: Alice at 26.
+
+                @Code(name: "main.swift", file: "first-store-09.swift")
+            }
+        }
+    }
+
+    @Section(title: "Open it again") {
+        @ContentAndMedia {
+            What was committed is in the file, whatever happens to your program afterwards.
+        }
+
+        @Steps {
+            @Step {
+                Print the number of moments, and run the program twice. The first run creates the file and prints 3. The
+                second run opens it, adds three moments to it, and prints 6. The moments from the first run are still
+                there, the first of them as moment 0.
+
+                @Code(name: "main.swift", file: "first-store-10.swift")
+            }
+        }
+    }
+
+    @Assessments {
+        @MultipleChoice {
+            Inside a transaction's body, which moment is `store.latest`?
+
+            @Choice(isCorrect: true) {
+                The last committed moment, the one the new moment was copied from.
+
+                @Justification(reaction: "That's right.") {
+                    Inside a transaction the database's root reads the last commit. The moment being written is the
+                    body's own, and it is in the history only once it commits.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                The moment the body is writing.
+
+                @Justification(reaction: "Try again.") {
+                    That moment is the one the body is given. It is not committed yet, so `latest` does not see it.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                None: reading `latest` inside a transaction throws.
+
+                @Justification(reaction: "Try again.") {
+                    Reading needs no transaction and is not refused inside one. It reads what is committed.
+                }
+            }
+        }
+    }
+}

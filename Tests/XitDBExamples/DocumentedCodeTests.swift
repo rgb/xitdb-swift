@@ -6,8 +6,9 @@ import Testing
 /// DocC and a README cannot include a file, so the code they show is written
 /// out twice: here, where it is compiled and run, and there, where it is
 /// read. This suite is what stops the two from drifting apart: every fenced
-/// `swift` block of the README, the articles and the tutorials, and every
-/// tutorial step file, must appear in this target's sources line for line.
+/// `swift` block of the README and of every module's articles and tutorials,
+/// and every tutorial step file, must appear in this target's sources line for
+/// line.
 ///
 /// A block marked ` ```swift manifest ` is a package manifest and not a use of
 /// the library, and is not checked; that is the only exception.
@@ -22,7 +23,13 @@ import Testing
         .deletingLastPathComponent()
         .deletingLastPathComponent()
 
-    private static let catalogue = packageRoot.appendingPathComponent("Sources/XitDB/XitDB.docc")
+    /// The catalogue of every module: `Sources/<module>/<module>.docc`.
+    private static let catalogues: [URL] = {
+        let sources = packageRoot.appendingPathComponent("Sources")
+        let modules = (try? FileManager.default.contentsOfDirectory(atPath: sources.path)) ?? []
+        return modules.sorted().map { sources.appendingPathComponent("\($0)/\($0).docc") }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+    }()
 
     /// A piece of code the documentation shows, and where.
     private struct ShownCode: CustomTestStringConvertible {
@@ -32,11 +39,15 @@ import Testing
         var testDescription: String { place }
     }
 
+    /// The files below a directory, as URLs that begin with the directory's
+    /// own path. The walk gives paths relative to the directory, which are
+    /// appended to it: a walk by URL resolves symbolic links in the
+    /// directory's path, `/tmp` to `/private/tmp` say, and its URLs would not
+    /// begin with the package root that ``relative(_:)`` takes off.
     private static func files(in directory: URL, withExtensions extensions: Set<String>) -> [URL] {
-        guard let walker = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil) else {
-            return []
-        }
-        return walker.compactMap { $0 as? URL }
+        guard let walker = FileManager.default.enumerator(atPath: directory.path) else { return [] }
+        return walker.compactMap { $0 as? String }
+            .map { directory.appendingPathComponent($0) }
             .filter { extensions.contains($0.pathExtension) }
             .sorted { $0.path < $1.path }
     }
@@ -79,12 +90,14 @@ import Testing
     /// files of its tutorials.
     private static func shownCode() throws -> [ShownCode] {
         var shown = try fencedBlocks(in: packageRoot.appendingPathComponent("README.md"))
-        for url in files(in: catalogue, withExtensions: ["md", "tutorial"]) {
-            shown += try fencedBlocks(in: url)
-        }
-        for url in files(in: catalogue, withExtensions: ["swift"]) {
-            let lines = try String(contentsOf: url, encoding: .utf8).components(separatedBy: "\n")
-            shown.append(ShownCode(place: relative(url), lines: normalised(lines)))
+        for catalogue in catalogues {
+            for url in files(in: catalogue, withExtensions: ["md", "tutorial"]) {
+                shown += try fencedBlocks(in: url)
+            }
+            for url in files(in: catalogue, withExtensions: ["swift"]) {
+                let lines = try String(contentsOf: url, encoding: .utf8).components(separatedBy: "\n")
+                shown.append(ShownCode(place: relative(url), lines: normalised(lines)))
+            }
         }
         return shown
     }
@@ -109,6 +122,9 @@ import Testing
         #expect(shown.contains { $0.place.hasPrefix("README.md") })
         #expect(shown.contains { $0.place.contains(".docc/Articles/") })
         #expect(shown.contains { $0.place.contains(".docc/Resources/") })
+        for module in ["XitDB", "XitDBHashing", "XitDBStore"] {
+            #expect(shown.contains { $0.place.hasPrefix("Sources/\(module)/\(module).docc/") }, "\(module)'s catalogue")
+        }
     }
 
     @Test func everyShownLineIsCompiled() throws {

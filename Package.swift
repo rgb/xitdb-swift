@@ -97,10 +97,11 @@ let package = Package(
         // Every code block of the README, the articles and the tutorials, as a test
         // that runs it, importing the library as a client does: the proof that the
         // public surface is enough for what the documentation shows.
-        // The examples hash through XitDBHashing, as the articles' readers do.
+        // The examples hash through XitDBHashing, as the articles' readers do,
+        // and the store's examples import XitDBStore alone.
         .testTarget(
             name: "XitDBExamples",
-            dependencies: ["XitDB", "XitDBHashing"],
+            dependencies: ["XitDB", "XitDBHashing", "XitDBStore"],
             swiftSettings: languageSettings
         ),
     ],

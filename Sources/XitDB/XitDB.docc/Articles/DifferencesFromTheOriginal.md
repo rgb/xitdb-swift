@@ -27,8 +27,8 @@ and the port's files are compared with that branch's.
   shared, which loses writes or leaves two headers over one tree, and a later write can crash. Making a collection again from it
   writes its slot in place too, so a copy of anything that contains the slot changes with it, and once anything has copied the
   record the slot is in, the write is lost. The port refuses every write through it with ``XitDBError/staleCursor``, making a
-  collection included, and freezes after a join rather than before it. The one thing allowed is making a collection from the
-  cursor the transaction's body was given, or from another cursor at its slot, which is the way on: see
+  collection included, and freezes after a join rather than before it. What is allowed is making a collection, or writing a
+  value, through the cursor the transaction's body was given, or another cursor at its slot, which is the way on: see
   <doc:CloningFreezeAndStaleHandles>.
 - **A cursor from a transaction that did not commit.** In the original, a read through it gets whatever the next transaction wrote
   at the same offsets. The port refuses the read with ``XitDBError/staleCursor``.
@@ -112,8 +112,9 @@ The file format and the operations are the same, and the API follows Swift:
   ``Slot``, ``Bytes`` and ``XitDBError`` are `Sendable`, and so is a ``Snapshot`` of one commit, which is how another task reads a
   database: see <doc:ConcurrencyAndSnapshots>.
 
-Every operation of the original is here, and beyond it read snapshots, a target with ready-made hashes, and a layer with
-string keys and typed values, whose handles take themselves again after a freeze, so that a clone is safe without one.
+Every operation of the original is here, and read snapshots beyond it. Beyond it too are two more modules: `XitDBHashing`, with
+ready-made hashes, and `XitDBStore`, a Swift layer over this one, with keys as Swift values, values as Swift types, and handles
+that name a place rather than hold a cursor. Each has documentation of its own.
 
 ### The names
 

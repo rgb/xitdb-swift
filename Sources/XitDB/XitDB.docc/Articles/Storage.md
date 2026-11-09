@@ -130,7 +130,8 @@ need not ask: it does not get in the writer's way, and it gets a consistent view
 ``FileLock/shared`` lock does keep the writer out.
 
 No lock is taken unless you ask for one. Holding a lock on a file in a shared container while an iOS app is suspended gets the app
-terminated, so that decision is left to you, and a snapshot kept alive holds the lock too.
+terminated, so that decision is left to you, and a snapshot kept alive holds the lock too. Elsewhere on iOS a lock between processes
+is moot, since an app's own files are not open to other processes.
 
 ### Writing a storage
 
