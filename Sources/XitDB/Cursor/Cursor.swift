@@ -797,8 +797,8 @@ extension Database {
     /// processes on one file use the file's lock: a reader that opened
     /// read-write is a second writer, and starting a write-mode collection on
     /// its root cursor discards whatever the other process's transaction has
-    /// written so far. <doc:ConcurrencyAndSnapshots> says which types cross
-    /// threads and how readers share a file with a writer.
+    /// written so far. The article on concurrency and snapshots says which
+    /// types cross threads and how readers share a file with a writer.
     public var rootCursor: Cursor<ReadWrite> {
         // The cursor only holds a snapshot of the root slot, and everything
         // that starts at it reads the root again. If this read fails, the

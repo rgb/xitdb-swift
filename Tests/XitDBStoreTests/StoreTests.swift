@@ -1,6 +1,4 @@
 import Testing
-import XitDB
-import XitDBHashing
 import XitDBStore
 
 /// The store over a database: moments, transactions, the hash size check,

@@ -1,7 +1,5 @@
 import Foundation
 import Testing
-import XitDB
-import XitDBHashing
 import XitDBStore
 
 /// Codable onto maps and lists: a grammar of types goes in and comes back

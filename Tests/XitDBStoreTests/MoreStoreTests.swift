@@ -1,6 +1,4 @@
 import Testing
-import XitDB
-import XitDBHashing
 import XitDBStore
 
 /// The pieces the other suites do not reach: the root handle, nested

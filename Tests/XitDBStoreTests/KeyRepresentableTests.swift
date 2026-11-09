@@ -1,6 +1,4 @@
 import Testing
-import XitDB
-import XitDBHashing
 import XitDBStore
 
 /// Keys as bytes: the integers order as their values, the same on every

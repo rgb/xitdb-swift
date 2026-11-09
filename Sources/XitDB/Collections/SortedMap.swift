@@ -311,7 +311,7 @@ extension SortedMap where Access == ReadWrite {
     /// set are one kind to the slot, as in the original: the slot's tag is
     /// written as a map and the entries stay. On the root, where this is a
     /// transaction of its own, a set is a map from then on; a set is
-    /// opened with ``SortedSet``.
+    /// opened with `SortedSet`.
     ///
     /// On the root cursor this is a transaction of its own, unless the root
     /// is a sorted map already, in which case nothing is written.

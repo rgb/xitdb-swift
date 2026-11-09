@@ -55,7 +55,7 @@ let package = Package(
         // as types, handles that name a place, the collections over them.
         .target(
             name: "XitDBStore",
-            dependencies: ["XitDB"],
+            dependencies: ["XitDB", "XitDBHashing"],
             swiftSettings: languageSettings + [.strictMemorySafety()]
         ),
         // The benchmark of spec/benchmarks.md. An executable target is an

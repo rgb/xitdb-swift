@@ -1,6 +1,4 @@
 import Testing
-import XitDB
-import XitDBHashing
 import XitDBStore
 
 /// Handles: a path from the root, values at a place, and the place rather

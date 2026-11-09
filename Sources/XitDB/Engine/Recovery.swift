@@ -124,9 +124,9 @@ extension Database {
     /// whatever followed it. This is the only call that cuts a database back to
     /// an earlier commit of its own; opening a damaged database fails instead,
     /// and its bytes stay as they were until this is called. Copy the storage
-    /// first if the discarded bytes might be wanted. <doc:Recovery> says what
-    /// opening does with a root header it cannot trust and what recovering can
-    /// lose.
+    /// first if the discarded bytes might be wanted. The article on recovery
+    /// says what opening does with a root header it cannot trust and what
+    /// recovering can lose.
     ///
     /// The scan goes by the trailers alone, not by the root header. On a
     /// storage whose root header is sound this still cuts to the last

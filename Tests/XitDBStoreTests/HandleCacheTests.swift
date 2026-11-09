@@ -1,6 +1,4 @@
 import Testing
-import XitDB
-import XitDBHashing
 import XitDBStore
 
 /// Tries to break the writable moment: splits of the moment map's top node,

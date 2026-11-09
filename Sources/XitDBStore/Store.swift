@@ -6,6 +6,12 @@ public import XitDB
 /// The Swift layer's view of a database: keys as values, values as types,
 /// and handles that name a place in a moment.
 ///
+/// `import XitDBStore` brings the engine and the hashes with it: the
+/// `Database`, the storages, `XitDBError`, snapshots, cursors and `SHA256`
+/// need no import of their own, and the store's `SortedMap`, `SortedSet`
+/// and `Entry` are the ones those names resolve to; write `XitDB.SortedMap`
+/// for the engine's only in a file that imports both modules.
+///
 /// A store is made over a `Database` with the hash its keys are
 /// hashed by, `SHA256.self` from `XitDBHashing` for most; the database's
 /// header records the hash size, and a store whose hash has another size is

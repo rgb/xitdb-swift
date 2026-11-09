@@ -153,7 +153,8 @@ public enum XitDBError: Error, Sendable {
     /// write that would land below the freeze by any other route is
     /// ``immutableBytes``, refused before that write; a write the operation
     /// made before it, as a hash map's get makes a new entry's record, poisons
-    /// the transaction. <doc:CloningFreezeAndStaleHandles> has the whole of it.
+    /// the transaction. The article on cloning, freeze and stale handles has
+    /// the whole of it.
     case staleCursor
 
     /// A write would change committed or frozen bytes in place: its position is

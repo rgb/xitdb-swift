@@ -1,5 +1,4 @@
 import Testing
-import XitDB
 import XitDBStore
 
 /// Values as types: each conformance writes to a slot and reads itself back,

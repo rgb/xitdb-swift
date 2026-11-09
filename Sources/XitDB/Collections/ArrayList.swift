@@ -266,7 +266,7 @@ extension ArrayList where Access == ReadWrite {
     /// transaction, as it does on the root. Inside a transaction the
     /// transaction is poisoned instead, since the element was appended before
     /// `body` ran: it can only roll back, as a ``LinkedArrayList``'s does. See
-    /// <doc:Transactions>.
+    /// the article on transactions.
     ///
     /// The result may be ignored: a transaction is often run for its writes
     /// alone, with a body whose one expression happens to have a value.

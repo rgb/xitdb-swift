@@ -1,6 +1,4 @@
 import Testing
-import XitDB
-import XitDBHashing
 import XitDBStore
 
 /// `Handle.make(_:)`: every kind made empty, an existing collection kept,

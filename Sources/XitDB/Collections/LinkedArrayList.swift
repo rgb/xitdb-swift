@@ -28,8 +28,8 @@
 /// refused with ``XitDBError/staleCursor`` at its next write. The way on is a
 /// new list from the transaction's cursor, the one
 /// ``Database/withTransaction(_:)`` or a history append hands its body, through
-/// which an init is allowed after a freeze. <doc:CloningFreezeAndStaleHandles>
-/// says why.
+/// which an init is allowed after a freeze. The article on cloning, freeze and
+/// stale handles says why.
 public struct LinkedArrayList<Access: CursorAccess> {
     /// The cursor the list is a view of.
     public let cursor: Cursor<Access>
@@ -283,7 +283,7 @@ extension LinkedArrayList where Access == ReadWrite {
     /// If `body` throws, the error is rethrown; what was appended is discarded
     /// if this call started the transaction. Inside a transaction the
     /// transaction is poisoned instead, since the element was appended before
-    /// `body` ran: it can only roll back. See <doc:Transactions>.
+    /// `body` ran: it can only roll back. See the article on transactions.
     ///
     /// The result may be ignored: the call is often made for its writes
     /// alone, with a body whose one expression happens to have a value.
@@ -346,7 +346,7 @@ extension LinkedArrayList where Access == ReadWrite {
     /// with ``XitDBError/staleCursor`` at its next write. The way on is a new
     /// list from the transaction's cursor, the one
     /// ``Database/withTransaction(_:)`` or a history append hands its body;
-    /// <doc:CloningFreezeAndStaleHandles> says why.
+    /// the article on cloning, freeze and stale handles says why.
     ///
     /// - Parameter list: The other list, which may be one that can only
     ///   read.
@@ -374,7 +374,7 @@ extension LinkedArrayList where Access == ReadWrite {
     /// with ``XitDBError/staleCursor`` at its next write. The way on is a new
     /// list from the transaction's cursor, the one
     /// ``Database/withTransaction(_:)`` or a history append hands its body;
-    /// <doc:CloningFreezeAndStaleHandles> says why.
+    /// the article on cloning, freeze and stale handles says why.
     ///
     /// - Parameter list: The slot of the other list, from its ``slot``,
     ///   in this database.

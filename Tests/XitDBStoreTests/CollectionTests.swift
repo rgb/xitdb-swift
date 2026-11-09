@@ -1,6 +1,4 @@
 import Testing
-import XitDB
-import XitDBHashing
 import XitDBStore
 
 /// The collections over handles, each through its operations, and the
@@ -227,7 +225,7 @@ struct CollectionTests {
                 let list = try ArrayList<ReadWrite>(try moment.putCursor(forHash: sha("list")))
                 try list.append(.bytes(Array("x".utf8)))
                 try list.append(.bytes(Array("y".utf8)))
-                let sorted = try SortedMap<ReadWrite>(try moment.putCursor(forHash: sha("sorted")))
+                let sorted = try XitDB.SortedMap<ReadWrite>(try moment.putCursor(forHash: sha("sorted")))
                 try sorted.put(.uint(1), forKey: Int64(5).keyBytes)
                 try sorted.put(.uint(2), forKey: Int64(-5).keyBytes)
                 try moment.put(.uint(1), forHash: sha("flag"))

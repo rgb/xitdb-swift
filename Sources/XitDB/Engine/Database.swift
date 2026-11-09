@@ -319,8 +319,8 @@ public final class Database {
     /// slot has been copied to a second place: both places then name the same
     /// data, and a change through one shows through the other. Freezing after
     /// the copy protects what the copy points at from writes through the
-    /// original; <doc:CloningFreezeAndStaleHandles> says what it does not
-    /// protect.
+    /// original; the article on cloning, freeze and stale handles says what
+    /// it does not protect.
     ///
     /// The caller's part: finish any ``Cursor/writeBytes(formatTag:_:)`` before
     /// freezing, since a byte array grows only while it is the last thing

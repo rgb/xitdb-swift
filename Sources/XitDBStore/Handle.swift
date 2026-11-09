@@ -327,8 +327,8 @@ public enum CollectionKind: Sendable {
     case list
     /// A ``LinkedList``.
     case linkedList
-    /// A ``SortedMap``.
+    /// A ``XitDBStore/SortedMap-4xtdk``.
     case sortedMap
-    /// A ``SortedSet``.
+    /// A ``XitDBStore/SortedSet-5dn9y``.
     case sortedSet
 }
