@@ -359,6 +359,15 @@ public final class Database {
         transactionStart == nil ? 0 : transactionNumber
     }
 
+    /// The two counters that say whether a cursor made earlier is still the
+    /// current one: the transaction number and the freeze number. A cursor
+    /// made when both had these values is what the same lookup would give
+    /// now; when either has moved, a lookup may give another slot, so the
+    /// store layer's handles keep a cursor only as long as the epoch holds.
+    package var epoch: Epoch {
+        Epoch(transaction: transactionNumber, freeze: freezeNumber)
+    }
+
     /// Counts a freeze of the transaction in progress: ``freeze()`` or a
     /// concat.
     func noteFreeze() {
@@ -600,5 +609,19 @@ package final class RandomSource {
     /// The next value.
     package func next() -> UInt64 {
         generator.next()
+    }
+}
+
+/// The moment of a database's life a cursor belongs to: see ``Database/epoch``.
+package struct Epoch: Equatable, Sendable {
+    /// The transaction number.
+    package let transaction: UInt64
+
+    /// The freeze number.
+    package let freeze: UInt64
+
+    package init(transaction: UInt64, freeze: UInt64) {
+        self.transaction = transaction
+        self.freeze = freeze
     }
 }

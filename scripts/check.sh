@@ -152,6 +152,7 @@ echo "ok"
 step "Documentation build"
 swift package generate-documentation --target XitDB --warnings-as-errors
 swift package generate-documentation --target XitDBHashing --warnings-as-errors
+swift package generate-documentation --target XitDBStore --warnings-as-errors
 
 # xcodebuild always uses the compiler that ships with Xcode. The workspace selects the
 # same one for `swift`, so the whole gate runs on one compiler; its version is printed

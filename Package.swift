@@ -26,6 +26,7 @@ let package = Package(
     products: [
         .library(name: "XitDB", targets: ["XitDB"]),
         .library(name: "XitDBHashing", targets: ["XitDBHashing"]),
+        .library(name: "XitDBStore", targets: ["XitDBStore"]),
     ],
     dependencies: [
         // Build-time only: the command plugin that builds the documentation. No
@@ -50,6 +51,13 @@ let package = Package(
             dependencies: ["XitDB"],
             swiftSettings: languageSettings + [.strictMemorySafety()]
         ),
+        // The Swift layer over the faithful one (M10): keys as values, values
+        // as types, handles that name a place, the collections over them.
+        .target(
+            name: "XitDBStore",
+            dependencies: ["XitDB"],
+            swiftSettings: languageSettings + [.strictMemorySafety()]
+        ),
         // The benchmark of spec/benchmarks.md. An executable target is an
         // implicit product, so a client could build it; nothing outside this
         // package is meant to, and it brings no dependency.
@@ -69,6 +77,11 @@ let package = Package(
         .testTarget(
             name: "XitDBHashingTests",
             dependencies: ["XitDBHashing"],
+            swiftSettings: languageSettings
+        ),
+        .testTarget(
+            name: "XitDBStoreTests",
+            dependencies: ["XitDBStore", "XitDBHashing"],
             swiftSettings: languageSettings
         ),
         .testTarget(

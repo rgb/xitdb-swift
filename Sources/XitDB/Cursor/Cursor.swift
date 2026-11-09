@@ -410,6 +410,23 @@ public struct Entry {
 }
 
 extension Cursor {
+    /// A read-only view of this cursor at the slot as the storage holds it
+    /// now.
+    ///
+    /// A cursor keeps the slot it was made with; a write through another
+    /// cursor at the same position moves what the slot points at, and a
+    /// write path reads the slot again before it starts, but a read does
+    /// not. A holder that reads through a copy kept across writes, as the
+    /// store layer's handles do at a moment's root, reads through this
+    /// instead. The root reads itself again on every use already.
+    package func refreshed() throws(XitDBError) -> Cursor<ReadOnly> {
+        var view = Cursor<ReadOnly>(viewing: self)
+        if !isRoot, let position = slotPointer.position {
+            view.slotPointer.slot = try engine.reader.slot(at: position)
+        }
+        return view
+    }
+
     /// A cursor at the same slot that can only read; a read-only cursor is
     /// its own. It is as stale as this one: a view of a cursor from a
     /// transaction that did not commit is refused the same way. A helper
