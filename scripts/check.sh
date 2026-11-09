@@ -183,8 +183,11 @@ if [ "$platform" = Darwin ]; then
     # release configuration so that the tests reach internal declarations as they do under
     # `swift test -c release`.
     step "iOS simulator tests"
+    # `|| true` because the script runs under `set -e -o pipefail`: where no iPhone is
+    # listed, grep's status 1 is the pipeline's, the assignment fails with it, and the gate
+    # stopped here with nothing said instead of skipping. It also covers simctl failing.
     simulator=$(xcrun simctl list devices available 2>/dev/null \
-        | grep -E '^ +iPhone [0-9]+ \(' | head -1 | sed -E 's/^ *(iPhone [0-9]+) .*/\1/')
+        | grep -E '^ +iPhone [0-9]+ \(' | head -1 | sed -E 's/^ *(iPhone [0-9]+) .*/\1/') || true
     if [ -z "$simulator" ]; then
         echo "skipped: no iPhone simulator is available on this machine"
     else
