@@ -159,6 +159,23 @@ swift package generate-documentation --target XitDBStore --warnings-as-errors
 # here so that a mismatch with the "Toolchain" step above would show. Only macOS has
 # Xcode; the Linux gate ends with the documentation build.
 if [ "$platform" = Darwin ]; then
+    # xcodebuild keeps the package's resource bundles in its derived data and
+    # does not refresh them when Package.swift declares a new resource folder:
+    # a gate once passed every step and then failed on the simulator, whose
+    # test bundle lacked a folder the commit had added. The derived data is
+    # removed when Package.swift or the set of resource files differs from
+    # what the last passing gate saw, which a stamp records; a cold simulator
+    # step costs minutes more than a warm one, so it is not removed every time.
+    stamp=.build/xcodebuild-stamp
+    current=$({
+        cat Package.swift
+        find Sources Tests -path '*/Resources/*' -type f -exec stat -f '%N %z' {} + | sort
+    } | shasum -a 256 | cut -d' ' -f1)
+    if [ ! -f "$stamp" ] || [ "$(cat "$stamp")" != "$current" ]; then
+        echo "Package.swift or the resources changed since the last passing gate: xcodebuild starts clean"
+        rm -rf .build/xcodebuild .build/xcodebuild-ios .build/xcodebuild-ios-tsan
+    fi
+
     step "iOS compile check"
     xcrun swiftc --version
     xcrun swiftc --version 2>&1 | grep -q "Swift version $expected_swift " || {
@@ -185,6 +202,7 @@ if [ "$platform" = Darwin ]; then
     # release configuration so that the tests reach internal declarations as they do under
     # `swift test -c release`.
     step "iOS simulator tests"
+    simulator_start=$(date +%s)
     # `|| true` because the script runs under `set -e -o pipefail`: where no iPhone is
     # listed, grep's status 1 is the pipeline's, the assignment fails with it, and the gate
     # stopped here with nothing said instead of skipping. It also covers simctl failing.
@@ -212,8 +230,9 @@ if [ "$platform" = Darwin ]; then
             -only-testing:XitDBTests/SnapshotConcurrencyTests \
             '-only-testing:XitDBTests/SnapshotTests/tasksReadOneSnapshotWhileTheWriterCommits(kind:)' \
             SWIFT_TREAT_WARNINGS_AS_ERRORS=YES 2>&1 | summary
-        echo "ok"
+        echo "ok ($(( $(date +%s) - simulator_start )) s)"
     fi
+    echo "$current" > "$stamp"
 fi
 
 printf '\n==> Gate passed\n'
