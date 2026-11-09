@@ -55,8 +55,7 @@ public struct List<V: StorableValue> {
     /// collection nested in the list: `rows.append().list(String.self)`.
     @discardableResult
     public func append() throws(XitDBError) -> Handle {
-        _ = try writing().appendCursor()
-        return handle[index: try count - 1]
+        try handle.appendElement()
     }
 
     /// Drops the elements from `count` on.

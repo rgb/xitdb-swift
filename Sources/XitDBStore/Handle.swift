@@ -131,6 +131,16 @@ public struct Handle {
         return cursor
     }
 
+    // MARK: Elements
+
+    /// Appends an empty element to the array list at this place, making the
+    /// list if the place is empty, and gives the element's handle.
+    func appendElement() throws(XitDBError) -> Handle {
+        let list = try ArrayList<ReadWrite>(try write())
+        _ = try list.appendCursor()
+        return self[index: Int(try list.count) - 1]
+    }
+
     // MARK: Values
 
     /// The value at this place as `V`, or nil if there is nothing there or
