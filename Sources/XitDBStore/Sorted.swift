@@ -24,7 +24,7 @@ public struct SortedMap<K: KeyRepresentable, V: StorableValue> {
     /// How many entries the map has.
     public var count: Int {
         get throws(XitDBError) {
-            Int(try reading()?.count ?? 0)
+            try exactInt(try reading()?.count ?? 0)
         }
     }
 
@@ -54,7 +54,7 @@ public struct SortedMap<K: KeyRepresentable, V: StorableValue> {
 
     /// How many keys order before this one.
     public func rank(of key: K) throws(XitDBError) -> Int {
-        Int(try reading()?.rank(of: key.keyBytes) ?? 0)
+        try exactInt(try reading()?.rank(of: key.keyBytes) ?? 0)
     }
 
     /// The entry at a position in key order, negative from the end, or nil
@@ -103,7 +103,7 @@ public struct SortedSet<K: KeyRepresentable> {
     /// How many keys the set has.
     public var count: Int {
         get throws(XitDBError) {
-            Int(try reading()?.count ?? 0)
+            try exactInt(try reading()?.count ?? 0)
         }
     }
 
@@ -124,7 +124,7 @@ public struct SortedSet<K: KeyRepresentable> {
 
     /// How many keys order before this one.
     public func rank(of key: K) throws(XitDBError) -> Int {
-        Int(try reading()?.rank(of: key.keyBytes) ?? 0)
+        try exactInt(try reading()?.rank(of: key.keyBytes) ?? 0)
     }
 
     /// The key at a position in order, negative from the end, or nil past

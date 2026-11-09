@@ -63,7 +63,7 @@ public struct CountedKeySet<K: KeyRepresentable> {
     /// How many keys the set has; zero if it does not exist yet.
     public var count: Int {
         get throws(XitDBError) {
-            Int(try reading()?.count ?? 0)
+            try exactInt(try reading()?.count ?? 0)
         }
     }
 

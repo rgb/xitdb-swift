@@ -420,6 +420,7 @@ extension Cursor {
     /// store layer's handles do at a moment's root, reads through this
     /// instead. The root reads itself again on every use already.
     package func refreshed() throws(XitDBError) -> Cursor<ReadOnly> {
+        try checkReadable()
         var view = Cursor<ReadOnly>(viewing: self)
         if !isRoot, let position = slotPointer.position {
             view.slotPointer.slot = try engine.reader.slot(at: position)

@@ -9,14 +9,18 @@ public import XitDB
 /// used, so after the thing at the place was replaced, say by a join that
 /// put another list there, the handle sees the new one, and a handle kept
 /// across writes is never stale. In a writable moment every operation
-/// resolves the path from the transaction's cursor, the moment's element
-/// first; in a read-only moment, where nothing
+/// resolves the path from the moment's element, the transaction's own
+/// cursor, through the moment's map, which the moment's handles share while
+/// the transaction's epoch holds; in a read-only moment, where nothing
 /// moves, the handle keeps the cursor it resolved. Descending with the
 /// subscripts, `handle[key]` and `handle[index:]`, treats the place as a
-/// plain hash map or an array list and makes one if the place is empty; through a counted map, a set or a
-/// linked list, descend from the typed collection instead. Writing through
-/// a handle of a read-only moment is refused with
-/// `XitDBError.expectedTxStart`.
+/// plain hash map or an array list and makes one if the place is empty;
+/// through a counted map, a set or a linked list, descend from the typed
+/// collection instead. The moment's root place is its map and takes no
+/// value: ``set(_:)`` there is refused with `XitDBError.unexpectedTag`,
+/// while ``clear()`` there empties the moment, which a write then makes a
+/// map again. Writing through a handle of a read-only moment is refused
+/// with `XitDBError.expectedTxStart`.
 public struct Handle {
     let base: Root
     let hasher: KeyHasher
@@ -29,29 +33,27 @@ public struct Handle {
 
     /// One level of the path.
     enum Step {
-        /// Through a hash map, by the key's hash.
-        case key([UInt8])
+        /// Through a hash map, by the key's hash; `counted` says which kind
+        /// to make if the place is empty.
+        case key([UInt8], counted: Bool)
         /// Through an array list, by index, negative from the end.
         case index(Int)
     }
 
-    /// The cursor a read-only handle resolved, kept while the database's
-    /// epoch holds; a snapshot's never changes.
+    /// The cursor a read-only handle resolved, kept for good: a read-only
+    /// moment's bytes are committed, and nothing moves them.
     final class Cache {
-        var resolved: (cursor: Cursor<ReadOnly>?, epoch: Epoch?)?
+        var resolved: (cursor: Cursor<ReadOnly>?, done: Bool) = (nil, false)
     }
 
-    /// What every handle of a writable moment shares: the cursors of the two
-    /// places whose positions cannot move within a transaction, the moment's
-    /// element in the history and the moment's own map, each kept with the
-    /// epoch it was resolved in. No append to the history happens inside the
-    /// transaction, and the map's root block is the transaction's own, so
-    /// both stay where they are while their contents change, which the write
-    /// paths read again; a freeze moves the epoch, and the cursors are
-    /// resolved anew. The levels below, where a trie split moves an entry,
-    /// resolve on every use.
+    /// What every handle of a writable moment shares: the moment's own map,
+    /// made from the moment's element, kept with the epoch it was made in.
+    /// The map's root block is the transaction's own, so it stays where it is
+    /// while its content changes, which the write paths read again; a freeze
+    /// moves the epoch, and the map is made anew through the element, the
+    /// transaction's cursor, which the engine lets go on after a freeze. The
+    /// levels below, where a trie split moves an entry, resolve on every use.
     final class SharedCache {
-        var element: (cursor: Cursor<ReadWrite>, epoch: Epoch)?
         var map: (map: HashMap<ReadWrite>, epoch: Epoch)?
     }
 
@@ -67,7 +69,15 @@ public struct Handle {
     /// The handle one level down, through the hash map at this place, for
     /// a key.
     public subscript(key: some KeyRepresentable) -> Handle {
-        Handle(base: base, hasher: hasher, index: index, steps: steps + [.key(hasher.hash(key))], shared: shared)
+        self[key, counted: false]
+    }
+
+    /// The handle one level down through a hash map, plain or counted, which
+    /// is made if the place is empty.
+    subscript(key: some KeyRepresentable, counted counted: Bool) -> Handle {
+        Handle(
+            base: base, hasher: hasher, index: index, steps: steps + [.key(hasher.hash(key), counted: counted)],
+            shared: shared)
     }
 
     /// The handle one level down, through the array list at this place, at
@@ -83,44 +93,16 @@ public struct Handle {
     /// The cursor at this place for reading, or nil if a map or list on
     /// the way has no such entry.
     func read() throws(XitDBError) -> Cursor<ReadOnly>? {
-        if case .reading(let root) = base {
-            let epoch = (root.database as? Database)?.epoch
-            if let resolved = cache.resolved, resolved.epoch == epoch { return resolved.cursor }
+        switch base {
+        case .reading(let root):
+            if cache.resolved.done { return cache.resolved.cursor }
             let cursor = try Self.resolve(from: root, steps)
-            cache.resolved = (cursor, epoch)
+            cache.resolved = (cursor, true)
             return cursor
-        }
-        guard case .writing(let root) = base else { return nil }
-        // The element's position is the cache's; its slot is read again,
-        // since a cursor keeps the slot it was made with.
-        return try Self.resolve(from: try element(from: root).refreshed(), steps)
-    }
-
-    /// The moment's element in the history, for a writable moment: the
-    /// cached cursor while the epoch holds, resolved from the transaction's
-    /// cursor otherwise.
-    private func element(from root: Cursor<ReadWrite>) throws(XitDBError) -> Cursor<ReadWrite> {
-        let epoch = root.database.epoch
-        if let cached = shared?.element, cached.epoch == epoch { return cached.cursor }
-        let cursor = try ArrayList<ReadWrite>(root).putCursor(at: index)
-        shared?.element = (cursor, epoch)
-        return cursor
-    }
-
-    /// The moment's map, for a writable moment whose element holds a plain
-    /// hash map or nothing yet: the cached wrapper while the epoch holds.
-    private func momentMap(from root: Cursor<ReadWrite>, element: Cursor<ReadWrite>) throws(XitDBError) -> HashMap<
-        ReadWrite
-    >? {
-        let epoch = root.database.epoch
-        if let cached = shared?.map, cached.epoch == epoch { return cached.map }
-        switch try element.slot.tag {
-        case .none, .hashMap:
-            let map = try HashMap<ReadWrite>(element)
-            shared?.map = (map, epoch)
-            return map
-        default:
-            return nil
+        case .writing(let element):
+            // The element's cursor keeps the slot it was made with; what is
+            // there now is read from the storage.
+            return try Self.resolve(from: try element.refreshed(), steps)
         }
     }
 
@@ -129,7 +111,7 @@ public struct Handle {
         for step in steps {
             let next: Cursor<ReadOnly>?
             switch step {
-            case .key(let hash):
+            case .key(let hash, _):
                 switch try cursor.slot.tag {
                 case .countedHashMap: next = try CountedHashMap<ReadOnly>(cursor).cursor(forHash: hash)
                 default: next = try HashMap<ReadOnly>(cursor).cursor(forHash: hash)
@@ -146,30 +128,47 @@ public struct Handle {
         return cursor
     }
 
+    /// The moment's map, for a writable moment whose element holds a plain
+    /// hash map, as the transaction made it: the cached wrapper while the
+    /// epoch holds, made anew through the element otherwise.
+    private func momentMap(at element: Cursor<ReadWrite>) throws(XitDBError) -> HashMap<ReadWrite>? {
+        let epoch = element.database.epoch
+        if let cached = shared?.map, cached.epoch == epoch { return cached.map }
+        switch try element.slot.tag {
+        case .none, .hashMap:
+            let map = try HashMap<ReadWrite>(element)
+            shared?.map = (map, epoch)
+            return map
+        default:
+            return nil
+        }
+    }
+
     /// The cursor at this place for writing, making the maps and lists on
-    /// the way if they are empty.
+    /// the way if they are empty; the moment's element itself for the root
+    /// place.
     ///
-    /// - Throws: `XitDBError.expectedTxStart` if the moment is
-    ///   read-only; `XitDBError.indexOutOfRange` if an index on the
-    ///   way names no element.
+    /// - Throws: `XitDBError.expectedTxStart` if the moment is read-only;
+    ///   `XitDBError.indexOutOfRange` if an index on the way names no
+    ///   element.
     func write() throws(XitDBError) -> Cursor<ReadWrite> {
-        guard case .writing(let root) = base else { throw .expectedTxStart }
-        // Down from the transaction's own cursor, the one the engine lets go
-        // on after a freeze, to the moment's element and its map, both
-        // cached on the epoch; a write path reads its starting slot again, so
-        // the cursors below come fresh.
-        var cursor = try element(from: root)
+        guard case .writing(let element) = base else { throw .expectedTxStart }
+        // Down from the element, the transaction's own cursor, through the
+        // moment's map, cached on the epoch; a write path reads its starting
+        // slot again, so the cursors below come fresh.
+        var cursor = element
         var remaining = steps[...]
-        if case .key(let hash)? = remaining.first, let map = try momentMap(from: root, element: cursor) {
+        if case .key(let hash, _)? = remaining.first, let map = try momentMap(at: element) {
             cursor = try map.putCursor(forHash: hash)
             remaining = remaining.dropFirst()
         }
         for step in remaining {
             let tag = try cursor.slot.tag
             switch step {
-            case .key(let hash):
+            case .key(let hash, let counted):
                 switch tag {
                 case .countedHashMap: cursor = try CountedHashMap<ReadWrite>(cursor).putCursor(forHash: hash)
+                case .none where counted: cursor = try CountedHashMap<ReadWrite>(cursor).putCursor(forHash: hash)
                 default: cursor = try HashMap<ReadWrite>(cursor).putCursor(forHash: hash)
                 }
             case .index(let index):
@@ -189,7 +188,7 @@ public struct Handle {
     func appendElement() throws(XitDBError) -> Handle {
         let list = try ArrayList<ReadWrite>(try write())
         _ = try list.appendCursor()
-        return self[index: Int(try list.count) - 1]
+        return self[index: try exactInt(try list.count) - 1]
     }
 
     // MARK: Values
@@ -197,20 +196,28 @@ public struct Handle {
     /// The value at this place as `V`, or nil if there is nothing there or
     /// no entry on the way.
     ///
-    /// - Throws: `XitDBError.unexpectedTag` if the place holds a
-    ///   value of another kind.
+    /// - Throws: `XitDBError.unexpectedTag` if the place holds a value of
+    ///   another kind.
     public func value<V: StorableValue>(_ type: V.Type = V.self) throws(XitDBError) -> V? {
         guard let cursor = try read(), try cursor.slot.tag != .none else { return nil }
         return try V(reading: cursor)
     }
 
     /// Writes a value at this place, in place of whatever was there.
+    ///
+    /// - Throws: `XitDBError.unexpectedTag` for the moment's root place,
+    ///   which is its map and takes no value; `XitDBError.expectedTxStart` in
+    ///   a read-only moment.
     public func set(_ value: some StorableValue) throws(XitDBError) {
+        guard !steps.isEmpty else { throw .unexpectedTag }
         var cursor = try write()
         try value.write(to: &cursor)
     }
 
-    /// Removes what is at this place: the place then holds nothing.
+    /// Removes what is at this place: the place then holds nothing. At the
+    /// moment's root place it empties the moment.
+    ///
+    /// - Throws: `XitDBError.expectedTxStart` in a read-only moment.
     public func clear() throws(XitDBError) {
         var cursor = try write()
         try cursor.write(.slot(nil))

@@ -87,7 +87,7 @@ public struct CountedMap<K: KeyRepresentable, V: StorableValue> {
     /// How many entries the map has; zero if it does not exist yet.
     public var count: Int {
         get throws(XitDBError) {
-            Int(try reading()?.count ?? 0)
+            try exactInt(try reading()?.count ?? 0)
         }
     }
 
@@ -116,9 +116,10 @@ public struct CountedMap<K: KeyRepresentable, V: StorableValue> {
         try reading()?.slot(forHash: handle.hasher.hash(key)) != nil
     }
 
-    /// The handle one level down, for a nested collection under a key.
+    /// The handle one level down, for a nested collection under a key; the
+    /// counted map is made if the place is empty.
     public subscript(handleFor key: K) -> Handle {
-        handle[key]
+        handle[key, counted: true]
     }
 
     /// The values, in the order the map keeps its entries.

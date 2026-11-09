@@ -84,3 +84,89 @@ struct MoreStoreTests {
         }
     }
 }
+
+/// The review's findings on the collections: a counted map made through a
+/// handle, negative arguments, and a join with nothing to add.
+@Suite("the collections' edges")
+struct CollectionEdgeTests {
+    private func makeStore() throws -> Store {
+        try Store(try Database(creating: MemoryStorage(), hashSize: 32), hashing: SHA256.self)
+    }
+
+    @Test func aCountedMapIsMadeThroughItsHandle() throws {
+        let store = try makeStore()
+        try store.transaction { moment in
+            let counted = moment["counted"].countedMap(String.self, UInt64.self)
+            try counted.put(1, forKey: "a")
+            let nested = counted[handleFor: "inner"].countedMap(String.self, UInt64.self)
+            try nested.put(2, forKey: "b")
+            try nested.put(3, forKey: "c")
+            #expect(try nested.count == 2)
+            #expect(try counted.count == 2)
+            // through the plain subscript the nested place is a plain map
+            let plain = moment["plain"].map(String.self, UInt64.self)
+            try plain[handleFor: "inner"].map(String.self, UInt64.self).put(1, forKey: "x")
+            #expect(throws: XitDBError.unexpectedTag) {
+                try moment["plain"]["inner"].countedMap(String.self, UInt64.self).count
+            }
+        }
+        #expect(try store.latest["counted"]["inner"].countedMap(String.self, UInt64.self).count == 2)
+    }
+
+    @Test func negativeArgumentsAreRefused() throws {
+        let store = try makeStore()
+        try store.transaction { moment in
+            let list = moment["list"].list(UInt64.self)
+            try list.append(1)
+            try list.append(2)
+            #expect(throws: XitDBError.indexOutOfRange) { try list.truncate(to: -1) }
+            let linked = moment["linked"].linkedList(UInt64.self)
+            try linked.append(1)
+            try linked.append(2)
+            #expect(throws: XitDBError.indexOutOfRange) { try linked.slice(offset: -1, count: 1) }
+            #expect(throws: XitDBError.indexOutOfRange) { try linked.slice(offset: 0, count: -1) }
+            #expect(try list.count == 2)
+            #expect(try linked.count == 2)
+            try list.truncate(to: 0)
+            try linked.slice(offset: 1, count: 1)
+            #expect(try list.count == 0)
+            #expect(try linked.count == 1)
+            #expect(try linked[0] == 2)
+        }
+    }
+
+    @Test func aJoinWithNothingToAddWritesNothing() throws {
+        let storage = MemoryStorage()
+        let store = try Store(
+            try Database(storage: storage, hashSize: 32, fileID: 1, random: SeededGenerator(seed: 1)),
+            hashing: SHA256.self)
+        try store.transaction { moment in
+            try moment["list"].linkedList(UInt64.self).append(1)
+            try moment["empty"].linkedList(UInt64.self).append(1)
+            try moment["empty"].linkedList(UInt64.self).slice(offset: 0, count: 0)
+        }
+        let before = storage.bytes
+        try store.transaction { moment in
+            let list = moment["list"].linkedList(UInt64.self)
+            try list.join(moment["missing"].linkedList(UInt64.self))
+            try list.join(moment["empty"].linkedList(UInt64.self))
+            #expect(try list.count == 1)
+            #expect(throws: XitDBError.unexpectedTag) {
+                try list.join(moment["list"][index: 0].linkedList(UInt64.self))
+            }
+        }
+        // the moment is a clone; the joins added nothing and froze nothing
+        let afterClone = MemoryStorage()
+        let twin = try Store(
+            try Database(storage: afterClone, hashSize: 32, fileID: 1, random: SeededGenerator(seed: 1)),
+            hashing: SHA256.self)
+        try twin.transaction { moment in
+            try moment["list"].linkedList(UInt64.self).append(1)
+            try moment["empty"].linkedList(UInt64.self).append(1)
+            try moment["empty"].linkedList(UInt64.self).slice(offset: 0, count: 0)
+        }
+        try twin.transaction { _ in }
+        #expect(storage.bytes == afterClone.bytes)
+        #expect(storage.bytes.count > before.count)
+    }
+}

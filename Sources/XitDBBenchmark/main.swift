@@ -113,7 +113,9 @@ struct PrecomputedHash: KeyHashing {
 /// read through handles. `resolving` reads through a fresh moment and handle
 /// for every key, which resolves the path from the root each time, where
 /// the plain form keeps one handle, which caches its cursor in a read-only
-/// moment: the two together measure the cache.
+/// moment. The difference between the two bounds the read cache's worth
+/// from above and does not isolate it: the resolving form also pays for a
+/// moment per key, the history lookup and the moment's own making.
 func storeMapInsert(_ size: Int, kinds: [StorageKind], resolving: Bool) -> Workload {
     let name = resolving ? "store_map_resolve" : "store_map_insert"
     return Workload(name: name, size: size, kinds: kinds, keyKind: .hashes, keyCount: size) { database, keys in

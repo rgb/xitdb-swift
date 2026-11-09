@@ -9,7 +9,8 @@ public import XitDB
 /// `while let element = try iterator.next()` is the shape: the type is not
 /// a `Sequence`, because reading the next element can fail. An iterator
 /// made in a writable moment can give a mix of old and new elements if the
-/// collection is changed while it runs, as the faithful one can.
+/// collection is changed while it runs, as the faithful one can. After an
+/// error the iterator is done: `next()` gives nil from then on.
 public struct ValueIterator<Element> {
     var base: CollectionIterator?
     let read: (Cursor<ReadOnly>) throws(XitDBError) -> Element

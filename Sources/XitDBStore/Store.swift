@@ -10,12 +10,13 @@ public import XitDB
 /// hashed by, `SHA256.self` from `XitDBHashing` for most; the database's
 /// header records the hash size, and a store whose hash has another size is
 /// refused with `XitDBError.hashSizeMismatch` before anything is
-/// read or written. The database's root is the history, an array list of
-/// moments, each a hash map; ``transaction(_:)`` appends a moment cloned
-/// from the latest and lets the body write it, ``latest`` and
-/// ``moment(at:)`` read committed ones. A store is not `Sendable`, as the
-/// database is not: other threads read a snapshot through
-/// ``Moment/init(reading:hashing:)``.
+/// read or written. The header's hash ID is not checked: it is a label the
+/// creator of a database chooses, which the format does not interpret. The
+/// database's root is the history, an array list of moments, each a hash
+/// map; ``transaction(_:)`` appends a moment cloned from the latest and
+/// lets the body write it, ``latest`` and ``moment(at:)`` read committed
+/// ones. A store is not `Sendable`, as the database is not: other threads
+/// read a snapshot through ``Moment/init(reading:hashing:)``.
 public final class Store {
     /// The database underneath, for the faithful calls.
     public let database: Database
@@ -43,25 +44,33 @@ public final class Store {
     /// The moment is writable for the body's duration and for nothing
     /// after it: a handle kept past the body refuses writes as a faithful
     /// cursor would, with `XitDBError.expectedTxStart` outside any
-    /// transaction and `XitDBError.staleCursor` inside a later one. An error
-    /// thrown by the body rolls the moment back, and nothing of it remains.
-    /// A transaction while another is in progress is refused with
-    /// `XitDBError.nestedTopLevelWrite`. The result may be ignored: a
-    /// transaction is often run for its writes alone, with a body whose one
-    /// expression happens to have a value.
+    /// transaction and `XitDBError.staleCursor` inside a later one, and reads
+    /// through it read the moment as it was committed. The moment's map is
+    /// made by its first write: a body that writes nothing commits a plain
+    /// clone of the latest moment, or for the first moment an empty place,
+    /// which reads as an empty map. An error thrown by the body rolls the
+    /// moment back, and nothing of it remains. A transaction while another
+    /// is in progress is refused with `XitDBError.nestedTopLevelWrite`. The
+    /// result may be ignored: a transaction is often run for its writes
+    /// alone, with a body whose one expression happens to have a value.
     @discardableResult
     public func transaction<Result>(_ body: (Moment) throws -> Result) throws -> Result {
         let hasher = hasher
-        return try database.withTransaction { root in
-            let history = try ArrayList<ReadWrite>(root)
-            let count = try history.count
-            let previous: Slot? = count > 0 ? try history.slot(at: -1) : nil
-            try history.append(.slot(previous)) { _ in }
-            // The moment resolves from the transaction's own cursor, the one
-            // the engine lets go on after a freeze, down to its element on
-            // every operation.
-            return try body(Moment(base: .writing(root), hasher: hasher, index: Int(count)))
+        let database = database
+        let history = try ArrayList<ReadOnly>(database.rootCursor)
+        let count = try exactInt(try history.count)
+        let previous = count > 0 ? try history.slot(at: -1) : nil
+        // The faithful idiom, one path from the root: append a moment, clone
+        // the latest into it and run the body with the cursor at it. That
+        // cursor is the transaction's own, the one the engine lets go on
+        // after a freeze, and every handle resolves from it.
+        let path: InlineArray<4, PathPart> = [.arrayListInit, .arrayListAppend, .write(.slot(previous)), .ctx]
+        var result: Result?
+        _ = try database.rootCursor.writePath(path.span) { cursor in
+            result = try body(Moment(base: .writing(cursor), database: database, hasher: hasher, index: count))
         }
+        guard let result else { preconditionFailure("the body was not run") }
+        return result
     }
 
     /// The last committed moment, read-only.
@@ -75,22 +84,28 @@ public final class Store {
     }
 
     /// A committed moment by its place in the history, counted from the
-    /// end when negative, read-only.
+    /// end when negative, read-only. Inside a transaction the root reads
+    /// the last commit, so the moment being written does not count and `-1`
+    /// is the commit before it. A moment taken inside a transaction that
+    /// then fails reads `XitDBError.staleCursor`, though its bytes are
+    /// committed: the engine holds every cursor read during a failed
+    /// transaction to be stale. Take it again.
     ///
     /// - Throws: `XitDBError.indexOutOfRange` if the history has no
     ///   such moment.
     public func moment(at index: Int) throws(XitDBError) -> Moment {
         let history = try ArrayList<ReadOnly>(database.rootCursor)
-        let count = Int(try history.count)
+        let count = try exactInt(try history.count)
         let place = index < 0 ? count + index : index
         guard place >= 0, place < count, let cursor = try history.cursor(at: place) else { throw .indexOutOfRange }
-        return Moment(base: .reading(cursor), hasher: hasher, index: place)
+        return Moment(base: .reading(cursor), database: database, hasher: hasher, index: place)
     }
 
-    /// How many moments the history holds.
+    /// How many moments the history holds, the one a transaction is
+    /// writing not counted.
     public var momentCount: Int {
         get throws(XitDBError) {
-            Int(try ArrayList<ReadOnly>(database.rootCursor).count)
+            try exactInt(try ArrayList<ReadOnly>(database.rootCursor).count)
         }
     }
 
@@ -122,9 +137,18 @@ struct KeyHasher: Sendable {
 }
 
 /// Where a moment's handles start from: a committed moment's element, read
-/// only, or the transaction's own cursor, through which the moment being
-/// written is reached by its index.
+/// only, or the element of the moment a transaction is writing, which is the
+/// transaction's own cursor.
 enum Root {
     case reading(Cursor<ReadOnly>)
     case writing(Cursor<ReadWrite>)
+}
+
+/// A count read from a file as an `Int`.
+///
+/// - Throws: `XitDBError.invalidCount` for a count the machine's `Int`
+///   cannot hold, which no well-formed file has.
+func exactInt(_ count: UInt64) throws(XitDBError) -> Int {
+    guard let value = Int(exactly: count) else { throw .invalidCount }
+    return value
 }

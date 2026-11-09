@@ -23,7 +23,7 @@ public struct List<V: StorableValue> {
     /// How many elements the list has.
     public var count: Int {
         get throws(XitDBError) {
-            Int(try reading()?.count ?? 0)
+            try exactInt(try reading()?.count ?? 0)
         }
     }
 
@@ -59,8 +59,11 @@ public struct List<V: StorableValue> {
     }
 
     /// Drops the elements from `count` on.
+    ///
+    /// - Throws: `XitDBError.indexOutOfRange` for a negative count.
     public func truncate(to count: Int) throws(XitDBError) {
-        try writing().truncate(to: UInt64(max(count, 0)))
+        guard count >= 0 else { throw .indexOutOfRange }
+        try writing().truncate(to: UInt64(count))
     }
 
     /// The handle one level down, for a nested collection at an index.
@@ -96,7 +99,7 @@ public struct LinkedList<V: StorableValue> {
     /// How many elements the list has.
     public var count: Int {
         get throws(XitDBError) {
-            Int(try reading()?.count ?? 0)
+            try exactInt(try reading()?.count ?? 0)
         }
     }
 
@@ -142,18 +145,22 @@ public struct LinkedList<V: StorableValue> {
         try writing().remove(at: index)
     }
 
-    /// Appends every element of another linked list, sharing them.
+    /// Appends every element of another linked list, sharing them. A list
+    /// that does not exist or is empty adds nothing, and nothing is frozen.
     ///
-    /// - Throws: `XitDBError.unexpectedTag` if the other handle's
-    ///   place holds no linked list.
+    /// - Throws: `XitDBError.unexpectedTag` if the other handle's place
+    ///   holds something other than a linked list.
     public func join(_ other: LinkedList<V>) throws(XitDBError) {
-        guard let otherCursor = try other.handle.read() else { return }
-        try writing().append(contentsOf: try LinkedArrayList<ReadOnly>(otherCursor))
+        guard let otherList = try other.reading(), try otherList.count > 0 else { return }
+        try writing().append(contentsOf: otherList)
     }
 
     /// Keeps `count` elements from `offset` on, in place.
+    ///
+    /// - Throws: `XitDBError.indexOutOfRange` for a negative offset or count.
     public func slice(offset: Int, count: Int) throws(XitDBError) {
-        try writing().formSlice(offset: UInt64(max(offset, 0)), count: UInt64(max(count, 0)))
+        guard offset >= 0, count >= 0 else { throw .indexOutOfRange }
+        try writing().formSlice(offset: UInt64(offset), count: UInt64(count))
     }
 
     /// The handle one level down, for a nested collection at an index.
