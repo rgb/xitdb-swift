@@ -39,7 +39,7 @@ moment 1: map (10 entries)
   46f8ab7c0cff9df7: int -9223372036854775808
   "short" a0f4ea7d91495df9: bytes 3 "bar"
   bd3027fa569ea15c: bytes 23 "longer than eight bytes"
-  11e623a37e87cf79: float nan
+  11e623a37e87cf79: float snan(0x4000000000001)
   685e80366130387c: float 3.141592653589793
   ee61df007a111389: bytes 3 tag st "foo"
   5af11e72f4daad4a: bytes 7 tag lt "seven b"
@@ -63,7 +63,9 @@ while a counted map, a sorted map or set and a list show the count they keep: `c
 
 The values are the format's own:
 
-- `uint`, `int` and `float` are the scalars, the largest unsigned and the smallest signed integer among them here.
+- `uint`, `int` and `float` are the scalars, the largest unsigned and the smallest signed integer among them here. A
+  float that is not a number shows its bits, `snan` for a signalling one and the rest of its mantissa in hex, so that the
+  text is the same on every machine.
 - `bytes 3 "bar"` is a byte array of three bytes, shown as text because it is printable text. `bytes 3 0x610062` is
   shown as hex because it is not. A byte array of more than 64 bytes is shown as hex, the first 64 of them and its
   length.
