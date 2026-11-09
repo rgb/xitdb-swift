@@ -36,10 +36,8 @@ Two more modules come with it. `XitDBStore` is a Swift layer over the API shown 
 integer and byte keys, typed values, `Codable` records, and handles that name a place rather than hold a cursor.
 `XitDBHashing` has SHA-256, SHA-1 and SipHash-128 under CryptoKit's names on every platform, CryptoKit's own where it
 exists. Every public symbol is documented, and the documentation has articles for the concepts and five tutorials. Its
-first release is 0.1.0; 0.1.1 added Linux, 0.1.2 the tests on an iOS simulator, and 0.2.0 the store and the hashes.
-
-Not there yet, and planned: a tool that shows what a file holds, and tests that check random sequences of operations
-against Swift's own collections.
+first release is 0.1.0; 0.1.1 added Linux, 0.1.2 the tests on an iOS simulator, 0.2.0 the store and the hashes, and
+0.2.1 xitdb-dump and the model-based tests.
 
 It builds for macOS 26, iOS 26 and Linux, and is tested on macOS, on Linux and on an iOS simulator.
 
@@ -69,7 +67,7 @@ The package needs Swift 6.4 and macOS 26, iOS 26 or Linux. In your `Package.swif
 
 ```swift manifest
 dependencies: [
-    .package(url: "https://github.com/rgb/xitdb-swift", from: "0.2.0")
+    .package(url: "https://github.com/rgb/xitdb-swift", from: "0.2.1")
 ],
 targets: [
     .target(name: "MyTarget", dependencies: [.product(name: "XitDB", package: "xitdb-swift")])

@@ -2,7 +2,7 @@
     @Intro(title: "Your first database") {
         Create a database in a file, write a moment to it, read it back, and open it again.
 
-        You need an executable package that depends on `XitDB`: `.package(url: "https://github.com/rgb/xitdb-swift", from: "0.2.0")` in its manifest. The code goes in its `main.swift`.
+        You need an executable package that depends on `XitDB`: `.package(url: "https://github.com/rgb/xitdb-swift", from: "0.2.1")` in its manifest. The code goes in its `main.swift`.
     }
 
     @Section(title: "Create a database") {
