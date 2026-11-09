@@ -216,8 +216,11 @@ struct HandleCacheTests {
         #expect(try store.latest["a"].value(UInt64.self) == 1)
         try store.transaction { moment in
             #expect(throws: XitDBError.unexpectedTag) { try moment.root.set(UInt64(5)) }
+            // a write first, so that the moment's map is cached when the root goes
+            try moment["z"].set(UInt64(9))
             try moment.root.clear()
             #expect(try !moment["a"].exists)
+            #expect(try !moment["z"].exists)
             try moment["b"].set(UInt64(2))
             #expect(try !moment["a"].exists)
             #expect(try moment["b"].value(UInt64.self) == 2)
@@ -231,6 +234,7 @@ struct HandleCacheTests {
         try canonical(database) { cursor in try HashMap<ReadWrite>(cursor).put(.uint(1), forHash: sha("a")) }
         try canonical(database) { _ in }
         try canonical(database) { cursor in
+            try HashMap<ReadWrite>(cursor).put(.uint(9), forHash: sha("z"))
             try cursor.write(.slot(nil))
             try HashMap<ReadWrite>(cursor).put(.uint(2), forHash: sha("b"))
         }

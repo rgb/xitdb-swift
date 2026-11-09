@@ -109,20 +109,118 @@ struct CodableTests {
         #expect(throws: DecodingError.self) { try latest["partial"].value(decoding: Address.self) }
         #expect(try latest["n"].value(decoding: UInt64.self) == 300)
         #expect(try latest["n"].value(decoding: UInt16.self) == 300)
+        // the container boundaries: a scalar or a list where a record is
+        // expected, a record or a scalar where a list is expected
+        #expect(throws: DecodingError.self) { try latest["n"].value(decoding: Address.self) }
+        #expect(throws: DecodingError.self) { try latest["s"].value(decoding: [Int].self) }
+        #expect(throws: DecodingError.self) { try latest["partial"].value(decoding: [String].self) }
+        try store.transaction { moment in
+            try moment["list"].list(UInt64.self).append(1)
+            try moment["nested"].set(encoding: ["inner": 1])
+            try moment["plain"]["inner"].set(UInt64(1))
+        }
+        #expect(throws: DecodingError.self) { try store.latest["list"].value(decoding: Address.self) }
+        #expect(throws: DecodingError.self) { try store.latest["list"].value(decoding: [String: Int].self) }
+        #expect(throws: DecodingError.self) { try store.latest["nested"].value(decoding: [String: [Int]].self) }
+        #expect(throws: DecodingError.self) { try store.latest["nested"].value(decoding: [String: Address].self) }
+        // a map written by handles stores no key names: a dictionary sees no keys
+        #expect(try store.latest["plain"].value(decoding: [String: Int].self) == [:])
     }
 
-    @Test func encodingOverAPlaceLeavesWhatItDoesNotWrite() throws {
+    /// Encoding replaces, as `set` does: entries the new value does not
+    /// write are gone, arrays do not grow, an optional set to nil is nil,
+    /// and an enum changes case.
+    @Test func encodingAtAPlaceReplacesWhatWasThere() throws {
         let store = try makeStore()
         try store.transaction { moment in
             try moment["a"].set(encoding: Address(street: "Lane", number: 1))
-            try moment["a"]["extra"].set("kept")
+            try moment["a"]["extra"].set("kept?")
             try moment["a"].set(encoding: Address(street: "Road", number: 2))
             #expect(try moment["a"].value(decoding: Address.self) == Address(street: "Road", number: 2))
-            #expect(try moment["a"]["extra"].value(String.self) == "kept")
-            try moment["a"].clear()
-            try moment["a"].set(encoding: Address(street: "Way", number: 3))
             #expect(try !moment["a"]["extra"].exists)
+            try moment["l"].set(encoding: [1, 2, 3])
+            try moment["l"].set(encoding: [4])
+            #expect(try moment["l"].value(decoding: [Int].self) == [4])
+            try moment["o"].set(encoding: Optional(5))
+            try moment["o"].set(encoding: Int?.none)
+            #expect(try !moment["o"].exists)
+            #expect(try moment["o"].value(decoding: Int?.self) == nil)
+            try moment["e"].set(encoding: Event.renamed(from: "a", to: "b"))
+            try moment["e"].set(encoding: Event.deleted)
+            #expect(try moment["e"].value(decoding: Event.self) == .deleted)
+            try moment["e"].set(encoding: Event.created(at: 2))
+            #expect(try moment["e"].value(decoding: Event.self) == .created(at: 2))
+            // a scalar over a record, and a record over a scalar
+            try moment["a"].set(encoding: 7)
+            #expect(try moment["a"].value(decoding: Int.self) == 7)
+            try moment["a"].set(encoding: Address(street: "Way", number: 3))
+            #expect(try moment["a"].value(decoding: Address.self) == Address(street: "Way", number: 3))
         }
+    }
+
+    struct Nothing: Codable, Equatable {}
+
+    struct Empties: Codable, Equatable {
+        var strings: [String]
+        var numbers: [Int: Int]
+        var bytes: [UInt8]
+        var data: Data
+        var nothing: Nothing
+        var set: Set<Int>
+        var events: [Event]
+        var nested: [[String]]
+    }
+
+    /// An empty collection is written and comes back empty: the containers
+    /// make their map or list when they are made, and a byte array is told
+    /// from an empty array of anything else by its type.
+    @Test func emptyCollectionsComeBackEmpty() throws {
+        let store = try makeStore()
+        let empties = Empties(
+            strings: [], numbers: [:], bytes: [], data: Data(), nothing: Nothing(), set: [], events: [], nested: [[]])
+        try store.transaction { moment in
+            try moment["e"].set(encoding: empties)
+            #expect(try moment["e"].value(decoding: Empties.self) == empties)
+            #expect(try moment["e"]["strings"].exists)
+            #expect(try moment["e"]["strings"].list(String.self).count == 0)
+            #expect(try moment["e"]["numbers"].exists)
+            #expect(try moment["e"]["bytes"].value([UInt8].self) == [])
+            #expect(try moment["e"]["data"].value([UInt8].self) == [])
+            #expect(try moment["e"]["nothing"].exists)
+            #expect(try moment["e"]["nested"][index: 0].list(String.self).count == 0)
+            try moment["top"].set(encoding: [String]())
+            #expect(try moment["top"].exists)
+            #expect(try moment["top"].value(decoding: [String].self) == [])
+            try moment["dict"].set(encoding: [String: Int]())
+            #expect(try moment["dict"].value(decoding: [String: Int].self) == [:])
+            try moment["none"].set(encoding: Nothing())
+            #expect(try moment["none"].value(decoding: Nothing.self) == Nothing())
+        }
+        #expect(try store.latest["e"].value(decoding: Empties.self) == empties)
+        #expect(try store.latest["top"].value(decoding: [String].self) == [])
+    }
+
+    /// A record at the moment's root; a list or a scalar there is refused.
+    @Test func encodingAtTheRoot() throws {
+        let store = try makeStore()
+        try store.transaction { moment in
+            try moment["other"].set(UInt64(1))
+            try moment.root.set(encoding: Address(street: "Lane", number: 1))
+            #expect(try moment.root.value(decoding: Address.self) == Address(street: "Lane", number: 1))
+            #expect(try !moment["other"].exists, "encoding at the root replaces the moment")
+        }
+        #expect(try store.latest.root.value(decoding: Address.self) == Address(street: "Lane", number: 1))
+        #expect(throws: (any Error).self) {
+            try store.transaction { moment in
+                try moment.root.set(encoding: [1, 2])
+            }
+        }
+        #expect(throws: (any Error).self) {
+            try store.transaction { moment in
+                try moment.root.set(encoding: 7)
+            }
+        }
+        #expect(try store.latest.root.value(decoding: Address.self) == Address(street: "Lane", number: 1))
     }
 
     @Test func topLevelScalarsAndLists() throws {

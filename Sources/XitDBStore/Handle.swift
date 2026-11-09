@@ -221,6 +221,36 @@ public struct Handle {
     public func clear() throws(XitDBError) {
         var cursor = try write()
         try cursor.write(.slot(nil))
+        // The moment's map is gone with its root; the next write makes a new one.
+        if steps.isEmpty { shared?.map = nil }
+    }
+
+    // MARK: Collections
+
+    /// Makes an empty collection of a kind at this place, as the format's
+    /// own init does: a place that holds nothing gets the collection, one
+    /// that holds a collection of the kind keeps it as it is. The
+    /// collections are otherwise made by their first write, so this is for
+    /// one that must exist while it is empty, say a record's list with no
+    /// elements yet.
+    ///
+    /// - Throws: `XitDBError.unexpectedTag` if the place holds a value or a
+    ///   collection of another kind, or for any kind but ``CollectionKind/map``
+    ///   at the moment's root place, which is its map;
+    ///   `XitDBError.expectedTxStart` in a read-only moment.
+    public func make(_ kind: CollectionKind) throws(XitDBError) {
+        if steps.isEmpty, kind != .map { throw .unexpectedTag }
+        let cursor = try write()
+        switch kind {
+        case .map: _ = try HashMap<ReadWrite>(cursor)
+        case .countedMap: _ = try CountedHashMap<ReadWrite>(cursor)
+        case .keySet: _ = try HashSet<ReadWrite>(cursor)
+        case .countedKeySet: _ = try CountedHashSet<ReadWrite>(cursor)
+        case .list: _ = try ArrayList<ReadWrite>(cursor)
+        case .linkedList: _ = try LinkedArrayList<ReadWrite>(cursor)
+        case .sortedMap: _ = try XitDB.SortedMap<ReadWrite>(cursor)
+        case .sortedSet: _ = try XitDB.SortedSet<ReadWrite>(cursor)
+        }
     }
 
     /// Whether something is at this place.
@@ -230,4 +260,25 @@ public struct Handle {
             return try cursor.slot.tag != .none
         }
     }
+}
+
+/// The kinds of collection a place can hold, named as the store's types
+/// are, for ``Handle/make(_:)``.
+public enum CollectionKind: Sendable {
+    /// A ``Map``.
+    case map
+    /// A ``CountedMap``.
+    case countedMap
+    /// A ``KeySet``.
+    case keySet
+    /// A ``CountedKeySet``.
+    case countedKeySet
+    /// A ``List``.
+    case list
+    /// A ``LinkedList``.
+    case linkedList
+    /// A ``SortedMap``.
+    case sortedMap
+    /// A ``SortedSet``.
+    case sortedSet
 }

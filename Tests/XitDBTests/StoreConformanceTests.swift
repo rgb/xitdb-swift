@@ -1,9 +1,9 @@
 import Foundation
 import Testing
 import XitDBHashing
+import XitDBStore
 
 @testable import XitDB
-@testable import XitDBStore
 
 /// The proof through the layer: every fixture script whose writes the store
 /// can express is run through the store, and the file it leaves is held
@@ -42,7 +42,11 @@ import XitDBHashing
                 case .notExpressible(let reason): reasons[reason, default: 0] += 1
                 }
             }
-            #expect(expressed.count == 7, "expressed: \(expressed.sorted()); not: \(reasons)")
+            #expect(
+                expressed.sorted() == [
+                    "deep-callbacks", "iterator-tiers-linked", "iterator-tiers-sorted", "nested-linked",
+                    "recovery-closed-at-end", "recovery-reopen", "worked-example",
+                ], "not expressed: \(reasons)")
             #expect(expressed.count + reasons.values.reduce(0, +) == Self.passing.count)
         }
     }
@@ -397,20 +401,17 @@ final class StoreScript {
     }
 
     /// Makes an empty collection of a kind at a place, as an init part at
-    /// the end of a path does: the store's collections are made on their
-    /// first write, so the proof reaches the faithful wrappers through the
-    /// handle's own resolution, which the store module exposes for testing.
+    /// the end of a path does, through the store's own maker.
     private func make(_ kind: Kind, at handle: Handle) throws {
-        let cursor = try handle.write()
         switch kind {
-        case .map(false, false): _ = try HashMap<ReadWrite>(cursor)
-        case .map(true, false): _ = try CountedHashMap<ReadWrite>(cursor)
-        case .map(false, true): _ = try HashSet<ReadWrite>(cursor)
-        case .map(true, true): _ = try CountedHashSet<ReadWrite>(cursor)
-        case .list: _ = try ArrayList<ReadWrite>(cursor)
-        case .linkedList: _ = try LinkedArrayList<ReadWrite>(cursor)
-        case .sorted(false): _ = try XitDB.SortedMap<ReadWrite>(cursor)
-        case .sorted(true): _ = try XitDB.SortedSet<ReadWrite>(cursor)
+        case .map(false, false): try handle.make(.map)
+        case .map(true, false): try handle.make(.countedMap)
+        case .map(false, true): try handle.make(.keySet)
+        case .map(true, true): try handle.make(.countedKeySet)
+        case .list: try handle.make(.list)
+        case .linkedList: try handle.make(.linkedList)
+        case .sorted(false): try handle.make(.sortedMap)
+        case .sorted(true): try handle.make(.sortedSet)
         }
     }
 

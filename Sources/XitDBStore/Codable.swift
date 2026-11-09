@@ -14,13 +14,16 @@ import XitDB
 /// field names where a plain hashed map shows only hashes; a keyed entry
 /// thus carries its key's bytes beside the hash, and a record costs its
 /// field names once per entry. A map written by other means decodes only by
-/// the keys the type asks for. `encodeNil` writes nothing at the key, `encodeIfPresent`
-/// with `nil` skips the key, so an optional that is `nil` leaves no entry. Integers
-/// are stored as the format's signed or unsigned 64-bit integers and come
-/// back exactly, or decoding fails. A nested value is a nested map or list;
-/// a class's superclass encoder writes under the key `super`. Encoding over
-/// a place that holds something leaves entries the new value does not
-/// write, as a map put does; clear the handle first for a fresh record.
+/// the keys the type asks for. A container is made when the type asks for
+/// it, so a container with nothing in it leaves an empty map or list, and
+/// an empty array or dictionary comes back empty. `encodeNil` writes
+/// nothing at the key, `encodeIfPresent` with `nil` skips the key, so an
+/// optional that is `nil` leaves no entry. Integers are stored as the
+/// format's signed or unsigned 64-bit integers and come back exactly, or
+/// decoding fails. A `[UInt8]` is stored as bytes, any other array as a
+/// list. A nested value is a nested map or list; a class's superclass
+/// encoder writes under the key `super`. Encoding at a place replaces what
+/// was there, as ``Handle/set(_:)`` does: the place is cleared first.
 public struct XitDBEncoder {
     let options: CodingOptions
 
@@ -35,9 +38,21 @@ public struct XitDBEncoder {
         options = CodingOptions(dates: dates, data: data, urls: urls)
     }
 
-    /// Encodes `value` at the handle's place.
+    /// Encodes `value` at the handle's place, in place of whatever was
+    /// there.
+    ///
+    /// At the moment's root place only a keyed value can go: a single value
+    /// or an unkeyed one there is refused with `XitDBError.unexpectedTag`.
+    ///
+    /// - Throws: `XitDBError.expectedTxStart` in a read-only moment, the
+    ///   error of a write that fails, or what the value's own `encode(to:)`
+    ///   throws. Where the Codable protocols let a step throw nothing, the
+    ///   step's error is kept and thrown when the encoding returns.
     public func encode(_ value: some Encodable, at handle: Handle) throws {
-        try write(value, at: handle, codingPath: [], options: options)
+        try handle.clear()
+        let fault = EncodingFault()
+        try write(value, at: handle, codingPath: [], options: options, fault: fault)
+        if let error = fault.first { throw error }
     }
 }
 
@@ -47,7 +62,9 @@ public struct XitDBEncoder {
 ///
 /// A key with no entry decodes as `nil` for an optional and fails with
 /// `DecodingError.keyNotFound` otherwise; a value of another kind than the
-/// one asked for fails with `DecodingError.typeMismatch`.
+/// one asked for, a list where a struct is expected included, fails with
+/// `DecodingError.typeMismatch`; an integer that does not fit fails with
+/// `DecodingError.dataCorrupted`.
 public struct XitDBDecoder {
     let options: CodingOptions
 
@@ -63,6 +80,10 @@ public struct XitDBDecoder {
 
     /// The value of `type` at the handle's place, or nil if the place holds
     /// nothing.
+    ///
+    /// - Throws: A `DecodingError` for a shape or a value the type does not
+    ///   take, an `XitDBError` of the reads, or what the type's own
+    ///   `init(from:)` throws.
     public func decode<Value: Decodable>(_ type: Value.Type, at handle: Handle) throws -> Value? {
         guard try handle.exists else { return nil }
         return try read(type, at: handle, codingPath: [], options: options)
@@ -77,7 +98,8 @@ struct CodingOptions {
 }
 
 extension Handle {
-    /// Encodes a value at this place with ``XitDBEncoder``'s defaults.
+    /// Encodes a value at this place with ``XitDBEncoder``'s defaults, in
+    /// place of whatever was there.
     public func set(encoding value: some Encodable) throws {
         try XitDBEncoder().encode(value, at: self)
     }
@@ -91,30 +113,51 @@ extension Handle {
 
 // MARK: - Encoding
 
+/// The first error of an encoding step the Codable protocols let throw
+/// nothing, a container's making or an element's appending: kept, and
+/// thrown when the encoding returns.
+final class EncodingFault {
+    private(set) var first: (any Error)?
+
+    func record(_ error: any Error) {
+        if first == nil { first = error }
+    }
+}
+
 /// The encoder at one place.
 struct StoreEncoder: Encoder {
     let handle: Handle
     let codingPath: [any CodingKey]
     let options: CodingOptions
+    let fault: EncodingFault
     var userInfo: [CodingUserInfoKey: Any] { [:] }
 
     func container<Key: CodingKey>(keyedBy type: Key.Type) -> KeyedEncodingContainer<Key> {
-        KeyedEncodingContainer(KeyedStoreEncoding(handle: handle, codingPath: codingPath, options: options))
+        KeyedEncodingContainer(
+            KeyedStoreEncoding(handle: handle, codingPath: codingPath, options: options, fault: fault))
     }
 
     func unkeyedContainer() -> any UnkeyedEncodingContainer {
-        UnkeyedStoreEncoding(handle: handle, codingPath: codingPath, options: options)
+        UnkeyedStoreEncoding(handle: handle, codingPath: codingPath, options: options, fault: fault)
     }
 
     func singleValueContainer() -> any SingleValueEncodingContainer {
-        SingleValueStoreEncoding(handle: handle, codingPath: codingPath, options: options)
+        SingleValueStoreEncoding(handle: handle, codingPath: codingPath, options: options, fault: fault)
     }
 }
 
 /// Writes one value at a place: the scalars and strings directly, anything
 /// else through its own `encode(to:)` at the place.
-func write(_ value: some Encodable, at handle: Handle, codingPath: [any CodingKey], options: CodingOptions) throws {
+func write<Value: Encodable>(
+    _ value: Value, at handle: Handle, codingPath: [any CodingKey], options: CodingOptions, fault: EncodingFault
+) throws {
     if try writeFoundationValue(value, at: handle, codingPath: codingPath, options: options) { return }
+    // By the static type: an empty array of anything passes a runtime cast
+    // to [UInt8], and would be written as empty bytes.
+    if Value.self == [UInt8].self, let bytes = value as? [UInt8] {
+        try handle.set(bytes)
+        return
+    }
     switch value {
     case let value as Bool: try handle.set(value)
     case let value as String: try handle.set(value)
@@ -130,17 +173,32 @@ func write(_ value: some Encodable, at handle: Handle, codingPath: [any CodingKe
     case let value as UInt16: try handle.set(UInt64(value))
     case let value as UInt32: try handle.set(UInt64(value))
     case let value as UInt64: try handle.set(value)
-    case let value as [UInt8]: try handle.set(value)
-    default: try value.encode(to: StoreEncoder(handle: handle, codingPath: codingPath, options: options))
+    default:
+        try value.encode(to: StoreEncoder(handle: handle, codingPath: codingPath, options: options, fault: fault))
     }
 }
 
 /// A keyed container at a place: a hash map keyed by the keys' names, each
-/// entry storing its name as the key, so that the keys can be listed.
+/// entry storing its name as the key, so that the keys can be listed. The
+/// map is made with the container, so that one with no entries leaves an
+/// empty map.
 struct KeyedStoreEncoding<Key: CodingKey>: KeyedEncodingContainerProtocol {
     let handle: Handle
     let codingPath: [any CodingKey]
     let options: CodingOptions
+    let fault: EncodingFault
+
+    init(handle: Handle, codingPath: [any CodingKey], options: CodingOptions, fault: EncodingFault) {
+        self.handle = handle
+        self.codingPath = codingPath
+        self.options = options
+        self.fault = fault
+        do {
+            _ = try HashMap<ReadWrite>(try handle.write())
+        } catch {
+            fault.record(error)
+        }
+    }
 
     /// The place for a key, its name stored in the entry.
     private func place(_ name: String) throws(XitDBError) -> Handle {
@@ -149,10 +207,15 @@ struct KeyedStoreEncoding<Key: CodingKey>: KeyedEncodingContainerProtocol {
         return handle[name]
     }
 
-    /// The place for a key where the protocol allows no error: the name is
-    /// stored if it can be, and a failing write path fails the next write.
-    private func placeQuietly(_ name: String) -> Handle {
-        (try? place(name)) ?? handle[name]
+    /// The place for a key where the protocol allows no error: a failure is
+    /// kept for the end of the encoding.
+    private func placeRecording(_ name: String) -> Handle {
+        do {
+            return try place(name)
+        } catch {
+            fault.record(error)
+            return handle[name]
+        }
     }
 
     mutating func encodeNil(forKey key: Key) throws {
@@ -160,7 +223,7 @@ struct KeyedStoreEncoding<Key: CodingKey>: KeyedEncodingContainerProtocol {
     }
 
     mutating func encode(_ value: some Encodable, forKey key: Key) throws {
-        try write(value, at: try place(key.stringValue), codingPath: codingPath + [key], options: options)
+        try write(value, at: try place(key.stringValue), codingPath: codingPath + [key], options: options, fault: fault)
     }
 
     mutating func nestedContainer<NestedKey: CodingKey>(keyedBy keyType: NestedKey.Type, forKey key: Key)
@@ -168,28 +231,52 @@ struct KeyedStoreEncoding<Key: CodingKey>: KeyedEncodingContainerProtocol {
     {
         KeyedEncodingContainer(
             KeyedStoreEncoding<NestedKey>(
-                handle: placeQuietly(key.stringValue), codingPath: codingPath + [key], options: options))
+                handle: placeRecording(key.stringValue), codingPath: codingPath + [key], options: options,
+                fault: fault))
     }
 
     mutating func nestedUnkeyedContainer(forKey key: Key) -> any UnkeyedEncodingContainer {
-        UnkeyedStoreEncoding(handle: placeQuietly(key.stringValue), codingPath: codingPath + [key], options: options)
+        UnkeyedStoreEncoding(
+            handle: placeRecording(key.stringValue), codingPath: codingPath + [key], options: options, fault: fault)
     }
 
     mutating func superEncoder() -> any Encoder {
-        StoreEncoder(handle: placeQuietly("super"), codingPath: codingPath + [SuperKey()], options: options)
+        StoreEncoder(
+            handle: placeRecording("super"), codingPath: codingPath + [SuperKey()], options: options, fault: fault)
     }
 
     mutating func superEncoder(forKey key: Key) -> any Encoder {
-        StoreEncoder(handle: placeQuietly(key.stringValue), codingPath: codingPath + [key], options: options)
+        StoreEncoder(
+            handle: placeRecording(key.stringValue), codingPath: codingPath + [key], options: options, fault: fault)
     }
 }
 
 /// An unkeyed container at a place: an array list, each value appended.
+/// The list is made with the container, so that one with no elements
+/// leaves an empty list.
 struct UnkeyedStoreEncoding: UnkeyedEncodingContainer {
     let handle: Handle
     let codingPath: [any CodingKey]
     let options: CodingOptions
+    let fault: EncodingFault
     private(set) var count = 0
+
+    init(handle: Handle, codingPath: [any CodingKey], options: CodingOptions, fault: EncodingFault) {
+        self.handle = handle
+        self.codingPath = codingPath
+        self.options = options
+        self.fault = fault
+        // The moment's root place is its map, and takes no list.
+        guard !handle.steps.isEmpty else {
+            fault.record(XitDBError.unexpectedTag)
+            return
+        }
+        do {
+            _ = try ArrayList<ReadWrite>(try handle.write())
+        } catch {
+            fault.record(error)
+        }
+    }
 
     /// The handle of a new element at the end.
     private mutating func next() throws -> Handle {
@@ -198,36 +285,46 @@ struct UnkeyedStoreEncoding: UnkeyedEncodingContainer {
         return element
     }
 
+    /// A new element where the protocol allows no error: a failure is kept
+    /// for the end of the encoding.
+    private mutating func nextRecording() -> Handle {
+        do {
+            return try next()
+        } catch {
+            fault.record(error)
+            return handle[index: count]
+        }
+    }
+
     private var nextKey: IndexKey { IndexKey(intValue: count) }
 
     mutating func encodeNil() throws {
-        _ = try next()
+        try next().clear()
     }
 
     mutating func encode(_ value: some Encodable) throws {
         let key = nextKey
-        try write(value, at: try next(), codingPath: codingPath + [key], options: options)
+        try write(value, at: try next(), codingPath: codingPath + [key], options: options, fault: fault)
     }
 
     mutating func nestedContainer<NestedKey: CodingKey>(keyedBy keyType: NestedKey.Type)
         -> KeyedEncodingContainer<NestedKey>
     {
         let key = nextKey
-        let element = (try? next()) ?? handle[index: count]
         return KeyedEncodingContainer(
-            KeyedStoreEncoding<NestedKey>(handle: element, codingPath: codingPath + [key], options: options))
+            KeyedStoreEncoding<NestedKey>(
+                handle: nextRecording(), codingPath: codingPath + [key], options: options, fault: fault))
     }
 
     mutating func nestedUnkeyedContainer() -> any UnkeyedEncodingContainer {
         let key = nextKey
-        let element = (try? next()) ?? handle[index: count]
-        return UnkeyedStoreEncoding(handle: element, codingPath: codingPath + [key], options: options)
+        return UnkeyedStoreEncoding(
+            handle: nextRecording(), codingPath: codingPath + [key], options: options, fault: fault)
     }
 
     mutating func superEncoder() -> any Encoder {
         let key = nextKey
-        let element = (try? next()) ?? handle[index: count]
-        return StoreEncoder(handle: element, codingPath: codingPath + [key], options: options)
+        return StoreEncoder(handle: nextRecording(), codingPath: codingPath + [key], options: options, fault: fault)
     }
 }
 
@@ -236,13 +333,14 @@ struct SingleValueStoreEncoding: SingleValueEncodingContainer {
     let handle: Handle
     let codingPath: [any CodingKey]
     let options: CodingOptions
+    let fault: EncodingFault
 
     mutating func encodeNil() throws {
         try handle.clear()
     }
 
     mutating func encode(_ value: some Encodable) throws {
-        try write(value, at: handle, codingPath: codingPath, options: options)
+        try write(value, at: handle, codingPath: codingPath, options: options, fault: fault)
     }
 }
 
@@ -256,17 +354,22 @@ struct StoreDecoder: Decoder {
     var userInfo: [CodingUserInfoKey: Any] { [:] }
 
     func container<Key: CodingKey>(keyedBy type: Key.Type) throws -> KeyedDecodingContainer<Key> {
-        KeyedDecodingContainer(KeyedStoreDecoding(handle: handle, codingPath: codingPath, options: options))
+        KeyedDecodingContainer(try KeyedStoreDecoding(handle: handle, codingPath: codingPath, options: options))
     }
 
     func unkeyedContainer() throws -> any UnkeyedDecodingContainer {
-        UnkeyedStoreDecoding(
-            handle: handle, codingPath: codingPath, options: options, count: try handle.list(UInt64.self).count)
+        try UnkeyedStoreDecoding(handle: handle, codingPath: codingPath, options: options)
     }
 
     func singleValueContainer() throws -> any SingleValueDecodingContainer {
         SingleValueStoreDecoding(handle: handle, codingPath: codingPath, options: options)
     }
+}
+
+/// The decoding error for a place that holds another kind of thing than
+/// the one asked for.
+func mismatch(_ type: Any.Type, _ codingPath: [any CodingKey], _ what: String) -> DecodingError {
+    .typeMismatch(type, DecodingError.Context(codingPath: codingPath, debugDescription: what))
 }
 
 /// Reads one value at a place: the scalars and strings directly, with the
@@ -283,8 +386,7 @@ func read<Value: Decodable>(
             }
             return value
         } catch XitDBError.unexpectedTag {
-            throw DecodingError.typeMismatch(
-                type, DecodingError.Context(codingPath: codingPath, debugDescription: "another kind of value"))
+            throw mismatch(type, codingPath, "another kind of value")
         }
     }
     func fitting<Target: FixedWidthInteger, Source: FixedWidthInteger>(_ source: Source, as: Target.Type) throws
@@ -317,7 +419,9 @@ func read<Value: Decodable>(
     }
 }
 
-/// A keyed container at a place: the hash map there.
+/// A keyed container at a place: the hash map there, its keys read when
+/// the container is made, so that a failing read is an error and not a
+/// shorter list of keys.
 struct KeyedStoreDecoding<Key: CodingKey>: KeyedDecodingContainerProtocol {
     let handle: Handle
     let codingPath: [any CodingKey]
@@ -325,15 +429,37 @@ struct KeyedStoreDecoding<Key: CodingKey>: KeyedDecodingContainerProtocol {
 
     /// The keys whose names the entries store, as ``XitDBEncoder`` stores
     /// them; entries written without a name are not listed.
-    var allKeys: [Key] {
-        guard let cursor = try? handle.read(), let map = try? HashMap<ReadOnly>(cursor),
-            var entries = try? map.iterator()
-        else { return [] }
+    let allKeys: [Key]
+
+    /// Over the map at a place; a place that holds nothing is an empty
+    /// container.
+    ///
+    /// - Throws: `DecodingError.typeMismatch` if the place holds anything
+    ///   but a map, or the error of a read.
+    init(handle: Handle, codingPath: [any CodingKey], options: CodingOptions) throws {
+        self.handle = handle
+        self.codingPath = codingPath
+        self.options = options
+        allKeys = try Self.storedKeys(at: handle, codingPath: codingPath)
+    }
+
+    private static func storedKeys(at handle: Handle, codingPath: [any CodingKey]) throws -> [Key] {
+        guard let cursor = try handle.read(), try cursor.slot.tag != .none else { return [] }
+        let map: HashMap<ReadOnly>
+        do {
+            map = try HashMap<ReadOnly>(cursor)
+        } catch XitDBError.unexpectedTag {
+            throw mismatch([String: Any].self, codingPath, "the place holds no map")
+        }
         var keys: [Key] = []
-        while let entry = try? entries.next() {
-            guard let pair = try? entry.readEntry(), let name = try? pair.key.readBytes(),
-                let key = Key(stringValue: String(decoding: name, as: UTF8.self))
-            else { continue }
+        var entries = try map.iterator()
+        while let entry = try entries.next() {
+            let pair = try entry.readEntry()
+            // An entry written by a map put stores no name, and lists no key.
+            guard try pair.key.slot.tag != .none else { continue }
+            guard let key = Key(stringValue: String(decoding: try pair.key.readBytes(), as: UTF8.self)) else {
+                continue
+            }
             keys.append(key)
         }
         return keys
@@ -341,6 +467,9 @@ struct KeyedStoreDecoding<Key: CodingKey>: KeyedDecodingContainerProtocol {
 
     private func place(_ key: Key) -> Handle { handle[key.stringValue] }
 
+    /// Whether the key has an entry. The protocol lets this throw nothing:
+    /// a read that fails says the key is not there, and the decode that
+    /// follows reports the error.
     func contains(_ key: Key) -> Bool {
         (try? place(key).exists) ?? false
     }
@@ -349,26 +478,30 @@ struct KeyedStoreDecoding<Key: CodingKey>: KeyedDecodingContainerProtocol {
         try !place(key).exists
     }
 
-    func decode<Value: Decodable>(_ type: Value.Type, forKey key: Key) throws -> Value {
-        guard try place(key).exists else {
+    /// The place for a key that must have an entry.
+    private func present(_ key: Key) throws -> Handle {
+        let place = place(key)
+        guard try place.exists else {
             throw DecodingError.keyNotFound(
                 key, DecodingError.Context(codingPath: codingPath, debugDescription: "no entry for the key"))
         }
-        return try read(type, at: place(key), codingPath: codingPath + [key], options: options)
+        return place
+    }
+
+    func decode<Value: Decodable>(_ type: Value.Type, forKey key: Key) throws -> Value {
+        try read(type, at: try present(key), codingPath: codingPath + [key], options: options)
     }
 
     func nestedContainer<NestedKey: CodingKey>(keyedBy type: NestedKey.Type, forKey key: Key) throws
         -> KeyedDecodingContainer<NestedKey>
     {
         KeyedDecodingContainer(
-            KeyedStoreDecoding<NestedKey>(handle: place(key), codingPath: codingPath + [key], options: options))
+            try KeyedStoreDecoding<NestedKey>(
+                handle: try present(key), codingPath: codingPath + [key], options: options))
     }
 
     func nestedUnkeyedContainer(forKey key: Key) throws -> any UnkeyedDecodingContainer {
-        let element = place(key)
-        return UnkeyedStoreDecoding(
-            handle: element, codingPath: codingPath + [key], options: options,
-            count: try element.list(UInt64.self).count)
+        try UnkeyedStoreDecoding(handle: try present(key), codingPath: codingPath + [key], options: options)
     }
 
     func superDecoder() throws -> any Decoder {
@@ -388,11 +521,20 @@ struct UnkeyedStoreDecoding: UnkeyedDecodingContainer {
     let total: Int
     private(set) var currentIndex = 0
 
-    init(handle: Handle, codingPath: [any CodingKey], options: CodingOptions, count: Int) {
+    /// Over the list at a place; a place that holds nothing is an empty
+    /// container.
+    ///
+    /// - Throws: `DecodingError.typeMismatch` if the place holds anything
+    ///   but a list, or the error of a read.
+    init(handle: Handle, codingPath: [any CodingKey], options: CodingOptions) throws {
         self.handle = handle
         self.codingPath = codingPath
         self.options = options
-        total = count
+        do {
+            total = try handle.list(UInt64.self).count
+        } catch XitDBError.unexpectedTag {
+            throw mismatch([Any].self, codingPath, "the place holds no list")
+        }
     }
 
     var count: Int? { total }
@@ -427,15 +569,12 @@ struct UnkeyedStoreDecoding: UnkeyedDecodingContainer {
     {
         let key = IndexKey(intValue: currentIndex)
         return KeyedDecodingContainer(
-            KeyedStoreDecoding<NestedKey>(handle: try next(), codingPath: codingPath + [key], options: options))
+            try KeyedStoreDecoding<NestedKey>(handle: try next(), codingPath: codingPath + [key], options: options))
     }
 
     mutating func nestedUnkeyedContainer() throws -> any UnkeyedDecodingContainer {
         let key = IndexKey(intValue: currentIndex)
-        let element = try next()
-        return UnkeyedStoreDecoding(
-            handle: element, codingPath: codingPath + [key], options: options,
-            count: try element.list(UInt64.self).count)
+        return try UnkeyedStoreDecoding(handle: try next(), codingPath: codingPath + [key], options: options)
     }
 
     mutating func superDecoder() throws -> any Decoder {
@@ -450,8 +589,11 @@ struct SingleValueStoreDecoding: SingleValueDecodingContainer {
     let codingPath: [any CodingKey]
     let options: CodingOptions
 
+    /// Whether the place holds nothing. The protocol lets this throw
+    /// nothing: a read that fails says there is a value, and the decode
+    /// that follows reports the error.
     func decodeNil() -> Bool {
-        !((try? handle.exists) ?? false)
+        !((try? handle.exists) ?? true)
     }
 
     func decode<Value: Decodable>(_ type: Value.Type) throws -> Value {
