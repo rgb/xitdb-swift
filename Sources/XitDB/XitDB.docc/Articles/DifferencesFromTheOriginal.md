@@ -112,9 +112,8 @@ The file format and the operations are the same, and the API follows Swift:
   ``Slot``, ``Bytes`` and ``XitDBError`` are `Sendable`, and so is a ``Snapshot`` of one commit, which is how another task reads a
   database: see <doc:ConcurrencyAndSnapshots>.
 
-Every operation of the original is here, and read snapshots beyond it. Planned, and not here yet: a target with ready-made hashes,
-and a layer with string keys and typed values, whose handles take themselves again after a freeze, so that a clone is safe without
-one.
+Every operation of the original is here, and beyond it read snapshots, a target with ready-made hashes, and a layer with
+string keys and typed values, whose handles take themselves again after a freeze, so that a clone is safe without one.
 
 ### The names
 

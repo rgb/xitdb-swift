@@ -221,9 +221,9 @@ first append, grows with the logarithm of the size.
 
 ### Where this is going
 
-A layer of Swift-style handles is planned for the package, and not here yet. Its handles remember their path from the root and
-take themselves again after a freeze, so that freezing and joining need nothing from you, and a clone is safe without one. See
-<doc:DifferencesFromTheOriginal> for what else is planned.
+The `XitDBStore` layer's handles do this: a handle remembers its path from the moment's root and resolves it again on
+every use, so that freezing and joining need nothing from you, and a clone is safe without one. See
+<doc:DifferencesFromTheOriginal> for the rest of what the layer adds.
 
 ## See Also
 

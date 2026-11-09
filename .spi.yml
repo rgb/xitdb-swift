@@ -3,6 +3,6 @@ version: 1
 builder:
   configs:
     - platform: macos
-      documentation_targets: [XitDB]
+      documentation_targets: [XitDB, XitDBHashing, XitDBStore]
     - platform: linux
-      documentation_targets: [XitDB]
+      documentation_targets: [XitDB, XitDBHashing, XitDBStore]

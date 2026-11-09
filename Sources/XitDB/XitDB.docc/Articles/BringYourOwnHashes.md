@@ -18,8 +18,9 @@ func sha256(_ key: String) -> SHA256Digest {
 }
 ```
 
-A small `XitDBHashing` target with ready-made hashes is planned, along with a layer that takes string keys. Neither
-exists yet. On Linux, where there is no CryptoKit, swift-crypto's `import Crypto` is the same API until then.
+The `XitDBHashing` target has ready-made hashes, SHA-256, SHA-1 and SipHash-128, each a ``KeyHashing``, and the
+`XitDBStore` layer takes string keys and hashes them with one of these. On Linux, where there is no CryptoKit, the
+target computes the hashes itself.
 
 ### Giving the hash
 

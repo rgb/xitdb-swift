@@ -28,11 +28,11 @@ lets through to damage data, such as a cursor kept for a later transaction, a ha
 after a failure in the same transaction, and it recovers, when asked, a file whose root header or last trailer is
 damaged, which the original cannot open. It also hands one commit to other threads and tasks as a read snapshot. Every
 public symbol is documented, and the documentation has articles for the concepts and four tutorials. Its first
-release is 0.1.0; 0.1.1 added Linux and 0.1.2 the tests on an iOS simulator.
+release is 0.1.0; 0.1.1 added Linux, 0.1.2 the tests on an iOS simulator, and 0.2.0 the hashing target and the store
+layer.
 
-Not there yet, and planned in this order:
+Not there yet, and planned:
 
-- a hashing target and a more Swift-flavoured layer over the API shown here (string keys, typed values);
 - a tool that shows what a file holds, and tests that check random sequences of operations against Swift's own
   collections.
 
@@ -64,7 +64,7 @@ The package needs Swift 6.4 and macOS 26, iOS 26 or Linux. In your `Package.swif
 
 ```swift manifest
 dependencies: [
-    .package(url: "https://github.com/rgb/xitdb-swift", from: "0.1.2")
+    .package(url: "https://github.com/rgb/xitdb-swift", from: "0.2.0")
 ],
 targets: [
     .target(name: "MyTarget", dependencies: [.product(name: "XitDB", package: "xitdb-swift")])
