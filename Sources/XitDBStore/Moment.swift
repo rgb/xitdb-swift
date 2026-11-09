@@ -12,6 +12,7 @@ public import XitDB
 public struct Moment {
     let base: Root
     let hasher: KeyHasher
+    let shared: Handle.SharedCache?
 
     /// The moment's place in the history.
     public let index: Int
@@ -20,6 +21,11 @@ public struct Moment {
         self.base = base
         self.hasher = hasher
         self.index = index
+        if case .writing = base {
+            shared = Handle.SharedCache()
+        } else {
+            shared = nil
+        }
     }
 
     /// The latest committed moment of a reading database, with the hash its
@@ -46,7 +52,7 @@ public struct Moment {
 
     /// The handle of the moment's map itself.
     public var root: Handle {
-        Handle(base: base, hasher: hasher, index: index, steps: [])
+        Handle(base: base, hasher: hasher, index: index, steps: [], shared: shared)
     }
 
     /// The handle one level down, through the root map, for a key.

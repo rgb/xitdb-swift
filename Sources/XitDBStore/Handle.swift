@@ -23,6 +23,9 @@ public struct Handle {
     let index: Int
     let steps: [Step]
     let cache: Cache
+    /// The writable moment's shared cache; nil in a read-only moment, which
+    /// has no use for it and no allocation.
+    let shared: SharedCache?
 
     /// One level of the path.
     enum Step {
@@ -38,18 +41,33 @@ public struct Handle {
         var resolved: (cursor: Cursor<ReadOnly>?, epoch: Epoch?)?
     }
 
-    init(base: Root, hasher: KeyHasher, index: Int, steps: [Step]) {
+    /// What every handle of a writable moment shares: the cursors of the two
+    /// places whose positions cannot move within a transaction, the moment's
+    /// element in the history and the moment's own map, each kept with the
+    /// epoch it was resolved in. No append to the history happens inside the
+    /// transaction, and the map's root block is the transaction's own, so
+    /// both stay where they are while their contents change, which the write
+    /// paths read again; a freeze moves the epoch, and the cursors are
+    /// resolved anew. The levels below, where a trie split moves an entry,
+    /// resolve on every use.
+    final class SharedCache {
+        var element: (cursor: Cursor<ReadWrite>, epoch: Epoch)?
+        var map: (map: HashMap<ReadWrite>, epoch: Epoch)?
+    }
+
+    init(base: Root, hasher: KeyHasher, index: Int, steps: [Step], shared: SharedCache?) {
         self.base = base
         self.hasher = hasher
         self.index = index
         self.steps = steps
+        self.shared = shared
         cache = Cache()
     }
 
     /// The handle one level down, through the hash map at this place, for
     /// a key.
     public subscript(key: some KeyRepresentable) -> Handle {
-        Handle(base: base, hasher: hasher, index: index, steps: steps + [.key(hasher.hash(key))])
+        Handle(base: base, hasher: hasher, index: index, steps: steps + [.key(hasher.hash(key))], shared: shared)
     }
 
     /// The handle one level down, through the array list at this place, at
@@ -57,7 +75,7 @@ public struct Handle {
     /// is an integer: `handle[index: 0]` is the first element, `handle[0]`
     /// the entry for the key `0`.
     public subscript(index index: Int) -> Handle {
-        Handle(base: base, hasher: hasher, index: self.index, steps: steps + [.index(index)])
+        Handle(base: base, hasher: hasher, index: self.index, steps: steps + [.index(index)], shared: shared)
     }
 
     // MARK: Resolving
@@ -73,10 +91,37 @@ public struct Handle {
             return cursor
         }
         guard case .writing(let root) = base else { return nil }
-        // The transaction's cursor keeps the slot it was made with; what is
-        // there now is read from the storage, then the moment's element.
-        guard let element = try ArrayList<ReadOnly>(try root.refreshed()).cursor(at: index) else { return nil }
-        return try Self.resolve(from: element, steps)
+        // The element's position is the cache's; its slot is read again,
+        // since a cursor keeps the slot it was made with.
+        return try Self.resolve(from: try element(from: root).refreshed(), steps)
+    }
+
+    /// The moment's element in the history, for a writable moment: the
+    /// cached cursor while the epoch holds, resolved from the transaction's
+    /// cursor otherwise.
+    private func element(from root: Cursor<ReadWrite>) throws(XitDBError) -> Cursor<ReadWrite> {
+        let epoch = root.database.epoch
+        if let cached = shared?.element, cached.epoch == epoch { return cached.cursor }
+        let cursor = try ArrayList<ReadWrite>(root).putCursor(at: index)
+        shared?.element = (cursor, epoch)
+        return cursor
+    }
+
+    /// The moment's map, for a writable moment whose element holds a plain
+    /// hash map or nothing yet: the cached wrapper while the epoch holds.
+    private func momentMap(from root: Cursor<ReadWrite>, element: Cursor<ReadWrite>) throws(XitDBError) -> HashMap<
+        ReadWrite
+    >? {
+        let epoch = root.database.epoch
+        if let cached = shared?.map, cached.epoch == epoch { return cached.map }
+        switch try element.slot.tag {
+        case .none, .hashMap:
+            let map = try HashMap<ReadWrite>(element)
+            shared?.map = (map, epoch)
+            return map
+        default:
+            return nil
+        }
     }
 
     private static func resolve(from root: Cursor<ReadOnly>, _ steps: [Step]) throws(XitDBError) -> Cursor<ReadOnly>? {
@@ -110,10 +155,16 @@ public struct Handle {
     func write() throws(XitDBError) -> Cursor<ReadWrite> {
         guard case .writing(let root) = base else { throw .expectedTxStart }
         // Down from the transaction's own cursor, the one the engine lets go
-        // on after a freeze, to the moment's element: a write path reads its
-        // starting slot again, so the cursors below come fresh.
-        var cursor = try ArrayList<ReadWrite>(root).putCursor(at: index)
-        for step in steps {
+        // on after a freeze, to the moment's element and its map, both
+        // cached on the epoch; a write path reads its starting slot again, so
+        // the cursors below come fresh.
+        var cursor = try element(from: root)
+        var remaining = steps[...]
+        if case .key(let hash)? = remaining.first, let map = try momentMap(from: root, element: cursor) {
+            cursor = try map.putCursor(forHash: hash)
+            remaining = remaining.dropFirst()
+        }
+        for step in remaining {
             let tag = try cursor.slot.tag
             switch step {
             case .key(let hash):
