@@ -63,7 +63,7 @@ let package = Package(
         // package is meant to, and it brings no dependency.
         .executableTarget(
             name: "XitDBBenchmark",
-            dependencies: ["XitDB", "XitDBHashing"],
+            dependencies: ["XitDB", "XitDBHashing", "XitDBStore"],
             swiftSettings: languageSettings
         ),
         // The corruption fuzzer, which checks that a damaged file gives an error
@@ -86,7 +86,7 @@ let package = Package(
         ),
         .testTarget(
             name: "XitDBTests",
-            dependencies: ["XitDB", "XitDBHashing"],
+            dependencies: ["XitDB", "XitDBHashing", "XitDBStore"],
             exclude: ["Resources/fixtures-source.txt"],
             resources: [
                 .copy("Resources/test.db"),

@@ -10,8 +10,11 @@ import XitDB
 ///
 /// Each entry of a keyed container also stores its key's name, so that
 /// decoding can list the keys, which enums with associated values and
-/// dictionaries do; a map written by other means decodes only by the keys
-/// the type asks for. `encodeNil` writes nothing at the key, `encodeIfPresent`
+/// dictionaries do, and so that a dump or another implementation sees the
+/// field names where a plain hashed map shows only hashes; a keyed entry
+/// thus carries its key's bytes beside the hash, and a record costs its
+/// field names once per entry. A map written by other means decodes only by
+/// the keys the type asks for. `encodeNil` writes nothing at the key, `encodeIfPresent`
 /// with `nil` skips the key, so an optional that is `nil` leaves no entry. Integers
 /// are stored as the format's signed or unsigned 64-bit integers and come
 /// back exactly, or decoding fails. A nested value is a nested map or list;
