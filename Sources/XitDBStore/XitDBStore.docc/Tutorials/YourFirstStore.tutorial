@@ -3,7 +3,7 @@
         Open a store in a file, write a record to it as a `Codable` type, read it back, go back in its history, and read
         it on another task.
 
-        You need an executable package that depends on `XitDBStore`: `.package(url: "https://github.com/rgb/xitdb-swift", from: "0.2.0")` in its manifest, and `.product(name: "XitDBStore", package: "xitdb-swift")` among its target's dependencies. The code goes in its `main.swift`.
+        You need an executable package that depends on `XitDBStore`: `.package(url: "https://github.com/rgb/xitdb-swift", from: "0.2.1")` in its manifest, and `.product(name: "XitDBStore", package: "xitdb-swift")` among its target's dependencies. The code goes in its `main.swift`.
     }
 
     @Section(title: "Open a store") {

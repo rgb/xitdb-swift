@@ -144,4 +144,76 @@ import Testing
             Issue.record("\(code.place): not in Tests/XitDBExamples, from this line: \(departure)")
         }
     }
+
+    /// A dump the documentation shows, and the pinned dump it is taken from.
+    private struct ShownDump: CustomTestStringConvertible {
+        let place: String
+        let pinned: String
+        /// The block's lines, in runs between the lines that are a lone "…".
+        let runs: [[String]]
+
+        var testDescription: String { place }
+    }
+
+    /// Every block that follows a comment `<!-- Pinned: … -->` naming a file
+    /// under `Tests/XitDBTests/Resources/dumps`, which `DumpTests` holds
+    /// `xitdb-dump` to.
+    private static func shownDumps() throws -> [ShownDump] {
+        var dumps: [ShownDump] = []
+        for catalogue in catalogues {
+            for url in files(in: catalogue, withExtensions: ["md"]) {
+                var pinned: String?
+                var block: [String]?
+                var start = 0
+                let lines = try String(contentsOf: url, encoding: .utf8).components(separatedBy: "\n")
+                for (index, line) in lines.enumerated() {
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    if let current = block, let file = pinned {
+                        if trimmed == "```" {
+                            let runs = current.split(separator: "…", omittingEmptySubsequences: false).map(Array.init)
+                            dumps.append(ShownDump(place: "\(relative(url)):\(start)", pinned: file, runs: runs))
+                            block = nil
+                            pinned = nil
+                        } else {
+                            block = current + [line]
+                        }
+                    } else if trimmed.hasPrefix("<!-- Pinned:"),
+                        let match = trimmed.firstMatch(of: /Tests\/XitDBTests\/Resources\/dumps\/[^ ,]+\.txt/)
+                    {
+                        pinned = String(match.output)
+                    } else if pinned != nil, trimmed.hasPrefix("```") {
+                        block = []
+                        start = index + 1
+                    }
+                }
+                #expect(pinned == nil, "\(relative(url)) has a pinned comment with no block after it")
+            }
+        }
+        return dumps
+    }
+
+    /// Each run of a shown dump's lines is in its pinned dump as it is, the
+    /// runs in order: the documentation shows what the tool prints.
+    @Test func everyShownDumpIsPinned() throws {
+        let dumps = try Self.shownDumps()
+        #expect(dumps.count > 0)
+        for dump in dumps {
+            let file = Self.packageRoot.appendingPathComponent(dump.pinned)
+            let pinned = try String(contentsOf: file, encoding: .utf8).components(separatedBy: "\n")
+            var from = 0
+            for run in dump.runs {
+                let found =
+                    run.isEmpty
+                    ? nil
+                    : (from..<pinned.count).first { at in
+                        at + run.count <= pinned.count && Array(pinned[at..<(at + run.count)]) == run
+                    }
+                guard let found else {
+                    Issue.record("\(dump.place): not in \(dump.pinned) from here: \(run.first ?? "(an empty run)")")
+                    break
+                }
+                from = found + run.count
+            }
+        }
+    }
 }

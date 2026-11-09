@@ -182,8 +182,10 @@ python3 -m http.server --directory .build/docs-site
 
 The preview is then at <http://localhost:8000/documentation/xitdb/>.
 
-To look at a file itself, `swift run xitdb-dump FILE` prints it as it is on disk, moment by moment; the article
-"Reading a file with xitdb-dump" shows the output and the options.
+To look at a file itself, `swift run xitdb-dump FILE` prints it as it is on disk: its header, the last moment or any
+other, and with `--verify` its commits. Built once with `swift build -c release --product xitdb-dump`, it runs as
+`.build/release/xitdb-dump FILE`. The article "Reading a file with xitdb-dump" works through a dump and lists the
+options.
 
 ## Developing
 
