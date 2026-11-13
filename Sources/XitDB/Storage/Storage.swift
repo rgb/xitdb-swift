@@ -144,6 +144,12 @@ public enum SyncPoint: Sendable {
     ///
     /// The data must reach the disk before the header does. Otherwise a crash
     /// could leave a header that points at data which never arrived.
+    ///
+    /// A sync from 0, which replaces a database, asks for this once more,
+    /// after it has written the incoming database's header and an empty
+    /// root header and before any of the data: there it is the barrier that
+    /// keeps the data from reaching the disk without the headers, which
+    /// would leave a file that cannot be opened.
     case beforeRootHeader
 
     /// The root header has been rewritten.

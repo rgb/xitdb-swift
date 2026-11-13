@@ -239,16 +239,20 @@ import XitDB
         #expect(cleared.tag == .none)
         #expect(!cleared.isEmpty)
         #expect(try list.cursor(at: 1)!.readBytes() == [])
-        #expect(try list.slot(at: 2) == nil)
-        #expect(try list.cursor(at: 2) == nil)
+        // Since 0.3.0 the element appended and never written is kept as a
+        // slot set to nothing too, so that it counts: a lookup finds it.
+        let unwritten = try list.slot(at: 2)!
+        #expect(unwritten.tag == .none)
+        #expect(!unwritten.isEmpty)
+        #expect(try list.cursor(at: 2)!.readBytes() == [])
 
-        // Iterating gives the one set to nothing, and passes over the other.
+        // Iterating gives all three.
         var tags: [Slot.Tag] = []
         var iterator = try list.iterator()
         while let element = try iterator.next() {
             tags.append(try element.slot.tag)
         }
-        #expect(tags == [.uint, .none])
+        #expect(tags == [.uint, .none, .none])
     }
 
     @Test func clearingAnEntryIsNotRemovingIt() throws {

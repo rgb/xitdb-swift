@@ -165,11 +165,17 @@ final class WrappedStorage: WritableStorage {
         // transaction, no freeze, no replication onto it and no write
         // through its cursors, which are read-only. Inside the module the
         // storage's snapshot case refuses a write as a backstop, before
-        // anything is done.
+        // anything is done: a sync from 0 of bytes that are a database gets
+        // as far as emptying the storage, which is refused.
         #expect(throws: XitDBError.cursorNotWritable) {
             try reading.engine.rootCursor.writePath([.hashMapInit(), .hashMapGet(.value, sha1("z")), .write(.uint(1))])
         }
-        #expect(throws: XitDBError.cursorNotWritable) { try reading.engine.applyReplicated(at: 0, bytes: [1, 2, 3]) }
+        let whole = try fixture.database.readCommitted(from: 0, to: try fixture.database.committedSize)
+        #expect(throws: XitDBError.cursorNotWritable) { try reading.engine.applyReplicated(at: 0, bytes: whole) }
+        var source = ArrayByteSource(whole)
+        #expect(throws: XitDBError.cursorNotWritable) {
+            try reading.engine.applyReplicated(at: 0, from: &source, count: UInt64(whole.count))
+        }
 
         #expect(try wholeStorage(fixture.subject.storage) == before)
         #expect(try Self.value("a", in: snapshot) == 1)

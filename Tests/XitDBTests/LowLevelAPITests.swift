@@ -402,16 +402,18 @@ import Testing
             #expect(sizeBefore == sizeAfter)
             #expect(sizeAfter == 1207)  // as in a run of the Zig test
 
-            // appending must clear the failed moment's slot, including its stored value
+            // appending must clear the failed moment's slot, including its stored value.
+            // the cleared slot still counts as an element.
+            let cleared = Slot(tag: .none, full: true)
             let history = try PathArrayList(database.rootCursor)
             let countBefore = try history.count()
             #expect(try history.appendCursor().slot.isEmpty)
-            #expect(try history.getSlot(-1) == nil)
+            #expect(try history.getSlot(-1) == cleared)
             try history.slice(countBefore)
             try history.append(.uint(999))
             try history.slice(countBefore)
             #expect(try history.appendCursor().slot.isEmpty)
-            #expect(try history.getSlot(-1) == nil)
+            #expect(try history.getSlot(-1) == cleared)
             try history.slice(countBefore)
             #expect(countBefore == 3)  // as in a run of the Zig test, with the length after it
             #expect(try subject.storage.length == 2371)

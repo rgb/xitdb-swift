@@ -71,10 +71,14 @@ struct SlotIterator {
         /// beyond it, with elements of a longer list that was cut down.
         ///
         /// Zig counts the elements it gives out instead, so after passing
-        /// over an element that was never written it gives out one past the
-        /// end of a cut-down list (finding 26). Here the walk visits the
-        /// positions from its start to the list's size and no further, as
-        /// reading by index does.
+        /// over an empty slot it gives out one past the end of a cut-down
+        /// list (finding 26). Here the walk visits the positions from its
+        /// start to the list's size and no further, as reading by index
+        /// does. Since the original's `89da8e7` an append leaves a slot set
+        /// to nothing, which both walks give out, so the two agree on files
+        /// written since; an empty slot inside a list's size is what an
+        /// element appended and never written was before, and what a file
+        /// from then still holds.
         case positions(UInt64)
         /// A linked array list: the number of elements still to give out,
         /// as Zig counts. The slots of a node beyond its count are empty
@@ -375,8 +379,9 @@ struct SlotIterator {
     /// The next slot that holds something, with its position, or `nil` when
     /// the walk is over.
     ///
-    /// A slot that was never written is passed over. One that was set to
-    /// nothing is given out: it is an element whose value is nothing.
+    /// An empty slot is passed over. One that was set to nothing is given
+    /// out: it is an element whose value is nothing, which is also what an
+    /// append leaves for an element that is never written.
     ///
     /// - Throws: `keyOffsetExceeded` for a hash trie, or `maxShiftExceeded`
     ///   for an array list, that is deeper than it can be; `invalidEnumTag`

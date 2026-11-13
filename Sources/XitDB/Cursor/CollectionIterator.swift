@@ -39,10 +39,12 @@ public struct CollectionIterator {
     /// an iterator does not copy what it goes through, so writing
     /// through them would change other moments of the database.
     ///
-    /// An element of an array list that was appended and never written
-    /// is passed over. One that was set to nothing is given, and so is
-    /// an element of a linked array list that was never written, as a
-    /// cursor at a slot set to nothing.
+    /// An element that was set to nothing is given, and so is an element
+    /// of an array list or a linked array list that was appended and
+    /// never written, as a cursor at a slot set to nothing. In a file
+    /// written by a version before 0.3.0, or by the original before its
+    /// format version 2, an array list's element that was never written
+    /// is an empty slot, which is passed over.
     ///
     /// - Throws: ``XitDBError/keyOffsetExceeded``,
     ///   ``XitDBError/maxShiftExceeded`` or ``XitDBError/invalidBTreeNode``

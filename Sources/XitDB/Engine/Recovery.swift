@@ -112,7 +112,12 @@ extension Database {
     /// refused with ``XitDBError/untrustedRootHeader(lastVerified:)``: a
     /// crash, a failed write or a damaged sector has left a root header
     /// whose committed size is past the end of the storage, smaller than a
-    /// database can be, or not at a trailer whose checksum verifies. The
+    /// database can be, or not at a trailer whose checksum verifies. It is
+    /// also the other way on from a full copy that did not finish, which
+    /// opening accepts so that a sync from 0 can replace it: recovering it
+    /// instead keeps the last commit of the source that arrived whole, from
+    /// which the next sync goes on. And where a creation did not finish but
+    /// its first trailer is whole, it finishes the creation. The
     /// storage is scanned from its end back for the last trailer that
     /// verifies, as the error's `lastVerified` was found; the storage is
     /// cut off after that trailer; the root header is written for it, that

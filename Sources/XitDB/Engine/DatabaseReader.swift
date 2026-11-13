@@ -183,6 +183,25 @@ final class DatabaseReader {
         return RootHeader(root: try rootTrailer(endingAt: fileSize).root, fileSize: fileSize)
     }
 
+    /// The root header's committed size as it is, with nothing checked:
+    /// zero until the first commit, or a full copy, has finished, and zero
+    /// too for a storage that ends before the size. Zig's `readFileSize`.
+    /// A database whose size is zero has no first commit.
+    func recordedSize() throws(XitDBError) -> UInt64 {
+        if let pinnedRoot { return pinnedRoot.fileSize }
+        let header = identity.header
+        if try storage.length < header.dataStart { return 0 }
+        return try uint64(at: header.fileSizePosition)
+    }
+
+    /// Whether the storage holds a full copy that did not finish: a
+    /// database without a first commit that is longer than a new one. (One
+    /// no longer than a new database is a creation that did not finish.)
+    func holdsUnfinishedCopy() throws(XitDBError) -> Bool {
+        guard try storage.length > identity.header.minimumFileSize else { return false }
+        return try recordedSize() == 0
+    }
+
     /// The number of bytes that belong to committed transactions.
     var committedSize: UInt64 {
         get throws(XitDBError) {

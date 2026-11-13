@@ -91,10 +91,17 @@ extension Database {
     /// This database's ``ReplicaState``: its committed size and the
     /// checksum of the trailer that ends it.
     ///
-    /// - Throws: What ``committedSize`` throws: the database must check
-    ///   out to have a state.
+    /// A database without a first commit, which is what a sync from 0 that
+    /// did not finish leaves, has a state of its own: a committed size of
+    /// zero and a checksum of zero. A source answers 0 to it, so the next
+    /// sync replaces the database.
+    ///
+    /// - Throws: What ``committedSize`` throws, for a database that has a
+    ///   first commit: it must check out to have a state.
     public var replicaState: ReplicaState {
         get throws(XitDBError) {
+            // a full copy that didn't finish has no first commit
+            if try reader.recordedSize() == 0 { return ReplicaState(committedSize: 0, checksum: 0) }
             let committedSize = try reader.committedSize
             return ReplicaState(
                 committedSize: committedSize, checksum: try reader.rootTrailer(endingAt: committedSize).checksum)
@@ -204,39 +211,76 @@ extension Database {
     /// Writes `count` bytes from `source` at `start` and commits them.
     ///
     /// The bytes must be what ``readCommitted(from:to:into:)-(_,_,Sink)`` gave, so
-    /// they end with a trailer. At 0 this database is replaced by them: the
-    /// file is emptied first, and the bytes are a different database, whose
-    /// header is read afterwards and becomes this one's. Otherwise `start`
-    /// must be this database's ``committedSize``: anything past the
-    /// committed bytes, such as what an interrupted sync left, is
-    /// discarded, the bytes are written, and the root header is set from
-    /// the trailer that ends them.
+    /// they end with a trailer. Otherwise than at 0, `start` must be this
+    /// database's ``committedSize``: anything past the committed bytes,
+    /// such as what an interrupted sync left, is discarded, the bytes are
+    /// written, and the root header's committed size is set to where they
+    /// end. The commit syncs as any other: the data, then the committed
+    /// size, then the size's sync.
     ///
-    /// The commit syncs as any other: the data, then the root header, then
-    /// the header's sync. A sync at 0 syncs once, with the whole file.
+    /// At 0 this database is replaced by the bytes, which are a different
+    /// database with its own header. The header is read from the source
+    /// and checked before anything is changed: bytes that are no database,
+    /// or one of another hash size, leave this database as it was. Then
+    /// the storage is emptied, the incoming header is written with an empty
+    /// root header and synced, the root header that came with the bytes is
+    /// passed over, the rest is written, and the committed size is set once
+    /// everything has arrived and ends with a trailer. This database's
+    /// ``header`` is the incoming one from the moment the storage is
+    /// emptied, its format version included: a replica takes the version of
+    /// what it was sent. The bytes between the database header and the
+    /// committed size, which are padding, or in a version 1 file a copy of
+    /// the root slot that nothing reads, are not taken from the source: the
+    /// replica has zeros there.
     ///
-    /// What a failure leaves is what the original leaves. Bytes that do not end
-    /// with a trailer, or a source that ends short, leave what was written
-    /// past the committed size, which the next sync or transaction
-    /// discards. A failure at 0 leaves no database: the file was emptied
-    /// first, so ``committedSize`` and ``replicaState`` raise from then
-    /// on, until a sync at 0 succeeds.
+    /// What a failure leaves is what the original leaves. Otherwise than
+    /// at 0, bytes that do not end with a trailer, or a source that ends
+    /// short, leave what was written past the committed size, which the
+    /// next sync or transaction discards. At 0, a failure after the storage
+    /// was emptied leaves a database without a first commit: the incoming
+    /// header, a committed size of zero, and what arrived. Its
+    /// ``replicaState`` is a size of zero and a checksum of zero, to which
+    /// the source answers 0, so the next sync replaces it; everything else
+    /// throws ``XitDBError/invalidDatabase`` until then, as
+    /// ``init(opening:hashSize:)`` says of such a database.
     ///
     /// - Throws: ``XitDBError/invalidRange`` for a `start` that is neither
-    ///   0 nor the committed size, which changes nothing;
+    ///   0 nor the committed size, and at 0 for a `count` too small to hold
+    ///   a database header, or the headers of the version the incoming
+    ///   header names, each of which changes nothing;
     ///   ``XitDBError/endOfStream`` if the source runs out before `count`
     ///   bytes, or claims to have given more than its buffer holds;
-    ///   ``XitDBError/invalidDatabase`` if the bytes do not end with
-    ///   a trailer that checks, or, at 0, do not hold a database;
-    ///   ``XitDBError/invalidHashSize`` at 0 for a database of another
-    ///   hash size; ``XitDBError/truncatedDatabase`` at 0 for bytes that
-    ///   stop short of the committed size they record; the storage's
-    ///   errors; and the source's, carried as
-    ///   ``XitDBError/callerError(_:)``.
+    ///   ``XitDBError/invalidDatabase`` if the bytes do not end with a
+    ///   trailer that checks, or, at 0, do not start with a database
+    ///   header, which changes nothing; ``XitDBError/invalidVersion`` and
+    ///   ``XitDBError/invalidHashSize`` at 0 for a database of a format
+    ///   version this implementation does not read, or of another hash
+    ///   size, which change nothing; the storage's errors; and the
+    ///   source's, carried as ``XitDBError/callerError(_:)``.
     public func applyReplicated<Source: ByteSource>(at start: UInt64, from source: inout Source, count: UInt64)
         throws(XitDBError)
     {
-        try beginApplying(at: start)
+        var position = start
+        var remaining = count
+        if start == 0 {
+            // The bytes are a different database, with its own header,
+            // which is read and checked before this one is touched.
+            if count < DatabaseHeader.byteCount { throw .invalidRange }
+            let headerBytes = try take(Int(DatabaseHeader.byteCount), from: &source)
+            let incoming = try incomingHeader(headerBytes.span)
+            position = incoming.dataStart
+            if count < position { throw .invalidRange }
+            try beginFullCopy(of: incoming, headerBytes: headerBytes.span)
+            // The root header that came with the bytes isn't needed.
+            _ = try take(Int(position - DatabaseHeader.byteCount), from: &source)
+            remaining = count - position
+        } else if start == (try reader.committedSize) {
+            // discard anything past the committed bytes, such as the remains
+            // of an interrupted sync
+            try truncate()
+        } else {
+            throw .invalidRange
+        }
 
         // One buffer for the whole sync: a chunk at most, and never more
         // than what remains, so that the source is never asked for more
@@ -244,9 +288,7 @@ extension Database {
         // keeps its storage; a new one for every short read near the end
         // was allocated and zeroed again, once per byte for a source that
         // gives one at a time.
-        var buffer = [UInt8](repeating: 0, count: Int(min(count, UInt64(Self.streamChunk))))
-        var position = start
-        var remaining = count
+        var buffer = [UInt8](repeating: 0, count: Int(min(remaining, UInt64(Self.streamChunk))))
         while remaining > 0 {
             if remaining < UInt64(buffer.count) {
                 buffer.removeLast(buffer.count - Int(remaining))
@@ -259,28 +301,28 @@ extension Database {
             remaining -= UInt64(read)
         }
 
-        try endApplying(at: start, count: count)
+        try commitApplied(at: start, count: count)
     }
 
     /// Writes bytes held in memory at `start` and commits them:
     /// ``applyReplicated(at:from:count:)`` for an array, whose bytes go to
-    /// the storage straight from it, in one copy and one write.
+    /// the storage straight from it, with no copy between.
     ///
     /// - Throws: What ``applyReplicated(at:from:count:)`` throws.
     public func applyReplicated(at start: UInt64, bytes: [UInt8]) throws(XitDBError) {
-        try beginApplying(at: start)
-        if !bytes.isEmpty {
-            try storage.write(bytes.span, at: start)
-        }
-        try endApplying(at: start, count: UInt64(bytes.count))
-    }
-
-    /// What a sync does before the bytes are written: empties the file at
-    /// 0, discards what lies past the committed bytes at the committed
-    /// size, and refuses any other start.
-    private func beginApplying(at start: UInt64) throws(XitDBError) {
+        var position = start
+        var first = 0
         if start == 0 {
-            try storage.truncate(to: 0)
+            // The bytes are a different database, with its own header,
+            // which is checked before this one is touched.
+            let headerSize = Int(DatabaseHeader.byteCount)
+            if bytes.count < headerSize { throw .invalidRange }
+            let incoming = try incomingHeader(bytes.span.extracting(0..<headerSize))
+            position = incoming.dataStart
+            if UInt64(bytes.count) < position { throw .invalidRange }
+            try beginFullCopy(of: incoming, headerBytes: bytes.span.extracting(0..<headerSize))
+            // The root header that came with the bytes isn't needed.
+            first = Int(position)
         } else if start == (try reader.committedSize) {
             // discard anything past the committed bytes, such as the remains
             // of an interrupted sync
@@ -288,30 +330,70 @@ extension Database {
         } else {
             throw .invalidRange
         }
+        if first < bytes.count {
+            try storage.write(bytes.span.extracting(first..<bytes.count), at: position)
+        }
+        try commitApplied(at: start, count: UInt64(bytes.count))
     }
 
-    /// What a sync does after `count` bytes were written at `start`: takes
-    /// the new header at 0, or sets the root header from the trailer that
-    /// ends the bytes, with the syncs of a commit.
-    private func endApplying(at start: UInt64, count: UInt64) throws(XitDBError) {
-        if start == 0 {
-            // the bytes are a different database, with its own header
-            try storage.sync(.afterRootHeader)
-            var bytes = InlineArray<20, UInt8>(repeating: 0)
-            var span = bytes.mutableSpan
-            let read = try storage.read(into: &span, at: 0)
-            let newHeader = try DatabaseHeader(decoding: bytes.span.extracting(0..<read))
-            guard newHeader.hashSize == header.hashSize else { throw .invalidHashSize }
-            become(newHeader)
-            _ = try reader.committedSize
-        } else if count > 0 {
-            // the bytes must end with a trailer. update the root header to
-            // match it.
-            _ = try reader.rootTrailer(endingAt: try start.offset(by: count))
-            try storage.sync(.beforeRootHeader)
-            try writeRootHeader()
-            try storage.sync(.afterRootHeader)
+    /// The header of the database a sync from 0 brings, from its first
+    /// twenty bytes, checked as opening checks one.
+    ///
+    /// - Throws: `invalidDatabase` for bytes that do not start a database,
+    ///   `invalidVersion` for a version this implementation does not read,
+    ///   `invalidHashSize` for a hash size that is not this database's.
+    private func incomingHeader(_ bytes: Span<UInt8>) throws(XitDBError) -> DatabaseHeader {
+        let incoming = try DatabaseHeader(decoding: bytes)
+        guard incoming.hashSize == header.hashSize else { throw .invalidHashSize }
+        return incoming
+    }
+
+    /// Starts a full copy: empties the storage, becomes the incoming
+    /// database, and writes its header, as it came, with an empty root
+    /// header. From here until the copy's committed size is written the
+    /// storage holds a database without a first commit, which the next
+    /// sync from 0 replaces if this one does not finish.
+    private func beginFullCopy(of incoming: DatabaseHeader, headerBytes: Span<UInt8>) throws(XitDBError) {
+        try storage.truncate(to: 0)
+        become(incoming)
+        try storage.write(headerBytes, at: 0)
+        try writeEmptyRootHeader()
+        // Sync the headers before the data, which could otherwise reach
+        // the disk without them and leave a file that can't be opened.
+        try storage.sync(.beforeRootHeader)
+    }
+
+    /// Takes exactly `count` bytes from `source`, however few it gives at
+    /// a time, and never asks it for more.
+    ///
+    /// - Throws: `endOfStream` if the source runs out first or claims to
+    ///   have given more than its buffer holds, and the source's own error
+    ///   carried as `callerError`.
+    private func take<Source: ByteSource>(_ count: Int, from source: inout Source) throws(XitDBError) -> [UInt8] {
+        var taken: [UInt8] = []
+        taken.reserveCapacity(count)
+        var buffer = [UInt8](repeating: 0, count: count)
+        while taken.count < count {
+            if count - taken.count < buffer.count {
+                buffer.removeLast(buffer.count - (count - taken.count))
+            }
+            var span = buffer.mutableSpan
+            let read = try XitDBError.carrying { try source.read(into: &span) }
+            guard read > 0, read <= buffer.count else { throw .endOfStream }
+            taken.append(contentsOf: buffer[0..<read])
         }
+        return taken
+    }
+
+    /// What a sync does after `count` bytes were written from `start`: the
+    /// bytes must end with a trailer, and the root header's committed size
+    /// is set to where they end, with the syncs of a commit.
+    private func commitApplied(at start: UInt64, count: UInt64) throws(XitDBError) {
+        guard count > 0 else { return }
+        _ = try reader.rootTrailer(endingAt: try start.offset(by: count))
+        try storage.sync(.beforeRootHeader)
+        try writeRootHeader()
+        try storage.sync(.afterRootHeader)
     }
 
     /// The size of the chunks the streams move: large enough that a file is

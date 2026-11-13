@@ -40,6 +40,10 @@ public enum XitDBError: Error, Sendable {
     /// a trailer that verifies. A file whose root header cannot be trusted
     /// while some trailer verifies is ``untrustedRootHeader(lastVerified:)``
     /// instead.
+    ///
+    /// It is also what a database without a first commit answers to
+    /// everything but its replica state and a sync from 0: a full copy that
+    /// did not finish, which opens so that the next sync can replace it.
     case invalidDatabase
 
     /// The file was written with a format version this implementation does
@@ -51,8 +55,7 @@ public enum XitDBError: Error, Sendable {
     case invalidHashSize
 
     /// The storage of a database already open is shorter than the committed
-    /// size it records, as a sync at zero that failed leaves it, or a sync at
-    /// zero brought bytes that stop short of their own committed size. A
+    /// size it records, as a storage cut short under an open database is. A
     /// file cut short before it is opened is
     /// ``untrustedRootHeader(lastVerified:)`` instead.
     case truncatedDatabase
@@ -76,16 +79,23 @@ public enum XitDBError: Error, Sendable {
     /// The target of a compaction already contains data.
     case targetNotEmpty
 
-    /// The root of the database being compacted is an array list whose
-    /// last element is empty: the list has no elements, or its last element
-    /// was appended and never written, whether the list is a history or any
-    /// other list at the root. Compacting it would keep nothing of it,
-    /// neither the list nor the elements before the empty one, so it is
-    /// refused before anything is written to the target. A last element
-    /// set to nothing is a moment, and compacts.
+    /// The root of the database being compacted is an array list with no
+    /// last element to keep: the list has no elements, or the slot of its
+    /// last element is empty, whether the list is a history or any other
+    /// list at the root. Compacting it would keep nothing of it, neither
+    /// the list nor the elements before the empty one, so it is refused
+    /// before anything is written to the target.
+    ///
+    /// An empty last slot is what an element appended and never written
+    /// was in a file written by a version before 0.3.0, or by the original
+    /// before its format version 2. Since then such an element is a slot
+    /// set to nothing, which is a moment like one set to nothing on
+    /// purpose, and compacts.
     case emptyLastMoment
 
-    /// The storage a database was to be created in already contains data.
+    /// The storage a database was to be created in already contains data,
+    /// other than what a creation that did not finish left, which is
+    /// created over.
     case storageNotEmpty
 
     /// A hash trie is deeper than a hash of the database's hash size allows.
@@ -145,8 +155,8 @@ public enum XitDBError: Error, Sendable {
     /// ``Database/withTransaction(_:)`` or a history append hands its body, or
     /// any cursor at the same slot, such as the cursor of a collection made
     /// from it: making a collection from it is allowed, and so is writing a
-    /// value through it, ``Cursor/write(_:)``, ``Cursor/writeIfEmpty(_:)`` or a
-    /// path that begins with a write, since its slot is the engine's own record
+    /// value through it, with ``Cursor/write(_:)`` or
+    /// ``Cursor/writeIfEmpty(_:)``, since its slot is the engine's own record
     /// that nothing inside the transaction can copy; every cursor taken from
     /// it is fresh, and a byte writer through it is refused like any other
     /// write. Through any other cursor from before the freeze every write is

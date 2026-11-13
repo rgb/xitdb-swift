@@ -42,7 +42,10 @@ public struct ArrayList<Access: CursorAccess> {
 
     /// An iterator over the list's elements, in order.
     ///
-    /// An element that was appended and never written is passed over.
+    /// An element that was appended and never written is given as a cursor
+    /// at a slot set to nothing. In a file written by a version before
+    /// 0.3.0, or by the original before its format version 2, such an
+    /// element's slot is empty, and it is passed over.
     ///
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something that
     ///   is not a collection, ``XitDBError/staleCursor`` if the list is not at
@@ -67,8 +70,12 @@ public struct ArrayList<Access: CursorAccess> {
         return try cursor.iterator(fromArrayListIndex: index)
     }
 
-    /// A cursor at an element, or `nil` if there is no element at `index`
-    /// or it was never written.
+    /// A cursor at an element, or `nil` if there is no element at `index`.
+    ///
+    /// An element that was appended and never written is a slot set to
+    /// nothing, and has a cursor like any other. In a file written by a
+    /// version before 0.3.0, or by the original before its format version
+    /// 2, such an element's slot is empty, and the result is `nil`.
     ///
     /// - Parameter index: The element's index. A negative index counts from
     ///   the end: `-1` is the last element.
@@ -82,8 +89,12 @@ public struct ArrayList<Access: CursorAccess> {
         return try cursor.readPath(path.span)
     }
 
-    /// The slot of an element, or `nil` if there is no element at `index`
-    /// or it was never written.
+    /// The slot of an element, or `nil` if there is no element at `index`.
+    ///
+    /// An element that was appended and never written is a slot set to
+    /// nothing. In a file written by a version before 0.3.0, or by the
+    /// original before its format version 2, such an element's slot is
+    /// empty, and the result is `nil`.
     ///
     /// - Parameter index: The element's index. A negative index counts from
     ///   the end: `-1` is the last element.
@@ -233,7 +244,8 @@ extension ArrayList where Access == ReadWrite {
     }
 
     /// Appends an element and gives a cursor at it, for writing it or for
-    /// making a collection there.
+    /// making a collection there. An element that is never written stays
+    /// in the list as a slot set to nothing.
     ///
     /// Use it in a transaction. On a list at the root the call is a
     /// transaction of its own, committed by the time it returns, so the new

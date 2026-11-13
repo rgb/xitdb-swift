@@ -193,7 +193,10 @@ import XitDB
         #expect(throws: XitDBError.self) {
             try replica.applyReplicated(at: 0, from: &connection, count: UInt64(good.count))
         }
-        #expect(throws: XitDBError.truncatedDatabase) { try replica.replicaState }
+        // The replica has no first commit: its state is zero and zero, and
+        // the source answers 0 to it.
+        #expect(try replica.replicaState == ReplicaState(committedSize: 0, checksum: 0))
+        #expect(try source.replicationStart(for: try replica.replicaState) == 0)
 
         // What arrived holds the source's earlier commits. Keep the last of them.
         replica = try Database.recover(replicaStorage)
@@ -220,14 +223,16 @@ import XitDB
         }
         #expect(throws: XitDBError.invalidDatabase) { try Database.recover(beforeFirst) }
 
-        // A sync that failed before the first commit arrived leaves nothing to recover.
-        let empty = MemoryStorage()
-        let another = try Database(creating: empty, hashSize: 32)
+        // A sync that failed inside the source's header changed nothing: the
+        // replica is the database it was.
+        let untouched = MemoryStorage()
+        let another = try Database(creating: untouched, hashSize: 32)
+        let before = untouched.bytes
         var early = DroppingSource(bytes: good, dropAt: 10)
         #expect(throws: XitDBError.self) {
             try another.applyReplicated(at: 0, from: &early, count: UInt64(good.count))
         }
-        #expect(throws: XitDBError.endOfStream) { try another.replicaState }
-        #expect(throws: XitDBError.endOfStream) { try Database.recover(empty) }
+        #expect(untouched.bytes == before)
+        #expect(try another.replicaState.committedSize == 57)
     }
 }

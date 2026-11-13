@@ -108,12 +108,25 @@ import XitDB
         }
     }
 
-    @Test func aLastElementNeverWrittenIsRefused() throws {
+    @Test func aLastElementNeverWrittenCompacts() throws {
         let database = try newHistory(moments: 3)
         let history = try ArrayList<ReadWrite>(database.rootCursor)
         _ = try history.appendCursor()
 
-        // Compacting would keep nothing: not the list, not the three moments.
+        // Since 0.3.0 an element appended and never written is kept as a slot
+        // set to nothing: a moment, which compacts as one set to nothing does.
+        var offsets = MemoryOffsetMap()
+        let compacted = try database.compact(into: MemoryStorage(), offsetMap: &offsets)
+        let kept = try ArrayList<ReadOnly>(compacted.rootCursor)
+        #expect(try kept.count == 1)
+        #expect(try kept.slot(at: 0)!.tag == .none)
+    }
+
+    @Test func aListWithNoElementsIsRefused() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        _ = try ArrayList<ReadWrite>(database.rootCursor)
+
+        // Compacting would keep nothing, not even the list.
         // Nothing is written to the target, which stays an empty storage.
         let target = MemoryStorage()
         var offsets = MemoryOffsetMap()

@@ -612,14 +612,27 @@ extension Cursor where Access == ReadWrite {
         slotPointer = written.slotPointer
     }
 
-    /// Writes a value to the slot if the slot is empty, and does nothing
-    /// otherwise.
+    /// Writes a value to the slot if nothing has been written there, and
+    /// does nothing otherwise.
     ///
-    /// This goes by the slot as it is now, not by the cursor's snapshot:
-    /// another cursor may have written the slot since this one was made,
-    /// and that value is kept (finding 17; the original at `6b93af1` goes
-    /// by the snapshot and overwrites it). Empty means never written: a
-    /// slot set to nothing is not empty.
+    /// What decides is the slot as it is in the database now, not the copy
+    /// of it this cursor took when it was made: another cursor may have
+    /// written a value there since, and that value is kept. The original
+    /// decides by the cursor's copy, and overwrites such a value.
+    ///
+    /// The value is written when the slot is empty, which means never
+    /// written. It is also written when this cursor was made on an empty
+    /// slot and the slot is set to nothing now. That is how the database
+    /// keeps an element which ``ArrayList/appendCursor()``,
+    /// ``LinkedArrayList/appendCursor()`` or
+    /// ``LinkedArrayList/insertCursor(at:)`` has just made and handed this
+    /// cursor to, so that the element counts before anything is written to
+    /// it. A slot that another cursor has set to nothing in the meantime
+    /// looks the same, and is written over as well.
+    ///
+    /// In every other case nothing is written: when the slot holds a value
+    /// now, and when this cursor was made on a slot that had been set to
+    /// nothing, which is not empty.
     ///
     /// - Throws: As ``write(_:)``, and ``XitDBError/invalidEnumTag`` or
     ///   ``XitDBError/endOfStream`` if the slot cannot be read.
@@ -637,11 +650,16 @@ extension Cursor where Access == ReadWrite {
         // The data is checked before the slot is looked at, so that a
         // structural slot is refused whatever the slot holds.
         try checkData(path.span)
-        var pointer = try resolved()
-        if !isRoot, let position = pointer.position {
-            pointer.slot = try engine.reader.slot(at: position)
+        // The cursor's own copy of the slot, and the slot as it is now. An
+        // append or an insert hands back a cursor whose copy is empty while
+        // the slot in the storage is set to nothing, so that the element
+        // counts: that slot is still to be written.
+        let own = try resolved()
+        var now = own.slot
+        if !isRoot, let position = own.position {
+            now = try engine.reader.slot(at: position)
         }
-        if pointer.slot.isEmpty {
+        if now.isEmpty || (own.slot.isEmpty && now.tag == .none) {
             try write(data)
         }
     }

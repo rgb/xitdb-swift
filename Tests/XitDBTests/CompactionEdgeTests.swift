@@ -337,22 +337,25 @@ import Testing
     }
 
     /// A list at the root whose last element is empty, because the list
-    /// has no elements or its last element was appended and never written,
-    /// is refused before anything is written: Zig compacts it to an empty
-    /// database, losing the list and every element before the empty one
-    /// (finding 28). The source is checked before the target, so a target
-    /// that holds data is refused for the source's reason, and the shape
-    /// that opens the target refuses before opening it. A last element set
-    /// to nothing is a moment, and compacts.
+    /// has no elements or its last element's slot is truly empty, as an
+    /// element appended and never written is in a file written before
+    /// 0.3.0, is refused before anything is written: Zig compacts it to an
+    /// empty database, losing the list and every element before the empty
+    /// one (finding 28). The source is checked before the target, so a
+    /// target that holds data is refused for the source's reason, and the
+    /// shape that opens the target refuses before opening it. A last
+    /// element set to nothing is a moment, and compacts; so does one
+    /// appended and never written by this version, which is kept as a slot
+    /// set to nothing (the original's `89da8e7`).
     @Test(arguments: StorageKind.allCases)
     func aRootListWhoseLastElementIsEmptyIsRefused(kind: StorageKind) throws {
         func allBytes(_ subject: StorageUnderTest) throws -> [UInt8] {
             try readBytes(subject.storage, at: 0, count: Int(try subject.storage.length))
         }
-        func refusing(_ prepare: (Database) throws -> Void) throws {
+        func refusing(_ prepare: (Database, StorageUnderTest) throws -> Void) throws {
             let subject = try StorageUnderTest(kind)
             let source = try makeDatabase(subject)
-            try prepare(source)
+            try prepare(source, subject)
             let sourceBefore = try allBytes(subject)
             var map = MemoryOffsetMap()
 
@@ -381,19 +384,25 @@ import Testing
             #expect(try allBytes(subject) == sourceBefore)
         }
 
-        // three written moments and one appended, never written
-        try refusing { source in
+        // three written moments and one appended and never written, as a
+        // file written before 0.3.0 has it: the slot truly empty, which is
+        // the append's slot with its full bit cleared
+        try refusing { source, subject in
             let history = try ArrayList<ReadWrite>(source.rootCursor)
             for round in 1...3 {
                 try history.append(.slot(try history.slot(at: -1))) { cursor in
                     try HashMap<ReadWrite>(cursor).put(.uint(UInt64(round)), forHash: sha1("round-\(round)").bytes)
                 }
             }
-            _ = try history.appendCursor()
+            let unwritten = try history.appendCursor()
+            let position = try #require(unwritten.slotPointer.position)
+            #expect(try readBytes(subject.storage, at: position, count: 9) == [0x80] + zeros(8))
+            try writeBytes(subject.storage, zeros(9), at: position)
             #expect(try history.count == 4)
+            #expect(try history.slot(at: -1) == nil)
         }
         // a history with no moments
-        try refusing { source in
+        try refusing { source, _ in
             _ = try source.rootCursor.writePath([.arrayListInit])
             #expect(try source.rootCursor.count == 0)
         }
@@ -410,6 +419,21 @@ import Testing
         let compacted = try ArrayList<ReadOnly>(target.rootCursor)
         #expect(try compacted.count == 1)
         #expect(try compacted.slot(at: 0) == Slot(value: 0, tag: .none, full: true))
+
+        // and so does one appended and never written, to the same bytes
+        let unwrittenSubject = try StorageUnderTest(kind)
+        let unwrittenSource = try makeDatabase(unwrittenSubject)
+        let unwrittenHistory = try ArrayList<ReadWrite>(unwrittenSource.rootCursor)
+        try unwrittenHistory.append(.uint(1))
+        _ = try unwrittenHistory.appendCursor()
+        #expect(try unwrittenHistory.slot(at: -1) == Slot(value: 0, tag: .none, full: true))
+        var unwrittenMap = MemoryOffsetMap()
+        let unwrittenTargetSubject = try StorageUnderTest(kind)
+        let unwrittenTarget = try unwrittenSource.compact(
+            into: unwrittenTargetSubject.storage, offsetMap: &unwrittenMap)
+        #expect(try ArrayList<ReadOnly>(unwrittenTarget.rootCursor).count == 1)
+        #expect(
+            try ArrayList<ReadOnly>(unwrittenTarget.rootCursor).slot(at: 0) == Slot(value: 0, tag: .none, full: true))
     }
 
     /// A tree branch whose child points back at its root: the memo ends the

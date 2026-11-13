@@ -117,6 +117,31 @@ public final class Database {
     /// does verify; ``recover(_:)`` cuts the storage back to it. Nothing is
     /// dropped by opening.
     ///
+    /// **A full copy that did not finish opens.** When a sync from 0
+    /// (``applyReplicated(at:from:count:)``) stops before all its bytes
+    /// have arrived, the storage holds the source's header, a committed
+    /// size of zero and what did arrive: a database without a first
+    /// commit, longer than a new database. Opening it succeeds and checks
+    /// nothing, so that the next sync can replace it: its ``replicaState``
+    /// is a size of zero and a checksum of zero, for which the source
+    /// answers 0, and a sync from 0 replaces it. Everything else on it
+    /// throws ``XitDBError/invalidDatabase``: ``committedSize``, every read
+    /// and write through ``rootCursor``, ``snapshot()``,
+    /// ``replicationStart(for:)``, reading committed bytes, a sync from
+    /// anywhere but 0, and compaction from it or into it. ``recover(_:)``,
+    /// instead of opening, cuts such a storage back to the last commit of
+    /// the source that arrived whole.
+    ///
+    /// **A creation that did not finish does not open.** A storage with a
+    /// header, a committed size of zero and no more bytes than a new
+    /// database has is what a process that died while creating a database
+    /// left. It is refused with one of the errors below, by what is there.
+    /// ``init(creating:hashSize:hashID:fileID:)`` accepts it and creates
+    /// over it, with a new file ID unless one is given; where the first
+    /// commit's trailer is whole, which
+    /// ``XitDBError/untrustedRootHeader(lastVerified:)`` says, ``recover(_:)``
+    /// finishes the creation with the file ID the storage has.
+    ///
     /// - Throws: ``XitDBError/invalidDatabase`` if the storage is empty or
     ///   does not start with a database header, or if no trailer in it
     ///   verifies, so that it holds no commit; ``XitDBError/invalidVersion``
@@ -134,19 +159,34 @@ public final class Database {
 
     /// Creates a database in an empty storage, at format version 2.
     ///
+    /// A storage that holds what a creation that did not finish left is
+    /// accepted as well, and created over: a database header for this hash
+    /// size, a committed size of zero, and no more bytes than a new
+    /// database has, as a process that died while creating one leaves.
+    /// Such a storage holds nothing, since its first commit never
+    /// finished. It is emptied, and the database is created as in an empty
+    /// storage, with a new file ID unless one is given. Any other bytes are
+    /// refused and left as they are, a database without a first commit that
+    /// is longer than a new one among them: that is a full copy that did
+    /// not finish, which ``init(opening:hashSize:)`` opens.
+    ///
     /// - Parameters:
-    ///   - storage: Where the database's bytes go. It must be empty, and
-    ///     the database becomes the only writer to it.
+    ///   - storage: Where the database's bytes go. It must be empty or
+    ///     hold what an unfinished creation left, and the database becomes
+    ///     the only writer to it.
     ///   - hashSize: The size in bytes of every hash in the database, such
     ///     as 20 for SHA-1: from 1 to 65535.
     ///   - hashID: An identifier of the hash algorithm, recorded in the
     ///     header for whoever reads the file. XitDB never interprets it.
     ///   - fileID: The database's file ID. Left out, a random one is chosen,
     ///     which is what a database should normally have.
-    /// - Throws: ``XitDBError/storageNotEmpty`` if the storage holds any
-    ///   bytes; ``XitDBError/invalidHashSize`` if `hashSize` is 0 or more
-    ///   than 65535; and ``XitDBError/storageFailure(errno:)`` if the
-    ///   storage fails.
+    /// - Throws: ``XitDBError/storageNotEmpty`` if the storage holds bytes
+    ///   that are not what an unfinished creation left;
+    ///   ``XitDBError/invalidHashSize`` if `hashSize` is 0 or more than
+    ///   65535, or if the storage holds an unfinished creation of a
+    ///   database with another hash size, which is left as it is; and
+    ///   ``XitDBError/storageFailure(errno:)`` if the storage fails, as a
+    ///   storage opened read-only does at the header's write.
     public convenience init(
         creating storage: any WritableStorage,
         hashSize: Int,
@@ -159,7 +199,8 @@ public final class Database {
     }
 
     /// Opens or creates a database, as Zig's `DB.init` does: a hash size on
-    /// an empty storage creates. For the ported tests, which follow Zig's
+    /// an empty storage creates, and so it does on what a creation that
+    /// did not finish left. For the ported tests, which follow Zig's
     /// shape, and with a source of randomness of the caller's, so that a
     /// test can fix the file ID and the commit IDs and compare whole files.
     package convenience init(
@@ -175,6 +216,20 @@ public final class Database {
 
     /// Opens or creates a database, as above, drawing from a source another
     /// database draws from: what a compaction opens its target with.
+    ///
+    /// This is the original's `init` step for step, which the two public
+    /// initialisers each do a part of. A database whose first commit never
+    /// finished holds nothing. If it is no bigger than a new database, it
+    /// was interrupted while being created, so it is created again;
+    /// otherwise it is a full copy that was interrupted, which is left for
+    /// the next sync to replace. Where the storage cannot be emptied
+    /// because it was opened read-only, which cutting it does not report,
+    /// an unfinished creation is left too, and opened as a database
+    /// without a first commit; ``init(opening:hashSize:)`` refuses it
+    /// instead.
+    ///
+    /// - Throws: What the two public initialisers throw, except
+    ///   ``XitDBError/storageNotEmpty``.
     package convenience init(
         storage: any WritableStorage,
         hashSize: UInt16?,
@@ -182,11 +237,22 @@ public final class Database {
         fileID: UInt64? = nil,
         random: RandomSource
     ) throws(XitDBError) {
+        // Without a hash size nothing can be created, so nothing is cut.
+        if let hashSize, try storage.length > 0, let left = try Database.unfinishedCreation(in: storage) {
+            if left.hashSize != hashSize { throw .invalidHashSize }
+            try storage.truncate(to: 0)
+        }
         if try storage.length == 0 {
             guard let hashSize else { throw .invalidHashSize }
             try self.init(creating: storage, hashSize: Int(hashSize), hashID: hashID, fileID: fileID, random: random)
         } else {
-            try self.init(opening: storage, hashSize: hashSize.map { Int($0) }, random: random)
+            let header = try Database.readHeader(of: storage)
+            if let hashSize, header.hashSize != hashSize { throw .invalidHashSize }
+            self.init(header: header, storage: storage, random: random)
+            // Only a database that has its first commit is checked.
+            if try reader.recordedSize() > 0 {
+                try reader.verifyRootHeader()
+            }
         }
     }
 
@@ -202,17 +268,59 @@ public final class Database {
     /// database draws from.
     ///
     /// - Throws: What ``init(opening:hashSize:)`` throws.
-    package init(opening storage: any WritableStorage, hashSize: Int?, random: RandomSource) throws(XitDBError) {
-        let header = try Self.readHeader(of: storage)
+    package convenience init(opening storage: any WritableStorage, hashSize: Int?, random: RandomSource)
+        throws(XitDBError)
+    {
+        let header = try Database.readHeader(of: storage)
         if let hashSize, Int(header.hashSize) != hashSize { throw .invalidHashSize }
+        self.init(header: header, storage: storage, random: random)
+        // A full copy that did not finish opens as it is, with nothing
+        // checked, so that the next sync from 0 can replace it. Everything
+        // else is checked, a creation that did not finish included, which
+        // the check refuses.
+        if try !reader.holdsUnfinishedCopy() {
+            try reader.verifyRootHeader()
+        }
+    }
 
+    /// A database over a storage whose header has been read, with nothing
+    /// else read or checked.
+    private init(header: DatabaseHeader, storage: any WritableStorage, random: RandomSource) {
         let storage = BuiltInStorage(storage)
         self.storage = storage
         identity = DatabaseIdentity(header: header)
         self.reader = DatabaseReader(storage: storage, identity: identity)
         self.transactionStart = nil
         self.random = random
-        try reader.verifyRootHeader()
+    }
+
+    /// The header of a creation that did not finish, if that is what a
+    /// storage holds: a database header that reads, no first commit, and
+    /// no more bytes than a new database of its version has. `nil` for
+    /// anything else, bytes that are no database included.
+    ///
+    /// - Throws: Only the storage's own errors.
+    static func unfinishedCreation(in storage: any ReadableStorage) throws(XitDBError) -> DatabaseHeader? {
+        let header: DatabaseHeader
+        do throws(XitDBError) {
+            header = try readHeader(of: storage)
+        } catch {
+            switch error {
+            case .invalidDatabase, .invalidVersion, .endOfStream: return nil
+            default: throw error
+            }
+        }
+        let length = try storage.length
+        guard length <= header.minimumFileSize else { return nil }
+        if length >= header.dataStart {
+            var size = InlineArray<8, UInt8>(repeating: 0)
+            var span = size.mutableSpan
+            let read = try storage.read(into: &span, at: header.fileSizePosition)
+            guard read == 8 else { return nil }
+            let recorded: UInt64 = size.span.bigEndian(at: 0)
+            if recorded != 0 { return nil }
+        }
+        return header
     }
 
     /// Creates a database with a given source of randomness for its file ID
@@ -241,8 +349,19 @@ public final class Database {
         fileID: UInt64?,
         random: RandomSource
     ) throws(XitDBError) {
-        guard try storage.length == 0 else { throw .storageNotEmpty }
+        // An empty storage, or what a creation that did not finish left,
+        // which holds nothing and is created over. Anything else is
+        // refused before a byte is written.
+        var createsOver = false
+        if try storage.length > 0 {
+            guard let left = try Database.unfinishedCreation(in: storage) else { throw .storageNotEmpty }
+            guard Int(left.hashSize) == hashSize else { throw .invalidHashSize }
+            createsOver = true
+        }
         guard let hashSize = UInt16(exactly: hashSize), hashSize > 0 else { throw .invalidHashSize }
+        if createsOver {
+            try storage.truncate(to: 0)
+        }
         let header = DatabaseHeader(
             fileID: fileID ?? random.next(),
             hashID: hashID ?? HashID(rawValue: 0),
@@ -332,8 +451,8 @@ public final class Database {
     /// cursor of a collection made from it: making a collection from it is
     /// allowed, so a collection made again from it is fresh, and so is every
     /// cursor taken from it, and so is writing a value through it, with
-    /// ``Cursor/write(_:)``, ``Cursor/writeIfEmpty(_:)`` or a path that begins
-    /// with a write; its slot is the engine's own record, which nothing inside
+    /// ``Cursor/write(_:)`` or ``Cursor/writeIfEmpty(_:)``; its slot is the
+    /// engine's own record, which nothing inside
     /// the transaction can copy, and every write re-reads it. A byte writer
     /// through it is refused, and so is every other cursor from before the
     /// freeze for every write, inits included: a held handle's init would

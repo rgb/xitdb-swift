@@ -21,11 +21,14 @@ extension Database {
     /// one ordinary transaction, with its header, trailer and commit ID.
     /// A root that is an array list is a history, and only its last
     /// element survives, as the sole element of a new list. A list at the
-    /// root whose last element is empty, because the list has no elements
-    /// or its last element was appended and never written, is refused,
-    /// whether or not the list is a history: compacting it would keep
-    /// nothing of the list, which is what the original does. A last
-    /// element set to nothing is a moment, and compacts. An empty root
+    /// root with no last element to keep is refused, whether or not the
+    /// list is a history: one with no elements, or one whose last
+    /// element's slot is empty, which is what an element appended and
+    /// never written was in a file written by a version before 0.3.0 or by
+    /// the original before its format version 2. Compacting such a list
+    /// would keep nothing of it. A last element set to nothing is a
+    /// moment, and compacts, and so does one appended and never written
+    /// since then, which is kept as a slot set to nothing. An empty root
     /// commits nothing. Any other root, one set to nothing included, is
     /// copied whole.
     ///
@@ -140,8 +143,10 @@ extension Database {
         guard root.tag == .arrayList else { return .root(root) }
 
         // an array list root is a history. the path gives nil for a list
-        // with no elements and for a last element appended and never
-        // written; a last element set to nothing is full, so it comes back.
+        // with no elements and for a last element whose slot is empty, as
+        // one appended and never written was before an append wrote the
+        // slot as one set to nothing; a last element set to nothing is
+        // full, so it comes back.
         let last: InlineArray<1, PathPart> = [.arrayListGet(-1)]
         guard let lastMoment = try rootCursor.readPathSlot(last.span) else { throw .emptyLastMoment }
         return .lastMoment(lastMoment)

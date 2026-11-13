@@ -140,7 +140,7 @@ import XitDB
 
         // Too few to hold the headers, with the count right.
         let first = try Database(creating: MemoryStorage(), hashSize: 32)
-        #expect(throws: XitDBError.endOfStream) {
+        #expect(throws: XitDBError.invalidRange) {
             try first.applyReplicated(at: 0, bytes: Array(bytes[..<30]))
         }
 
@@ -257,7 +257,7 @@ import XitDB
         let replica = try Database(creating: MemoryStorage(), hashSize: 32)
         let bytes = try source.readCommitted(from: 0, to: try source.committedSize)
 
-        #expect(throws: XitDBError.truncatedDatabase) {
+        #expect(throws: XitDBError.invalidDatabase) {
             try replica.applyReplicated(at: 0, bytes: Array(bytes[..<(bytes.count - 1)]))
         }
     }

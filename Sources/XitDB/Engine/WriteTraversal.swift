@@ -219,7 +219,8 @@ extension Database {
     }
 
     /// Makes room for one more element and returns its slot, cleared, with
-    /// the list's new header.
+    /// the list's new header. In the storage the slot is set to nothing,
+    /// which an element that is never written stays.
     private func arrayListAppendSlot(
         _ header: ArrayListHeader,
         frozenAt: UInt64
@@ -241,10 +242,13 @@ extension Database {
         }
 
         var pointer = try arrayListSlot(indexPosition: indexPosition, key: key, shift: nextShift, frozenAt: frozenAt)
-        // Clear a value left there by a rollback or a slice.
+        // Clear a value left there by a rollback or a slice. The slot is
+        // written as one set to nothing and marked full, so that the
+        // element counts as one even if nothing is ever written to it; the
+        // pointer handed back holds an empty slot, as the original's does.
         pointer.slot = Slot()
         if let position = pointer.position {
-            try write(pointer.slot, at: position)
+            try write(Slot(tag: .none, full: true), at: position)
         }
 
         return (ArrayListHeader(size: key + 1, ptr: indexPosition), pointer)
