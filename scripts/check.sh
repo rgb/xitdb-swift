@@ -92,10 +92,9 @@ step "Corruption fuzzer"
 # R5: Sources/XitDB may import the standard library, Synchronization and the platform C
 # library, and nothing else. The platform C library is imported in exactly one file,
 # behind `#if canImport` for Darwin, Glibc, Musl and Android. The documentation catalogue
-# is not code of the library: the tutorials' step files in it are what a client writes,
-# and import what a client imports.
+# holds no Swift file, so every Swift file under Sources/XitDB is the library's.
 step "Import check"
-find Sources/XitDB -name '*.swift' -not -path '*.docc/*' -exec awk '
+find Sources/XitDB -name '*.swift' -exec awk '
     {
         line = $0
         sub(/^[ \t]+/, "", line)

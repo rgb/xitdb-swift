@@ -111,7 +111,7 @@ let package = Package(
             ],
             swiftSettings: languageSettings
         ),
-        // Every code block of the README, the articles and the tutorials, as a test
+        // Every code block of the README and the articles, as a test
         // that runs it, importing the library as a client does: the proof that the
         // public surface is enough for what the documentation shows.
         // The examples hash through XitDBHashing, as the articles' readers do,

@@ -10,7 +10,8 @@ public import XitDB
     public import CryptoKit
 #endif
 
-/// SHA-256 (FIPS 180-4): the default hash for a store.
+/// SHA-256 (FIPS 180-4): the hash to choose for a store when you have no
+/// reason to choose another.
 ///
 /// 32 bytes, so the database's hash size is 32. Where CryptoKit exists the
 /// digest is CryptoKit's own, computed by it; elsewhere it is computed here.
@@ -72,8 +73,9 @@ public enum SHA256: Sendable, KeyHashing {
 #endif
 
 /// Algorithms that are not secure against collisions. They are kept for
-/// files made by the original, whose default is SHA-1; anything new should
-/// use ``SHA256``.
+/// files whose keys are hashed with SHA-1, as they are in the original's
+/// tests and by default in a xit repository; anything new should use
+/// ``SHA256``.
 public enum Insecure {
     /// SHA-1 (FIPS 180-4).
     ///

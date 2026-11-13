@@ -1,24 +1,27 @@
-# The gate on the self-hosted runners, macOS and Linux: scripts/check.sh at every push and pull
-# request.
+# The gate on the self-hosted runners, macOS and Linux: scripts/check.sh at every push. The
+# repository takes no pull requests, so a push is all that runs it, and the runners never
+# run code from a fork.
 #
 # The macOS runner needs Xcode 27.2, whose Swift is 6.4.2, the one toolchain the gate accepts;
 # check.sh checks it too, but only once it starts, and this workflow fails before anything is
 # built, with the version it saw. If the runner has several Xcodes, select 27.2 with
-# xcode-select or DEVELOPER_DIR on the runner. Nothing is cached: the runners are ours, and
-# actions/checkout cleans the work tree, so every run builds from nothing.
+# xcode-select or DEVELOPER_DIR on the runner. It needs an iOS simulator runtime as well: the
+# gate runs the tests on an iPhone simulator, and without a runtime check.sh skips that step
+# and says so, which leaves the gate short of what it is meant to hold. Nothing is cached:
+# the runners are ours, and actions/checkout cleans the work tree, so every run builds from
+# nothing.
 name: Gate
 
 # A push of a tag does not run it: the tag's commit was gated when its branch was pushed.
 on:
   push:
     branches: ['**']
-  pull_request:
 
 # The token can read the repository and nothing more.
 permissions:
   contents: read
 
-# A new push to the same branch or pull request cancels the run before it.
+# A new push to the same branch cancels the run before it.
 concurrency:
   group: gate-${{ github.ref }}
   cancel-in-progress: true
@@ -26,9 +29,6 @@ concurrency:
 jobs:
   macos:
     name: Gate on macOS
-    # A self-hosted runner never runs a fork's code unasked: pushes, and pull requests whose
-    # head is in this repository. A fork's pull request waits for a maintainer.
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, macOS]
     timeout-minutes: 45
     defaults:
@@ -65,7 +65,6 @@ jobs:
   # skips the iOS step on Linux.
   linux:
     name: Gate on Linux
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux]
     container:
       image: swift:6.4.2@sha256:119ff7d833ea622851b459513333bb4bda5ebb32b7acd05dd05077d5b0383129

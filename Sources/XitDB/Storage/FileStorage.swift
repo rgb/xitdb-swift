@@ -40,6 +40,8 @@ public enum FileAccess: Sendable {
 /// particular the sync before
 /// the root header, which is what keeps a file openable after a power loss,
 /// falls back from a barrier to a full sync before it settles for less.
+/// After the root header, ``full`` tries a full sync, then a barrier, then
+/// plain `fsync`, and ``ordered`` a barrier, then plain `fsync`.
 ///
 /// Off Apple platforms there are no such calls, and every call the storage
 /// makes is plain `fsync`, so ``ordered`` and ``full`` are the same there:
