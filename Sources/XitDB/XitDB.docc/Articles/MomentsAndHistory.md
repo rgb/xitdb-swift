@@ -111,8 +111,8 @@ try history.append(.slot(try history.slot(at: 0)))
 
 ### What immutable means here
 
-A transaction leaves committed bytes as they are, with one exception: the 17-byte root header near the start of the
-file, which every commit rewrites to point at itself. Rewriting it is what completes a transaction, as
+A transaction leaves committed bytes as they are, with one exception: the committed size, eight bytes in the root header
+near the start of the file, which every commit rewrites to point at itself. Rewriting it is what completes a transaction, as
 <doc:Transactions> explains.
 
 Three things follow that are easy to get wrong:
@@ -131,7 +131,7 @@ Three things follow that are easy to get wrong:
 
 ### What it costs
 
-Every transaction appends, whether or not it changes anything. A new database is 62 bytes. After that, for a
+Every transaction appends, whether or not it changes anything. A new database is 57 bytes. After that, for a
 database with 32-byte hashes:
 
 | A moment that changes nothing, in a history of | Bytes appended |

@@ -21,7 +21,7 @@ These mean the code asked for something it should not have. Most are worth fixin
 - ``XitDBError/indexOutOfRange``: A write to an index that names no element, an insert at the end, or a cut past the end. A lookup gives `nil` instead. An iterator throws it only for an index that does not fit
   in an `Int64`.
 - ``XitDBError/keyNotFound``: Reads and removes turn this into `nil` and `false`. It gets out only from a write through a collection whose slot was cleared after the collection was made.
-- ``XitDBError/invalidHashSize``: A hash without the database's number of bytes, once there is a map to look in, opening with a stated size that is not the file's, creating with a size of 0 or over 65535, or a compaction target or replica of another size.
+- ``XitDBError/invalidHashSize``: A hash without the database's number of bytes, once there is a map to look in, opening with a stated size that is not the file's, creating with a size of 0 or over 65535, or over what an unfinished creation of another hash size left, or a compaction target or replica of another size.
 - ``XitDBError/hashSizeMismatch``: A `Store`, or a `Moment` made with `init(reading:hashing:)`, given a hash whose size is
   not the one the database's header records. Only `XitDBStore` throws it, before it reads or writes anything.
 - ``XitDBError/expectedTxStart``: A write below the root, or a ``Database/freeze()``, with no transaction running.
@@ -34,7 +34,7 @@ These mean the code asked for something it should not have. Most are worth fixin
   ``Snapshot/init(_:)`` of such a cursor, or of work the running transaction has not committed yet. See
   <doc:CloningFreezeAndStaleHandles>.
 - ``XitDBError/snapshotOverwritten``: A read through a ``Snapshot`` of a file whose bytes below the snapshot's committed size,
-  the root header excepted, which every commit rewrites, were rewritten since, through the storage the snapshot was taken from:
+  the committed size excepted, the eight bytes every commit rewrites, were rewritten since, through the storage the snapshot was taken from:
   by a replication sync at 0, or by a write or a truncation through your own reference to the storage. Take a new snapshot. A
   snapshot of a database in memory never reports it: see <doc:ConcurrencyAndSnapshots>.
 - ``XitDBError/subCollectionSnapshot``: Compacting a ``SnapshotDatabase`` made over a snapshot of one collection, which is not
@@ -49,11 +49,14 @@ These mean the code asked for something it should not have. Most are worth fixin
 - ``XitDBError/streamTooLong``: A value larger than the limit or the buffer it was read with.
 - ``XitDBError/unexpectedWriterPosition``: A byte array being written grew, or took a format tag, after something else was
   written behind it; or a seek went beyond any position a storage can have.
-- ``XitDBError/storageNotEmpty``: Creating a database in a storage that has bytes.
+- ``XitDBError/storageNotEmpty``: Creating a database in a storage that has bytes, other than what a creation that did not
+  finish left, which is created over: see <doc:Storage>.
 - ``XitDBError/targetNotEmpty``: Compacting into a database whose root holds something.
 - ``XitDBError/emptyLastMoment``: Compacting a database whose root is an array list with no elements, or whose last element
-  was appended and never written, which would keep nothing of it: see <doc:Compaction>.
-- ``XitDBError/invalidRange``: A range of committed bytes that makes no sense: past the committed size, starting inside the root header, or a replica's start that is neither 0 nor its size.
+  is empty, as one appended and never written was in a file written before 0.3.0, which would keep nothing of it: see
+  <doc:Compaction>.
+- ``XitDBError/invalidRange``: A range of committed bytes that makes no sense: past the committed size, starting inside the root header, a replica's start that is neither 0 nor its size, or a sync from 0
+  of fewer bytes than the headers.
 - ``XitDBError/invalidLength``: Cutting a storage to more than its length.
 
 ### The file
@@ -62,16 +65,19 @@ These mean the bytes are not what they should be. Catch them where you open a fi
 been damaged.
 
 - ``XitDBError/invalidDatabase``: It is not a database, it is empty, or no trailer in it verifies, which a damaged file ID in
-  its header also causes. Also bytes given to a sync that do not end with a trailer that verifies.
+  its header also causes. Also bytes given to a sync that do not end with a trailer that verifies, and everything but
+  ``Database/replicaState`` and a sync from 0 on a database without a first commit, which a sync from 0 that did not finish
+  leaves: see <doc:Replication>.
 - ``XitDBError/untrustedRootHeader(lastVerified:)``: Its root header cannot be trusted: the committed size is past the end, too
-  small, or not at a trailer that verifies. `lastVerified` is where the last commit that does verify ends, and
+  small, or not at a trailer that verifies. A size of zero in a file longer than a new database is not refused: it is taken
+  for a full copy that did not finish, which opens (see <doc:Storage>). `lastVerified` is where the last commit that does verify ends, and
   ``Database/recover(_:)`` cuts the file back to it: see <doc:Recovery>.
 - ``XitDBError/invalidVersion``: It was written with a format version this package does not read.
 - ``XitDBError/truncatedDatabase``: The storage of a database already open has become shorter than the committed size it
-  records, as a sync at 0 that failed leaves it; or a sync at 0 brought bytes that stop short of their own. A file cut short
-  before it is opened gives ``XitDBError/untrustedRootHeader(lastVerified:)`` instead, as long as one commit is left whole.
-- ``XitDBError/endOfStream``: It ended before a value did, or is too short to hold its headers, which is 37 bytes. Also a
-  ``ByteSource`` that runs out, and ``ByteReader/readAll(into:)`` with fewer bytes left than the buffer holds.
+  records, as when the storage is cut short under it. A file cut short before it is opened gives
+  ``XitDBError/untrustedRootHeader(lastVerified:)`` instead, as long as one commit is left whole.
+- ``XitDBError/endOfStream``: It ended before a value did, or is too short to hold its headers, which is 32 bytes, or 37 in a
+  version 1 file. Also a ``ByteSource`` that runs out, and ``ByteReader/readAll(into:)`` with fewer bytes left than the buffer holds.
 - ``XitDBError/invalidEnumTag``: A slot's tag is not a known one.
 - ``XitDBError/invalidBTreeNode``: A tree node, or a tree's header, does not hold what it should.
 - ``XitDBError/invalidBTreeNodeKind``: A tree node is neither a leaf nor a branch.

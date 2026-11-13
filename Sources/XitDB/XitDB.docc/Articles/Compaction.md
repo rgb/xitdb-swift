@@ -8,7 +8,7 @@ A database only grows. A transaction appends what it changes, and nothing commit
 moment may still refer to it. So a file holds every earlier state of the database, whether or not you still want them.
 
 Compaction writes a new database holding what the latest moment reaches, and nothing else. The source is not touched. In
-one test, a history of 1,000 small moments took 1,025,632 bytes, and its compacted copy 10,634.
+one test, a history of 1,000 small moments took 1,025,627 bytes, and its compacted copy 10,629.
 
 The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYourOwnHashes>. They force-unwrap a lookup
 where the value was just written; real code handles the `nil` that means it is not there. Where they use `database`, it is a
@@ -32,7 +32,9 @@ let history = try ArrayList<ReadOnly>(compacted.rootCursor)
 ```
 
 The new database takes this one's hash size, and its hash ID unless you give another. It gets a new random file ID unless
-you give one, so it is a new file as far as replicas are concerned: see <doc:Replication>.
+you give one, so it is a new file as far as replicas are concerned: see <doc:Replication>. In an empty storage, or one that
+holds only what a creation that did not finish left, it is created at format version 2, whatever this one's version is:
+see <doc:Storage>.
 
 The source can be a ``SnapshotDatabase``, made over a ``Snapshot``, so that another task compacts the snapshot's commit while
 the writer goes on committing. A snapshot of one collection, made with ``Snapshot/init(_:)``, is not a whole commit, and
@@ -47,10 +49,11 @@ What happens depends on the root:
 - **A root that is anything else** is copied whole, a ``LinkedArrayList`` or a root set to nothing included.
 - **An empty root** commits nothing, and you get an empty database.
 - **An ``ArrayList`` at the root whose last element is empty is refused** with ``XitDBError/emptyLastMoment``, before
-  anything is written to the target: a list with no elements, or a last element that was appended and never written, however
-  many elements come before it, and whether you meant the list as a history or not. Compacting it would give you an empty
-  database, with neither the list nor those elements in it, which is what the original does. A last element set to nothing,
-  with `.slot(nil)`, is a moment, and compacts.
+  anything is written to the target: a list with no elements, or, in a file written before 0.3.0, a last element that was
+  appended and never written, however many elements come before it, and whether you meant the list as a history or not.
+  Compacting it would give you an empty database, with neither the list nor those elements in it, which is what the original
+  does. A last element set to nothing, with `.slot(nil)`, is a moment, and compacts. So does one appended and never written
+  in a file written since 0.3.0, which keeps it as a slot set to nothing: you get one moment, set to nothing.
 
 A value or a collection is copied once, however many slots point at it, so two keys that shared a value before share it
 afterwards, and a cycle ends. The exception is the partly filled blocks at the end of an array list, which are copied for each

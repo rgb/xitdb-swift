@@ -38,7 +38,9 @@ Over a network, the replica sends its ``ReplicaState``, which is two integers, i
 ``ReplicaState/checksum``. The source replies with the start, the count and the bytes. A state read off a wire is made with
 ``ReplicaState/init(committedSize:checksum:)``.
 
-After a sync the replica is the same bytes as the source, and that is what a byte-identical replica buys. It is an ordinary
+After a sync the replica is the same bytes as the source, and that is what a byte-identical replica buys. The one
+exception is the bytes between the database header and the committed size, which a full copy leaves as zeros: padding in
+a version 2 file, and in a version 1 file a copy of the root slot that nothing reads. It is an ordinary
 database, so anything that reads the source can read it, with its whole history, and it can be copied, compacted or
 promoted to be the source with no conversion. It can be checked by comparing bytes.
 
@@ -96,8 +98,8 @@ returns zero only when they have run out. An error thrown by a sink or a source 
 and 0 if not. The checksum in a ``ReplicaState`` covers the file's ID and the random ID of the commit, so it identifies both the
 file and the history that led there. A state never causes an error; one that does not match anything gives 0.
 
-At 0 the replica is replaced by a full copy, and it takes the source's file ID and hash ID. That happens whenever the replica's
-bytes are not a prefix of the source's. For example:
+At 0 the replica is replaced by a full copy, and it takes the source's file ID, hash ID and format version. That happens
+whenever the replica's bytes are not a prefix of the source's. For example:
 
 - the replica is a new database, so a replica can start as any empty database with the source's hash size, or it is a replica of
   another database;
@@ -105,8 +107,9 @@ bytes are not a prefix of the source's. For example:
 - the source was restored from an older backup, whether the replica is now ahead of it or it has since committed past the replica;
 - the replica has commits of its own.
 
-The comparison goes by the checksum of the replica's last commit. A new database given the source's file ID has the same first
-commit as the source, so it is given 62 and not 0, and it keeps its own header. Leave the file ID to be chosen.
+The comparison goes by the checksum of the replica's last commit. A new database given the source's file ID has the same
+first commit as the source, if the source is a version 2 file too, so it is given 57 and not 0, and it keeps its own header.
+Leave the file ID to be chosen.
 
 That last case is why you should only change a replica with ``Database/applyReplicated(at:from:count:)``. Written to directly, it
 no longer matches the source, and the next sync replaces it.
@@ -133,10 +136,17 @@ let bytes = try source.readCommitted(from: start, to: end)
 var half = ArrayByteSource(Array(bytes[..<(bytes.count / 2)]))
 ```
 
-A sync at 0 is the exception. The replica is emptied before the copy begins, so an interrupted one leaves no database:
-``Database/committedSize`` and ``Database/replicaState`` throw until a sync at 0 succeeds, and the source has to send from 0
-without asking. What did arrive may still hold the source's earlier commits whole, and ``Database/recover(_:)`` keeps the last
-of them, after which the source sends only the rest: see <doc:Recovery>.
+A sync at 0 is the exception. It reads and checks the incoming header before it touches the replica, so bytes too few to
+hold the headers, bytes that are not a database, and a database of a format version this package does not read or of
+another hash size leave the replica as it was. After that the replica is emptied, so a copy that fails then leaves a
+database without a first commit: the incoming header, a committed size of zero, and what arrived. Its
+``Database/replicaState`` is a size of zero and a checksum of zero, to which the source answers 0, so the next sync
+replaces it; everything else on it throws ``XitDBError/invalidDatabase`` until then. What did arrive may still hold the
+source's earlier commits whole, and ``Database/recover(_:)`` keeps the last of them, after which the source sends only the
+rest: see <doc:Recovery>. On a ``BufferedFileStorage``, what arrives after the headers waits in the storage's buffer, so
+unless the storage is flushed before it goes away, the file keeps only the headers and what the buffer had already written
+out. The headers alone are what a creation that did not finish leaves, which opening refuses and creating builds over: see
+<doc:Storage>.
 
 If that matters, check for it, and write the copy to a new file, which takes the place of the old one only when it is complete:
 

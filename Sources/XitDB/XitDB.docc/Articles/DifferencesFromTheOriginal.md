@@ -4,10 +4,11 @@ What this package does differently from xitdb in Zig, and what it does the same 
 
 ## Overview
 
-The port's first rule is that it writes the same bytes: given the same file ID, the same commit IDs and the same operations, it
-produces the same file as the original. That is checked with 229 conformance scripts. In 131 the file must match byte for byte
-the one the original writes, or, for the few operations the port deliberately does differently, the one the original writes when
-it is made to do the same. The other 98 must fail, as they do with the original: they check that a runner catches what is wrong.
+The port's first rule is that it writes the same bytes: given the same file ID, the same commit IDs and the same operations,
+it produces the same file as the original. The original here is xitdb at the commit the port follows, `89da8e7`. That is
+checked with 229 conformance scripts. In 131 the file must match byte for byte the one the original writes, or, for the few
+operations the port deliberately does differently, the one the original writes when it is made to do the same. The other 98
+must fail, as they do with the original: they check that a runner catches what is wrong.
 
 The second rule is that where the original's behaviour looks wrong, the port does what is correct. The differences are of three
 kinds: the port refuses with an error, or decides differently, what would damage data in the original; it gives an error or a
@@ -36,14 +37,17 @@ and the port's files are compared with that branch's.
   written, such as an entry without its value or a count one too high. In the port the transaction can no longer commit, and every
   later write in it and the commit throw ``XitDBError/poisonedTransaction``: see <doc:Transactions>.
 - **``Cursor/writeIfEmpty(_:)``.** The original goes by the cursor's copy of the slot, so it can overwrite a value written since
-  through another cursor. The port goes by the slot as it is now.
+  through another cursor. The port goes by the slot as it is now: it writes when the slot is empty, or set to nothing while the
+  cursor's own copy is empty, as an element's just appended is, and it keeps any value.
 - **A slot that belongs to a tree, written as a value.** In the original that builds a tree it cannot read, or panics at a hash size
   of 64. The port refuses it with ``XitDBError/structuralSlot``.
 - **A sorted map's key.** The original lets a key be overwritten through the key cursor of an entry, which leaves the map out of
   order. In the port an ``Entry`` is read-only, and the engine refuses the write as well.
-- **Compacting an array list at the root whose last element is empty.** The original gives an empty database, losing the list
-  and every element before the empty one. The port refuses with ``XitDBError/emptyLastMoment``, before writing anything: see
-  <doc:Compaction>.
+- **Compacting an array list at the root whose last element is empty**: a list with no elements, or one whose last element
+  was appended and never written in a file written before 0.3.0, or by the original before `89da8e7`. The original gives an
+  empty database, losing the list and every element before the empty one. The port refuses with
+  ``XitDBError/emptyLastMoment``, before writing anything. An element appended and never written since then is a slot set to
+  nothing, and both compact it as one: see <doc:Compaction>.
 
 ### An error or a sensible result where the original crashes or disagrees
 
@@ -56,10 +60,12 @@ and the port's files are compared with that branch's.
 - **A slot set to nothing, read as bytes**, gives an empty value from one of the original's calls and `EndOfStream` from the other.
   The port gives no bytes from both.
 - **A slot set to nothing, streamed,** gives `UnexpectedTag` in the original. The port gives an empty stream.
-- **A short value, streamed,** fails in the original for a slot without a position, and otherwise reads from the file, so it
-  returns other bytes once the slot has been overwritten. The port reads the cursor's own slot, as every other read does.
-- **An array list's iterator after a slice** can give an element past the end of the list in the original. The port's stops at the
-  list's size, agreeing with a lookup.
+- **A short value, streamed,** fails in the original for a cursor that has no position in the file, and otherwise reads from
+  the file, so it returns other bytes once the slot has been overwritten. The port reads the cursor's own slot, as every other
+  read does. Since `71ee0cf` the original gives a sorted set's key from an iterator a position, so that key streams in both.
+- **An array list's iterator after a slice** can give an element past the end of the list in the original, in a file written
+  before 0.3.0 or before the original's `89da8e7` that has an element appended and never written inside the list's size. The
+  port's stops at the list's size, agreeing with a lookup. In files written since, the two agree.
 - **A gap left by a write past the end** reads as an error in the original's buffered file until it is flushed, and as zeros
   everywhere else. The port reads zeros on every storage.
 - **Setting a storage's length larger** is refused in memory and allowed for a file in the original. The port's
@@ -80,7 +86,8 @@ and the port's files are compared with that branch's.
 - **A file whose root header or last trailer is damaged** does not open in the original, even though every commit before it is
   intact. The port's opening names the end of the last commit that verifies, with
   ``XitDBError/untrustedRootHeader(lastVerified:)``, and ``Database/recover(_:)`` cuts the file back to it, which can lose a
-  commit and is never done without being asked: see <doc:Recovery>.
+  commit and is never done without being asked: see <doc:Recovery>. A committed size of zero is not damage in either: it is a
+  database without a first commit, which a creation or a full copy that did not finish leaves.
 
 ### The same as the original
 
@@ -102,7 +109,8 @@ The file format and the operations are the same, and the API follows Swift:
 
 - **The hash size is a value, not a type.** It comes from the file, or from you when you create one, so ``Database`` is not generic.
 - **The storage is a value too.** ``Database`` is not generic over it either, and any ``WritableStorage`` will do.
-- **Opening and creating are separate calls**, and a file's access mode has no default: see <doc:Storage>.
+- **Opening and creating are separate calls**, and a file's access mode has no default: see <doc:Storage>. The original's one
+  call creates over what a creation that did not finish left; here creating does, and opening refuses it.
 - **A byte writer is a closure**, ``Cursor/writeBytes(formatTag:_:)``. There is no `finish` to forget.
 - **The path API is not public.** Only the collections and cursors are, so the original's hazards that need a raw path cannot be reached.
 - **``Entry`` is read-only**, so a sorted map's key cannot be overwritten through one, and a client cannot make a ``Slot``.

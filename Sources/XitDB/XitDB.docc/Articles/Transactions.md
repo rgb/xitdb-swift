@@ -98,7 +98,7 @@ try grouped.withTransaction { cursor in
 }
 ```
 
-The first database is 696 bytes after that and the second 340, and the first has paid for three times as many syncs.
+The first database is 691 bytes after that and the second 335, and the first has paid for three times as many syncs.
 If you make many writes, group them.
 
 ``ArrayList/append(_:_:)`` on a list at the root is the same kind of transaction, with a body that runs before
@@ -132,8 +132,8 @@ There is no journal and no write-ahead log. A transaction goes like this:
 3. To commit, it appends a 25-byte trailer: the new root slot, a random commit ID, and a checksum over those, the
    file's ID and the trailer's position.
 4. It syncs the storage.
-5. It rewrites the root header, 17 bytes at offset 20, with the new root and the new committed size. The
-   transaction takes effect here.
+5. It rewrites the committed size in the root header: eight bytes, at offset 24, or at 29 in a version 1 file (see
+   <doc:Storage>). The transaction takes effect here.
 6. It syncs the storage again. If this one fails, the call throws, and the commit stands, but it may not survive a crash
    or a power loss.
 
@@ -172,7 +172,7 @@ and `fsync` waits for the drive to flush, so every sync there is a full flush: `
 ``Durability/full`` gives, at the same price. ``Durability`` says which calls each level makes, and that a volume that
 does not support one gets the next best.
 
-The table has one hole, at every level. A power loss in the middle of rewriting the root header can leave its size
+The table has one hole, at every level. A power loss in the middle of rewriting the committed size can leave it
 unreadable. Such a file does not open, although its commits are intact behind it: opening refuses it with
 ``XitDBError/untrustedRootHeader(lastVerified:)``, and ``Database/recover(_:)`` repairs it. See <doc:Recovery>, which also
 says what recovering can keep at ``Durability/none``.

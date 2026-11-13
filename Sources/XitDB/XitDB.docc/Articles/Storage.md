@@ -77,8 +77,8 @@ A failure to open, including a missing file, throws ``XitDBError/storageFailure(
 
 A database is then either opened or created, and these are different calls.
 ``Database/init(opening:hashSize:)`` throws ``XitDBError/invalidDatabase`` on an empty storage, and
-``Database/init(creating:hashSize:hashID:fileID:)`` throws ``XitDBError/storageNotEmpty`` on one with bytes in it, so neither can
-do the other's job by accident. To do either, say so:
+``Database/init(creating:hashSize:hashID:fileID:)`` throws ``XitDBError/storageNotEmpty`` on one with a database in it, so neither
+can do the other's job by accident. To do either, say so:
 
 ```swift
 let storage = try BufferedFileStorage(path: "main.db", access: .create)
@@ -88,7 +88,27 @@ let database =
     : Database(opening: storage, hashSize: 32)
 ```
 
+Two kinds of storage are neither empty nor a whole database. A process that died while creating a database leaves its header
+and nothing committed. Opening refuses that with ``XitDBError/endOfStream``, ``XitDBError/invalidDatabase`` or, where the first
+commit's trailer is whole, ``XitDBError/untrustedRootHeader(lastVerified:)``, so the pattern above gets one of those errors.
+Creating accepts it, for the same hash size, and creates over it; where the trailer is whole, ``Database/recover(_:)`` finishes
+the creation instead. A sync from 0 that did not finish leaves a database without a first commit that is longer than a new
+one: that opens, for the next sync to replace, as <doc:Replication> says.
+
 A ``Durability`` says how far a commit goes to reach the disk, ``Durability/full`` by default: see <doc:Transactions>.
+
+### Two format versions
+
+A file records the version of the format it was written in, ``DatabaseHeader/version``, and this package reads and writes
+versions 1 and 2. A new database is version 2. A version 1 file is read and written as version 1 and stays one: nothing
+converts it, though compacting it into a new storage gives a version 2 database (<doc:Compaction>), and so does replacing it
+by a sync from a version 2 source (<doc:Replication>). Releases before 0.3.0 write version 1 and refuse version 2 with
+``XitDBError/invalidVersion``.
+
+The two differ only in the root header, which follows the 20-byte database header and holds the committed size, the eight
+bytes a commit rewrites. In version 1 a copy of the root slot comes first, nine bytes that nothing reads or updates any more,
+so the size is at offset 29 and the data starts at 37. In version 2 four bytes of padding come first, so the size is at
+offset 24, a multiple of eight, and the data starts at 32. A new database is 57 bytes where a version 1 one is 62.
 
 ### The reader pattern
 
@@ -189,7 +209,8 @@ The engine relies on these points:
 - **A write past the end fills the gap with zeros.** A write of no bytes does nothing, whatever the offset.
 - **``WritableStorage/truncate(to:)`` only shortens.** A length larger than the current one throws ``XitDBError/invalidLength``.
 - **``ReadableStorage/length`` counts what has been written**, including anything not yet flushed.
-- **``WritableStorage/sync(_:)`` comes twice in every commit**, and once in a replica's sync at 0. ``SyncPoint`` says which it is.
+- **``WritableStorage/sync(_:)`` comes twice in every commit**, a replica's sync included, and three times in a sync at 0,
+  which syncs the incoming headers before their data. ``SyncPoint`` says which it is.
   The data has to reach the disk before the header does. A failure of either reaches the caller of the transaction.
 
 Report a failure with ``XitDBError/storageFailure(errno:)``. A storage is used from one thread at a time, and it should be a class,

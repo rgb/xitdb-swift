@@ -123,6 +123,36 @@ import XitDB
         }
     }
 
+    /// The article's rule for a slot set to nothing: written over when the
+    /// cursor was made on an empty slot, as an appended element's is, and
+    /// left when the cursor was made on it after it was set to nothing.
+    @Test func writeIfEmptyAndASlotSetToNothing() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        try database.withTransaction { cursor in
+            let map = try HashMap<ReadWrite>(cursor)
+            let list = try ArrayList<ReadWrite>(map.putCursor(forHash: sha256("list")))
+            var appended = try list.appendCursor()
+            try appended.writeIfEmpty(.uint(7))
+            #expect(try list.cursor(at: 0)!.readUInt64() == 7)
+
+            var early = try map.putCursor(forHash: sha256("early"))
+            var other = try map.putCursor(forHash: sha256("early"))
+            try other.write(.slot(nil))
+            try early.writeIfEmpty(.uint(1))
+            #expect(try map.cursor(forHash: sha256("early"))!.readUInt64() == 1)
+
+            try map.put(.slot(nil), forHash: sha256("late"))
+            var late = try map.putCursor(forHash: sha256("late"))
+            try late.writeIfEmpty(.uint(2))
+            #expect(try map.cursor(forHash: sha256("late"))!.slot.tag == .none)
+
+            let tasks = try LinkedArrayList<ReadWrite>(map.putCursor(forHash: sha256("tasks")))
+            var task = try tasks.appendCursor()
+            try task.writeIfEmpty(.uint(3))
+            #expect(try tasks.cursor(at: 0)!.readUInt64() == 3)
+        }
+    }
+
     @Test func anEmptySlotIsWrittenAsNothing() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         let empty = try database.rootCursor.slot
@@ -231,7 +261,8 @@ import XitDB
         try list.append(.slot(nil))
         _ = try list.appendCursor()
 
-        // Three elements: a value, a slot set to nothing, a slot never written.
+        // Three elements: a value, a slot set to nothing, and one appended
+        // and never written.
         #expect(try list.count == 3)
         #expect(try list.cursor(at: 0) != nil)
 

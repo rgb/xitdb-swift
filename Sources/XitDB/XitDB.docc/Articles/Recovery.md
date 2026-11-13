@@ -4,9 +4,10 @@ What opening does with a root header it cannot trust, what recovering does, and 
 
 ## Overview
 
-A file starts with a header of 20 bytes and then the root header, 17 bytes that every commit rewrites last: the root slot and
-the committed size. Every commit ends with a trailer of 25 bytes, whose checksum covers the file's ID, the trailer's own
-position, the root slot and the commit's ID. So a trailer that verifies is the end of a commit of this file, written where it is.
+A file starts with a header of 20 bytes and then the root header, which holds the committed size: eight bytes that every
+commit rewrites last, at offset 24 in a version 2 file and at 29 in a version 1 file (see <doc:Storage>). Every commit ends
+with a trailer of 25 bytes, whose checksum covers the file's ID, the trailer's own position, the root slot and the commit's
+ID. So a trailer that verifies is the end of a commit of this file, written where it is.
 
 Opening reads the header, then the root header, and checks that the committed size ends at a trailer that verifies. It writes
 nothing. A root header that fails the check is refused, and ``Database/recover(_:)`` is the one call that does anything about
@@ -14,16 +15,18 @@ it. That call cuts a database back to an earlier commit of its own, which can lo
 
 ### What a root header can be
 
-The examples are a history of three moments. Its commits end at 62 bytes (the new database), 256 (the empty history),
-and 644, 1,032 and 1,420 (one moment each).
+The examples are a history of three moments. Its commits end at 57 bytes (the new database), 251 (the empty history),
+and 639, 1,027 and 1,415 (one moment each).
 
 - **Sound.** The committed size is inside the file and ends at a trailer that verifies. The file opens. Bytes past the committed
   size, if there are any, are what an unfinished transaction left, and the next transaction discards them.
 - **Damaged in its size.** The size is past the end of the file, smaller than a database can be, or not at a trailer that verifies,
   as when the root header's own write was torn. Opening throws ``XitDBError/untrustedRootHeader(lastVerified:)``, and
-  `lastVerified` is where the last trailer that verifies ends: 1,420 here, as nothing else is wrong.
+  `lastVerified` is where the last trailer that verifies ends: 1,415 here, as nothing else is wrong. A size of zero in a file
+  longer than a new database is not refused: that is what a full copy that did not finish leaves, and it opens, as the last
+  section says.
 - **Pointing at a damaged trailer**, or past the end of a file that was cut short. Opening throws the same error, and
-  `lastVerified` is the end of the commit before: 1,032.
+  `lastVerified` is the end of the commit before: 1,027.
 - **In a file with no commit to go back to.** If the file does not start with a database's header, or no trailer in it verifies,
   opening throws ``XitDBError/invalidDatabase``, as there is nothing to recover to. A damaged file ID in the header does that too,
   since every trailer's checksum covers it, even with every commit intact. A file too short for its headers throws
@@ -35,7 +38,7 @@ without an error and reads back wrong. Recovery does not help there, and nothing
 ### Recovering
 
 ``Database/recover(_:)`` scans the storage back from its end for the last trailer that verifies, cuts the storage off after it,
-writes a root header for that commit, syncs, and opens the database:
+writes that commit's end as the committed size, syncs, and opens the database:
 
 ```swift
 func openOrRecover(_ storage: any WritableStorage) throws(XitDBError) -> Database {
@@ -49,7 +52,7 @@ func openOrRecover(_ storage: any WritableStorage) throws(XitDBError) -> Databas
 }
 ```
 
-On the file cut short by one byte, that gives a database of two moments and 1,032 bytes. The third commit is gone, because its
+On the file cut short by one byte, that gives a database of two moments and 1,027 bytes. The third commit is gone, because its
 trailer was. From there the database goes on as any other.
 
 What to know before calling it:
@@ -84,10 +87,12 @@ data it ends, and recovering keeps that commit with whatever the missing bytes r
 
 ### A replica after a failed sync at 0
 
-A sync at 0 empties the replica first and writes the source's file from its start, so one that fails partway leaves the start of
-the source's file, and no database: ``Database/replicaState`` throws ``XitDBError/truncatedDatabase``, or ``XitDBError/endOfStream`` if not even the first 37 bytes, the headers, arrived. If what arrived reaches past
-the end of one of the source's commits, it holds that commit whole, and recovering keeps the last such commit. The source can then
-send only the rest:
+A sync at 0 reads and checks the source's header before it touches the replica, and one that fails there leaves the replica
+as it was. After that it empties the replica and writes the source's file from its start, so one that fails partway leaves the
+start of the source's file: a database without a first commit, whose committed size is zero. Such a database opens, and there
+are two ways on. Its ``Database/replicaState`` is a size of zero and a checksum of zero, to which the source answers 0, so the
+next sync replaces it whole. Or, if what arrived reaches past the end of one of the source's commits, it holds that commit
+whole, and recovering keeps the last such commit. The source can then send only the rest:
 
 ```swift
 // What arrived holds the source's earlier commits. Keep the last of them.
@@ -98,9 +103,9 @@ let bytes = try source.readCommitted(from: start, to: end)
 try replica.applyReplicated(at: start, bytes: bytes)
 ```
 
-With the history above as the source, a connection that drops after 1,100 bytes recovers to 1,032, and the sync sends the last
-388. If the sync failed before the source's first commit, its first 62 bytes, arrived, there is nothing to recover: recovering
-throws, and the sync starts again from 0. See <doc:Replication>.
+With the history above as the source, a connection that drops after 1,100 bytes recovers to 1,027, and the sync sends the last
+388. If the sync failed before the source's first commit, its first 57 bytes, arrived, there is nothing to recover: recovering
+throws, and the next sync starts again from 0. See <doc:Replication>.
 
 ## See Also
 

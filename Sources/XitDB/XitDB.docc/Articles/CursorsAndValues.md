@@ -95,8 +95,11 @@ committed by the time they return: the entry is there without a value, and with 
 through the cursor throws ``XitDBError/expectedTxStart``. Do not keep such a cursor for a later transaction, as
 <doc:Transactions> explains.
 
-``Cursor/writeIfEmpty(_:)`` writes only if the slot is empty, for a value that should be set once. It decides by the
-slot as it is now, not by the cursor's copy of it, so a value written through another cursor since is kept.
+``Cursor/writeIfEmpty(_:)`` writes only if nothing has been written to the slot, for a value that should be set once. It
+decides by the slot as it is now, not by the cursor's copy of it, so a value written through another cursor since is kept.
+A slot set to nothing counts as unwritten when the cursor was made on an empty slot, since that is what an element just
+appended with ``ArrayList/appendCursor()`` is, and so is written over too; a cursor made on a slot already set to nothing
+writes nothing.
 
 <!-- Pinned by `writeIfEmptyGoesByTheSlot` in XitDBExamples: the sentence and the test change together. -->
 
@@ -192,10 +195,12 @@ and new elements, or throw an error; it does not stop the program.
 There are two ways for a slot to hold no value, and they behave differently.
 
 A slot that was **never written** is all zeros: ``Slot/isEmpty`` is true. A lookup gives `nil` for it, and an array
-list's iterator passes over it. An element made with ``ArrayList/appendCursor()`` and not written is one of these.
+list's iterator passes over it. In a file written before 0.3.0, an element made with ``ArrayList/appendCursor()`` and not
+written is one of these, and it still reads that way.
 
 A slot **set to nothing** with `.slot(nil)` has the tag ``Slot/Tag/none`` and is not empty. A lookup gives a cursor,
-which reads as no bytes, and an iterator gives it:
+which reads as no bytes, and an iterator gives it. Since 0.3.0 an element made with ``ArrayList/appendCursor()`` and not
+written is one of these too, so that a lookup and the iterator give it, as in the original:
 
 ```swift
 let list = try ArrayList<ReadWrite>(database.rootCursor)
@@ -203,12 +208,13 @@ try list.append(.uint(1))
 try list.append(.slot(nil))
 _ = try list.appendCursor()
 
-// Three elements: a value, a slot set to nothing, a slot never written.
+// Three elements: a value, a slot set to nothing, and one appended
+// and never written.
 ```
 
-That list has a ``ArrayList/count`` of 3. Its elements read as a ``Slot/Tag/uint``, as a slot with the tag ``Slot/Tag/none``, and as
-`nil`, and its iterator gives only the first two. A ``LinkedArrayList`` has no slots that were never written: an element
-it appends and nobody writes is set to nothing, so a lookup and its iterator both give it.
+That list has a ``ArrayList/count`` of 3. Its elements read as a ``Slot/Tag/uint`` and twice as a slot with the tag
+``Slot/Tag/none``, and its iterator gives all three. A ``LinkedArrayList`` does the same with an element it appends and nobody
+writes.
 
 Setting a map's value to nothing is not removing the entry. The entry stays, and a counted map goes on counting it:
 
