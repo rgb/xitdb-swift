@@ -13,9 +13,9 @@ and everything before it never change.
 ### What can cross between tasks
 
 Plain values, such as a ``Slot``, a ``ReplicaState`` or an ``XitDBError``, are `Sendable`, and so is a ``Snapshot``, which
-is how another task reads a database. What reads or writes through a database is not: ``Database``, ``SnapshotDatabase``, the
-storages, ``Cursor``, the collections, and what they give, such as an ``Entry``, a ``CollectionIterator`` or a ``ByteReader``.
-In Swift 6 mode the compiler holds you to it. A database has no lock inside, so do not get around the compiler with
+is how another task reads a database. What reads or writes through a database is not: ``Database``, ``SnapshotDatabase``,
+``Cursor``, the collections, ``Entry``, ``CollectionIterator``, ``ByteReader``, ``ByteWriter`` and the storages. In Swift 6
+mode the compiler holds you to it. A database has no lock inside, so do not get around the compiler with
 `@unchecked Sendable`.
 
 ### Readers and a writer

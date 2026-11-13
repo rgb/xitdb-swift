@@ -116,7 +116,8 @@ progress, because it would commit before the transaction ended. Both are errors:
 A cursor belongs to the transaction that made it. Do not keep one for the next transaction; make a new one from
 the root. With no transaction running, a write through it throws ``XitDBError/expectedTxStart``, and during a later
 transaction ``XitDBError/staleCursor``. A read through it still works if its transaction committed, and reads what the
-cursor saw. A collection at the root is the exception, because it reads the root again each time.
+cursor saw; if the transaction did not commit, the read is refused with ``XitDBError/staleCursor`` too. A collection at
+the root is the exception, because it reads the root again each time.
 
 ### What a commit does to the file
 
@@ -166,9 +167,10 @@ The times are indicative: measured on 2026-11-07 on one machine, an Apple M4 wit
 value through a ``BufferedFileStorage``. Yours will differ, by a lot on another kind of disk. What to take from them is
 the ratios: a full flush is expensive, and it is paid per commit, not per byte.
 
-On Linux there is no barrier call and `fsync` waits for the drive to flush, so every sync there is a full flush:
-``Durability/ordered`` gives what ``Durability/full`` gives, at the same price. ``Durability`` says which calls each
-level makes, and what a volume that does not support one gets instead.
+On Apple platforms a barrier is `F_BARRIERFSYNC` and a full flush is `F_FULLFSYNC`. On Linux there is no barrier call
+and `fsync` waits for the drive to flush, so every sync there is a full flush: ``Durability/ordered`` gives what
+``Durability/full`` gives, at the same price. ``Durability`` says which calls each level makes, and that a volume that
+does not support one gets the next best.
 
 The table has one hole, at every level. A power loss in the middle of rewriting the root header can leave its size
 unreadable. Such a file does not open, although its commits are intact behind it: opening refuses it with

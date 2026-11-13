@@ -45,6 +45,9 @@ Three things to know:
   two more for a format tag if it has one. The same bytes written with ``WritableData/bytes(_:formatTag:)`` go in the slot if they are short enough:
   see <doc:CursorsAndValues>.
 
+A ``ByteWriter`` can also take its format tag once the bytes decide it, and seek to fill in what it did not know when it
+started.
+
 ### Reading a part at a time
 
 ``Cursor/reader()`` gives a ``ByteReader``. ``ByteReader/read(into:)`` fills as much of a buffer as it can, and gives back
@@ -79,12 +82,11 @@ var reader = try map.cursor(forHash: sha256("value"))!.reader()
 try map.put(.bytes(Array("the second value".utf8)), forHash: sha256("value"))
 ```
 
-The exception is a reader made in a transaction that failed, whose bytes are gone: as through a cursor from that
-transaction, a read through it throws ``XitDBError/staleCursor``. A slot set to nothing reads as no bytes, and a slot
-holding anything else than bytes throws ``XitDBError/unexpectedTag``.
+The exception is a reader made through a cursor from a transaction that failed, whose bytes are gone: as through the
+cursor, a read through it throws ``XitDBError/staleCursor``. A slot set to nothing reads as no bytes, and a slot holding
+anything else than bytes throws ``XitDBError/unexpectedTag``.
 
-A ``ByteWriter`` can also take its format tag once the bytes decide it, and seek to fill in what it did not know when it
-started. A ``ByteReader`` can seek, to read one part of a value.
+A ``ByteReader`` can also seek, to read one part of a value.
 
 ## See Also
 

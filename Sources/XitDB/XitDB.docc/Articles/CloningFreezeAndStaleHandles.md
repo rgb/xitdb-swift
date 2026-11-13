@@ -126,11 +126,11 @@ one from the root: see <doc:Transactions>, which also says what a read through o
 
 ### Why a held cursor cannot start again
 
-Making a collection again from a cursor you held before the freeze would be shorter, and the original allows it. The
-port refuses it because the initialiser writes the cursor's own slot in place, in a record made before the freeze that a
-copy can share, so the copy changes with it, or, once anything has copied the record since, the write is lost at the
-commit. The cursor the body was given is the exception because its slot is in the one record that no copy can share: see
-<doc:DifferencesFromTheOriginal>.
+Making a collection again from a cursor you held before the freeze would be shorter, and the original allows it: see
+<doc:DifferencesFromTheOriginal>. The port refuses it because the initialiser writes the cursor's own slot in place, in a
+record made before the freeze, so any copy that shares the record changes with it, and once anything has copied the record
+since the freeze, the write is lost at the commit. The cursor the body was given, or another at its slot, is the exception,
+because that slot is in the one record that no copy can share.
 
 ### A join freezes too
 
@@ -162,12 +162,13 @@ let cities = try ArrayList<ReadWrite>(citiesCursor)
 
 A cursor's freeze protects what the copy points at from writes through that cursor, and through what is made from it, and from
 nothing else. Writes through the copy leave the original alone. Writes through the original still change shared data in place,
-and the copy sees them. In a linked list or a sorted map or set, the copy's header can end up disagreeing with its tree, and a
-read or a write that runs into the difference throws an error such as ``XitDBError/invalidBTreeNode``. The original can crash
-there; the port gives the error.
+and the copy sees them. In a linked list or a sorted map or set, the copy's header can end up disagreeing with its tree: its
+count can be wrong with no error, and a read or a write that runs into the difference throws an error such as
+``XitDBError/invalidBTreeNode``. The original can crash there; the port gives the error.
 
 So use ``Database/freeze()`` whenever both sides may be written in the same transaction. A cursor's freeze makes no handle
-stale, and the guard does not count it. The port does what the original does here.
+stale, and the guard does not count it. The port does what the original does here, except that where the original can
+crash it throws an error.
 
 ### What a freeze costs
 
