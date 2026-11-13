@@ -104,49 +104,6 @@ If you make many writes, group them.
 ``ArrayList/append(_:_:)`` on a list at the root is the same kind of transaction, with a body that runs before
 it commits. The body may write as much as it likes, so one element of the list costs one commit.
 
-### The body's cursor
-
-The cursor is `inout` because ``Cursor/write(_:)`` is `mutating`: a cursor is a value that remembers what its slot
-holds, and a write through it updates that.
-
-```swift
-try database.withTransaction { cursor in
-    try cursor.write(.uint(42))
-}
-```
-
-Whatever that slot holds when the body returns is the new root, whichever cursor wrote it. In
-``ArrayList/append(_:_:)``, the cursor is at the new element instead, and the element is what the slot holds. Passing
-the cursor to a collection's initialiser, as most bodies do, gives the collection a copy of it, and the collection
-writes through the same slot.
-
-The reference calls the cursor that a transaction's body is given the transaction's cursor: the one from
-``Database/withTransaction(_:)``, or from an append to the list at the root. It is also the way on after a freeze: every
-handle made before a freeze is stale, and a collection made again from this cursor is fresh. See
-<doc:CloningFreezeAndStaleHandles>.
-
-Reads depend on what they go through. A cursor at the root of the database reads the last commit, so the transaction's
-writes do not show there until it commits. A collection made from the body's cursor sees what the transaction has
-written. The body's cursor itself holds a copy of its slot, like any cursor, so once a collection has been made from it, read
-through the collection:
-
-```swift
-let database = try Database(creating: MemoryStorage(), hashSize: 32)
-let history = try ArrayList<ReadWrite>(database.rootCursor)
-
-try history.append(.slot(try history.slot(at: -1))) { cursor in
-    // The list at the root has no new element yet: the root is read
-    // from the last commit until this one is made.
-    let committed = try history.count  // 0
-
-    // A collection made from the body's cursor sees what the transaction
-    // has written.
-    let moment = try HashMap<ReadWrite>(cursor)
-    try moment.put(.uint(1), forHash: sha256("seen"))
-    let seen = try moment.cursor(forHash: sha256("seen"))!.readUInt64()  // 1
-}
-```
-
 ### Where a write is allowed
 
 A write below the root needs a transaction in progress, and a write through the root must not have one in
@@ -159,7 +116,8 @@ progress, because it would commit before the transaction ended. Both are errors:
 A cursor belongs to the transaction that made it. Do not keep one for the next transaction; make a new one from
 the root. With no transaction running, a write through it throws ``XitDBError/expectedTxStart``, and during a later
 transaction ``XitDBError/staleCursor``. A read through it still works if its transaction committed, and reads what the
-cursor saw. A collection at the root is the exception, because it reads the root again each time.
+cursor saw; if the transaction did not commit, the read is refused with ``XitDBError/staleCursor`` too. A collection at
+the root is the exception, because it reads the root again each time.
 
 ### What a commit does to the file
 
@@ -209,13 +167,10 @@ The times are indicative: measured on 2026-11-07 on one machine, an Apple M4 wit
 value through a ``BufferedFileStorage``. Yours will differ, by a lot on another kind of disk. What to take from them is
 the ratios: a full flush is expensive, and it is paid per commit, not per byte.
 
-On Apple platforms a barrier is `F_BARRIERFSYNC` and a full flush is `F_FULLFSYNC`. Plain `fsync` is not a level,
-because it promises neither that writes reach the disk in order nor that the drive flushes them. On Linux there is no
-barrier call and `fsync` waits for the drive to flush, so every sync there is a full flush: ``Durability/ordered`` gives
-what ``Durability/full`` gives, at the same price. A volume that
-does not support a call gets the next one, which keeps the level's promise as far as the volume allows. Before the root
-header the order is barrier, full flush, plain `fsync`. After it, at ``Durability/full`` it is full flush, barrier, plain
-`fsync`, and at ``Durability/ordered`` it is barrier, plain `fsync`.
+On Apple platforms a barrier is `F_BARRIERFSYNC` and a full flush is `F_FULLFSYNC`. On Linux there is no barrier call
+and `fsync` waits for the drive to flush, so every sync there is a full flush: ``Durability/ordered`` gives what
+``Durability/full`` gives, at the same price. ``Durability`` says which calls each level makes, and that a volume that
+does not support one gets the next best.
 
 The table has one hole, at every level. A power loss in the middle of rewriting the root header can leave its size
 unreadable. Such a file does not open, although its commits are intact behind it: opening refuses it with
@@ -236,7 +191,6 @@ given, along with the rest of how to open a file.
 
 ## See Also
 
-- <doc:/tutorials/XitDB/YourFirstDatabase>
 - <doc:MomentsAndHistory>
 - <doc:CursorsAndValues>
 - <doc:CloningFreezeAndStaleHandles>

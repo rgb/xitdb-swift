@@ -122,49 +122,15 @@ The way on is the one in step 3: start from the cursor the body was given, which
 writes, and make each collection again on the way down to where you write.
 
 A cursor from an earlier transaction is refused for every write, making a collection included, with no exception. Take a new
-one from the root: see <doc:Transactions>. What reads through such a cursor give is in <doc:ConcurrencyAndSnapshots>.
+one from the root: see <doc:Transactions>, which also says what a read through one gives.
 
 ### Why a held cursor cannot start again
 
-Making the collection again from the cursor you already hold would be shorter, `ArrayList<ReadWrite>(stock.cursor)`, and the
-original allows it. The port refuses it, because of what the initialiser does: it writes the cursor's own slot, in place, to
-point at the copy it makes. That slot is in a record made before the freeze, and anything else that shares the record would
-change with it: a copy of a collection that contains the slot, whether the copy was made before the freeze or after. And once
-anything has copied that record since the freeze, as a second handle taken from the root does on its way down, the root no
-longer reaches the record the slot is in, and the write is lost at the commit without an error.
-
-Here a whole map is copied, and a list inside it is then written through a cursor held from before the freeze:
-
-```swift
-let shop = try HashMap<ReadWrite>(root.putCursor(forHash: sha256("shop")))
-let stock = try ArrayList<ReadWrite>(shop.putCursor(forHash: sha256("stock")))
-try stock.append(.uint(1))
-
-// A copy of the whole shop, and a freeze to keep it as it is.
-try root.put(.slot(try shop.slot), forHash: sha256("yesterday"))
-try cursor.database.freeze()
-```
-
-```swift
-// Refused with staleCursor: it would write the list's slot in place,
-// in a record the copy shares.
-try ArrayList<ReadWrite>(stock.cursor).append(.uint(2))
-```
-
-In the original that append goes through, and after the commit both "shop" and "yesterday" have a stock of two: the copy shares
-the map's entries, and the list's slot is in one of them. Taken again from the body's cursor, the same append leaves "yesterday"
-with a stock of one:
-
-```swift
-let rootAgain = try HashMap<ReadWrite>(cursor)
-let shopAgain = try HashMap<ReadWrite>(rootAgain.putCursor(forHash: sha256("shop")))
-try ArrayList<ReadWrite>(shopAgain.putCursor(forHash: sha256("stock")))
-    .append(.uint(2))
-```
-
-Some held cursors would be safe to start again from, such as one at the copied collection itself while nothing has copied the
-record its slot is in. The engine cannot tell those from the rest without following every copy, so it refuses them all. The
-body's cursor is the exception because its slot is in the one record that no copy can share.
+Making a collection again from a cursor you held before the freeze would be shorter, and the original allows it: see
+<doc:DifferencesFromTheOriginal>. The port refuses it because the initialiser writes the cursor's own slot in place, in a
+record made before the freeze, so any copy that shares the record changes with it, and once anything has copied the record
+since the freeze, the write is lost at the commit. The cursor the body was given, or another at its slot, is the exception,
+because that slot is in the one record that no copy can share.
 
 ### A join freezes too
 
@@ -196,27 +162,18 @@ let cities = try ArrayList<ReadWrite>(citiesCursor)
 
 A cursor's freeze protects what the copy points at from writes through that cursor, and through what is made from it, and from
 nothing else. Writes through the copy leave the original alone. Writes through the original still change shared data in place,
-and the copy sees them: with a list of 300, a value written at index 200 through `bigCities` reads back through `cities`. In a
-linked list or a sorted map or set, the copy's header ends up disagreeing with its tree: a sorted map of 40 copied this way,
-after ten removes through the original and one put through the copy, counts 41 entries and holds 31. A read or a write that
-runs into the difference throws an error such as ``XitDBError/invalidBTreeNode``. The original can crash there; the port gives
-the error.
+and the copy sees them. In a linked list or a sorted map or set, the copy's header can end up disagreeing with its tree: its
+count can be wrong with no error, and a read or a write that runs into the difference throws an error such as
+``XitDBError/invalidBTreeNode``. The original can crash there; the port gives the error.
 
 So use ``Database/freeze()`` whenever both sides may be written in the same transaction. A cursor's freeze makes no handle
-stale, and the guard does not count it. The port does what the original does here; whether it should do more is not decided.
+stale, and the guard does not count it. The port does what the original does here, except that where the original can
+crash it throws an error.
 
 ### What a freeze costs
 
 A freeze writes nothing. Its cost comes at the first write after it, which copies what lies on the way to the place it changes,
 as a write to committed data does. Writes after that, to places already copied, are in place again.
-
-The numbers depend on the shape. Here it is two linked lists of 1,000 elements, made in the same transaction in a map at the
-root, and then joined. The join appended 822 bytes to the file. Taking the list again from the body's cursor appended 210: the
-map's block, 144 bytes, when the map was made again, the list's entry, 50, at the `putCursor`, and the list's header, 16, when
-the list was made again. The first append after that appended 1,114, copying the nodes on its way down to the end of the list, and the
-second appended nothing: it wrote in place, as writes to what the transaction has made since the freeze do. With lists of 10,000
-elements the join appended 274, taking the list again the same 210, and the first append 1,388. The path, and so the cost of the
-first append, grows with the logarithm of the size.
 
 ### Handles that name a place
 

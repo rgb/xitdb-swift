@@ -18,7 +18,7 @@ let store = try Store(database, hashing: SHA256.self)
 | Hash | Bytes | For |
 |---|---|---|
 | ``SHA256`` | 32 | The default, and the one to choose when you have no reason to choose. |
-| ``Insecure/SHA1`` | 20 | Files made by the original in its default configuration, which hashes with SHA-1. |
+| ``Insecure/SHA1`` | 20 | Files whose keys are hashed with SHA-1, as they are in the original's tests and by default in a xit repository. |
 | ``SipHash128`` | 16 | Speed, for keys your program makes itself. |
 
 The database's header records the hash size, and a `Store` whose hash has another size is refused with

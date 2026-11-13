@@ -28,8 +28,7 @@ are in <doc:CursorsAndValues>.
 Prefer ``ArrayList`` to ``LinkedArrayList`` and a hash map to a sorted map unless you need what the other one adds.
 The trie behind the first of each pair is simpler, and a lookup in it reads less. ``LinkedArrayList`` and
 ``SortedMap`` are trees whose branches carry counts, so that they can find a position in logarithmic time, and are larger
-for it. A leaf of either is 146 bytes, and a branch is 274 in a linked array list and 418 in a sorted collection, which also
-holds a separator key for each child, against the 144 of a block of the trie.
+for it.
 
 Each is a view of one slot, and they nest. A value that is a collection is written by asking for a cursor at the
 slot and making the collection there:
@@ -131,17 +130,10 @@ let joined = try LinkedArrayList<ReadWrite>(
 try joined.formSlice(offset: 1, count: 2)
 ```
 
-Neither goes through the list. With two lists of 4,096 elements in a map, and 8-byte hashes, a join in a transaction of its
-own did 31 reads and appended 494 bytes: 274 for the one new branch, and 220 for what any transaction reaching that list
-copies. Cutting out the middle of the result did 108 reads and appended 8,584: the same 220, and new nodes for the edges of
-the tree at every level.
-
-<!-- Pinned by `whatAJoinAndACutCost` in XitDBExamples: the numbers and the test change together. -->
-
-A join freezes the transaction, so every collection you made before it is stale, the list that joined included, and a write
-through one is refused with ``XitDBError/staleCursor``. Take the list again from the transaction's cursor, the one its body
-was given, as the example does with `joined`. Making it again from the list's own cursor is refused too: see
-<doc:CloningFreezeAndStaleHandles>.
+Neither goes through the list. A join freezes the transaction, so every collection you made before it is stale, the list
+that joined included, and a write through one is refused with ``XitDBError/staleCursor``. Take the list again from the
+transaction's cursor, the one its body was given, as the example does with `joined`. Making it again from the list's own
+cursor is refused too: see <doc:CloningFreezeAndStaleHandles>.
 
 ``LinkedArrayList/insert(_:at:)`` needs an element to insert before, so an index equal to the count throws
 ``XitDBError/indexOutOfRange``. Use ``LinkedArrayList/append(_:)`` to add at the end.

@@ -380,7 +380,8 @@ import XitDB
     }
 
     @Test func whatAFreezeCosts() throws {
-        // The shape the article gives: two lists made in the same transaction, in a map at the root.
+        // The first write after a freeze copies its way down and the next is in place, as the article
+        // says: two lists made in the same transaction, in a map at the root, and joined.
         func measure(_ size: Int) throws -> [Int] {
             let storage = MemoryStorage()
             let database = try Database(creating: storage, hashSize: 32)

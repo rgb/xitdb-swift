@@ -6,9 +6,8 @@ import Testing
 /// DocC and a README cannot include a file, so the code they show is written
 /// out twice: here, where it is compiled and run, and there, where it is
 /// read. This suite is what stops the two from drifting apart: every fenced
-/// `swift` block of the README and of every module's articles and tutorials,
-/// and every tutorial step file, must appear in this target's sources line for
-/// line.
+/// `swift` block of the README and of every module's catalogue must appear in
+/// this target's sources line for line.
 ///
 /// A block marked ` ```swift manifest ` is a package manifest and not a use of
 /// the library, and is not checked; that is the only exception.
@@ -86,17 +85,13 @@ import Testing
         return blocks
     }
 
-    /// Everything the documentation shows: its fenced blocks and the step
-    /// files of its tutorials.
+    /// Everything the documentation shows: the fenced blocks of the README and
+    /// of the catalogues' pages.
     private static func shownCode() throws -> [ShownCode] {
         var shown = try fencedBlocks(in: packageRoot.appendingPathComponent("README.md"))
         for catalogue in catalogues {
-            for url in files(in: catalogue, withExtensions: ["md", "tutorial"]) {
+            for url in files(in: catalogue, withExtensions: ["md"]) {
                 shown += try fencedBlocks(in: url)
-            }
-            for url in files(in: catalogue, withExtensions: ["swift"]) {
-                let lines = try String(contentsOf: url, encoding: .utf8).components(separatedBy: "\n")
-                shown.append(ShownCode(place: relative(url), lines: normalised(lines)))
             }
         }
         return shown
@@ -121,7 +116,6 @@ import Testing
         #expect(shown.count > 0)
         #expect(shown.contains { $0.place.hasPrefix("README.md") })
         #expect(shown.contains { $0.place.contains(".docc/Articles/") })
-        #expect(shown.contains { $0.place.contains(".docc/Resources/") })
         for module in ["XitDB", "XitDBHashing", "XitDBStore"] {
             #expect(shown.contains { $0.place.hasPrefix("Sources/\(module)/\(module).docc/") }, "\(module)'s catalogue")
         }

@@ -25,13 +25,12 @@ let name = try store.latest["name"].value(String.self)  // "Alice"
 The store writes through the faithful calls, and the files it writes are the files they write. Importing the store
 alone is enough: it re-exports `XitDB`, with the database and its storages, and `XitDBHashing`, with the hashes.
 
-To start, take the tutorial, then read <doc:KeysValuesAndHandles>.
+To start, read <doc:KeysValuesAndHandles>.
 
 ## Topics
 
 ### Essentials
 
-- <doc:/tutorials/XitDBStore>
 - <doc:KeysValuesAndHandles>
 
 ### The store

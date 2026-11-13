@@ -283,7 +283,6 @@ These are the package's measurements, on one machine. Yours will differ with the
 ## See Also
 
 - <doc:CodableRecords>
-- <doc:/tutorials/XitDBStore>
 - ``Store``
 - ``Moment``
 - ``Handle``

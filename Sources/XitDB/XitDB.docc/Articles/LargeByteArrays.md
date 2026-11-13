@@ -45,46 +45,8 @@ Three things to know:
   two more for a format tag if it has one. The same bytes written with ``WritableData/bytes(_:formatTag:)`` go in the slot if they are short enough:
   see <doc:CursorsAndValues>.
 
-### A format tag
-
-A format tag can be given up front, or set through the writer, which helps when the bytes decide it:
-
-```swift
-var cursor = try moment.putCursor(forHash: sha256("photo"))
-try cursor.writeBytes(formatTag: "jp") { writer in
-    try writer.write([0xFF, 0xD8, 0xFF])
-}
-
-// The body can decide on the tag once it has seen the bytes.
-var other = try moment.putCursor(forHash: sha256("other"))
-try other.writeBytes { writer in
-    try writer.write(Array("GIF89a".utf8))
-    writer.formatTag = "gi"
-}
-```
-
-Reading it back with ``Cursor/readBytesWithFormatTag(maxCount:)`` gives a ``Bytes`` with the tag in it.
-<doc:CursorsAndValues> says what format tags are for.
-
-### Going back while writing
-
-``ByteWriter/seek(to:)`` moves the position the next bytes go to, counted from the start of the array, which lets you fill
-in something you did not know when you started:
-
-```swift
-var cursor = try moment.putCursor(forHash: sha256("record"))
-try cursor.writeBytes { writer in
-    // Room for a length, written once it is known.
-    try writer.write([0, 0])
-    try writer.write(Array("payload".utf8))
-    writer.seek(to: 0)
-    try writer.write([0, 7])
-}
-```
-
-After a seek beyond what has been written, the next write leaves zeros in between. It grows the array, and the storage with it,
-to where the position reaches, and the array stays that long. A position beyond any a storage can have throws
-``XitDBError/unexpectedWriterPosition`` from that write.
+A ``ByteWriter`` can also take its format tag once the bytes decide it, and seek to fill in what it did not know when it
+started.
 
 ### Reading a part at a time
 
@@ -120,35 +82,11 @@ var reader = try map.cursor(forHash: sha256("value"))!.reader()
 try map.put(.bytes(Array("the second value".utf8)), forHash: sha256("value"))
 ```
 
-The exception is a reader made in a transaction that failed, whose bytes are gone, like a cursor's: see
-<doc:ConcurrencyAndSnapshots>. A slot set to nothing reads as no bytes, and a slot holding anything else than bytes throws
-``XitDBError/unexpectedTag``.
+The exception is a reader made through a cursor from a transaction that failed, whose bytes are gone: as through the
+cursor, a read through it throws ``XitDBError/staleCursor``. A slot set to nothing reads as no bytes, and a slot holding
+anything else than bytes throws ``XitDBError/unexpectedTag``.
 
-### Reading one part
-
-``ByteReader/size`` is the length of the value, and ``ByteReader/position`` is where the next read starts.
-``ByteReader/seek(to:)`` sets it, and ``ByteReader/readAll(into:)`` fills a buffer exactly, for a part whose length you
-know:
-
-```swift
-// The second line: seek to it, and read exactly its length.
-var reader = try moment.cursor(forHash: sha256("long-text"))!.reader()
-reader.seek(to: 14)
-
-var line = [UInt8](repeating: 0, count: 14)
-var span = line.mutableSpan
-try reader.readAll(into: &span)
-
-// And the rest, whatever is left of it, with a limit on how much.
-let rest = try reader.readRemaining(maxCount: 1024)
-```
-
-If fewer bytes are left than the buffer holds, ``ByteReader/readAll(into:)`` throws ``XitDBError/endOfStream``, having read
-what there was into the start of the buffer. A limit on ``ByteReader/readRemaining(maxCount:)`` throws
-``XitDBError/streamTooLong`` rather than allocate more than you wanted, and so does one on
-``Cursor/readBytes(maxCount:)``.
-
-To read a whole value into a buffer of your own without allocating, there is ``Cursor/readBytes(into:)``.
+A ``ByteReader`` can also seek, to read one part of a value.
 
 ## See Also
 

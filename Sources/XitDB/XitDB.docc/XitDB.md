@@ -36,11 +36,10 @@ verifies, and one explicit call cuts the file back to it, which can lose the com
 
 Two more modules come with the package, each with documentation of its own. `XitDBStore` is a Swift layer over
 this one: keys as Swift values, values as Swift types and `Codable` records, and handles that name a place in a
-moment, all written through the calls documented here. `XitDBHashing` has SHA-256, SHA-1 and SipHash-128 under
-CryptoKit's names on every platform, for the store's keys or for the hashes a map here takes.
+moment, all written through the calls documented here. `XitDBHashing` has SHA-256 and SHA-1 under CryptoKit's
+names on every platform, and SipHash-128, for the store's keys or for the hashes a map here takes.
 
-To start, take the tutorials, or read the four articles under Essentials in order. After those, each article stands
-on its own.
+To start, read the four articles under Essentials in order. After those, each article stands on its own.
 
 ## Topics
 
@@ -48,7 +47,6 @@ on its own.
 
 How a database works, in the order to read it.
 
-- <doc:/tutorials/XitDB>
 - <doc:MomentsAndHistory>
 - <doc:Transactions>
 - <doc:CursorsAndValues>

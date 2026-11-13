@@ -172,7 +172,6 @@ copy, and 144 less for each level of a longer one.
 
 ## See Also
 
-- <doc:/tutorials/XitDB/KeepingHistory>
 - <doc:Transactions>
 - <doc:Compaction>
 - <doc:CursorsAndValues>

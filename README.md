@@ -34,32 +34,22 @@ damaged, which the original cannot open. It also hands one commit to other threa
 
 Two more modules come with it. `XitDBStore` is a Swift layer over the API shown here, and writes through it: string,
 integer and byte keys, typed values, `Codable` records, and handles that name a place rather than hold a cursor.
-`XitDBHashing` has SHA-256, SHA-1 and SipHash-128 under CryptoKit's names on every platform, CryptoKit's own where it
-exists. Every public symbol is documented, and the documentation has articles for the concepts and five tutorials. Its
-first release is 0.1.0; 0.1.1 added Linux, 0.1.2 the tests on an iOS simulator, 0.2.0 the store and the hashes, and
-0.2.1 xitdb-dump and the model-based tests.
+`XitDBHashing` has SHA-256 and SHA-1 under CryptoKit's names on every platform, CryptoKit's own where it exists, and
+SipHash-128.
 
 It builds for macOS 26, iOS 26 and Linux, and is tested on macOS, on Linux and on an iOS simulator.
 
 ## How it is tested
 
 - **Conformance scripts**, written from the original's source and the file format by a separate project that never
-  reads the port. There are 229. In 131 of them the port must write the file the original writes, byte for byte, or,
-  where the port deliberately does otherwise, the file the original writes when it is made to do the same. The other 98
-  must fail, as they do with the original: they check that a runner catches what is wrong, such as an expectation the
-  database does not meet or an error nobody handles. Each script runs on every kind of storage it can (the memory
-  storage has no read-only mode), and each one that compacts runs with both kinds of offset map.
-- **The original's own tests**, all eleven, on each kind of storage the original runs them on. They keep the original's
-  assertions, except where the port deliberately does otherwise, and except for the positions of a memory storage's
-  readers and writers, which the port's storage does not have.
+  reads the port. In 131 of the 229 the port must write the file the original writes, byte for byte, or, where the port
+  deliberately does otherwise, the file the original writes when it is made to do the same. The other 98 must fail, as
+  they do with the original: they check that a runner catches what is wrong, such as an error nobody handles.
+- **The original's own tests**, all eleven, on each kind of storage the original runs them on.
 - **The port's own tests**, for what the original does not test: damaged files, a storage that fails partway through a
-  commit, the guards and recovery. A fuzzer damages files at random, then reads, compacts, replicates and writes them,
-  and checks that the library never traps or hangs on one.
+  commit, the guards and recovery. A fuzzer damages files at random and checks that the library never traps or hangs on
+  one, and model-based tests run random operations against plain Swift collections and a database side by side.
 - **Every code example** in this README and in the documentation, compiled and run, apart from the package manifest.
-
-`scripts/check.sh` runs all of them: the tests in debug and release builds with warnings as errors, and the fuzzer on the
-files that once made it fail and on fresh damage from fixed seeds. It also checks the imports and the formatting, builds
-the documentation, runs the benchmark briefly and compiles for iOS.
 
 ## Adding the dependency
 
@@ -157,30 +147,17 @@ Every block of code that uses the library, in this README and in the documentati
 
 ## Documentation
 
-The full documentation is a DocC catalogue for each module: [`Sources/XitDB/XitDB.docc`](Sources/XitDB/XitDB.docc),
+The documentation is a DocC catalogue for each module: [`Sources/XitDB/XitDB.docc`](Sources/XitDB/XitDB.docc),
 [`Sources/XitDBStore/XitDBStore.docc`](Sources/XitDBStore/XitDBStore.docc) and
-[`Sources/XitDBHashing/XitDBHashing.docc`](Sources/XitDBHashing/XitDBHashing.docc): a reference curated by task,
-articles for the concepts, and step-by-step tutorials. It is best read through DocC: the articles are Markdown files,
-but as raw text their links show their overloads, links between articles do not resolve, and the diagrams do not
-appear. Start with the article "Moments and history" for XitDB, and "Keys, values and handles" for the store.
-
-To read it in a browser:
+[`Sources/XitDBHashing/XitDBHashing.docc`](Sources/XitDBHashing/XitDBHashing.docc): a reference curated by task, and
+articles for the concepts. Read it through DocC, where the links between articles resolve and the diagrams appear. Start
+with the article "Moments and history" for XitDB, and "Keys, values and handles" for the store. To read it in a browser:
 
 ```sh
 swift package --disable-sandbox preview-documentation --target XitDB
 ```
 
 with `--target XitDBStore` or `--target XitDBHashing` for the other two.
-
-To build it as a static site, for hosting at a path of your choice, and to look at the result:
-
-```sh
-scripts/docs-site.sh xitdb-swift      # for hosting at /xitdb-swift
-scripts/docs-site.sh                  # for hosting at the root, to preview:
-python3 -m http.server --directory .build/docs-site
-```
-
-The preview is then at <http://localhost:8000/documentation/xitdb/>.
 
 To look at a file itself, `swift run xitdb-dump FILE` prints it as it is on disk: its header, the last moment or any
 other, and with `--verify` its commits. Built once with `swift build -c release --product xitdb-dump`, it runs as
@@ -193,31 +170,6 @@ options.
 benchmark and of the corruption fuzzer, the import check, the formatting check, the documentation build and a
 compile check for iOS and the tests on an iOS simulator. On macOS it runs on one toolchain, Xcode 27.2's Swift 6.4.2,
 and refuses any other; on Linux it runs on any Swift 6.4.x and skips the iOS steps.
-
-Two GitHub Actions workflows run on self-hosted runners. `.github/workflows/gate.yml` runs the gate on the macOS
-and the Linux runner at every push and pull request.
-`.github/workflows/benchmark.yml` is started by hand: it builds the benchmark in release and the original's `bench`
-from the conformance repository at a stated commit, runs the seven workloads at full size, three passes of each,
-alternated, and writes the table of medians and ratios to the job's summary. It is a report, not a check.
-The macOS runner needs Xcode 27.2 with an iOS simulator runtime for the gate, and Zig 0.17.1 on its PATH as well for
-the benchmark; the Linux runner
-needs a Swift 6.4.x toolchain, through swiftly or on its PATH.
-Pull requests from forks run on the same runners, so a public repository should be set to require approval for all
-outside collaborators before their workflows run.
-`scripts/bench-compare.py` runs the same comparison by hand.
-
-The tests include model-based ones: random operation sequences run against plain Swift collections and against a
-database of each storage kind, checked against each other after every commit, with compaction, replication,
-snapshots, reopening and recovery on the way, and the same through the store's handles and Codable records. The
-gate runs a fixed set of seeds; `scripts/soak.sh [seconds]` runs fresh seeds for a while. A failure prints the
-shortest sequence that still fails as a conformance-style script.
-
-Commits in this repository carry no `Co-Authored-By` trailer; `scripts/git-hooks/commit-msg` removes one from a
-message. Git runs it once a clone has
-
-```
-git config core.hooksPath scripts/git-hooks
-```
 
 Issues are welcome: bug reports, questions about the conformance suite, requests. The repository does not take pull
 requests, since every change goes through the gate and the conformance suite here; a reader with a fix opens an

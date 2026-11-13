@@ -111,11 +111,9 @@ moment 0: map (6 entries)
 
 ### Limits
 
-A damaged count can claim more elements than a file holds, so the dump caps what it prints. One collection shows at
-most `--limit` elements or entries, 100,000 unless you say otherwise, and a line in place of the rest names the
-option: `… 3 more elements; --limit shows them` for a list, and for a map, which keeps no count,
-`… more entries past the first 2; --limit shows them`. Nesting stops at 200 levels, or at `--depth`, with a line that
-says so. A whole dump stops at a million nodes, or ten times `--limit` if that is more, with a note.
+A damaged count can claim more elements than a file holds, so the dump caps what it prints, and says where it stopped and
+which option raises the cap: `--limit` elements or entries in one collection, 100,000 by default; 200 levels of nesting,
+or `--depth`; and a million nodes in all, or ten times `--limit` if that is more.
 
 ### The options
 
@@ -158,11 +156,6 @@ The exit code says what the tool found:
 | 0 | The file is sound. |
 | 1 | The file is damaged, and what could be read was dumped. |
 | 2 | The file is not xitdb, or the arguments are not understood. |
-
-The tests hold the tool to its format: the dump of every conformance fixture is a text in the test resources, and
-`scripts/pin-dumps.sh` writes those texts anew when the format or the fixtures change. They also dump every damaged
-file that once made the library trap, and cut and flipped copies of two fixtures, and check that the tool finishes on
-each, and that it reports none of the damaged files or cut copies as sound.
 
 ## See Also
 

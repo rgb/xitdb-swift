@@ -22,6 +22,8 @@ These mean the code asked for something it should not have. Most are worth fixin
   in an `Int64`.
 - ``XitDBError/keyNotFound``: Reads and removes turn this into `nil` and `false`. It gets out only from a write through a collection whose slot was cleared after the collection was made.
 - ``XitDBError/invalidHashSize``: A hash without the database's number of bytes, once there is a map to look in, opening with a stated size that is not the file's, creating with a size of 0 or over 65535, or a compaction target or replica of another size.
+- ``XitDBError/hashSizeMismatch``: A `Store`, or a `Moment` made with `init(reading:hashing:)`, given a hash whose size is
+  not the one the database's header records. Only `XitDBStore` throws it, before it reads or writes anything.
 - ``XitDBError/expectedTxStart``: A write below the root, or a ``Database/freeze()``, with no transaction running.
 - ``XitDBError/nestedTopLevelWrite``: A write through the root, or a new transaction, while one is running.
 - ``XitDBError/cursorNotWritable``: ``Cursor/writeBytes(formatTag:_:)`` on the ``Database/rootCursor``.

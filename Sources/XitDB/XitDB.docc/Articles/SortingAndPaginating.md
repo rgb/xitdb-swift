@@ -234,7 +234,6 @@ That set has two keys. Inserting a key that is there already changes nothing.
 
 ## See Also
 
-- <doc:/tutorials/XitDB/AnIndexOfYourOwn>
 - ``SortedMap``
 - ``SortedSet``
 - <doc:TheCollections>
