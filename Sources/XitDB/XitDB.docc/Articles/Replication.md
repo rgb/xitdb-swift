@@ -154,17 +154,6 @@ if start == 0 {
 }
 ```
 
-A failed ``Database/applyReplicated(at:from:count:)`` can also mean the bytes were not what they should be:
-
-- ``XitDBError/invalidRange``: a start that is neither 0 nor the replica's committed size. Nothing has changed.
-- ``XitDBError/endOfStream``: the source ran out before the count, or claimed to have given more than its buffer holds.
-- ``XitDBError/invalidDatabase``: the bytes do not end with a trailer that checks.
-
-At 0 the bytes are a database to open, so what opening one throws comes from here too: ``XitDBError/invalidDatabase`` for bytes that
-are not one, ``XitDBError/invalidVersion`` for another version of the format, ``XitDBError/invalidHashSize`` for another hash size,
-``XitDBError/truncatedDatabase`` for bytes that stop short of the committed size they record, and ``XitDBError/endOfStream`` for too
-few to hold the headers.
-
 ### An earlier commit
 
 ``Database/readCommitted(from:to:into:)-(_,_,Sink)`` from 0 to the committed size of any earlier commit gives a complete database as
@@ -184,7 +173,6 @@ An end where no commit ends throws ``XitDBError/invalidDatabase``, and one past 
 
 ## See Also
 
-- <doc:/tutorials/XitDB/KeepingAReplicaInStep>
 - ``ReplicaState``
 - ``ByteSink``
 - ``ByteSource``

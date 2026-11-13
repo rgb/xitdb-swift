@@ -100,7 +100,8 @@ import XitDB
         }
     }
 
-    /// The numbers the article quotes: a join touches little, and a cut more.
+    /// A join touches little, and a cut more: neither goes through the list,
+    /// as the article says.
     @Test func whatAJoinAndACutCost() throws {
         let first = [UInt8](repeating: 1, count: 8)
         let second = [UInt8](repeating: 2, count: 8)

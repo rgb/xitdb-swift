@@ -197,7 +197,6 @@ which the protocol requires, since a database and its cursors share the one inst
 
 ## See Also
 
-- <doc:/tutorials/XitDB/YourFirstDatabase>
 - ``BufferedFileStorage``
 - ``FileStorage``
 - ``MemoryStorage``

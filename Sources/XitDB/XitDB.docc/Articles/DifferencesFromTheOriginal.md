@@ -87,8 +87,7 @@ and the port's files are compared with that branch's.
 - **A copy made within a transaction** is a second name for something still mutable, until a freeze. That is the original's
   design, and the port keeps it: see <doc:CloningFreezeAndStaleHandles>.
 - **A freeze of one cursor**, ``Cursor/freeze()``, protects the data from writes through that cursor and from nothing else. The
-  port does what the original does, except that where the original can crash it throws an error. Whether it should do more is not
-  decided.
+  port does what the original does, except that where the original can crash it throws an error.
 - **Writing a slot set to nothing** writes the value bits it carries, which mean nothing, in both. A client of the port cannot
   make a slot, so it cannot choose them.
 - **Two of the original's hazards need its raw path API**, which the port does not make public: a path that skips a collection's
