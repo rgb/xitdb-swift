@@ -26,7 +26,7 @@ import XitDB
     private func withCommittedSize(_ size: UInt64, _ bytes: [UInt8]) -> [UInt8] {
         var bytes = bytes
         for index in 0..<8 {
-            bytes[29 + index] = UInt8(truncatingIfNeeded: size >> (56 - 8 * UInt64(index)))
+            bytes[24 + index] = UInt8(truncatingIfNeeded: size >> (56 - 8 * UInt64(index)))
         }
         return bytes
     }
@@ -36,37 +36,37 @@ import XitDB
         // Before the moments: the new database, then the empty history.
         let storage = MemoryStorage()
         let database = try Database(creating: storage, hashSize: 32)
-        #expect(storage.bytes.count == 62)
+        #expect(storage.bytes.count == 57)
         _ = try ArrayList<ReadWrite>(database.rootCursor)
-        #expect(storage.bytes.count == 256)
-        // The commits end at 644, 1,032 and 1,420.
-        #expect(after.map(\.count) == [644, 1032, 1420])
+        #expect(storage.bytes.count == 251)
+        // The commits end at 639, 1,027 and 1,415.
+        #expect(after.map(\.count) == [639, 1027, 1415])
 
         // Sound: it opens.
         #expect(try moments(Database(opening: MemoryStorage(bytes: good))) == 3)
 
         // A size past the end of the file, or too small, or not at a trailer.
-        for size: UInt64 in [1520, 10, 1037] {
-            #expect(throws: XitDBError.untrustedRootHeader(lastVerified: 1420)) {
+        for size: UInt64 in [1520, 10, 1032] {
+            #expect(throws: XitDBError.untrustedRootHeader(lastVerified: 1415)) {
                 try Database(opening: MemoryStorage(bytes: withCommittedSize(size, good)))
             }
         }
 
         // The file cut short, or its last trailer damaged: the last commit that
         // verifies is the one before.
-        #expect(throws: XitDBError.untrustedRootHeader(lastVerified: 1032)) {
+        #expect(throws: XitDBError.untrustedRootHeader(lastVerified: 1027)) {
             try Database(opening: MemoryStorage(bytes: Array(good.dropLast())))
         }
         var damagedTrailer = good
         damagedTrailer[good.count - 3] ^= 1
-        #expect(throws: XitDBError.untrustedRootHeader(lastVerified: 1032)) {
+        #expect(throws: XitDBError.untrustedRootHeader(lastVerified: 1027)) {
             try Database(opening: MemoryStorage(bytes: damagedTrailer))
         }
 
         // A root header torn inside its size: the new size's first bytes and the old one's last.
         var torn = good
-        torn[36] = after[1][36]
-        #expect(throws: XitDBError.untrustedRootHeader(lastVerified: 1420)) {
+        torn[31] = after[1][31]
+        #expect(throws: XitDBError.untrustedRootHeader(lastVerified: 1415)) {
             try Database(opening: MemoryStorage(bytes: torn))
         }
 
@@ -80,7 +80,7 @@ import XitDB
         #expect(throws: XitDBError.invalidDatabase) {
             try Database(opening: MemoryStorage(bytes: notADatabase))
         }
-        let noTrailer = withCommittedSize(1420, Array(good[..<37]) + [UInt8](repeating: 0, count: 100))
+        let noTrailer = withCommittedSize(1415, Array(good[..<32]) + [UInt8](repeating: 0, count: 100))
         #expect(throws: XitDBError.invalidDatabase) {
             try Database(opening: MemoryStorage(bytes: noTrailer))
         }
@@ -98,7 +98,7 @@ import XitDB
     @Test func openingWritesNothing() throws {
         let (good, _) = try threeMoments()
         let storage = MemoryStorage(bytes: Array(good.dropLast()))
-        #expect(throws: XitDBError.untrustedRootHeader(lastVerified: 1032)) {
+        #expect(throws: XitDBError.untrustedRootHeader(lastVerified: 1027)) {
             try Database(opening: storage)
         }
         #expect(storage.bytes == Array(good.dropLast()))
@@ -121,8 +121,8 @@ import XitDB
         let database = try openOrRecover(storage)
         // The third moment's commit is lost.
         #expect(try moments(database) == 2)
-        #expect(storage.bytes.count == 1032)
-        #expect(try database.committedSize == 1032)
+        #expect(storage.bytes.count == 1027)
+        #expect(try database.committedSize == 1027)
         // And the database goes on from there.
         try ArrayList<ReadWrite>(database.rootCursor).append(.uint(1))
         #expect(try moments(Database(opening: storage)) == 3)
@@ -143,7 +143,7 @@ import XitDB
         let (good, after) = try threeMoments()
         // A process that died after the third commit's trailer and before its root header.
         var died = good
-        died.replaceSubrange(20..<37, with: after[1][20..<37])
+        died.replaceSubrange(24..<32, with: after[1][24..<32])
 
         #expect(try moments(Database(opening: MemoryStorage(bytes: died))) == 2)
         #expect(try moments(Database.recover(MemoryStorage(bytes: died))) == 3)
@@ -198,20 +198,20 @@ import XitDB
         // What arrived holds the source's earlier commits. Keep the last of them.
         replica = try Database.recover(replicaStorage)
         let start = try source.replicationStart(for: try replica.replicaState)
-        #expect(start == 1032)
+        #expect(start == 1027)
         let end = try source.committedSize
         let bytes = try source.readCommitted(from: start, to: end)
         try replica.applyReplicated(at: start, bytes: bytes)
         #expect(replicaStorage.bytes == good)
 
-        // The source's first commit is its first 62 bytes: the new database.
+        // The source's first commit is its first 57 bytes: the new database.
         let first = MemoryStorage()
         var afterFirst = DroppingSource(bytes: good, dropAt: 70)
         #expect(throws: XitDBError.self) {
             try Database(creating: first, hashSize: 32)
                 .applyReplicated(at: 0, from: &afterFirst, count: UInt64(good.count))
         }
-        #expect(try Database.recover(first).committedSize == 62)
+        #expect(try Database.recover(first).committedSize == 57)
         let beforeFirst = MemoryStorage()
         var early40 = DroppingSource(bytes: good, dropAt: 40)
         #expect(throws: XitDBError.self) {

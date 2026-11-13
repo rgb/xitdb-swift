@@ -88,7 +88,7 @@ import Testing
             }
         }
         #expect(recorder.take() == [])
-        #expect(try database.committedSize == 62)
+        #expect(try database.committedSize == 57)
     }
 
     @Test func aBufferedDatabaseFlushesItsCommitToTheFile() throws {

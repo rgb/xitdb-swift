@@ -77,10 +77,10 @@ import Testing
         throws
     {
         // checks that no committed byte has changed since `committed` was read,
-        // except the root header (the root slot and file size after the database
+        // except the root header (the padding and file size after the database
         // header). then replicates and checks that the replica is identical.
         let rootHeaderStart = Int(DatabaseHeader.byteCount)
-        let rootHeaderEnd = rootHeaderStart + 17
+        let rootHeaderEnd = rootHeaderStart + 12
         do {
             let current = try readCommittedBytes(source, from: 0)
             try #require(current.count >= committed.count)
@@ -128,17 +128,17 @@ import Testing
         // a new database is its header (which ends with its file ID), its root
         // header, and the trailer for its empty root: the slot (9 zero bytes), the commit ID (0 for
         // the first commit), then the CRC-64/XZ of the file ID, the trailer's position
-        // (37), the slot, and the commit ID
+        // (32), the slot, and the commit ID
         do {
             let bytes = try readCommittedBytes(source, from: 0)
-            try #require(bytes.count == 62)
+            try #require(bytes.count == 57)
             #expect(Array(bytes[12..<20]) == [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])
             #expect(
-                Array(bytes[37...]) == [
+                Array(bytes[32...]) == [
                     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    0x00, 0xd6, 0x18, 0x4e, 0x46, 0xb4, 0x7d, 0x29,
-                    0x26,
+                    0x00, 0x95, 0xd4, 0x94, 0xc3, 0x4d, 0xf8, 0x07,
+                    0xe5,
                 ])
         }
 

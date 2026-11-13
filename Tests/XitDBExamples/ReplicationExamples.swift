@@ -43,7 +43,7 @@ import XitDB
         let nextState = try replica.replicaState
         let nextStart = try source.replicationStart(for: nextState)
         let nextEnd = try source.committedSize
-        #expect(nextStart == state.committedSize + end - 62)
+        #expect(nextStart == state.committedSize + end - 57)
         let newBytes = try source.readCommitted(from: nextStart, to: nextEnd)
         try replica.applyReplicated(at: nextStart, bytes: newBytes)
 
@@ -184,7 +184,7 @@ import XitDB
 
         let replica = try Database(creating: MemoryStorage(), hashSize: 32, fileID: 7)
         let start = try source.replicationStart(for: try replica.replicaState)
-        #expect(start == 62)
+        #expect(start == 57)
 
         try replica.applyReplicated(
             at: start, bytes: try source.readCommitted(from: start, to: try source.committedSize))

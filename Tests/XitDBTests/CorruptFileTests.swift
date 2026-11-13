@@ -276,7 +276,7 @@ import Testing
     }
 
     /// More wild numbers, at every fifth offset.
-    @Test(arguments: [.max - 1, .max - 143, (1 << 63) - 1, 1 << 62, 1, 29, 37] as [UInt64])
+    @Test(arguments: [.max - 1, .max - 143, (1 << 63) - 1, 1 << 62, 1, 24, 29, 32, 37] as [UInt64])
     func anyEightBytesCanBeAnotherWildNumber(value: UInt64) {
         let sound = Self.sound
         for offset in stride(from: 0, through: sound.count - 8, by: 5) {

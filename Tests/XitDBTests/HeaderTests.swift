@@ -3,15 +3,22 @@ import Testing
 @testable import XitDB
 
 @Suite struct DatabaseHeaderTests {
-    /// magic "xit", padding, version 1, hash size 20, hash ID "sha1",
-    /// file ID 0x0102030405060708
+    /// magic "xit", padding, version 2, hash size 20, hash ID "sha1",
+    /// file ID 0x0102030405060708: the header of a new database
     static let sha1Header: [UInt8] = [
         0x78, 0x69, 0x74, 0x00,
-        0x00, 0x01,
+        0x00, 0x02,
         0x00, 0x14,
         0x73, 0x68, 0x61, 0x31,
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
     ]
+
+    /// the same header as a version 1 file has it
+    static let versionOneHeader: [UInt8] = {
+        var bytes = sha1Header
+        bytes[5] = 1
+        return bytes
+    }()
 
     @Test func sizeOnDisk() {
         #expect(DatabaseHeader.byteCount == 20)
@@ -20,7 +27,7 @@ import Testing
 
     @Test func decodesHandWrittenBytes() throws {
         let header = try DatabaseHeader(decoding: Self.sha1Header.span)
-        #expect(header.version == 1)
+        #expect(header.version == 2)
         #expect(header.hashSize == 20)
         #expect(header.hashID == HashID(rawValue: 0x7368_6131))
         #expect(header.fileID == 0x0102_0304_0506_0708)
@@ -33,7 +40,25 @@ import Testing
             hashSize: 20
         )
         #expect(header.version == DatabaseHeader.currentVersion)
+        #expect(header.version == 2)
         #expect(encoded(capacity: 20) { header.encode(into: &$0) } == Self.sha1Header)
+    }
+
+    @Test func aVersionOneHeaderDecodesAndEncodesAsVersionOne() throws {
+        let header = try DatabaseHeader(decoding: Self.versionOneHeader.span)
+        #expect(header.version == 1)
+        #expect(header.hashSize == 20)
+        #expect(header.hashID == HashID(rawValue: 0x7368_6131))
+        #expect(header.fileID == 0x0102_0304_0506_0708)
+        #expect(encoded(capacity: 20) { header.encode(into: &$0) } == Self.versionOneHeader)
+    }
+
+    @Test func theVersionsReadAndWrittenAreOneAndTwo() {
+        #expect(DatabaseHeader.supports(version: 1))
+        #expect(DatabaseHeader.supports(version: 2))
+        for version in [UInt16(0), 3, 0x0100, 0x0101, 0x0200, .max] {
+            #expect(!DatabaseHeader.supports(version: version), "\(version)")
+        }
     }
 
     @Test func roundTrips() throws {
@@ -55,14 +80,17 @@ import Testing
     }
 
     @Test func wrongVersionIsInvalidVersion() {
-        for version in [UInt8(0), 2] {
+        for version in [UInt8(0), 3, 0xFF] {
             var bytes = Self.sha1Header
             bytes[5] = version
             #expect(throws: XitDBError.invalidVersion) { try DatabaseHeader(decoding: bytes.span) }
         }
-        var highByte = Self.sha1Header
-        highByte[4] = 1
-        #expect(throws: XitDBError.invalidVersion) { try DatabaseHeader(decoding: highByte.span) }
+        // the version is two bytes: 0x0101 and 0x0102 are neither 1 nor 2
+        for header in [Self.sha1Header, Self.versionOneHeader] {
+            var highByte = header
+            highByte[4] = 1
+            #expect(throws: XitDBError.invalidVersion) { try DatabaseHeader(decoding: highByte.span) }
+        }
     }
 
     @Test func magicIsCheckedBeforeVersion() {
@@ -131,35 +159,37 @@ import Testing
 }
 
 @Suite struct RootHeaderTests {
-    @Test func positionsInTheFile() {
-        #expect(RootHeader.byteCount == 17)
+    private static func header(version: UInt16) -> DatabaseHeader {
+        DatabaseHeader(fileID: 1, hashID: HashID(rawValue: 0), hashSize: 20, version: version)
+    }
+
+    @Test func theRootHeaderStartsAfterTheDatabaseHeaderInBothVersions() {
         #expect(RootHeader.position == 20)
-        #expect(RootHeader.fileSizePosition == 29)
-        #expect(RootHeader.endPosition == 37)
-        #expect(RootHeader.minimumFileSize == 62)
     }
 
-    @Test func decodesAndEncodesHandWrittenBytes() throws {
-        // root slot: array_list at 4847; file size 8550 = 0x2166
-        let bytes: [UInt8] = [0x02, 0, 0, 0, 0, 0, 0, 0x12, 0xEF] + [0, 0, 0, 0, 0, 0, 0x21, 0x66]
-        let header = try RootHeader(decoding: bytes.span)
-        #expect(header.root == Slot(value: 4847, tag: .arrayList))
-        #expect(header.fileSize == 8550)
-        #expect(encoded(capacity: 17) { header.encode(into: &$0) } == bytes)
+    /// Version 1: a copy of the root slot, nine bytes, and then the
+    /// committed size; the data starts after seventeen bytes.
+    @Test func positionsInAVersionOneFile() {
+        let header = Self.header(version: 1)
+        #expect(header.fileSizePosition == 29)
+        #expect(header.dataStart == 37)
+        #expect(header.minimumFileSize == 62)
     }
 
-    @Test func roundTrips() throws {
-        let header = RootHeader(root: Slot(value: .max, tag: .hashMap), fileSize: 0x0102_0304_0506_0708)
-        let bytes = encoded(capacity: 17) { header.encode(into: &$0) }
-        #expect(bytes.count == 17)
-        #expect(try RootHeader(decoding: bytes.span) == header)
+    /// Version 2: four bytes of padding and then the committed size, at a
+    /// multiple of eight; the data starts after twelve bytes.
+    @Test func positionsInAVersionTwoFile() {
+        let header = Self.header(version: 2)
+        #expect(header.fileSizePosition == 24)
+        #expect(header.fileSizePosition % 8 == 0)
+        #expect(header.dataStart == 32)
+        #expect(header.minimumFileSize == 57)
     }
 
-    @Test func rejectsBadInput() {
-        let short = zeros(16)
-        #expect(throws: XitDBError.endOfStream) { try RootHeader(decoding: short.span) }
-        let badTag: [UInt8] = [0x11] + zeros(16)
-        #expect(throws: XitDBError.invalidEnumTag) { try RootHeader(decoding: badTag.span) }
+    @Test func aNewHeaderHasTheLayoutOfVersionTwo() {
+        let header = DatabaseHeader(fileID: 1, hashID: HashID(rawValue: 0), hashSize: 20)
+        #expect(header.fileSizePosition == 24)
+        #expect(header.dataStart == 32)
     }
 }
 

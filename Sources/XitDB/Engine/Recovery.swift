@@ -38,7 +38,8 @@ extension DatabaseReader {
     /// file.
     ///
     /// Every position from the storage's length down to the size of a new
-    /// database is tried as the end of a trailer. The storage is read in
+    /// database of the file's format version is tried as the end of a
+    /// trailer. The storage is read in
     /// windows from the end back, each overlapping the one before by one
     /// byte less than a trailer, so that a trailer across a window's edge
     /// is seen whole in the next.
@@ -47,11 +48,13 @@ extension DatabaseReader {
     ///   or ``XitDBError/storageFailure(errno:)`` if the storage fails.
     func lastVerifiedCommitEnd() throws(XitDBError) -> UInt64? {
         let length = try storage.length
-        guard length >= RootHeader.minimumFileSize else { return nil }
+        let header = self.header
+        guard length >= header.minimumFileSize else { return nil }
         let trailerSize = Int(RootTrailer.byteCount)
         let window = UInt64(Self.scanWindow)
-        // The first trailer starts right after the root header.
-        let lowest = RootHeader.endPosition
+        // The first trailer starts right after the root header, which is
+        // where the file's format version says.
+        let lowest = header.dataStart
         // Every trailer's checksum starts with the file ID.
         var fileChecksum = CRC64XZ()
         fileChecksum.updateBigEndian(fileID)
@@ -113,9 +116,9 @@ extension Database {
     /// storage is scanned from its end back for the last trailer that
     /// verifies, as the error's `lastVerified` was found; the storage is
     /// cut off after that trailer; the root header is written for it, that
-    /// trailer's root slot and that position as the committed size; the
-    /// storage is synced, as after a commit's root header; and the database
-    /// is opened. Nothing else is written, and nothing is drawn from the
+    /// position as the committed size, where the file's format version
+    /// keeps it; the storage is synced, as after a commit's root header;
+    /// and the database is opened. Nothing else is written, and nothing is drawn from the
     /// system's randomness: the recovered database draws its commit IDs
     /// from it as an opened one does.
     ///
@@ -171,16 +174,17 @@ extension Database {
         let header = try readHeader(of: storage)
         let reader = DatabaseReader(storage: BuiltInStorage(storage), identity: DatabaseIdentity(header: header))
         guard let lastVerified = try reader.lastVerifiedCommitEnd() else { throw .invalidDatabase }
-        let trailer = try reader.rootTrailer(endingAt: lastVerified)
+        // The trailer's root slot must be one this implementation reads,
+        // before anything is cut.
+        _ = try reader.rootTrailer(endingAt: lastVerified)
 
         if try storage.length > lastVerified {
             try storage.truncate(to: lastVerified)
         }
-        let rootHeader = RootHeader(root: trailer.root, fileSize: lastVerified)
-        let rootHeaderBytes = InlineArray<17, UInt8> { (output: inout OutputSpan<UInt8>) in
-            rootHeader.encode(into: &output)
+        let committedSize = InlineArray<8, UInt8> { (output: inout OutputSpan<UInt8>) in
+            output.appendBigEndian(lastVerified)
         }
-        try storage.write(rootHeaderBytes.span, at: RootHeader.position)
+        try storage.write(committedSize.span, at: header.fileSizePosition)
         // The data was synced by the commit that wrote it. This is the
         // commit's second sync, for the root header.
         try storage.sync(.afterRootHeader)
@@ -218,13 +222,13 @@ extension Database {
         let header = try readHeader(of: storage)
         let length = try storage.length
         let trailerSize = Int(RootTrailer.byteCount)
-        guard length >= RootHeader.minimumFileSize else { return [] }
+        guard length >= header.minimumFileSize else { return [] }
         var fileChecksum = CRC64XZ()
         fileChecksum.updateBigEndian(header.fileID)
         var commits: [VerifiedCommit] = []
         let window = DatabaseReader.scanWindow
         var buffer = [UInt8](repeating: 0, count: window)
-        var start = RootHeader.endPosition
+        var start = header.dataStart
         while start + UInt64(trailerSize) <= length {
             let count = Int(min(UInt64(window), length - start))
             var span = buffer.mutableSpan

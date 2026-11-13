@@ -43,7 +43,7 @@ import XitDB
 
         let existing = try BufferedFileStorage(path: scratch.path("new.db"), access: .create)
         let database = try Database(creating: existing, hashSize: 32)
-        #expect(try database.committedSize == 62)
+        #expect(try database.committedSize == 57)
 
         // `.truncate` empties it.
         let emptied = try BufferedFileStorage(path: scratch.path("new.db"), access: .truncate)

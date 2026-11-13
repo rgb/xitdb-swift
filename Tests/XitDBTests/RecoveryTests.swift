@@ -6,6 +6,11 @@ import Testing
 /// What is left when a transaction fails partway, or the process dies in
 /// the middle of one: the database must be at its last commit, and the next
 /// transaction must go on as if nothing had happened.
+///
+/// Every test runs on a database of each format version. A commit's last
+/// write is the root header's committed size, eight bytes, at 29 in a
+/// version 1 file and at 24 in a version 2 file; nothing else of a root
+/// header is written by a commit in either.
 @Suite struct RecoveryTests {
     static let commitIDs: [UInt64] = [0x1111, 0x2222, 0x3333]
 
@@ -74,8 +79,17 @@ import Testing
         #expect(text == Bytes(Array("written in pieces".utf8), formatTag: "tx"))
     }
 
-    static func open(_ storage: any WritableStorage, _ random: FixedRandom) throws -> Database {
-        try Database(storage: storage, hashSize: 20, hashID: nil, fileID: 0xF11E, random: random)
+    /// Opens the database in a storage, or makes a new one of `version` in
+    /// an empty storage.
+    static func open(_ storage: any WritableStorage, _ random: FixedRandom, _ version: FormatVersion) throws
+        -> Database
+    {
+        if try storage.length == 0 {
+            return try newDatabase(version, in: storage, random: random)
+        }
+        let database = try Database(opening: storage, hashSize: 20, random: random)
+        try #require(database.header.version == version.rawValue)
+        return database
     }
 
     /// What a run without faults leaves: the bytes after `populate`, the
@@ -87,16 +101,19 @@ import Testing
         let syncs: Int
     }
 
-    static let golden: Golden = {
-        // Building this cannot fail; if it does, every test below fails on
-        // the empty result.
-        (try? makeGolden()) ?? Golden(base: [], final: [], writes: 0, syncs: 0)
-    }()
+    // Building these cannot fail; if it does, every test below fails on the
+    // empty result.
+    private static let goldenOne = (try? makeGolden(.one)) ?? Golden(base: [], final: [], writes: 0, syncs: 0)
+    private static let goldenTwo = (try? makeGolden(.two)) ?? Golden(base: [], final: [], writes: 0, syncs: 0)
 
-    static func makeGolden() throws -> Golden {
+    static func golden(_ version: FormatVersion) -> Golden {
+        version == .one ? goldenOne : goldenTwo
+    }
+
+    static func makeGolden(_ version: FormatVersion) throws -> Golden {
         let memory = MemoryStorage()
         let counting = FaultInjectingStorage(memory)
-        let database = try open(counting, FixedRandom(commitIDs))
+        let database = try open(counting, FixedRandom(commitIDs), version)
         try populate(database)
         let base = memory.bytes
         let writesBefore = counting.writeCount
@@ -110,28 +127,46 @@ import Testing
         )
     }
 
-    @Test func theTransactionWithoutFaults() throws {
-        let golden = Self.golden
+    @Test(arguments: FormatVersion.allCases)
+    func theTransactionWithoutFaults(version: FormatVersion) throws {
+        let golden = Self.golden(version)
         #expect(golden.writes > 30)
         #expect(golden.syncs == 2)
         #expect(golden.final.count > golden.base.count)
-        // committed bytes never change, except the root header
-        #expect(Array(golden.final[37..<golden.base.count]) == Array(golden.base[37...]))
-        #expect(Array(golden.final[..<20]) == Array(golden.base[..<20]))
-        let database = try Self.open(MemoryStorage(bytes: golden.final), FixedRandom())
+        // committed bytes never change, except the root header's committed
+        // size: eight bytes, at 29 in version 1 and at 24 in version 2
+        let size = version == .one ? 29 : 24
+        #expect(Array(golden.final[(size + 8)..<golden.base.count]) == Array(golden.base[(size + 8)...]))
+        #expect(Array(golden.final[..<size]) == Array(golden.base[..<size]))
+        #expect(Array(golden.base[size..<(size + 8)]) == bigEndianBytes(UInt64(golden.base.count)))
+        #expect(Array(golden.final[size..<(size + 8)]) == bigEndianBytes(UInt64(golden.final.count)))
+        #expect(golden.final[5] == UInt8(version.rawValue))
+        let database = try Self.open(MemoryStorage(bytes: golden.final), FixedRandom(), version)
         try Self.expectTransaction(database)
+    }
+
+    /// The same transactions leave the same bytes in the two versions, five
+    /// bytes apart: the data of a version 2 file starts at 32, of a version
+    /// 1 file at 37.
+    @Test func theTwoVersionsDifferByFiveBytes() {
+        let one = Self.golden(.one)
+        let two = Self.golden(.two)
+        #expect(one.base.count == two.base.count + 5)
+        #expect(one.final.count == two.final.count + 5)
+        #expect(one.writes == two.writes)
+        #expect(one.syncs == two.syncs)
     }
 
     /// A storage of each kind holding the two commits, behind a wrapper that
     /// can make its writes and syncs fail.
     private func populated(
-        _ kind: StorageKind
+        _ kind: StorageKind, _ version: FormatVersion
     ) throws -> (subject: StorageUnderTest, faulty: FaultInjectingStorage, database: Database) {
         let subject = try StorageUnderTest(kind)
         let faulty = FaultInjectingStorage(subject.storage)
         // The third commit ID is there twice: a transaction that fails after
         // drawing it must get the same one when it is run again.
-        let database = try Self.open(faulty, FixedRandom(Self.commitIDs + [Self.commitIDs[2]]))
+        let database = try Self.open(faulty, FixedRandom(Self.commitIDs + [Self.commitIDs[2]]), version)
         try Self.populate(database)
         return (subject, faulty, database)
     }
@@ -144,12 +179,12 @@ import Testing
     /// A write that fails, whichever one it is, leaves the storage exactly as
     /// it was after the last commit, and the same transaction then succeeds
     /// and leaves exactly what it would have left without the failure.
-    @Test(arguments: StorageKind.allCases)
-    func aFailureAtEachWriteLeavesTheLastCommit(kind: StorageKind) throws {
-        let golden = Self.golden
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func aFailureAtEachWriteLeavesTheLastCommit(kind: StorageKind, version: FormatVersion) throws {
+        let golden = Self.golden(version)
         try #require(golden.writes > 0)
         for failing in 1...golden.writes {
-            let (subject, faulty, database) = try populated(kind)
+            let (subject, faulty, database) = try populated(kind, version)
             faulty.faults = [.failWrite(faulty.writeCount + failing)]
             #expect(throws: FaultInjectingStorage.failure, "write \(failing)") { try Self.transaction(database) }
 
@@ -157,7 +192,7 @@ import Testing
             #expect(try stored(subject) == golden.base, "write \(failing)")
             try Self.expectLastCommit(database)
             // another database on the same storage sees the same
-            try Self.expectLastCommit(try Self.open(subject.storage, FixedRandom()))
+            try Self.expectLastCommit(try Self.open(subject.storage, FixedRandom(), version))
 
             faulty.faults = []
             try Self.transaction(database)
@@ -168,26 +203,22 @@ import Testing
     /// The same with writes that are cut short, as a full disk or a crash
     /// cuts them: one byte arrives and then the write fails.
     ///
-    /// The last write of a transaction is the root header's. Cut short after
-    /// one byte it has changed the first byte of the root slot cached there,
-    /// which nothing reads: the committed size after it is intact.
-    @Test(arguments: StorageKind.allCases)
-    func aWriteCutShortLeavesTheLastCommit(kind: StorageKind) throws {
-        let golden = Self.golden
+    /// The last write of a transaction is the root header's committed size.
+    /// Cut short after one byte it has written the size's first byte, the
+    /// most significant, which is zero in the old size and the new: the
+    /// size is intact, and so is every other byte.
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func aWriteCutShortLeavesTheLastCommit(kind: StorageKind, version: FormatVersion) throws {
+        let golden = Self.golden(version)
         try #require(golden.writes > 0)
         for failing in 1...golden.writes {
-            let (subject, faulty, database) = try populated(kind)
+            let (subject, faulty, database) = try populated(kind, version)
             faulty.faults = [.cutWriteShort(faulty.writeCount + failing, keeping: 1)]
             #expect(throws: FaultInjectingStorage.failure, "write \(failing)") { try Self.transaction(database) }
 
             #expect(try database.committedSize == UInt64(golden.base.count), "write \(failing)")
-            var bytes = try stored(subject)
-            if failing == golden.writes {
-                // the root header's cached slot
-                bytes.replaceSubrange(20..<29, with: golden.base[20..<29])
-            }
-            #expect(bytes == golden.base, "write \(failing)")
-            try Self.expectLastCommit(try Self.open(subject.storage, FixedRandom()))
+            #expect(try stored(subject) == golden.base, "write \(failing)")
+            try Self.expectLastCommit(try Self.open(subject.storage, FixedRandom(), version))
 
             faulty.faults = []
             try Self.transaction(database)
@@ -197,16 +228,16 @@ import Testing
 
     /// The first sync of a commit comes before the root header is rewritten.
     /// If it fails, the transaction fails and nothing is committed.
-    @Test(arguments: StorageKind.allCases)
-    func aFailedSyncBeforeTheRootHeaderFailsTheTransaction(kind: StorageKind) throws {
-        let golden = Self.golden
-        let (subject, faulty, database) = try populated(kind)
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func aFailedSyncBeforeTheRootHeaderFailsTheTransaction(kind: StorageKind, version: FormatVersion) throws {
+        let golden = Self.golden(version)
+        let (subject, faulty, database) = try populated(kind, version)
         faulty.faults = [.failSync(faulty.syncCount + 1)]
         #expect(throws: FaultInjectingStorage.failure) { try Self.transaction(database) }
 
         #expect(try database.committedSize == UInt64(golden.base.count))
         #expect(try stored(subject) == golden.base)
-        try Self.expectLastCommit(try Self.open(subject.storage, FixedRandom()))
+        try Self.expectLastCommit(try Self.open(subject.storage, FixedRandom(), version))
 
         faulty.faults = []
         try Self.transaction(database)
@@ -216,27 +247,28 @@ import Testing
     /// The second sync comes after the root header is rewritten. If it
     /// fails, the failure is reported, but the commit is already in the
     /// storage: what is not known is whether it would survive a power loss.
-    @Test(arguments: StorageKind.allCases)
-    func aFailedSyncAfterTheRootHeaderIsReportedAndTheCommitStands(kind: StorageKind) throws {
-        let golden = Self.golden
-        let (subject, faulty, database) = try populated(kind)
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func aFailedSyncAfterTheRootHeaderIsReportedAndTheCommitStands(kind: StorageKind, version: FormatVersion) throws {
+        let golden = Self.golden(version)
+        let (subject, faulty, database) = try populated(kind, version)
         faulty.faults = [.failSync(faulty.syncCount + 2)]
         #expect(throws: FaultInjectingStorage.failure) { try Self.transaction(database) }
 
         #expect(try database.committedSize == UInt64(golden.final.count))
         try Self.expectTransaction(database)
         #expect(firstDifference(try stored(subject), golden.final) == nil)
-        try Self.expectTransaction(try Self.open(subject.storage, FixedRandom()))
+        try Self.expectTransaction(try Self.open(subject.storage, FixedRandom(), version))
     }
 
     /// A process that dies in the middle of a transaction leaves its bytes
     /// after the committed size. Opening the file does not remove them, the
     /// database reads as of its last commit, and the next transaction
     /// discards them and goes on exactly as it would have without them.
-    @Test func bytesLeftByAProcessThatDiedAreDiscardedByTheNextTransaction() throws {
-        let golden = Self.golden
+    @Test(arguments: FormatVersion.allCases)
+    func bytesLeftByAProcessThatDiedAreDiscardedByTheNextTransaction(version: FormatVersion) throws {
+        let golden = Self.golden(version)
         let memory = MemoryStorage()
-        let database = try Self.open(memory, FixedRandom(Self.commitIDs))
+        let database = try Self.open(memory, FixedRandom(Self.commitIDs), version)
         try Self.populate(database)
 
         // the storage as it is in the middle of a transaction
@@ -255,7 +287,7 @@ import Testing
         #expect(Array(midTransaction[..<golden.base.count]) == golden.base)
 
         let storage = MemoryStorage(bytes: midTransaction)
-        let reopened = try Self.open(storage, FixedRandom([Self.commitIDs[2]]))
+        let reopened = try Self.open(storage, FixedRandom([Self.commitIDs[2]]), version)
         #expect(try reopened.committedSize == UInt64(golden.base.count))
         try Self.expectLastCommit(reopened)
         // opening and reading remove nothing
@@ -274,15 +306,16 @@ import Testing
     /// transaction would have left. (Zig refuses the file and offers no
     /// recovery.) The database that made the torn write keeps reporting
     /// its root header as it is.
-    @Test func aRootHeaderTornInsideItsSizeIsNoticed() throws {
-        let golden = Self.golden
+    @Test(arguments: FormatVersion.allCases)
+    func aRootHeaderTornInsideItsSizeIsNoticed(version: FormatVersion) throws {
+        let golden = Self.golden(version)
         let memory = MemoryStorage()
         let faulty = FaultInjectingStorage(memory)
-        let database = try Self.open(faulty, FixedRandom(Self.commitIDs))
+        let database = try Self.open(faulty, FixedRandom(Self.commitIDs), version)
         try Self.populate(database)
 
-        // sixteen of the root header's seventeen bytes arrive
-        faulty.faults = [.cutWriteShort(faulty.writeCount + golden.writes, keeping: 16)]
+        // seven of the committed size's eight bytes arrive
+        faulty.faults = [.cutWriteShort(faulty.writeCount + golden.writes, keeping: 7)]
         #expect(throws: FaultInjectingStorage.failure) { try Self.transaction(database) }
 
         let oldSize = UInt64(golden.base.count)
@@ -290,8 +323,12 @@ import Testing
         let tornSize = (newSize & ~0xFF) | (oldSize & 0xFF)
         try #require(tornSize != oldSize && tornSize != newSize, "the two sizes must differ above their last byte")
 
-        #expect(Array(memory.bytes[29..<37]) == bigEndianBytes(tornSize))
-        #expect(throws: XitDBError.untrustedRootHeader(lastVerified: newSize)) { try Self.open(memory, FixedRandom()) }
+        let sizePosition = Int(database.header.fileSizePosition)
+        #expect(sizePosition == (version == .one ? 29 : 24))
+        #expect(Array(memory.bytes[sizePosition..<(sizePosition + 8)]) == bigEndianBytes(tornSize))
+        #expect(throws: XitDBError.untrustedRootHeader(lastVerified: newSize)) {
+            try Database(opening: memory, hashSize: 20)
+        }
         #expect(throws: tornSize > newSize ? XitDBError.truncatedDatabase : .invalidDatabase) {
             try database.committedSize
         }

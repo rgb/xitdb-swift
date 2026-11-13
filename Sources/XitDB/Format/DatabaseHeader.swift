@@ -100,7 +100,9 @@ public struct DatabaseHeader: Hashable, Sendable {
     /// The size in bytes of every hash in the database.
     public let hashSize: UInt16
 
-    /// The version of the file format the database was written with.
+    /// The version of the file format the database was written with: 1 or
+    /// 2. A database keeps the version it was created with; a new one is
+    /// created at version 2.
     public let version: UInt16
 }
 
@@ -108,8 +110,43 @@ extension DatabaseHeader {
     /// The size of the header on disk.
     static let byteCount: UInt64 = 20
 
-    /// The file format version this implementation reads and writes.
-    static let currentVersion: UInt16 = 1
+    /// The file format version a new database is created with.
+    ///
+    /// Version 1 is read and written as well, and a version 1 file stays
+    /// one: nothing creates it and nothing converts it. The two differ in
+    /// the root header alone, which is where ``fileSizePosition`` and
+    /// ``dataStart`` come in.
+    static let currentVersion: UInt16 = 2
+
+    /// Whether this implementation reads and writes a format version.
+    static func supports(version: UInt16) -> Bool {
+        version == 1 || version == currentVersion
+    }
+
+    /// Where the root header's committed size is, which the version
+    /// decides.
+    ///
+    /// Version 1 keeps a copy of the root slot between the database header
+    /// and the size, which puts the size at 29. Nothing reads that copy and
+    /// nothing updates it any more. Version 2 has four bytes of padding
+    /// there instead, so that the size starts at a multiple of eight bytes,
+    /// 24, where a reader in another process cannot see it half written.
+    var fileSizePosition: UInt64 {
+        version == 1 ? RootHeader.position + Slot.byteCount : 24
+    }
+
+    /// Where the root header ends and the committed data begins: the
+    /// position of the first commit's trailer, 37 in version 1 and 32 in
+    /// version 2.
+    var dataStart: UInt64 {
+        fileSizePosition + 8
+    }
+
+    /// The size of the smallest database that holds a commit, which is a
+    /// new one: both headers and one trailer.
+    var minimumFileSize: UInt64 {
+        dataStart + RootTrailer.byteCount
+    }
 
     /// The three bytes every database starts with: `"xit"`.
     static let magic: InlineArray<3, UInt8> = [0x78, 0x69, 0x74]
@@ -128,14 +165,14 @@ extension DatabaseHeader {
     ///
     /// - Throws: `endOfStream` if fewer than twenty bytes are available,
     ///   `invalidDatabase` if the magic bytes are wrong, or `invalidVersion`
-    ///   if the version is not ``currentVersion``.
+    ///   if the version is neither 1 nor ``currentVersion``.
     init(decoding bytes: Span<UInt8>, at offset: Int = 0) throws(XitDBError) {
         try bytes.requireBytes(20, at: offset)
         for index in Self.magic.indices where bytes[offset + index] != Self.magic[index] {
             throw .invalidDatabase
         }
         let version: UInt16 = bytes.bigEndian(at: offset + 4)
-        guard version == Self.currentVersion else { throw .invalidVersion }
+        guard Self.supports(version: version) else { throw .invalidVersion }
         self.version = version
         self.hashSize = bytes.bigEndian(at: offset + 6)
         self.hashID = HashID(rawValue: bytes.bigEndian(at: offset + 8))

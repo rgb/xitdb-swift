@@ -63,6 +63,11 @@ final class DatabaseReader {
     /// The file ID, which the trailers' checksums cover.
     var fileID: UInt64 { identity.header.fileID }
 
+    /// The database's header as it is now: a replication from zero
+    /// replaces it, and with it the format's version, which decides where
+    /// the root header's committed size and the first committed byte are.
+    var header: DatabaseHeader { identity.header }
+
     init(
         storage: BuiltInStorage, identity: DatabaseIdentity, pinnedRoot: RootHeader? = nil,
         pinnedCommitRoot: Slot? = nil
@@ -158,10 +163,11 @@ final class DatabaseReader {
     /// The committed size from the root header, and the root slot from the
     /// trailer that ends there.
     ///
-    /// Only the size is read from the root header. The root slot beside it
-    /// is a cache that a concurrent commit may be halfway through
-    /// rewriting, so it is never looked at. A snapshot's reader has its
-    /// commit pinned and reads nothing here.
+    /// Only the size is read from the root header, at the position the
+    /// file's format version gives it. The copy of the root slot that a
+    /// version 1 file keeps before it is never looked at: nothing updates
+    /// it. A snapshot's reader has its commit pinned and reads nothing
+    /// here.
     ///
     /// - Throws: `invalidDatabase` if the size is too small to hold a
     ///   database or the trailer's checksum does not match,
@@ -169,8 +175,9 @@ final class DatabaseReader {
     ///   `endOfStream` if the storage ends inside the root header.
     func rootHeader() throws(XitDBError) -> RootHeader {
         if let pinnedRoot { return pinnedRoot }
-        let fileSize = try uint64(at: RootHeader.fileSizePosition)
-        if fileSize < RootHeader.minimumFileSize { throw .invalidDatabase }
+        let header = identity.header
+        let fileSize = try uint64(at: header.fileSizePosition)
+        if fileSize < header.minimumFileSize { throw .invalidDatabase }
         if try storage.length < fileSize { throw .truncatedDatabase }
         // The committed bytes must end with a trailer.
         return RootHeader(root: try rootTrailer(endingAt: fileSize).root, fileSize: fileSize)

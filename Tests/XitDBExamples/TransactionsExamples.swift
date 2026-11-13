@@ -34,8 +34,8 @@ import XitDB
         }
 
         // The numbers the article quotes.
-        #expect(try separately.committedSize == 696)
-        #expect(try grouped.committedSize == 340)
+        #expect(try separately.committedSize == 691)
+        #expect(try grouped.committedSize == 335)
     }
 
     @Test func aThrowingBodyLeavesTheDatabaseAsItWas() throws {
@@ -191,7 +191,7 @@ import XitDB
         } catch XitDBError.poisonedTransaction {
             // Nothing of the transaction stays, the small value included.
         }
-        #expect(try small.committedSize == 62)
+        #expect(try small.committedSize == 57)
         #expect(try small.rootCursor.slot.isEmpty)
     }
 
@@ -275,7 +275,7 @@ import XitDB
                 path: scratch.path("level-\(number).db"), access: .create, durability: level)
             let database = try Database(creating: storage, hashSize: 32)
             try HashMap<ReadWrite>(database.rootCursor).put(.uint(1), forHash: sha256("a"))
-            #expect(try database.committedSize > 62)
+            #expect(try database.committedSize > 57)
         }
 
         let storage = try BufferedFileStorage(

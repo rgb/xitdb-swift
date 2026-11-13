@@ -70,8 +70,11 @@ extension Database {
     ///
     /// An empty storage gets a new database with this one's hash size, the
     /// hash ID given or else this one's, and the file ID given or else a
-    /// random one. A storage that holds a database already keeps that
-    /// database's file ID and hash ID, and must have an empty root.
+    /// random one. It is created as any new database is, at format version
+    /// 2, whatever this database's version is: compacting a version 1
+    /// database gives a version 2 one. A storage that holds a database
+    /// already keeps that database's file ID, hash ID and version, and must
+    /// have an empty root.
     ///
     /// The target draws from this database's source of randomness, as the
     /// original's target draws from its source's: its file ID, when none

@@ -129,10 +129,10 @@ extension Database {
     ///
     /// `start` is usually from ``replicationStart(for:)``, and `end` cannot
     /// be past ``committedSize``. Committed bytes never change except for
-    /// the root header, so from 0 a root header that matches `end` is
-    /// written in place of the file's, which makes the bytes a complete
-    /// database by themselves. From anywhere else the bytes are sent as
-    /// they are.
+    /// the root header's committed size, so from 0 a committed size that
+    /// matches `end` is written in place of the file's, which makes the
+    /// bytes a complete database by themselves, of the format version this
+    /// database has. From anywhere else the bytes are sent as they are.
     ///
     /// - Throws: ``XitDBError/invalidRange`` if `start` is past `end`, `end`
     ///   past the committed size, or `start` inside the root header;
@@ -145,12 +145,13 @@ extension Database {
     {
         try checkRange(from: start, to: end)
         if start == 0 {
-            let trailer = try reader.rootTrailer(endingAt: end)
-            try stream(from: 0, to: RootHeader.position, into: &sink)
-            let rootHeader = RootHeader(root: trailer.root, fileSize: end)
-            let bytes = InlineArray<17, UInt8> { (output: inout OutputSpan<UInt8>) in rootHeader.encode(into: &output) }
+            // the bytes must end with a trailer
+            _ = try reader.rootTrailer(endingAt: end)
+            let header = self.header
+            try stream(from: 0, to: header.fileSizePosition, into: &sink)
+            let bytes = InlineArray<8, UInt8> { (output: inout OutputSpan<UInt8>) in output.appendBigEndian(end) }
             try XitDBError.carrying { try sink.write(bytes.span) }
-            try stream(from: RootHeader.endPosition, to: end, into: &sink)
+            try stream(from: header.dataStart, to: end, into: &sink)
         } else {
             try stream(from: start, to: end, into: &sink)
         }
@@ -164,19 +165,18 @@ extension Database {
     /// - Throws: What ``readCommitted(from:to:into:)-(_,_,Sink)`` throws.
     public func readCommitted(from start: UInt64, to end: UInt64, into bytes: inout [UInt8]) throws(XitDBError) {
         try checkRange(from: start, to: end)
-        let trailer = start == 0 ? try reader.rootTrailer(endingAt: end) : nil
+        // the bytes must end with a trailer
+        if start == 0 { _ = try reader.rootTrailer(endingAt: end) }
 
         let first = bytes.count
         bytes.append(contentsOf: repeatElement(0, count: Int(end - start)))
         var span = bytes.mutableSpan
         let read = try storage.read(into: &span, range: first..<(first + Int(end - start)), at: start)
         guard read == Int(end - start) else { throw .endOfStream }
-        if let trailer {
-            // the root header that matches `end`, in place of the file's
-            let rootHeader = RootHeader(root: trailer.root, fileSize: end)
-            let header = InlineArray<17, UInt8> { (output: inout OutputSpan<UInt8>) in rootHeader.encode(into: &output)
-            }
-            span.copyBytes(from: header.span, count: 17, to: first + Int(RootHeader.position))
+        if start == 0 {
+            // the committed size that matches `end`, in place of the file's
+            let size = InlineArray<8, UInt8> { (output: inout OutputSpan<UInt8>) in output.appendBigEndian(end) }
+            span.copyBytes(from: size.span, count: 8, to: first + Int(header.fileSizePosition))
         }
     }
 
@@ -189,7 +189,7 @@ extension Database {
     private func checkRange(from start: UInt64, to end: UInt64) throws(XitDBError) {
         if start > end { throw .invalidRange }
         if end > (try reader.committedSize) { throw .invalidRange }
-        if start > 0 && start < RootHeader.endPosition { throw .invalidRange }
+        if start > 0 && start < header.dataStart { throw .invalidRange }
     }
 
     /// The committed bytes from `start` up to `end`, in memory.
@@ -307,9 +307,9 @@ extension Database {
         } else if count > 0 {
             // the bytes must end with a trailer. update the root header to
             // match it.
-            let trailer = try reader.rootTrailer(endingAt: try start.offset(by: count))
+            _ = try reader.rootTrailer(endingAt: try start.offset(by: count))
             try storage.sync(.beforeRootHeader)
-            try writeRootHeader(trailer.root)
+            try writeRootHeader()
             try storage.sync(.afterRootHeader)
         }
     }
@@ -334,13 +334,5 @@ extension Database {
             try XitDBError.carrying { try sink.write(buffer.span.extracting(0..<chunk)) }
             position += UInt64(chunk)
         }
-    }
-
-    /// Points the root header at `root`, which must be in the trailer that
-    /// ends the storage: Zig's `writeRootHeader`.
-    private func writeRootHeader(_ root: Slot) throws(XitDBError) {
-        let rootHeader = RootHeader(root: root, fileSize: try storage.length)
-        let bytes = InlineArray<17, UInt8> { (output: inout OutputSpan<UInt8>) in rootHeader.encode(into: &output) }
-        try storage.write(bytes.span, at: RootHeader.position)
     }
 }

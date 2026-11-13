@@ -1,48 +1,21 @@
-/// The record that follows the database header and is rewritten at every
-/// commit. It is the only region of the file that ever changes.
+/// What the root header says: the size of the committed bytes, with the root
+/// slot from the trailer that ends them.
 ///
-/// It caches the latest trailer. Readers take only `fileSize` from it and
-/// read the root slot from the trailer that ends there, so that a root header
-/// torn by a concurrent commit cannot mislead them.
+/// On disk the root header follows the database header and holds the
+/// committed size alone, at the position the format's version decides
+/// (``DatabaseHeader/fileSizePosition``). A commit rewrites those eight
+/// bytes, and they are the only bytes of a file that ever change. The root
+/// slot is never read from there: it comes from the trailer that ends at
+/// the size, which no commit rewrites, so that a root header a concurrent
+/// commit is halfway through writing cannot mislead a reader.
 struct RootHeader: Sendable, Equatable {
     var root: Slot
     var fileSize: UInt64
 
-    /// The size of the root header on disk.
-    static let byteCount: UInt64 = 17
-
     /// Where the root header starts: directly after the database header.
+    /// It is also the position a cursor at the root of a database has,
+    /// which names no slot in the file.
     static let position: UInt64 = DatabaseHeader.byteCount
-
-    /// Where the `fileSize` field starts.
-    static let fileSizePosition: UInt64 = position + Slot.byteCount
-
-    /// Where the root header ends and appended data begins.
-    static let endPosition: UInt64 = position + byteCount
-
-    /// The size of the smallest valid database: both headers and one trailer.
-    static let minimumFileSize: UInt64 = endPosition + RootTrailer.byteCount
-
-    /// Decodes the root header that starts at `offset`.
-    ///
-    /// - Throws: `endOfStream` if fewer than seventeen bytes are available,
-    ///   or `invalidEnumTag` if the root slot's tag is unknown.
-    init(decoding bytes: Span<UInt8>, at offset: Int = 0) throws(XitDBError) {
-        try bytes.requireBytes(17, at: offset)
-        self.root = try Slot(decoding: bytes, at: offset)
-        self.fileSize = bytes.bigEndian(at: offset + 9)
-    }
-
-    init(root: Slot, fileSize: UInt64) {
-        self.root = root
-        self.fileSize = fileSize
-    }
-
-    /// Appends the root header's seventeen bytes.
-    func encode(into output: inout OutputSpan<UInt8>) {
-        root.encode(into: &output)
-        output.appendBigEndian(fileSize)
-    }
 }
 
 /// The record appended at the end of every transaction. The committed bytes

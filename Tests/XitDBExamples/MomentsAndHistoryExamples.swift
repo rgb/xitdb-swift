@@ -114,7 +114,7 @@ import XitDB
     @Test func changingOneValue() throws {
         let storage = MemoryStorage()
         let database = try Database(creating: storage, hashSize: 32)
-        #expect(try database.committedSize == 62)
+        #expect(try database.committedSize == 57)
 
         let history = try ArrayList<ReadWrite>(database.rootCursor)
         try history.append(.slot(try history.slot(at: -1))) { cursor in

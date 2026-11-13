@@ -189,10 +189,12 @@ final class SnapshotProof {
         }
     }
 
-    /// Zeroes the root header, which every commit rewrites.
+    /// Zeroes the root header's committed size, which every commit
+    /// rewrites, where the file's own format version keeps it.
     private func mask(_ bytes: inout [UInt8]) {
-        let start = Int(RootHeader.position)
-        let end = min(Int(RootHeader.endPosition), bytes.count)
+        guard let header = try? DatabaseHeader(decoding: bytes.span) else { return }
+        let start = Int(header.fileSizePosition)
+        let end = min(Int(header.dataStart), bytes.count)
         guard start < end else { return }
         for index in start..<end {
             bytes[index] = 0

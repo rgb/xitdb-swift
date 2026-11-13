@@ -66,6 +66,47 @@ func fixtureFile(_ relativePath: String) throws -> [UInt8] {
     return [UInt8](try Data(contentsOf: folder.appendingPathComponent(relativePath)))
 }
 
+/// The two versions of the file format, for tests that run on a database of
+/// each.
+enum FormatVersion: UInt16, CaseIterable, CustomTestStringConvertible {
+    case one = 1
+    case two = 2
+
+    var testDescription: String { "version \(rawValue)" }
+}
+
+/// The file ID of the databases ``newDatabase(_:in:random:)`` makes.
+let newDatabaseFileID: UInt64 = 0x10
+
+/// A new database of version 1, as the original made it at `6b93af1`: a
+/// file of the conformance fixtures, sixty-two bytes, with hash size 20,
+/// the hash ID "sha1" and the file ID 0x10. Nothing creates version 1 any
+/// more, in the original or here, so a test that needs a version 1
+/// database starts from these bytes.
+func newVersionOneDatabaseBytes() throws -> [UInt8] {
+    try fixtureFile("valid/compact-roots--port.s_empty.db")
+}
+
+/// A new, empty database of hash size 20 in an empty storage, of either
+/// format version: version 2 is created, and version 1 is the fixture's
+/// bytes, opened. Both have the file ID 0x10 and the hash ID "sha1", so
+/// that the two differ in the version alone, and neither draws from
+/// `random` before its first transaction.
+func newDatabase(
+    _ version: FormatVersion, in storage: any WritableStorage,
+    random: any RandomNumberGenerator = SystemRandomNumberGenerator()
+) throws -> Database {
+    switch version {
+    case .one:
+        let bytes = try newVersionOneDatabaseBytes()
+        try storage.write(bytes.span, at: 0)
+        return try Database(opening: storage, hashSize: 20, random: random)
+    case .two:
+        return try Database(
+            creating: storage, hashSize: 20, hashID: "sha1", fileID: newDatabaseFileID, random: random)
+    }
+}
+
 /// The contents of a script in the copied `port-differs` folder of the
 /// conformance repository.
 func portDifferenceFile(_ name: String) throws -> [UInt8] {

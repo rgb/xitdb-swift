@@ -122,10 +122,11 @@ extension Database {
         case .memory(let memory):
             readHalf = SnapshotStorage(bytes: memory.bytes, committedSize: pinned.fileSize)
         case .file(let file):
-            let source = file.snapshotSource(upTo: pinned.fileSize)
+            let source = file.snapshotSource(upTo: pinned.fileSize, committedSizeAt: header.fileSizePosition)
             readHalf = SnapshotStorage(file: source.descriptor, fence: source.fence, committedSize: pinned.fileSize)
         case .bufferedFile(let buffered):
-            let source = buffered.file.snapshotSource(upTo: pinned.fileSize)
+            let source = buffered.file.snapshotSource(
+                upTo: pinned.fileSize, committedSizeAt: header.fileSizePosition)
             readHalf = SnapshotStorage(file: source.descriptor, fence: source.fence, committedSize: pinned.fileSize)
         case .custom(let custom):
             readHalf = SnapshotStorage(

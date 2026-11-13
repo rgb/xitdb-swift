@@ -24,7 +24,7 @@ import XitDB
         // Cut short: it says it has more than it has, so its root header cannot
         // be trusted; the error names the end of the last commit that verifies,
         // and `Database.recover(_:)` cuts the file back to it.
-        #expect(throws: XitDBError.untrustedRootHeader(lastVerified: 240)) {
+        #expect(throws: XitDBError.untrustedRootHeader(lastVerified: 235)) {
             try Database(opening: MemoryStorage(bytes: Array(good[..<(good.count - 1)])))
         }
         // Long enough for a header and too short for the root header after it.
@@ -110,7 +110,7 @@ import XitDB
         #expect(try open(MemoryStorage()) == nil)
         #expect(try open(MemoryStorage(bytes: [1, 2, 3])) == nil)
         #expect(try open(MemoryStorage(bytes: try newDatabaseBytes())) != nil)
-        #expect(throws: XitDBError.untrustedRootHeader(lastVerified: 240)) {
+        #expect(throws: XitDBError.untrustedRootHeader(lastVerified: 235)) {
             try open(MemoryStorage(bytes: Array(try newDatabaseBytes().dropLast())))
         }
     }

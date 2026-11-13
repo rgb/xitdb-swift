@@ -132,7 +132,7 @@ public final class Database {
         try self.init(opening: storage, hashSize: hashSize, random: RandomSource(SystemRandomNumberGenerator()))
     }
 
-    /// Creates a database in an empty storage.
+    /// Creates a database in an empty storage, at format version 2.
     ///
     /// - Parameters:
     ///   - storage: Where the database's bytes go. It must be empty, and
@@ -260,10 +260,9 @@ public final class Database {
             header.encode(into: &output)
         }
         try storage.write(headerBytes.span, at: 0)
-        // The root header, and a commit of an empty root, so that the
-        // file ends with a trailer as it does after any transaction.
-        let emptyRootHeader = InlineArray<17, UInt8>(repeating: 0)
-        try storage.write(emptyRootHeader.span, at: RootHeader.position)
+        // The root header, empty, and a commit of an empty root, so that
+        // the file ends with a trailer as it does after any transaction.
+        try writeEmptyRootHeader()
         // The first commit's ID is zero, so a new database's bytes
         // depend only on its header.
         try commitRoot(Slot(), commitID: 0)
@@ -437,7 +436,7 @@ public final class Database {
     /// position inside the file's headers is not frozen data but a damaged
     /// pointer, which the reads that follow report as a damaged file.
     func checkPosition(_ position: UInt64) throws(XitDBError) {
-        guard let start = transactionStart, position >= RootHeader.endPosition else { return }
+        guard let start = transactionStart, position >= header.dataStart else { return }
         if position < start, position != bodyPosition { throw .immutableBytes }
     }
 
@@ -457,6 +456,30 @@ public final class Database {
         random.next()
     }
 
+    /// Writes the root header of a database that has no commit yet: zeros
+    /// from the end of the database header to where the data starts, as
+    /// many as the format's version has there. The committed size among
+    /// them is zero until the first commit, or a full copy, has finished.
+    func writeEmptyRootHeader() throws(XitDBError) {
+        // Version 1's root header is the longest: seventeen bytes.
+        let zeros = InlineArray<17, UInt8>(repeating: 0)
+        let count = Int(header.dataStart - RootHeader.position)
+        try storage.write(zeros.span.extracting(0..<count), at: RootHeader.position)
+    }
+
+    /// Points the root header at the trailer that ends the storage, by
+    /// writing the storage's length as the committed size: Zig's
+    /// `writeRootHeader`. Those eight bytes are all a commit rewrites; in a
+    /// version 1 file the copy of the root slot before them is left as it
+    /// is.
+    func writeRootHeader() throws(XitDBError) {
+        let fileSize = try storage.length
+        let bytes = InlineArray<8, UInt8> { (output: inout OutputSpan<UInt8>) in
+            output.appendBigEndian(fileSize)
+        }
+        try storage.write(bytes.span, at: header.fileSizePosition)
+    }
+
     /// Completes a transaction by appending a trailer for `root` and
     /// rewriting the root header to point at it. The caller syncs afterwards
     /// to make the header itself durable.
@@ -474,11 +497,7 @@ public final class Database {
         // that points at data which never arrived.
         try storage.sync(.beforeRootHeader)
 
-        let rootHeader = RootHeader(root: root, fileSize: try storage.length)
-        let rootHeaderBytes = InlineArray<17, UInt8> { (output: inout OutputSpan<UInt8>) in
-            rootHeader.encode(into: &output)
-        }
-        try storage.write(rootHeaderBytes.span, at: RootHeader.position)
+        try writeRootHeader()
         noteWrite()
         commitCount &+= 1
     }

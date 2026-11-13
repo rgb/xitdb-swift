@@ -141,9 +141,15 @@ public final class FileStorage: WritableStorage {
     let descriptor: FileDescriptor
 
     /// The largest committed size that a snapshot of this storage reads up
-    /// to. A write below it outside the root header, or a truncation below
-    /// it, trips the fence first.
+    /// to. A write below it outside the root header's committed size, or a
+    /// truncation below it, trips the fence first.
     private(set) var pinnedSize: UInt64 = 0
+
+    /// Where the root header's committed size is in the file the snapshots
+    /// taken so far read: the eight bytes a commit rewrites, which no
+    /// snapshot reads from the file. The format's version decides it, so
+    /// the database that takes a snapshot says where it is.
+    private var committedSizePosition: UInt64 = 0
 
     /// The fence the snapshots taken so far check; replaced once tripped.
     private(set) var fence = SnapshotFence()
@@ -199,10 +205,18 @@ public final class FileStorage: WritableStorage {
 
     /// What a snapshot of the file's first `size` bytes reads through: the
     /// storage's descriptor and the fence it checks. From now on the storage
-    /// trips that fence before it changes any of those bytes outside the
-    /// root header, or cuts the file below them.
-    func snapshotSource(upTo size: UInt64) -> (descriptor: FileDescriptor, fence: SnapshotFence) {
+    /// trips that fence before it changes any of those bytes other than the
+    /// root header's committed size, or cuts the file below them.
+    ///
+    /// - Parameter position: Where the root header's committed size is in
+    ///   this file, which is the same for every snapshot of one file: a
+    ///   file changes its format version only by being replaced, which
+    ///   trips the fence.
+    func snapshotSource(upTo size: UInt64, committedSizeAt position: UInt64) -> (
+        descriptor: FileDescriptor, fence: SnapshotFence
+    ) {
         pinnedSize = max(pinnedSize, size)
+        committedSizePosition = position
         return (descriptor, fence)
     }
 
@@ -216,12 +230,13 @@ public final class FileStorage: WritableStorage {
     }
 
     /// Whether a write of `count` bytes at `offset` changes bytes a
-    /// snapshot reads: any below the pinned size except the root header,
-    /// which every commit rewrites and no snapshot reads from the file.
+    /// snapshot reads: any below the pinned size except the root header's
+    /// committed size, which every commit rewrites and no snapshot reads
+    /// from the file.
     private func overwritesSnapshot(_ count: Int, at offset: UInt64) -> Bool {
         guard offset < pinnedSize else { return false }
         let end = offset &+ UInt64(count)
-        return offset < RootHeader.position || end > RootHeader.endPosition
+        return offset < committedSizePosition || end > committedSizePosition + 8
     }
 
     /// Reads the bytes of the file that start at `offset` into a part of

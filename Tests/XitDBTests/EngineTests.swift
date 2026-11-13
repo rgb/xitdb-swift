@@ -20,26 +20,28 @@ import Testing
         try subject.storage.flush()
         let bytes = try subject.stored()
 
-        #expect(bytes.count == 62)
+        // test.zig at 89da8e7, in testReplication: 57 bytes, the file ID at
+        // 12, and the trailer of the first commit from 32
+        #expect(bytes.count == 57)
         #expect(Array(bytes[12..<20]) == [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])
         #expect(
-            Array(bytes[37...]) == [
+            Array(bytes[32...]) == [
                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0xd6, 0x18, 0x4e, 0x46, 0xb4, 0x7d, 0x29,
-                0x26,
+                0x00, 0x95, 0xd4, 0x94, 0xc3, 0x4d, 0xf8, 0x07,
+                0xe5,
             ]
         )
-        // the rest: magic, padding, version 1, hash size 20, no hash ID, and
-        // a root header with an empty root and the committed size 62
-        #expect(Array(bytes[..<12]) == [0x78, 0x69, 0x74, 0x00, 0x00, 0x01, 0x00, 0x14, 0, 0, 0, 0])
-        #expect(Array(bytes[20..<37]) == zeros(9) + [0, 0, 0, 0, 0, 0, 0, 62])
+        // the rest: magic, padding, version 2, hash size 20, no hash ID, and
+        // a root header of four bytes of padding and the committed size 57
+        #expect(Array(bytes[..<12]) == [0x78, 0x69, 0x74, 0x00, 0x00, 0x02, 0x00, 0x14, 0, 0, 0, 0])
+        #expect(Array(bytes[20..<32]) == zeros(4) + [0, 0, 0, 0, 0, 0, 0, 57])
 
-        #expect(database.header.version == 1)
+        #expect(database.header.version == 2)
         #expect(database.header.hashSize == 20)
         #expect(database.header.hashID == HashID(rawValue: 0))
         #expect(database.header.fileID == 0x0102_0304_0506_0708)
-        #expect(try database.committedSize == 62)
+        #expect(try database.committedSize == 57)
         #expect(try database.rootCursor.slot.isEmpty)
         #expect(try database.rootCursor.count == 0)
     }
@@ -76,7 +78,7 @@ import Testing
         #expect(reopened.header.hashID == "sha2")
         #expect(try Database(opening: storage, hashSize: 32).header.hashSize == 32)
         #expect(throws: XitDBError.invalidHashSize) { try Database(opening: storage, hashSize: 20) }
-        #expect(storage.bytes.count == 62)
+        #expect(storage.bytes.count == 57)
         // creating never opens: a storage with bytes is refused, whatever
         // they are, and so is a hash size the header cannot hold
         #expect(throws: XitDBError.storageNotEmpty) { try Database(creating: storage, hashSize: 32) }
@@ -92,7 +94,7 @@ import Testing
         let ignored = try Database(storage: storage, hashSize: nil, hashID: HashID(rawValue: 1), fileID: 2)
         #expect(ignored.header.hashID == reopened.header.hashID)
         #expect(ignored.header.fileID == reopened.header.fileID)
-        #expect(storage.bytes.count == 62)
+        #expect(storage.bytes.count == 57)
     }
 
     @Test func aStorageThatIsNotADatabaseIsRejected() throws {
@@ -114,7 +116,7 @@ import Testing
         }
         // a trailer that does not check out: the same
         var corrupt = good.bytes
-        corrupt[61] ^= 0x01
+        corrupt[corrupt.count - 1] ^= 0x01
         #expect(throws: XitDBError.invalidDatabase) { try Database(opening: MemoryStorage(bytes: corrupt)) }
     }
 }
@@ -547,10 +549,12 @@ import Testing
             }
         }
         // the root header was not written to
-        #expect(Array(damaged.bytes[20..<29]) != slotBytes(Slot(value: 9, tag: .uint)))
-        // and a read there just reads the root again
+        #expect(Array(damaged.bytes[..<32]) == Array(bytes[..<32]))
+        // and a read there finds no element: the root header of a version 2
+        // file holds no slot, and the nine bytes at its start, padding and
+        // the first bytes of the committed size, read as an empty one
         let list = try #require(try reopened.rootCursor.readPath([.hashMapGet(.value, sha1("list"))]))
-        #expect(try list.readPath([.arrayListGet(0)]) != nil)
+        #expect(try list.readPath([.arrayListGet(0)]) == nil)
     }
 
     /// A hash trie works to the full depth its hash allows: 128 levels for
@@ -659,18 +663,19 @@ import Testing
         let storage = MemoryStorage()
         _ = try makeDatabase(storage)
         var bytes = storage.bytes
-        try #require(bytes.count == 62)
+        try #require(bytes.count == 57)
 
-        // A size of 60 puts the trailer at 35, over the last two bytes of
-        // the size itself. Those read as the tag of an empty slot and the
-        // first byte of its value, so a checksum can be made to fit.
-        bytes.replaceSubrange(29..<37, with: bigEndianBytes(60))
+        // A size of 55 puts the trailer at 30, over the last two bytes of
+        // the size itself, which is at 24 in a version 2 file. Those read
+        // as the tag of an empty slot and the first byte of its value, so a
+        // checksum can be made to fit.
+        bytes.replaceSubrange(24..<32, with: bigEndianBytes(55))
         var crc = CRC64XZ()
         crc.updateBigEndian(3 as UInt64)
-        crc.updateBigEndian(35 as UInt64)
-        crc.update(bytes.span, at: 35, count: 17)
-        bytes.replaceSubrange(52..<60, with: bigEndianBytes(crc.checksum))
-        let trailer = try RootTrailer(decoding: bytes.span, at: 35, fileID: 3, position: 35)
+        crc.updateBigEndian(30 as UInt64)
+        crc.update(bytes.span, at: 30, count: 17)
+        bytes.replaceSubrange(47..<55, with: bigEndianBytes(crc.checksum))
+        let trailer = try RootTrailer(decoding: bytes.span, at: 30, fileID: 3, position: 30)
         #expect(trailer.root.tag == .none)
 
         #expect(throws: XitDBError.invalidDatabase) {
@@ -923,7 +928,7 @@ import Testing
         // on an empty root
         try database.withTransaction { _ in }
         #expect(try database.rootCursor.slot.isEmpty)
-        #expect(try database.committedSize == 62 + 9 + 25)
+        #expect(try database.committedSize == 57 + 9 + 25)
 
         // on a root that is a plain value
         var root = database.rootCursor

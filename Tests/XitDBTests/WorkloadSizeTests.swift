@@ -20,6 +20,12 @@ import Testing
 /// session's benchmark. The plain-file sizes of the four other workloads
 /// are the ones `director/spec/benchmarks.md` records from the Zig
 /// benchmark, which the Swift benchmark reproduces.
+///
+/// Those runs were at `6b93af1`, which wrote version 1. A database is now
+/// created as version 2, whose root header is five bytes shorter and whose
+/// records are otherwise the same, so every size here is the measured one
+/// less five. They have not been measured again on the original at
+/// `89da8e7`.
 @Suite struct WorkloadSizeTests {
     private func makeDatabase(_ storage: any WritableStorage) throws -> Database {
         try Database(
@@ -39,7 +45,7 @@ import Testing
         try #require(try database.rootCursor.readPath([.arrayListGet(-1)]))
     }
 
-    @Test(arguments: [(1, 438), (17, 1478), (300, 26344), (1000, 92112)], StorageKind.allCases)
+    @Test(arguments: [(1, 433), (17, 1473), (300, 26339), (1000, 92107)], StorageKind.allCases)
     func mapInsert(workload: (count: Int, size: UInt64), kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let database = try makeDatabase(subject.storage)
@@ -57,7 +63,7 @@ import Testing
         }
     }
 
-    @Test(arguments: [(1, 416), (17, 704), (300, 3440), (5000, 48656)], StorageKind.allCases)
+    @Test(arguments: [(1, 411), (17, 699), (300, 3435), (5000, 48651)], StorageKind.allCases)
     func listAppend(workload: (count: Int, size: UInt64), kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let database = try makeDatabase(subject.storage)
@@ -75,7 +81,7 @@ import Testing
         }
     }
 
-    @Test(arguments: [(1, 1068), (30, 72722)], StorageKind.allCases)
+    @Test(arguments: [(1, 1063), (30, 72717)], StorageKind.allCases)
     func mapTransactions(workload: (count: Int, size: UInt64), kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let database = try makeDatabase(subject.storage)
@@ -110,7 +116,7 @@ import Testing
                 _ = try cursor.writePath([.linkedArrayListAppend, .write(.uint(UInt64(index)))])
             }
         }
-        #expect(try subject.storage.length == 231_398)
+        #expect(try subject.storage.length == 231_393)
 
         let list = try LinkedArrayList(try lastMoment(database))
         #expect(try list.count == UInt64(count))
@@ -130,7 +136,7 @@ import Testing
                 _ = try cursor.writePath([.sortedMapGet(.value, keys[index]), .write(.uint(UInt64(index)))])
             }
         }
-        #expect(try subject.storage.length == 415_656)
+        #expect(try subject.storage.length == 415_651)
 
         let map = try SortedMap(try lastMoment(database))
         #expect(try map.count == UInt64(count))
@@ -145,14 +151,14 @@ import Testing
         let sourceSubject = try StorageUnderTest(kind)
         let source = try makeDatabase(sourceSubject.storage)
         try writeTransactions(transactions, into: source)
-        #expect(try sourceSubject.storage.length == 696_622)
+        #expect(try sourceSubject.storage.length == 696_617)
 
         let targetSubject = try StorageUnderTest(kind)
         var offsetMap = MemoryOffsetMap()
         let target = try source.compact(
             into: targetSubject.storage, fileID: 0x0011_2233_4455_6677, offsetMap: &offsetMap)
-        #expect(try targetSubject.storage.length == 172_304)
-        #expect(try target.committedSize == 172_304)
+        #expect(try targetSubject.storage.length == 172_299)
+        #expect(try target.committedSize == 172_299)
         let moment = try lastMoment(target)
         #expect(
             try #require(try moment.readPath([.hashMapGet(.value, key(transactions * 10 - 1))])).readUInt64()
@@ -169,7 +175,7 @@ import Testing
         let source = try makeDatabase(sourceSubject.storage)
         try writeTransactions(transactions, into: source)
         let sizeAfterFirst = try source.committedSize
-        #expect(sizeAfterFirst == 696_622)
+        #expect(sizeAfterFirst == 696_617)
         try writeTransactions(10, into: source, from: transactions)
 
         let replicaSubject = try StorageUnderTest(kind)
@@ -180,9 +186,9 @@ import Testing
         #expect(start == sizeAfterFirst)
         let end = try source.committedSize
         try replica.applyReplicated(at: start, bytes: try source.readCommitted(from: start, to: end))
-        #expect(try replica.committedSize == 736_058)
-        #expect(try replicaSubject.storage.length == 736_058)
-        #expect(try sourceSubject.storage.length == 736_058)
+        #expect(try replica.committedSize == 736_053)
+        #expect(try replicaSubject.storage.length == 736_053)
+        #expect(try sourceSubject.storage.length == 736_053)
     }
 
     /// `map_transactions`' write phase: `transactions` transactions of ten

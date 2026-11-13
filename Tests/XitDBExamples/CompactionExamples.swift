@@ -44,8 +44,8 @@ import XitDB
         let compacted = try database.compact(into: target, offsetMap: &offsets)
         let before = try database.committedSize
         let after = try compacted.committedSize
-        #expect(before == 1_025_632)
-        #expect(after == 10_634)
+        #expect(before == 1_025_627)
+        #expect(after == 10_629)
     }
 
     @Test func aTargetYouOpened() throws {
@@ -96,7 +96,7 @@ import XitDB
         let target = MemoryStorage()
         var offsets = MemoryOffsetMap()
         let compacted = try source.compact(into: target, offsetMap: &offsets)
-        #expect(try compacted.committedSize == 62)
+        #expect(try compacted.committedSize == 57)
         #expect(try compacted.rootCursor.slot.isEmpty)
 
         // A history with no moments is refused: compacting it would lose the list.

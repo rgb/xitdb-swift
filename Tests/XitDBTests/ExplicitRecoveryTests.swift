@@ -8,6 +8,10 @@ import Testing
 /// (decision D19, as D22 item 4 settled it). Opening refuses, names that
 /// commit, and writes nothing; `recover` is the one call that drops a
 /// commit, and it leaves exactly the bytes that commit left.
+///
+/// Every test runs on a database of each format version: the committed
+/// size, the first trailer and the smallest database are five bytes apart
+/// in the two, and recovery writes the committed size alone in both.
 @Suite struct ExplicitRecoveryTests {
     static let commitIDs: [UInt64] = [0x1111, 0x2222, 0x3333]
 
@@ -19,6 +23,9 @@ import Testing
     /// `after[n]` what commit n left.
     struct Subject {
         let storage: StorageUnderTest
+        /// The database's header, which says where its root header's
+        /// committed size is and where its data starts.
+        let header: DatabaseHeader
         let after: [[UInt8]]
 
         /// The committed size after commit n.
@@ -50,10 +57,10 @@ import Testing
         }
     }
 
-    static func makeSubject(_ kind: StorageKind) throws -> Subject {
+    static func makeSubject(_ kind: StorageKind, _ version: FormatVersion) throws -> Subject {
         let storage = try StorageUnderTest(kind)
-        let database = try Database(
-            storage: storage.storage, hashSize: 20, hashID: nil, fileID: 0xF11E, random: FixedRandom(commitIDs))
+        let database = try newDatabase(version, in: storage.storage, random: FixedRandom(commitIDs))
+        try #require(database.header.version == version.rawValue)
         var after: [[UInt8]] = []
         try storage.storage.flush()
         after.append(try storage.stored())
@@ -62,7 +69,7 @@ import Testing
             try storage.storage.flush()
             after.append(try storage.stored())
         }
-        return Subject(storage: storage, after: after)
+        return Subject(storage: storage, header: database.header, after: after)
     }
 
     /// Commit n: a new moment holding n under "n".
@@ -98,23 +105,23 @@ import Testing
     /// with the end of the last commit, and writes nothing. A size that
     /// ends at an earlier commit's trailer is trusted, and names that
     /// commit.
-    @Test(arguments: StorageKind.allCases)
-    func aCommittedSizeThatCannotBeRightIsUntrusted(kind: StorageKind) throws {
-        let subject = try Self.makeSubject(kind)
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func aCommittedSizeThatCannotBeRightIsUntrusted(kind: StorageKind, version: FormatVersion) throws {
+        let subject = try Self.makeSubject(kind, version)
         let end = subject.end(3)
         let sizes: [(UInt64, String)] = [
             (end + 1, "past the end"), (UInt64.max, "far past the end"), (10, "below a new database"),
-            (RootHeader.minimumFileSize - 1, "a byte below a new database"), (end - 1, "not at a trailer"),
+            (subject.header.minimumFileSize - 1, "a byte below a new database"), (end - 1, "not at a trailer"),
             (subject.end(1) + 1, "inside an earlier commit"),
         ]
         for (size, what) in sizes {
-            try subject.write(bigEndianBytes(size), at: RootHeader.fileSizePosition)
+            try subject.write(bigEndianBytes(size), at: subject.header.fileSizePosition)
             let damaged = try subject.stored()
             #expect(throws: XitDBError.untrustedRootHeader(lastVerified: end), "\(what)") { try subject.open() }
             #expect(try subject.stored() == damaged, "\(what)")
         }
 
-        try subject.write(bigEndianBytes(subject.end(2)), at: RootHeader.fileSizePosition)
+        try subject.write(bigEndianBytes(subject.end(2)), at: subject.header.fileSizePosition)
         let earlier = try subject.open()
         #expect(try earlier.committedSize == subject.end(2))
         try Self.expectCommit(earlier, 2)
@@ -124,16 +131,16 @@ import Testing
     /// are passed over by the scan, which starts from the end of the
     /// storage; recovery drops them, and leaves the last commit exactly,
     /// with one write for the root header and one sync.
-    @Test(arguments: StorageKind.allCases)
-    func whatACrashLeftPastTheEndIsDroppedByRecovery(kind: StorageKind) throws {
-        let subject = try Self.makeSubject(kind)
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func whatACrashLeftPastTheEndIsDroppedByRecovery(kind: StorageKind, version: FormatVersion) throws {
+        let subject = try Self.makeSubject(kind, version)
         let end = subject.end(3)
         try subject.write(Array("what a crash left".utf8), at: end)
         // a sound root header opens over the leftovers, and drops nothing
         #expect(try subject.open().committedSize == end)
         #expect(try subject.stored().count == Int(end) + 17)
 
-        try subject.write(bigEndianBytes(10), at: RootHeader.fileSizePosition)
+        try subject.write(bigEndianBytes(10), at: subject.header.fileSizePosition)
         #expect(throws: XitDBError.untrustedRootHeader(lastVerified: end)) { try subject.open() }
         #expect(try subject.stored().count == Int(end) + 17)
 
@@ -151,9 +158,9 @@ import Testing
     /// nothing; recovery leaves exactly the bytes that commit left, reads
     /// as of it, and takes the next commit exactly as the database would
     /// have after that commit.
-    @Test(arguments: StorageKind.allCases)
-    func aDamagedLastTrailerLosesThatCommitOnlyThroughRecovery(kind: StorageKind) throws {
-        let subject = try Self.makeSubject(kind)
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func aDamagedLastTrailerLosesThatCommitOnlyThroughRecovery(kind: StorageKind, version: FormatVersion) throws {
+        let subject = try Self.makeSubject(kind, version)
         let end = subject.end(3)
         let previous = subject.end(2)
         let trailerStart = end - RootTrailer.byteCount
@@ -187,20 +194,22 @@ import Testing
         let left = try Database(opening: golden, hashSize: 20, random: FixedRandom([Self.nextCommitID]))
         try Self.commit(left, 3)
         #expect(firstDifference(try subject.stored(), golden.bytes) == nil)
+        #expect(recovered.header.version == version.rawValue)
     }
 
     /// A bad magic number is not a database, and a version this
-    /// implementation does not read is not one it can recover: opening and
-    /// recovery report them as they always did and change nothing. The
-    /// header is checked before the root header, in the order magic,
-    /// version, hash size; recovery takes no hash size.
-    @Test(arguments: StorageKind.allCases)
-    func aStorageThatIsNotADatabaseIsNotRecovered(kind: StorageKind) throws {
-        let subject = try Self.makeSubject(kind)
+    /// implementation does not read (0, or 3 and above) is not one it can
+    /// recover: opening and recovery report them as they always did and
+    /// change nothing. The header is checked before the root header, in the
+    /// order magic, version, hash size; recovery takes no hash size.
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func aStorageThatIsNotADatabaseIsNotRecovered(kind: StorageKind, version: FormatVersion) throws {
+        let subject = try Self.makeSubject(kind, version)
         // a root header that cannot be trusted, behind each fault of the header
-        try subject.write(bigEndianBytes(subject.end(3) + 1), at: RootHeader.fileSizePosition)
+        let sizePosition = subject.header.fileSizePosition
+        try subject.write(bigEndianBytes(subject.end(3) + 1), at: sizePosition)
         var damaged = subject.after[3]
-        damaged.replaceSubrange(29..<37, with: bigEndianBytes(subject.end(3) + 1))
+        damaged.replaceSubrange(Int(sizePosition)..<Int(sizePosition + 8), with: bigEndianBytes(subject.end(3) + 1))
 
         try subject.write([UInt8(ascii: "g")], at: 0)
         #expect(throws: XitDBError.invalidDatabase) { try subject.open() }
@@ -210,10 +219,12 @@ import Testing
         #expect(try subject.stored() == withBadMagic)
         try subject.write([UInt8(ascii: "x")], at: 0)
 
-        try subject.write([0, 2], at: 4)
-        #expect(throws: XitDBError.invalidVersion) { try subject.open() }
-        #expect(throws: XitDBError.invalidVersion) { try subject.recover() }
-        try subject.write([0, 1], at: 4)
+        for unread in [UInt8(0), 3] {
+            try subject.write([0, unread], at: 4)
+            #expect(throws: XitDBError.invalidVersion) { try subject.open() }
+            #expect(throws: XitDBError.invalidVersion) { try subject.recover() }
+        }
+        try subject.write([0, UInt8(version.rawValue)], at: 4)
 
         #expect(throws: XitDBError.invalidHashSize) { try Database(opening: subject.storage.storage, hashSize: 8) }
         #expect(throws: XitDBError.untrustedRootHeader(lastVerified: subject.end(3))) { try subject.open() }
@@ -228,32 +239,35 @@ import Testing
     /// checksum is for it; one cut shorter than a database can be; and a
     /// new database whose one trailer is damaged. Opening and recovery
     /// report that it holds no database, and leave it as it is.
-    @Test(arguments: StorageKind.allCases)
-    func aStorageWithNoVerifyingTrailerCannotBeRecovered(kind: StorageKind) throws {
-        let subject = try Self.makeSubject(kind)
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func aStorageWithNoVerifyingTrailerCannotBeRecovered(kind: StorageKind, version: FormatVersion) throws {
+        let subject = try Self.makeSubject(kind, version)
 
-        try subject.write(bigEndianBytes(0xF11F), at: 12)
+        try subject.write(bigEndianBytes(subject.header.fileID + 1), at: 12)
         var otherFile = subject.after[3]
-        otherFile.replaceSubrange(12..<20, with: bigEndianBytes(0xF11F))
+        otherFile.replaceSubrange(12..<20, with: bigEndianBytes(subject.header.fileID + 1))
         #expect(throws: XitDBError.invalidDatabase) { try subject.open() }
         #expect(throws: XitDBError.invalidDatabase) { try subject.recover() }
         #expect(try subject.stored() == otherFile)
-        try subject.write(bigEndianBytes(0xF11E), at: 12)
+        try subject.write(bigEndianBytes(subject.header.fileID), at: 12)
 
-        try subject.storage.storage.truncate(to: RootHeader.minimumFileSize - 1)
+        let smallest = subject.header.minimumFileSize
+        #expect(smallest == (version == .one ? 62 : 57))
+        try subject.storage.storage.truncate(to: smallest - 1)
         #expect(throws: XitDBError.invalidDatabase) { try subject.open() }
         #expect(throws: XitDBError.invalidDatabase) { try subject.recover() }
-        #expect(try subject.stored() == Array(subject.after[3][..<Int(RootHeader.minimumFileSize - 1)]))
+        #expect(try subject.stored() == Array(subject.after[3][..<Int(smallest - 1)]))
 
         let fresh = try StorageUnderTest(kind)
-        _ = try Database(creating: fresh.storage, hashSize: 20)
-        let last = try #require(try readBytes(fresh.storage, at: 61, count: 1).first)
-        try writeBytes(fresh.storage, [~last], at: 61)
+        _ = try newDatabase(version, in: fresh.storage)
+        let end = smallest - 1
+        let last = try #require(try readBytes(fresh.storage, at: end, count: 1).first)
+        try writeBytes(fresh.storage, [~last], at: end)
         #expect(throws: XitDBError.invalidDatabase) { try Database(opening: fresh.storage) }
         #expect(throws: XitDBError.invalidDatabase) { try Database.recover(fresh.storage) }
         try fresh.storage.flush()
-        #expect(try fresh.stored().count == 62)
-        #expect(try fresh.stored()[61] == ~last)
+        #expect(try fresh.stored().count == Int(smallest))
+        #expect(try fresh.stored()[Int(end)] == ~last)
     }
 
     /// The scan reads the storage in windows from the end back. A last
@@ -261,14 +275,13 @@ import Testing
     /// is passed over to the commit before it, whether that commit's
     /// trailer lies whole in the first window, whole in a later one, or
     /// across the edge of two.
-    @Test(arguments: StorageKind.allCases)
-    func theScanCrossesItsWindows(kind: StorageKind) throws {
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func theScanCrossesItsWindows(kind: StorageKind, version: FormatVersion) throws {
         let window = DatabaseReader.scanWindow
         // what a commit of a byte array adds to the storage beyond the array
         let overhead: Int = try {
             let memory = MemoryStorage()
-            let database = try Database(
-                storage: memory, hashSize: 20, hashID: nil, fileID: 0xF11E, random: FixedRandom([1, 2]))
+            let database = try newDatabase(version, in: memory, random: FixedRandom([1, 2]))
             try Self.commit(database, 1)
             let before = memory.bytes.count
             try Self.commitBytes(database, count: 1000)
@@ -280,8 +293,7 @@ import Testing
         // second window's end, and three windows back
         for added in [window - 25, window - 24, window - 1, window, 3 * window + 7] {
             let storage = try StorageUnderTest(kind)
-            let database = try Database(
-                storage: storage.storage, hashSize: 20, hashID: nil, fileID: 0xF11E, random: FixedRandom([1, 2]))
+            let database = try newDatabase(version, in: storage.storage, random: FixedRandom([1, 2]))
             try Self.commit(database, 1)
             let before = try database.committedSize
             try Self.commitBytes(database, count: added - overhead)
@@ -307,9 +319,9 @@ import Testing
     /// that died between the two leaves it, lies past the committed size
     /// with a trailer that verifies: opening reads as of the root header,
     /// and recovery commits the transaction.
-    @Test(arguments: StorageKind.allCases)
-    func recoveryGoesByTheTrailersAlone(kind: StorageKind) throws {
-        let subject = try Self.makeSubject(kind)
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func recoveryGoesByTheTrailersAlone(kind: StorageKind, version: FormatVersion) throws {
+        let subject = try Self.makeSubject(kind, version)
         let faulty = FaultInjectingStorage(subject.storage.storage)
         let recovered = try Database.recover(faulty, random: FixedRandom([Self.nextCommitID]))
         #expect(faulty.writeCount == 1)
@@ -318,7 +330,8 @@ import Testing
         try Self.expectCommit(recovered, 3)
 
         // commit 2's root header, with commit 3's bytes after it
-        try subject.write(Array(subject.after[2][20..<37]), at: RootHeader.position)
+        let sizePosition = Int(subject.header.fileSizePosition)
+        try subject.write(Array(subject.after[2][sizePosition..<(sizePosition + 8)]), at: UInt64(sizePosition))
         let opened = try subject.open()
         #expect(try opened.committedSize == subject.end(2))
         try Self.expectCommit(opened, 2)

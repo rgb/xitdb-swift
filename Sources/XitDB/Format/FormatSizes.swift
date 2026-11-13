@@ -7,12 +7,8 @@
 package enum FormatSizes {
     /// The database header at the start of the file.
     package static let databaseHeader: UInt64 = DatabaseHeader.byteCount
-    /// The root header after it: the root slot and the committed size.
-    package static let rootHeader: UInt64 = RootHeader.byteCount
     /// A trailer, which ends every commit.
     package static let trailer: UInt64 = RootTrailer.byteCount
-    /// Where the first trailer can begin.
-    package static let firstTrailer: UInt64 = RootHeader.endPosition
     /// A slot.
     package static let slot: UInt64 = Slot.byteCount
     /// An index block of a trie: a block of slots.
