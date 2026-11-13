@@ -226,9 +226,11 @@ extension Database {
     /// root header and synced, the root header that came with the bytes is
     /// passed over, the rest is written, and the committed size is set once
     /// everything has arrived and ends with a trailer. This database's
-    /// ``header`` is the incoming one from the moment the storage is
-    /// emptied, its format version included: a replica takes the version of
-    /// what it was sent. The bytes between the database header and the
+    /// ``header`` is the incoming one from the moment the incoming header
+    /// is in the storage, its format version included: a replica takes the
+    /// version of what it was sent. A sync that fails before that, as on a
+    /// storage opened read-only, leaves this database as it was. The bytes
+    /// between the database header and the
     /// committed size, which are padding, or in a version 1 file a copy of
     /// the root slot that nothing reads, are not taken from the source: the
     /// replica has zeros there.
@@ -348,15 +350,22 @@ extension Database {
         return incoming
     }
 
-    /// Starts a full copy: empties the storage, becomes the incoming
-    /// database, and writes its header, as it came, with an empty root
-    /// header. From here until the copy's committed size is written the
-    /// storage holds a database without a first commit, which the next
-    /// sync from 0 replaces if this one does not finish.
+    /// Starts a full copy: empties the storage and writes the incoming
+    /// database's header, as it came, with an empty root header. From here
+    /// until the copy's committed size is written the storage holds a
+    /// database without a first commit, which the next sync from 0
+    /// replaces if this one does not finish.
+    ///
+    /// This database becomes the incoming one once that header is in the
+    /// storage, and not before: a copy that fails without having changed
+    /// the storage, as on one opened read-only, where cutting does nothing
+    /// and the first write is refused, leaves this database the one it
+    /// was. (The original takes the header before it writes it, and would
+    /// go on reading a sound file by another file's ID and version.)
     private func beginFullCopy(of incoming: DatabaseHeader, headerBytes: Span<UInt8>) throws(XitDBError) {
         try storage.truncate(to: 0)
-        become(incoming)
         try storage.write(headerBytes, at: 0)
+        become(incoming)
         try writeEmptyRootHeader()
         // Sync the headers before the data, which could otherwise reach
         // the disk without them and leave a file that can't be opened.

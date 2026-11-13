@@ -559,6 +559,50 @@ import Testing
         }
     }
 
+    /// A sync from 0 that fails before it has changed the storage leaves
+    /// the database object as it was. On a storage opened read-only,
+    /// cutting does nothing and the header's write is refused: the call
+    /// throws the storage's error, and `header`, `replicaState` and a read
+    /// through `rootCursor` are afterwards what they were before, though
+    /// the bytes offered were a sound database of another file ID and, for
+    /// one of them, another version. (The original takes the incoming
+    /// header before it writes it.)
+    @Test(arguments: FormatVersion.allCases)
+    func aSyncFromZeroOntoAReadOnlyStorageLeavesTheDatabaseAsItWas(version: FormatVersion) throws {
+        let (_, source) = try Self.makeSource(version)
+        let committed = try source.committedSize
+        let whole = try source.readCommitted(from: 0, to: committed)
+
+        let directory = try TemporaryDirectory()
+        let writer = try FileStorage(path: directory.path(), access: .create, durability: .none)
+        _ = try Self.makeReplica(writer)
+        let before = try directory.contents()
+
+        let plain = try FileStorage(path: directory.path(), access: .readOnly)
+        let buffered = try BufferedFileStorage(path: directory.path(), access: .readOnly)
+        for storage in [plain, buffered] as [any WritableStorage] {
+            let replica = try Database(opening: storage, hashSize: 20)
+            let header = replica.header
+            let state = try replica.replicaState
+            #expect(header.fileID == 77)
+            #expect(header.version == 2)
+            #expect(try FormatVersionTests.lastN(replica) == 5)
+
+            #expect(throws: XitDBError.storageFailure(errno: EBADF)) {
+                try replica.applyReplicated(at: 0, bytes: whole)
+            }
+            var stream = ArrayByteSource(whole)
+            #expect(throws: XitDBError.storageFailure(errno: EBADF)) {
+                try replica.applyReplicated(at: 0, from: &stream, count: committed)
+            }
+            #expect(replica.header == header)
+            #expect(try replica.replicaState == state)
+            #expect(try replica.committedSize == state.committedSize)
+            #expect(try FormatVersionTests.lastN(replica) == 5)
+            #expect(try directory.contents() == before)
+        }
+    }
+
     /// A full copy does not take the source's bytes between the database
     /// header and the committed size: the replica has zeros there, whatever
     /// the source had. In version 1 that is the copy of the root slot,

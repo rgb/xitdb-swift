@@ -386,11 +386,11 @@ struct CollectingSink: ByteSink {
     /// committed size: bytes written before the failure stay past the
     /// committed size, which the next sync discards, until the root header
     /// is written, after which the commit is made and only its last sync
-    /// is missing. At 0: the replica is emptied and takes the source's
-    /// header before the first write, so every failure up to the committed
-    /// size's write leaves a database without a first commit, with what
-    /// had arrived; after it the copy is made and only its last sync is
-    /// missing.
+    /// is missing. At 0: the replica is emptied first and takes the
+    /// source's header once that header is written, so every failure up to
+    /// the committed size's write leaves a database without a first
+    /// commit, with what had arrived; after it the copy is made and only
+    /// its last sync is missing.
     @Test(arguments: StorageKind.allCases)
     func aStorageThatFailsDuringASync(kind: StorageKind) throws {
         let (_, source) = try makeSource(kind)
@@ -451,19 +451,23 @@ struct CollectingSink: ByteSink {
         let (_, otherSource) = try makeSource(kind, fileID: 9)
         let otherWhole = try readCommitted(otherSource, from: 0, to: try otherSource.committedSize)
         typealias Fault = FaultInjectingStorage.Fault
-        let steps: [(String, (FaultInjectingStorage) -> Fault, UInt64, XitDBError)] = [
-            ("the header's write", { .failWrite($0.writeCount + 1) }, 0, .endOfStream),
-            ("the empty root header's write", { .failWrite($0.writeCount + 2) }, 20, .endOfStream),
-            ("the headers' sync", { .failSync($0.syncCount + 1) }, Self.dataStart, .invalidDatabase),
-            ("the data's write", { .failWrite($0.writeCount + 3) }, Self.dataStart, .invalidDatabase),
+        // each with the length it leaves, the file ID the replica has
+        // afterwards, and what its committed size raises
+        let steps: [(String, (FaultInjectingStorage) -> Fault, UInt64, UInt64, XitDBError)] = [
+            // nothing of the source is in the storage yet, so the replica
+            // keeps its own header, over a storage that was emptied
+            ("the header's write", { .failWrite($0.writeCount + 1) }, 0, 9, .endOfStream),
+            ("the empty root header's write", { .failWrite($0.writeCount + 2) }, 20, 6, .endOfStream),
+            ("the headers' sync", { .failSync($0.syncCount + 1) }, Self.dataStart, 6, .invalidDatabase),
+            ("the data's write", { .failWrite($0.writeCount + 3) }, Self.dataStart, 6, .invalidDatabase),
             (
                 "the data's write, cut short", { .cutWriteShort($0.writeCount + 3, keeping: 5) }, Self.dataStart + 5,
-                .invalidDatabase
+                6, .invalidDatabase
             ),
-            ("the sync before the committed size", { .failSync($0.syncCount + 2) }, committed, .invalidDatabase),
-            ("the committed size's write", { .failWrite($0.writeCount + 4) }, committed, .invalidDatabase),
+            ("the sync before the committed size", { .failSync($0.syncCount + 2) }, committed, 6, .invalidDatabase),
+            ("the committed size's write", { .failWrite($0.writeCount + 4) }, committed, 6, .invalidDatabase),
         ]
-        for (what, fault, length, error) in steps {
+        for (what, fault, length, fileID, error) in steps {
             faulty.faults = []
             try replica.applyReplicated(at: 0, bytes: otherWhole)
             try #require(replica.header.fileID == 9, "\(what)")
@@ -471,8 +475,9 @@ struct CollectingSink: ByteSink {
             faulty.faults = [fault(faulty)]
             #expect(throws: failure, "\(what)") { try replica.applyReplicated(at: 0, bytes: whole) }
             #expect(try faulty.length == length, "\(what)")
-            // the replica is the source's database from the moment it is emptied
-            #expect(replica.header.fileID == 6, "\(what)")
+            // the replica is the source's database once the source's header
+            // is in its storage
+            #expect(replica.header.fileID == fileID, "\(what)")
             #expect(try replica.replicaState == ReplicaState(committedSize: 0, checksum: 0), "\(what)")
             #expect(throws: error, "\(what)") { try replica.committedSize }
         }
