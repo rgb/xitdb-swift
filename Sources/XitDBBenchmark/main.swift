@@ -77,11 +77,16 @@ struct Keys {
     var hashBytes: [[UInt8]] = []
     var texts: [[UInt8]] = []
     var sortedKeys: [SortedKey] = []
+    /// The keys themselves, `key-<i>`, for the workloads that give a
+    /// collection its keys and leave the hashing to the database.
+    var strings: [String] = []
 
     enum Kind {
         case none
         case hashes
         case texts
+        /// The keys as strings, and their hashes for checking.
+        case keys
     }
 
     init(_ kind: Kind, count: Int) {
@@ -94,6 +99,10 @@ struct Keys {
         case .texts:
             texts = (0..<count).map { index in Array("key-\(index)".utf8) }
             sortedKeys = texts.map { SortedKey($0) }
+        case .keys:
+            strings = (0..<count).map { index in "key-\(index)" }
+            hashBytes = strings.map { key in Array(Insecure.SHA1.hash(data: Data(key.utf8))) }
+            hashes = hashBytes.map { KeyHash($0) }
         }
     }
 }
@@ -351,6 +360,116 @@ func mapInsert(_ size: Int, kinds: [StorageKind]) -> Workload {
         try readMap(try lastMoment(reading), hashes)
     } iterate: { reading, hashes in
         try iterateMap(try lastMoment(reading), hashes)
+    }
+}
+
+/// The map of `map_insert` written and read through the public collection
+/// by hashes made before the clock starts, each an array as a caller who
+/// hashed a key holds it: what `map_by_key` is read against. The two write
+/// the same file.
+func mapByHash(_ size: Int, kinds: [StorageKind]) -> Workload {
+    Workload(name: "map_by_hash", size: size, kinds: kinds, keyKind: .keys, keyCount: size) { database, keys in
+        let hashes = keys.hashBytes
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
+        try history.append(.slot(nil)) { cursor in
+            let map = try HashMap<ReadWrite>(cursor)
+            for index in hashes.indices {
+                try map.put(.uint(UInt64(index)), forHash: hashes[index])
+            }
+        }
+    } read: { reading, keys in
+        let hashes = keys.hashBytes
+        let map = try HashMap<ReadOnly>(try lastMoment(reading))
+        for index in hashes.indices {
+            guard try map.cursor(forHash: hashes[index])?.readUInt64() == UInt64(index) else {
+                throw BenchmarkFailure(description: "key-\(index) does not read back by its hash")
+            }
+        }
+    } iterate: { reading, keys in
+        try iterateMap(try lastMoment(reading), keys)
+    }
+}
+
+/// The same map written and read by its keys, on a database that was
+/// given SHA-1: each put and each get hashes its key on the clock. Read
+/// against `map_by_hash`, the difference is what a keyed call costs over
+/// its twin, which `key_hashing` breaks down. The iterate phase checks
+/// that the entries are under the SHA-1 of the keys.
+func mapByKey(_ size: Int, kinds: [StorageKind]) -> Workload {
+    Workload(
+        name: "map_by_key", size: size, kinds: kinds, keyKind: .keys, keyCount: size,
+        prepare: { storage, _ in
+            try Database(
+                creating: storage.storage, hashing: Insecure.SHA1.self, hashID: "sha1", fileID: 0x0011_2233_4455_6677)
+        },
+        write: { _, keys, prepared in
+            let database = prepared as! Database
+            let strings = keys.strings
+            let history = try ArrayList<ReadWrite>(database.rootCursor)
+            try history.append(.slot(nil)) { cursor in
+                let map = try HashMap<ReadWrite>(cursor)
+                for index in strings.indices {
+                    try map.put(.uint(UInt64(index)), forKey: strings[index])
+                }
+            }
+            return database
+        },
+        read: { reading, keys, _ in
+            let strings = keys.strings
+            let map = try HashMap<ReadOnly>(try lastMoment(reading))
+            for index in strings.indices {
+                guard try map.cursor(forKey: strings[index])?.readUInt64() == UInt64(index) else {
+                    throw BenchmarkFailure(description: "key-\(index) does not read back by its key")
+                }
+            }
+        },
+        iterate: { reading, keys, _ in
+            try iterateMap(try lastMoment(reading), keys)
+        })
+}
+
+/// A key's bytes, asked for as a collection asks: through the protocol.
+/// (While the store is in the package a `String` has two `keyBytes`, the
+/// store's and the library's, and this says which.)
+func keyBytes(of key: some XitDB.KeyRepresentable) -> [UInt8] {
+    key.keyBytes
+}
+
+/// What hashing the keys of `map_by_key` costs with no map: in the write
+/// phase by hand, as the caller of a call by hash does it (the key's UTF-8
+/// in an array, SHA-1, the digest in an array); in the read phase through
+/// the hasher a database holds, which is all a keyed call adds to its
+/// twin; in the iterate phase the key's bytes alone, the array that
+/// `KeyRepresentable` asks a key for. Each phase checks what it made.
+func keyHashing(_ size: Int) -> Workload {
+    Workload(name: "key_hashing", size: size, kinds: [.memory], keyKind: .keys, keyCount: size) { _, keys in
+        let strings = keys.strings
+        var matching = 0
+        for index in strings.indices {
+            let digest = Array(Insecure.SHA1.hash(data: Array(strings[index].utf8)))
+            if digest == keys.hashBytes[index] { matching += 1 }
+        }
+        guard matching == strings.count else {
+            throw BenchmarkFailure(description: "\(strings.count - matching) keys hashed by hand to another hash")
+        }
+    } read: { _, keys in
+        let strings = keys.strings
+        let hasher = KeyHasher(Insecure.SHA1.self)
+        var matching = 0
+        for index in strings.indices where hasher.hash(keyBytes(of: strings[index])) == keys.hashes[index] {
+            matching += 1
+        }
+        guard matching == strings.count else {
+            throw BenchmarkFailure(description: "\(strings.count - matching) keys hashed by the hasher to another hash")
+        }
+    } iterate: { _, keys in
+        var bytes = 0
+        for key in keys.strings {
+            bytes += keyBytes(of: key).count
+        }
+        guard bytes == keys.strings.reduce(0, { $0 + $1.utf8.count }) else {
+            throw BenchmarkFailure(description: "the keys' bytes are \(bytes)")
+        }
     }
 }
 
@@ -727,6 +846,9 @@ func sized(_ size: Int) -> Int { max(size / divide, 1) }
 let workloads: [Workload] = [
     mapInsert(sized(100_000), kinds: [.memory, .bufferedFile]),
     mapInsert(sized(10_000), kinds: [.file]),
+    mapByHash(sized(100_000), kinds: [.memory, .bufferedFile]),
+    mapByKey(sized(100_000), kinds: [.memory, .bufferedFile]),
+    keyHashing(sized(100_000)),
     storeMapInsert(sized(100_000), kinds: [.memory, .bufferedFile], resolving: false),
     storeMapInsert(sized(10_000), kinds: [.file], resolving: false),
     storeMapInsert(sized(100_000), kinds: [.memory, .bufferedFile], resolving: true),
