@@ -1,9 +1,10 @@
 import Testing
 import XitDB
+import XitDBHashing
 
 @Suite("Large byte arrays") struct LargeByteArraysExamples {
     private func newMoment(_ body: (HashMap<ReadWrite>) throws -> Void) throws -> HashMap<ReadOnly> {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         let history = try ArrayList<ReadWrite>(database.rootCursor)
         try history.append(.slot(nil)) { cursor in
             try body(try HashMap<ReadWrite>(cursor))
@@ -13,7 +14,7 @@ import XitDB
 
     private func newLongText() throws -> HashMap<ReadOnly> {
         try newMoment { moment in
-            var cursor = try moment.putCursor(forHash: sha256("long-text"))
+            var cursor = try moment.putCursor(forKey: "long-text")
             try cursor.writeBytes { writer in
                 for _ in 0..<50 {
                     try writer.write(Array("hello, world!\n".utf8))
@@ -24,13 +25,13 @@ import XitDB
 
     @Test func writingAPartAtATime() throws {
         let moment = try newLongText()
-        #expect(try moment.cursor(forHash: sha256("long-text"))!.count == 700)
+        #expect(try moment.cursor(forKey: "long-text")!.count == 700)
     }
 
     @Test func readingAPartAtATime() throws {
         let moment = try newLongText()
 
-        var reader = try moment.cursor(forHash: sha256("long-text"))!.reader()
+        var reader = try moment.cursor(forKey: "long-text")!.reader()
         var buffer = [UInt8](repeating: 0, count: 1024)
         var span = buffer.mutableSpan
 
@@ -51,7 +52,7 @@ import XitDB
         let moment = try newLongText()
 
         // The second line: seek to it, and read exactly its length.
-        var reader = try moment.cursor(forHash: sha256("long-text"))!.reader()
+        var reader = try moment.cursor(forKey: "long-text")!.reader()
         reader.seek(to: 14)
 
         var line = [UInt8](repeating: 0, count: 14)
@@ -66,9 +67,9 @@ import XitDB
 
     @Test func fillingABufferNeedsTheBytes() throws {
         let moment = try newMoment { moment in
-            try moment.put(.bytes(Array("hello, world".utf8)), forHash: sha256("short"))
+            try moment.put("hello, world", forKey: "short")
         }
-        var reader = try moment.cursor(forHash: sha256("short"))!.reader()
+        var reader = try moment.cursor(forKey: "short")!.reader()
         var buffer = [UInt8](repeating: 0, count: 100)
         var span = buffer.mutableSpan
         #expect(throws: XitDBError.endOfStream) {
@@ -79,27 +80,27 @@ import XitDB
 
     @Test func aFormatTagOnAWrittenValue() throws {
         let moment = try newMoment { moment in
-            var cursor = try moment.putCursor(forHash: sha256("photo"))
+            var cursor = try moment.putCursor(forKey: "photo")
             try cursor.writeBytes(formatTag: "jp") { writer in
                 try writer.write([0xFF, 0xD8, 0xFF])
             }
 
             // The body can decide on the tag once it has seen the bytes.
-            var other = try moment.putCursor(forHash: sha256("other"))
+            var other = try moment.putCursor(forKey: "other")
             try other.writeBytes { writer in
                 try writer.write(Array("GIF89a".utf8))
                 writer.formatTag = "gi"
             }
         }
 
-        let photo = try moment.cursor(forHash: sha256("photo"))!.readBytesWithFormatTag()
+        let photo = try moment.cursor(forKey: "photo")!.readBytesWithFormatTag()
         #expect(photo.formatTag == "jp")
-        #expect(try moment.cursor(forHash: sha256("other"))!.readBytesWithFormatTag().formatTag == "gi")
+        #expect(try moment.cursor(forKey: "other")!.readBytesWithFormatTag().formatTag == "gi")
     }
 
     @Test func seekingWhileWriting() throws {
         let moment = try newMoment { moment in
-            var cursor = try moment.putCursor(forHash: sha256("record"))
+            var cursor = try moment.putCursor(forKey: "record")
             try cursor.writeBytes { writer in
                 // Room for a length, written once it is known.
                 try writer.write([0, 0])
@@ -108,7 +109,7 @@ import XitDB
                 try writer.write([0, 7])
             }
         }
-        let record = try moment.cursor(forHash: sha256("record"))!.readBytes()
+        let record = try moment.value(forKey: "record", as: [UInt8].self)
         #expect(record == [0, 7] + Array("payload".utf8))
     }
 
@@ -116,10 +117,10 @@ import XitDB
     /// so its transaction is poisoned: nothing more can be written in it,
     /// and it rolls back when the body returns.
     @Test func aSeekBeyondAnyPosition() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         let outcome = Result {
             try database.withTransaction { cursor in
-                var value = try HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("value"))
+                var value = try HashMap<ReadWrite>(cursor).putCursor(forKey: "value")
                 #expect(throws: XitDBError.unexpectedWriterPosition) {
                     try value.writeBytes { writer in
                         writer.seek(to: UInt64.max - 1)
@@ -132,15 +133,15 @@ import XitDB
     }
 
     @Test func nothingElseWhileWriting() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         let outcome = Result {
             try database.withTransaction { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
-                var value = try moment.putCursor(forHash: sha256("value"))
+                var value = try moment.putCursor(forKey: "value")
                 #expect(throws: XitDBError.unexpectedWriterPosition) {
                     try value.writeBytes { writer in
                         try writer.write(Array("first".utf8))
-                        try moment.put(.bytes(Array("something else".utf8)), forHash: sha256("other"))
+                        try moment.put("something else", forKey: "other")
                         try writer.write(Array("second".utf8))
                     }
                 }
@@ -151,15 +152,15 @@ import XitDB
     }
 
     @Test func aFormatTagAfterAnotherWrite() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         let outcome = Result {
             try database.withTransaction { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
-                var value = try moment.putCursor(forHash: sha256("value"))
+                var value = try moment.putCursor(forKey: "value")
                 #expect(throws: XitDBError.unexpectedWriterPosition) {
                     try value.writeBytes { writer in
                         try writer.write(Array("first".utf8))
-                        try moment.put(.bytes(Array("something else".utf8)), forHash: sha256("other"))
+                        try moment.put("something else", forKey: "other")
                         writer.formatTag = "xx"
                     }
                 }
@@ -169,13 +170,13 @@ import XitDB
     }
 
     @Test func anotherWriteThatTheArrayDoesNotOutgrow() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         try database.withTransaction { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            var value = try moment.putCursor(forHash: sha256("value"))
+            var value = try moment.putCursor(forKey: "value")
             try value.writeBytes { writer in
                 try writer.write(Array("first".utf8))
-                try moment.put(.bytes(Array("something else".utf8)), forHash: sha256("other"))
+                try moment.put("something else", forKey: "other")
                 writer.seek(to: 0)
                 try writer.write(Array("FI".utf8))
             }
@@ -184,7 +185,7 @@ import XitDB
     }
 
     @Test func aTransactionsBodyCanWriteBytesAtTheRoot() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         try database.withTransaction { cursor in
             try cursor.writeBytes { writer in
                 try writer.write(Array("at the root".utf8))
@@ -198,11 +199,11 @@ import XitDB
     /// The slot keeps its value; the bytes the body wrote stay behind, which
     /// poisons the transaction, so it rolls back as a whole.
     @Test func aBodyThatThrowsLeavesTheSlot() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         let outcome = Result {
             try database.withTransaction { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
-                var value = try moment.putCursor(forHash: sha256("value"))
+                var value = try moment.putCursor(forKey: "value")
                 try value.write(.uint(1))
                 #expect(throws: NoMoreBytes.self) {
                     try value.writeBytes { writer in
@@ -210,7 +211,7 @@ import XitDB
                         throw NoMoreBytes()
                     }
                 }
-                #expect(try moment.cursor(forHash: sha256("value"))!.readUInt64() == 1)
+                #expect(try moment.value(forKey: "value", as: UInt64.self) == 1)
                 #expect(throws: XitDBError.poisonedTransaction) { try value.write(.uint(2)) }
             }
         }
@@ -218,10 +219,10 @@ import XitDB
     }
 
     @Test func aBodyThatThrowsBeforeWritingPoisonsToo() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         #expect(throws: XitDBError.poisonedTransaction) {
             try database.withTransaction { cursor in
-                var value = try HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("value"))
+                var value = try HashMap<ReadWrite>(cursor).putCursor(forKey: "value")
                 #expect(throws: NoMoreBytes.self) {
                     try value.writeBytes { _ in throw NoMoreBytes() }
                 }
@@ -231,11 +232,11 @@ import XitDB
     }
 
     @Test func aFreezeInsideTheBodyIsByteWriterOpen() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         // Uncaught, the error comes out of the transaction, which rolls back.
         #expect(throws: XitDBError.byteWriterOpen) {
             try database.withTransaction { cursor in
-                var value = try HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("value"))
+                var value = try HashMap<ReadWrite>(cursor).putCursor(forKey: "value")
                 try value.writeBytes { writer in
                     try writer.write([1, 2, 3])
                     try database.freeze()
@@ -247,7 +248,7 @@ import XitDB
         var caught: (any Error)?
         #expect(throws: XitDBError.poisonedTransaction) {
             try database.withTransaction { cursor in
-                var value = try HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("value"))
+                var value = try HashMap<ReadWrite>(cursor).putCursor(forKey: "value")
                 do {
                     try value.writeBytes { writer in
                         try writer.write([1, 2, 3])
@@ -262,15 +263,15 @@ import XitDB
         #expect(try database.rootCursor.slot.isEmpty)
 
         // A join is a freeze too.
-        let joins = try Database(creating: MemoryStorage(), hashSize: 32)
+        let joins = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         #expect(throws: XitDBError.byteWriterOpen) {
             try joins.withTransaction { cursor in
                 let moment = try HashMap<ReadWrite>(cursor)
-                let tasks = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("tasks")))
-                let more = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("more")))
+                let tasks = try LinkedArrayList<ReadWrite>(moment.putCursor(forKey: "tasks"))
+                let more = try LinkedArrayList<ReadWrite>(moment.putCursor(forKey: "more"))
                 try tasks.append(.uint(1))
                 try more.append(.uint(2))
-                var value = try moment.putCursor(forHash: sha256("value"))
+                var value = try moment.putCursor(forKey: "value")
                 try value.writeBytes { _ in try tasks.append(contentsOf: more) }
             }
         }
@@ -279,16 +280,16 @@ import XitDB
 
     @Test func aWrittenValueHasARecordHoweverShort() throws {
         let moment = try newMoment { moment in
-            var cursor = try moment.putCursor(forHash: sha256("hi"))
+            var cursor = try moment.putCursor(forKey: "hi")
             try cursor.writeBytes { writer in
                 try writer.write(Array("hi".utf8))
             }
         }
-        #expect(try moment.slot(forHash: sha256("hi"))!.tag == .bytes)
+        #expect(try moment.slot(forKey: "hi")!.tag == .bytes)
     }
 
     @Test func theRootCannotBeWrittenAPartAtATime() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         var root = database.rootCursor
         #expect(throws: XitDBError.cursorNotWritable) {
             try root.writeBytes { writer in
@@ -298,25 +299,25 @@ import XitDB
     }
 
     @Test func aReaderKeepsReadingWhatItWasMadeFrom() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         let map = try HashMap<ReadWrite>(database.rootCursor)
-        try map.put(.bytes(Array("the first value".utf8)), forHash: sha256("value"))
+        try map.put("the first value", forKey: "value")
 
-        var reader = try map.cursor(forHash: sha256("value"))!.reader()
-        try map.put(.bytes(Array("the second value".utf8)), forHash: sha256("value"))
+        var reader = try map.cursor(forKey: "value")!.reader()
+        try map.put("the second value", forKey: "value")
 
         #expect(try reader.readRemaining() == Array("the first value".utf8))
     }
 
     @Test func readingOtherSlots() throws {
         let moment = try newMoment { moment in
-            try moment.put(.uint(1), forHash: sha256("number"))
-            try moment.put(.slot(nil), forHash: sha256("nothing"))
+            try moment.put(UInt64(1), forKey: "number")
+            try moment.put(.slot(nil), forKey: "nothing")
         }
         #expect(throws: XitDBError.unexpectedTag) {
-            try moment.cursor(forHash: sha256("number"))!.reader()
+            try moment.cursor(forKey: "number")!.reader()
         }
-        var reader = try moment.cursor(forHash: sha256("nothing"))!.reader()
+        var reader = try moment.cursor(forKey: "nothing")!.reader()
         #expect(reader.size == 0)
         #expect(try reader.readRemaining() == [])
     }

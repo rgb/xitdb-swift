@@ -1,23 +1,25 @@
 import Testing
 import XitDB
+import XitDBHashing
 
 @Suite("The collections") struct CollectionsExamples {
     @Test func nesting() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         let history = try ArrayList<ReadWrite>(database.rootCursor)
 
         try history.append(.slot(try history.slot(at: -1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            let people = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("people")))
+            let people = try ArrayList<ReadWrite>(moment.putCursor(forKey: "people"))
             let alice = try HashMap<ReadWrite>(people.appendCursor())
-            let scores = try SortedSet<ReadWrite>(alice.putCursor(forHash: sha256("scores")))
-            try scores.insert("high".utf8)
+            let scores = try SortedSet<ReadWrite>(alice.putCursor(forKey: "scores"))
+            try scores.insert("high")
         }
 
         let moment = try HashMap<ReadOnly>(history.cursor(at: -1)!)
-        let people = try ArrayList<ReadOnly>(moment.cursor(forHash: sha256("people"))!)
+        let people = try ArrayList<ReadOnly>(moment.cursor(forKey: "people")!)
         let alice = try HashMap<ReadOnly>(people.cursor(at: 0)!)
-        let scores = try SortedSet<ReadOnly>(alice.cursor(forHash: sha256("scores"))!)
+        let scores = try SortedSet<ReadOnly>(alice.cursor(forKey: "scores")!)
+        #expect(try scores.contains("high"))
         #expect(try scores.contains("high".utf8))
     }
 
@@ -45,11 +47,11 @@ import XitDB
     }
 
     @Test func theTwoFormsOfACollection() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
 
         // The read-write form makes the collection if it is not there yet.
         let writable = try ArrayList<ReadWrite>(database.rootCursor)
-        try writable.append(.uint(1))
+        try writable.append(UInt64(1))
 
         // These are the same list. The read-only forms cannot write: append
         // is not a method of them.
@@ -217,113 +219,130 @@ import XitDB
     }
 
     @Test func arrayList() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         let list = try ArrayList<ReadWrite>(database.rootCursor)
 
-        try list.append(.uint(1))
-        try list.append(.uint(2))
-        try list.append(.uint(3))
-        try list.put(.uint(20), at: 1)
+        try list.append(UInt64(1))
+        try list.append(UInt64(2))
+        try list.append(UInt64(3))
+        try list.put(UInt64(20), at: 1)
         try list.truncate(to: 2)
 
         #expect(try list.count == 2)
-        #expect(try list.cursor(at: 1)!.readUInt64() == 20)
+        #expect(try list.value(at: 1, as: UInt64.self) == 20)
         #expect(try list.cursor(at: 2) == nil)
     }
 
     @Test func linkedArrayList() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         try database.withTransaction { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
 
-            let tasks = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("tasks")))
-            try tasks.append(.uint(1))
-            try tasks.append(.uint(3))
-            try tasks.insert(.uint(2), at: 1)  // before the element at index 1
+            let tasks = try LinkedArrayList<ReadWrite>(moment.putCursor(forKey: "tasks"))
+            try tasks.append(UInt64(1))
+            try tasks.append(UInt64(3))
+            try tasks.insert(UInt64(2), at: 1)  // before the element at index 1
             try tasks.remove(at: 0)
 
-            let more = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("more")))
-            try more.append(.uint(4))
-            try more.append(.uint(5))
+            let more = try LinkedArrayList<ReadWrite>(moment.putCursor(forKey: "more"))
+            try more.append(UInt64(4))
+            try more.append(UInt64(5))
 
             // Joins in logarithmic time, sharing what it can with both lists.
             // The join freezes the transaction, so the list is made again
             // from the transaction's cursor before it is written to.
             try tasks.append(contentsOf: more)
-            let joined = try LinkedArrayList<ReadWrite>(
-                HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("tasks")))
+            let joined = try LinkedArrayList<ReadWrite>(HashMap<ReadWrite>(cursor).putCursor(forKey: "tasks"))
             #expect(try joined.count == 4)
 
             // Keeps two elements from index 1 on.
             try joined.formSlice(offset: 1, count: 2)
             #expect(try joined.count == 2)
-            #expect(try joined.cursor(at: 0)!.readUInt64() == 3)
-            #expect(try joined.cursor(at: 1)!.readUInt64() == 4)
+            #expect(try joined.value(at: 0, as: UInt64.self) == 3)
+            #expect(try joined.value(at: 1, as: UInt64.self) == 4)
         }
     }
 
     @Test func insertingAtTheEndIsAppending() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         let list = try LinkedArrayList<ReadWrite>(database.rootCursor)
-        try list.append(.uint(1))
+        try list.append(UInt64(1))
 
+        #expect(throws: XitDBError.indexOutOfRange) {
+            try list.insert(UInt64(2), at: 1)
+        }
         #expect(throws: XitDBError.indexOutOfRange) {
             try list.insert(.uint(2), at: 1)
         }
-        try list.append(.uint(2))
+        try list.append(UInt64(2))
         #expect(try list.count == 2)
     }
 
     @Test func hashMap() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         let map = try HashMap<ReadWrite>(database.rootCursor)
 
-        try map.put(.uint(25), forHash: sha256("age"))
-        try map.putKey(.bytes(Array("age".utf8)), forHash: sha256("age"))
+        try map.put(UInt64(25), forKey: "age")
+        try map.putKey("age")
 
+        #expect(try map.value(forKey: "age", as: UInt64.self) == 25)
+        #expect(try map.keyCursor(forKey: "age")!.read(String.self) == "age")
+        // Each keyed call is its call by hash.
         #expect(try map.cursor(forHash: sha256("age"))!.readUInt64() == 25)
         #expect(try map.keyCursor(forHash: sha256("age"))!.readBytes() == Array("age".utf8))
-        #expect(try map.remove(forHash: sha256("age")))
-        #expect(try !map.remove(forHash: sha256("age")))
-        #expect(try map.cursor(forHash: sha256("age")) == nil)
+        #expect(try map.remove(forKey: "age"))
+        #expect(try !map.remove(forKey: "age"))
+        #expect(try map.cursor(forKey: "age") == nil)
+
+        // Without putKey the entry has no key.
+        try map.put(UInt64(1), forKey: "anonymous")
+        #expect(try map.keyCursor(forKey: "anonymous") == nil)
     }
 
     @Test func hashSet() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         let tags = try HashSet<ReadWrite>(database.rootCursor)
 
-        try tags.insert(.bytes(Array("swift".utf8)), forHash: sha256("swift"))
+        try tags.insert("swift")
+        let hasSwift = try tags.contains("swift")
+        #expect(hasSwift)
+        #expect(try !tags.contains("zig"))
         #expect(try tags.contains(hash: sha256("swift")))
-        #expect(try !tags.contains(hash: sha256("zig")))
+
+        // The member is stored: iterating gives it back.
+        var iterator = try tags.iterator()
+        #expect(try iterator.next()!.readEntry().key.read(String.self) == "swift")
+        #expect(try tags.remove(forKey: "swift"))
+        #expect(try !tags.contains("swift"))
     }
 
     @Test func theCountedForms() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         try database.withTransaction { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
 
-            let visits = try CountedHashMap<ReadWrite>(moment.putCursor(forHash: sha256("visits")))
-            try visits.put(.uint(1), forHash: sha256("alice"))
-            try visits.put(.uint(2), forHash: sha256("alice"))
-            try visits.put(.uint(1), forHash: sha256("bob"))
+            let visits = try CountedHashMap<ReadWrite>(moment.putCursor(forKey: "visits"))
+            try visits.put(UInt64(1), forKey: "alice")
+            try visits.put(UInt64(2), forKey: "alice")
+            try visits.put(UInt64(1), forKey: "bob")
             #expect(try visits.count == 2)
 
-            let tags = try CountedHashSet<ReadWrite>(moment.putCursor(forHash: sha256("tags")))
-            try tags.insert(.bytes(Array("swift".utf8)), forHash: sha256("swift"))
+            let tags = try CountedHashSet<ReadWrite>(moment.putCursor(forKey: "tags"))
+            try tags.insert("swift")
             #expect(try tags.count == 1)
         }
     }
 
     @Test func negativeIndices() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         let list = try ArrayList<ReadWrite>(database.rootCursor)
         for value: UInt64 in [10, 20, 30] {
-            try list.append(.uint(value))
+            try list.append(value)
         }
 
-        let last = try list.cursor(at: -1)!.readUInt64()
-        let first = try list.cursor(at: -3)!.readUInt64()
-        let tooFar = try list.cursor(at: -4)
+        let last = try list.value(at: -1, as: UInt64.self)
+        let first = try list.value(at: -3, as: UInt64.self)
+        let tooFar = try list.value(at: -4, as: UInt64.self)
         #expect(last == 30)
         #expect(first == 10)
         #expect(tooFar == nil)
@@ -367,21 +386,30 @@ import XitDB
         }
     }
 
-    @Test func anyBytesAsAKey() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+    @Test func textAndBytesAsASortedKey() throws {
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         let sorted = try SortedMap<ReadWrite>(database.rootCursor)
 
-        try sorted.put(.uint(1), forKey: Array("apple".utf8))
-        try sorted.put(.uint(2), forKey: "pear".utf8)
-        let name = "apple, green"
-        try sorted.put(.uint(3), forKey: name.utf8.prefix(5) + [0x21])
+        try sorted.put(UInt64(1), forKey: "apple")
+        try sorted.put(UInt64(2), forKey: Array("pear".utf8))
 
+        // Text is its UTF-8: the two forms name the same keys, in the order of
+        // their bytes, and no hash is involved.
+        #expect(try sorted.value(forKey: Array("apple".utf8), as: UInt64.self) == 1)
+        #expect(try sorted.value(forKey: "pear", as: UInt64.self) == 2)
+        #expect(try sorted.entry(at: 0)!.key.read(String.self) == "apple")
+        let name = "apple, green"
+        try sorted.put(UInt64(3), forKey: name.utf8.prefix(5) + [0x21])
         #expect(try sorted.count == 3)
+        #expect(try sorted.rank(of: "pear") == 2)
+    }
+
+    @Test func anyBytesAsAHash() throws {
         let hashes = try Database(creating: MemoryStorage(), hashSize: 32)
         let hashed = try HashMap<ReadWrite>(hashes.rootCursor)
 
         let bytes = [UInt8](repeating: 7, count: 32)
-        try hashed.put(.uint(1), forHash: sha256("anything"))
+        try hashed.put(.uint(1), forHash: SHA256.hash(data: Array("anything".utf8)))
         try hashed.put(.uint(2), forHash: bytes)
         try hashed.put(.uint(3), forHash: bytes[...])
         try hashed.put(.uint(4), forHash: bytes.span)

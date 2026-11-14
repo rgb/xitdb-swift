@@ -357,12 +357,13 @@ import XitDB
     }
 
     @Test func aSinksErrorIsCarried() throws {
+        let (_, source, _) = try newSource()
+
         struct ConnectionLost: Error {}
         struct FailingSink: ByteSink {
             mutating func write(_ bytes: Span<UInt8>) throws { throw ConnectionLost() }
         }
 
-        let (_, source, _) = try newSource()
         var sink = FailingSink()
         var connectionLost = false
         do {

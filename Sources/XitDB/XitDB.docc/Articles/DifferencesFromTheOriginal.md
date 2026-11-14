@@ -94,6 +94,19 @@ and the port's files are compared with that branch's.
 
 ### The same as the original
 
+Keys and typed values bring three of the original's ways to a level the original does not have, and keep them there,
+where the Go, Java and TypeScript ports chose otherwise for their keys:
+
+- **A put does not store the key.** A keyed put writes what the original's `put(hashInt(key), data)` writes, the value
+  under the hash, and ``HashMap/putKey(_:)`` stores the key, as `putKey` does. The other ports' keyed put stores the key
+  as well. A set's ``HashSet/insert(_:)`` stores the member, as the original's set `put` does.
+- **A number says its kind**, as the original's `.uint`, `.int` and `.float` do: `UInt64`, `Int64` or `Double`. `Int` is
+  not a value, so an integer whose kind is not said does not compile.
+- **A slot set to nothing reads as no bytes**, as the original's `readBytesAlloc` reads it, and a number read from it is
+  refused, as the original's `readUint` refuses any tag but its own.
+
+And these of the original's ways stay as they are, hazards included:
+
 - **A copy made within a transaction** is a second name for something still mutable, until a freeze. That is the original's
   design, and the port keeps it: see <doc:CloningFreezeAndStaleHandles>.
 - **A freeze of one cursor**, ``Cursor/freeze()``, protects the data from writes through that cursor and from nothing else. The
@@ -110,10 +123,16 @@ and the port's files are compared with that branch's.
 
 The file format and the operations are the same, and the API follows Swift:
 
-- **The hash size is a value, not a type.** It comes from the file, or from you when you create one, so ``Database`` is not generic.
+- **The hasher is a value, not a type parameter.** The original's database is generic over the integer its hashes are, and
+  the caller hashes each key. Here a database is given a hasher, a ``KeyHashing`` type passed as a value, or a hash size
+  alone, and ``Database`` is not generic. The collections take a key beside a hash: an untyped keyed call is its call by
+  hash with the hash computed for it, and a typed one writes what the same value written by hash writes (see
+  <doc:Hashing>).
 - **The storage is a value too.** ``Database`` is not generic over it either, and any ``WritableStorage`` will do.
 - **Opening and creating are separate calls**, and a file's access mode has no default: see <doc:Storage>. The original's one
   call creates over what a creation that did not finish left; here creating does, and opening refuses it.
+- **Values are Swift types** beside ``WritableData``: `UInt64`, `Int64`, `Double`, `String`, `[UInt8]`, ``Bytes``, and any
+  ``StorableValue`` of your own, each written as the format's own slot: see <doc:CursorsAndValues>.
 - **A byte writer is a closure**, ``Cursor/writeBytes(formatTag:_:)``. There is no `finish` to forget.
 - **The path API is not public.** Only the collections and cursors are, so the original's hazards that need a raw path cannot be reached.
 - **``Entry`` is read-only**, so a sorted map's key cannot be overwritten through one, and a client cannot make a ``Slot``.
@@ -122,7 +141,7 @@ The file format and the operations are the same, and the API follows Swift:
   ``Slot``, ``Bytes`` and ``XitDBError`` are `Sendable`, and so is a ``Snapshot`` of one commit, which is how another task reads a
   database: see <doc:ConcurrencyAndSnapshots>.
 
-Every operation of the original is here, and read snapshots beyond it.
+Every operation of the original is here, and keys, typed values and read snapshots beyond it.
 
 ### The names
 
@@ -135,11 +154,14 @@ that reads as Swift. If you are coming from the original's documentation:
 | `db.runContext(ctx)` | ``Database/withTransaction(_:)`` |
 | `list.appendContext(data, ctx)` | ``ArrayList/append(_:_:)`` |
 | `list.getCursor(i)`, `list.getSlot(i)` | ``ArrayList/cursor(at:)``, ``ArrayList/slot(at:)`` |
+| `HashInt`, `hashInt(key)` | A hasher given to the database: ``Database/init(creating:hashing:hashID:fileID:)`` |
 | `map.getCursor(hash)`, `map.put(hash, data)` | ``HashMap/cursor(forHash:)-(Sequence<UInt8>)``, ``HashMap/put(_:forHash:)-(_,Sequence<UInt8>)`` |
-| `set.put(hash, data)`, `sorted_set.put(key)` | ``HashSet/insert(_:forHash:)-(_,Sequence<UInt8>)``, ``SortedSet/insert(_:)-(Sequence<UInt8>)`` |
+| `map.getCursor(hashInt(key))`, `map.put(hashInt(key), data)` | ``HashMap/cursor(forKey:)``, ``HashMap/put(_:forKey:)-(WritableData,_)``, or with a typed value ``HashMap/put(_:forKey:)-(StorableValue,_)`` |
+| `map.putKey(hash, data)` | ``HashMap/putKey(_:forHash:)-(_,Sequence<UInt8>)``, or by key ``HashMap/putKey(_:)`` |
+| `set.put(hash, data)`, `sorted_set.put(key)` | ``HashSet/insert(_:forHash:)-(_,Sequence<UInt8>)``, ``HashSet/insert(_:)``, ``SortedSet/insert(_:)-(Sequence<UInt8>)`` |
 | `list.concat(slot)`, `list.slice(offset, size)` | ``LinkedArrayList/append(contentsOf:)-(LinkedArrayList<CursorAccess>)``, ``LinkedArrayList/formSlice(offset:count:)`` |
 | `sorted.iteratorFrom(key)`, `sorted.iteratorFromIndex(i)` | ``SortedMap/iterator(fromKey:)-(Sequence<UInt8>)``, ``SortedMap/iterator(fromIndex:)`` |
-| `cursor.readUint()`, `cursor.readInt()`, `cursor.readFloat()` | ``Cursor/readUInt64()``, ``Cursor/readInt64()``, ``Cursor/readDouble()`` |
+| `cursor.readUint()`, `cursor.readInt()`, `cursor.readFloat()` | ``Cursor/readUInt64()``, ``Cursor/readInt64()``, ``Cursor/readDouble()``, or ``Cursor/read(_:)`` with `UInt64`, `Int64`, `Double` |
 | `cursor.readBytesAlloc(allocator, max)` | ``Cursor/readBytes(maxCount:)`` |
 | `cursor.readKeyValuePair()`, `kv.key_cursor`, `kv.value_cursor` | ``Cursor/readEntry()``, ``Entry/key``, ``Entry/value`` |
 | `cursor.writer(buffer)`, `writer.finish()` | ``Cursor/writeBytes(formatTag:_:)`` |

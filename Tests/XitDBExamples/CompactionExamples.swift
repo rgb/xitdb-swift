@@ -1,10 +1,11 @@
 import Foundation
 import Testing
 import XitDB
+import XitDBHashing
 
 @Suite("Compaction") struct CompactionExamples {
     private func newHistory(moments: Int) throws -> Database {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         let history = try ArrayList<ReadWrite>(database.rootCursor)
         for number in 0..<moments {
             try history.append(.slot(try history.slot(at: -1))) { cursor in
@@ -34,6 +35,8 @@ import XitDB
         #expect(try history.count == 1)
         let moment = try HashMap<ReadOnly>(history.cursor(at: 0)!)
         #expect(try moment.cursor(forHash: sha256("latest"))!.readUInt64() == 2)
+        // The target takes the source's hasher.
+        #expect(try moment.value(forKey: "latest", as: UInt64.self) == 2)
     }
 
     /// The numbers the article quotes.
@@ -52,12 +55,14 @@ import XitDB
         let database = try newHistory(moments: 3)
 
         // A database you opened yourself, with its own file ID and hash ID.
-        let target = try Database(creating: MemoryStorage(), hashSize: 32, hashID: "sha2")
+        let target = try Database(creating: MemoryStorage(), hashing: SHA256.self, hashID: "sha2")
         var offsets = MemoryOffsetMap()
         try database.compact(into: target, offsetMap: &offsets)
 
         #expect(try ArrayList<ReadOnly>(target.rootCursor).count == 1)
         #expect(target.header.hashID == "sha2")
+        let moment = try HashMap<ReadOnly>(ArrayList<ReadOnly>(target.rootCursor).cursor(at: 0)!)
+        #expect(try moment.value(forKey: "latest", as: UInt64.self) == 2)
     }
 
     @Test func aTargetMustBeEmpty() throws {
@@ -312,14 +317,14 @@ import XitDB
     /// history of everyone else.
     @Test func evictingOnePersonsData() throws {
         let storage = MemoryStorage()
-        let database = try Database(creating: storage, hashSize: 32)
+        let database = try Database(creating: storage, hashing: SHA256.self)
         let history = try ArrayList<ReadWrite>(database.rootCursor)
 
         // Each person is a list of that person's versions, and `versions` says
         // which version of each person each global version had, by index.
         try history.append(.slot(try history.slot(at: -1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            let people = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("people")))
+            let people = try ArrayList<ReadWrite>(moment.putCursor(forKey: "people"))
 
             let alice = try ArrayList<ReadWrite>(people.appendCursor())
             try alice.append(.bytes(Array("Alice, 25".utf8)))
@@ -336,7 +341,7 @@ import XitDB
         // Bob turns 43.
         try history.append(.slot(try history.slot(at: -1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            let people = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("people")))
+            let people = try ArrayList<ReadWrite>(moment.putCursor(forKey: "people"))
             let bob = try ArrayList<ReadWrite>(people.putCursor(at: 1))
             try bob.append(.bytes(Array("Bob, 43".utf8)))
 
@@ -349,7 +354,7 @@ import XitDB
         // Alice asks to be forgotten: clear her slot, and compact.
         try history.append(.slot(try history.slot(at: -1))) { cursor in
             let moment = try HashMap<ReadWrite>(cursor)
-            let people = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("people")))
+            let people = try ArrayList<ReadWrite>(moment.putCursor(forKey: "people"))
             try people.put(.slot(nil), at: 0)
         }
 

@@ -7,10 +7,10 @@ The eight collections, when to use which, and what they have in common at the ca
 A database is a tree of collections. An element of a list and a value of a map can be anything, another collection
 included. A collection is a value you make from a cursor, and it reads and writes the slot that cursor is at.
 
-The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYourOwnHashes>. They force-unwrap a
-lookup where the value was just written; real code handles the `nil` that means it is not there. Where they use `moment`,
-it is a ``HashMap`` in a transaction's body, as in <doc:MomentsAndHistory>. Reading a value and iterating over a collection
-are in <doc:CursorsAndValues>.
+Unless one makes its own, the examples are in a database given `SHA256` as the hasher of its keys (see <doc:Hashing>).
+They force-unwrap a lookup where the value was just written; real code handles the `nil` that means it is not there.
+Where they use `moment`, it is a ``HashMap`` in a transaction's body, as in <doc:MomentsAndHistory>. The values, reading
+them and iterating over a collection are in <doc:CursorsAndValues>.
 
 ### When to use which
 
@@ -18,12 +18,12 @@ are in <doc:CursorsAndValues>.
 |---|---|---|
 | ``ArrayList`` | Elements by position. Appends at the end, cuts from the end. | A history; a log; any list that mostly grows. |
 | ``LinkedArrayList`` | Elements by position. Inserts and removes anywhere; joins and cuts without going through the list. | A list you edit in the middle; lists joined or split often. |
-| ``HashMap`` | Values under a hash you compute. | Looking things up by key. The first choice for a map. |
+| ``HashMap`` | Values, each under the hash of its key. | Looking things up by key. The first choice for a map. |
 | ``CountedHashMap`` | The same, and it knows how many. | A map whose size you ask for. |
-| ``HashSet`` | Keys under a hash you compute. | Membership. |
+| ``HashSet`` | Keys, each under its hash. | Membership. |
 | ``CountedHashSet`` | The same, and it knows how many. | A set whose size you ask for. |
-| ``SortedMap`` | Values under byte strings, in the order of the bytes. | An index: sorting, paging, searching by prefix. |
-| ``SortedSet`` | Byte strings, in order. | An index with no values. |
+| ``SortedMap`` | Values under keys of text or bytes, in the order of the bytes. | An index: sorting, paging, searching by prefix. |
+| ``SortedSet`` | Keys of text or bytes, in order. | An index with no values. |
 
 Prefer ``ArrayList`` to ``LinkedArrayList`` and a hash map to a sorted map unless you need what the other one adds.
 The trie behind the first of each pair is simpler, and a lookup in it reads less. ``LinkedArrayList`` and
@@ -34,15 +34,15 @@ Each is a view of one slot, and they nest. A value that is a collection is writt
 slot and making the collection there:
 
 ```swift
-let database = try Database(creating: MemoryStorage(), hashSize: 32)
+let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
 let history = try ArrayList<ReadWrite>(database.rootCursor)
 
 try history.append(.slot(try history.slot(at: -1))) { cursor in
     let moment = try HashMap<ReadWrite>(cursor)
-    let people = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("people")))
+    let people = try ArrayList<ReadWrite>(moment.putCursor(forKey: "people"))
     let alice = try HashMap<ReadWrite>(people.appendCursor())
-    let scores = try SortedSet<ReadWrite>(alice.putCursor(forHash: sha256("scores")))
-    try scores.insert("high".utf8)
+    let scores = try SortedSet<ReadWrite>(alice.putCursor(forKey: "scores"))
+    try scores.insert("high")
 }
 ```
 
@@ -50,9 +50,9 @@ And read the same way, one level at a time:
 
 ```swift
 let moment = try HashMap<ReadOnly>(history.cursor(at: -1)!)
-let people = try ArrayList<ReadOnly>(moment.cursor(forHash: sha256("people"))!)
+let people = try ArrayList<ReadOnly>(moment.cursor(forKey: "people")!)
 let alice = try HashMap<ReadOnly>(people.cursor(at: 0)!)
-let scores = try SortedSet<ReadOnly>(alice.cursor(forHash: sha256("scores"))!)
+let scores = try SortedSet<ReadOnly>(alice.cursor(forKey: "scores")!)
 ```
 
 ### The read-only and read-write forms
@@ -60,25 +60,15 @@ let scores = try SortedSet<ReadOnly>(alice.cursor(forHash: sha256("scores"))!)
 Every collection is generic over its access, as a cursor is, and the two forms do different things when they are
 made:
 
-- **An ``ArrayList`` of ``ReadOnly`` access** checks that the slot holds a list or nothing, and writes nothing. A slot holding nothing
-  reads as an empty collection. It can be made from a cursor of either access, so a reader can pass
-  ``Database/rootCursor`` straight to it.
-- **An ``ArrayList`` of ``ReadWrite`` access** makes the slot a list if it holds nothing. If the list is from an earlier transaction, it
-  readies it for this one by copying its header and first block, so that writing leaves earlier moments as they
-  were. That is why it needs a read-write cursor, and a transaction unless the cursor is at the root. On a list at the
-  root it writes nothing new, since each transaction there does that copying when it starts. It does discard any bytes
-  past the committed size, which are another writer's transaction if one is running without the lock: see <doc:Storage>.
-
-```swift
-// The read-write form makes the collection if it is not there yet.
-let writable = try ArrayList<ReadWrite>(database.rootCursor)
-try writable.append(.uint(1))
-
-// These are the same list. The read-only forms cannot write: append
-// is not a method of them.
-let viaProperty: ArrayList<ReadOnly> = writable.readOnly
-let viaCursor = try ArrayList<ReadOnly>(database.rootCursor)
-```
+- **An ``ArrayList`` of ``ReadOnly`` access** checks that the slot holds a list or nothing, and writes nothing. A slot
+  holding nothing reads as an empty collection. It can be made from a cursor of either access, so a reader can pass
+  ``Database/rootCursor`` straight to it, and ``ArrayList/readOnly`` gives it from a read-write list.
+- **An ``ArrayList`` of ``ReadWrite`` access** makes the slot a list if it holds nothing. If the list is from an earlier
+  transaction, it readies it for this one by copying its header and first block, so that writing leaves earlier moments
+  as they were. That is why it needs a read-write cursor, and a transaction unless the cursor is at the root. On a list
+  at the root it writes nothing new, since each transaction there does that copying when it starts. It does discard any
+  bytes past the committed size, which are another writer's transaction if one is running without the lock: see
+  <doc:Storage>.
 
 Either form throws ``XitDBError/unexpectedTag`` for a slot that holds another kind of thing. A hash map and a hash set
 are one kind here, and so are a sorted map and a sorted set: a read-only view of either reads the same entries, and
@@ -94,10 +84,10 @@ Lookups give read-only cursors on both forms, and a lookup of something that is 
 ```swift
 let list = try ArrayList<ReadWrite>(database.rootCursor)
 
-try list.append(.uint(1))
-try list.append(.uint(2))
-try list.append(.uint(3))
-try list.put(.uint(20), at: 1)
+try list.append(UInt64(1))
+try list.append(UInt64(2))
+try list.append(UInt64(3))
+try list.put(UInt64(20), at: 1)
 try list.truncate(to: 2)
 ```
 
@@ -107,22 +97,21 @@ list at the root that is a transaction, as <doc:MomentsAndHistory> shows.
 ``LinkedArrayList`` can also change anywhere:
 
 ```swift
-let tasks = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("tasks")))
-try tasks.append(.uint(1))
-try tasks.append(.uint(3))
-try tasks.insert(.uint(2), at: 1)  // before the element at index 1
+let tasks = try LinkedArrayList<ReadWrite>(moment.putCursor(forKey: "tasks"))
+try tasks.append(UInt64(1))
+try tasks.append(UInt64(3))
+try tasks.insert(UInt64(2), at: 1)  // before the element at index 1
 try tasks.remove(at: 0)
 
-let more = try LinkedArrayList<ReadWrite>(moment.putCursor(forHash: sha256("more")))
-try more.append(.uint(4))
-try more.append(.uint(5))
+let more = try LinkedArrayList<ReadWrite>(moment.putCursor(forKey: "more"))
+try more.append(UInt64(4))
+try more.append(UInt64(5))
 
 // Joins in logarithmic time, sharing what it can with both lists.
 // The join freezes the transaction, so the list is made again
 // from the transaction's cursor before it is written to.
 try tasks.append(contentsOf: more)
-let joined = try LinkedArrayList<ReadWrite>(
-    HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("tasks")))
+let joined = try LinkedArrayList<ReadWrite>(HashMap<ReadWrite>(cursor).putCursor(forKey: "tasks"))
 ```
 
 ```swift
@@ -135,31 +124,34 @@ that joined included, and a write through one is refused with ``XitDBError/stale
 transaction's cursor, the one its body was given, as the example does with `joined`. Making it again from the list's own
 cursor is refused too: see <doc:CloningFreezeAndStaleHandles>.
 
-``LinkedArrayList/insert(_:at:)-(WritableData,_)`` needs an element to insert before, so an index equal to the count throws
-``XitDBError/indexOutOfRange``. Use ``LinkedArrayList/append(_:)-(WritableData)`` to add at the end.
+``LinkedArrayList/insert(_:at:)-(StorableValue,_)`` needs an element to insert before, so an index equal to the count
+throws ``XitDBError/indexOutOfRange``. Use ``LinkedArrayList/append(_:)-(StorableValue)`` to add at the end.
 
 ### The hash maps and sets
 
 ```swift
 let map = try HashMap<ReadWrite>(database.rootCursor)
 
-try map.put(.uint(25), forHash: sha256("age"))
-try map.putKey(.bytes(Array("age".utf8)), forHash: sha256("age"))
+try map.put(UInt64(25), forKey: "age")
+try map.putKey("age")
 ```
 
-A map stores the value under the hash and, unless you ask, not the key. ``HashMap/putKey(_:forHash:)-(_,Sequence<UInt8>)``
-stores the key beside it, and is what makes keys readable when you iterate. ``HashMap/remove(forHash:)-(Sequence<UInt8>)``
-returns whether there was an entry to remove, and the result may be ignored.
+**A map stores the value under the key's hash, and not the key**, as the original's map does. ``HashMap/putKey(_:)``
+stores the key beside it, which is what makes keys readable when you iterate: a map whose keys were not stored lists
+hashes and values (see <doc:CursorsAndValues>). The number is `UInt64(25)`, since `25` does not compile: a number says
+which of the format's kinds it is. Each untyped keyed call has a twin by hash, `forHash:` (`hash:` for a set's
+`contains`), which it is with the hash computed (see <doc:Hashing>); the typed calls have none, so by hash a value is
+put as `.uint(25)` and read with `cursor(forHash:)?.read(UInt64.self)`.
 
-A set holds keys:
+**A set stores its members.** A member is a key, so ``HashSet/insert(_:)`` writes its bytes, with a ``Bytes`` key's
+format tag, as the original's set does, and iterating gives them back:
 
 ```swift
 let tags = try HashSet<ReadWrite>(database.rootCursor)
 
-try tags.insert(.bytes(Array("swift".utf8)), forHash: sha256("swift"))
+try tags.insert("swift")
+let hasSwift = try tags.contains("swift")
 ```
-
-and answers ``HashSet/contains(hash:)-(Sequence<UInt8>)``.
 
 ### The counted forms
 
@@ -169,65 +161,73 @@ count sits in front of the first block, so a counted form costs eight bytes more
 more write for each entry added or removed. Writing to a key that exists does not change the count:
 
 ```swift
-let visits = try CountedHashMap<ReadWrite>(moment.putCursor(forHash: sha256("visits")))
-try visits.put(.uint(1), forHash: sha256("alice"))
-try visits.put(.uint(2), forHash: sha256("alice"))
-try visits.put(.uint(1), forHash: sha256("bob"))
+let visits = try CountedHashMap<ReadWrite>(moment.putCursor(forKey: "visits"))
+try visits.put(UInt64(1), forKey: "alice")
+try visits.put(UInt64(2), forKey: "alice")
+try visits.put(UInt64(1), forKey: "bob")
 ```
 
 That map's count is 2. The lists and the sorted collections always know their count.
 
 ### Indices
 
-A list's index, or a sorted collection's position, can be negative, which counts from the end. `-1` is the last
-element:
+A list's index, or a sorted collection's position, can be negative, which counts from the end. `-1` is the last element:
 
 ```swift
 let list = try ArrayList<ReadWrite>(database.rootCursor)
 for value: UInt64 in [10, 20, 30] {
-    try list.append(.uint(value))
+    try list.append(value)
 }
 
-let last = try list.cursor(at: -1)!.readUInt64()
-let first = try list.cursor(at: -3)!.readUInt64()
-let tooFar = try list.cursor(at: -4)
+let last = try list.value(at: -1, as: UInt64.self)
+let first = try list.value(at: -3, as: UInt64.self)
+let tooFar = try list.value(at: -4, as: UInt64.self)
 ```
 
 A lookup of an index that names nothing gives `nil`, an iterator from one gives nothing, and a write throws
 ``XitDBError/indexOutOfRange``.
 
-An index is `some BinaryInteger`, so an `Int`, a `UInt64` and a `UInt8` all work without a conversion, and a loop
-over `0..<(try list.count)` passes straight in. Counts are `UInt64`, and so are the counts and offsets that
-``ArrayList/truncate(to:)`` and ``LinkedArrayList/formSlice(offset:count:)`` take. An index that does not fit in an
-`Int64` names no element: a lookup gives `nil`, and a write or an iterator throws ``XitDBError/indexOutOfRange``.
-
-```swift
-// An Int, a UInt64 and a UInt8 are all indices.
-let index: Int = 0
-let count: UInt64 = try list.count
-let byte: UInt8 = 0
-```
+An index is `some BinaryInteger`, so an `Int`, a `UInt64` and a `UInt8` all work without a conversion, though an `Int`
+is not a value, and a loop over `0..<(try list.count)` passes straight in. Counts are `UInt64`, and so are the counts
+and offsets that ``ArrayList/truncate(to:)`` and ``LinkedArrayList/formSlice(offset:count:)`` take. An index that does
+not fit in an `Int64` names no element: a lookup gives `nil`, and a write or an iterator throws
+``XitDBError/indexOutOfRange``.
 
 ### Hashes and keys
 
-A hash, or a sorted collection's key, is `some Sequence<UInt8>` at the call site: a CryptoKit digest as it is, an array, a
-slice, a string's `utf8`, or Foundation's `Data`. The call makes an array of it, which costs nothing for an array and is a copy
-for anything else. Each method also has an overload taking a `Span<UInt8>`, for bytes you already have borrowed, which allocates
-nothing for a hash or key of up to 64 bytes:
+A key of a hash map or set is any ``KeyRepresentable``: a `String` or a `Substring`, as its UTF-8; a `[UInt8]`; a
+``Bytes``, hashed without its format tag, which the calls that store a key keep; or a type of your own that gives its
+bytes. Two keys with the same bytes are one key. A type whose raw value is a string is a key once it says so, which
+keeps the names of a record's fields in one place, here in `person`, a map of one person's fields:
+
+```swift
+enum Field: String, KeyRepresentable {
+    case name, age
+}
+try person.put(UInt64(25), forKey: Field.age)
+```
+
+A sorted map or set has no hash. It keeps the key's bytes themselves, in their order, and takes a key as text, by its
+UTF-8, or as bytes:
 
 ```swift
 let sorted = try SortedMap<ReadWrite>(database.rootCursor)
 
-try sorted.put(.uint(1), forKey: Array("apple".utf8))
-try sorted.put(.uint(2), forKey: "pear".utf8)
+try sorted.put(UInt64(1), forKey: "apple")
+try sorted.put(UInt64(2), forKey: Array("pear".utf8))
 ```
+
+A hash, or a sorted collection's key given as bytes, is `some Sequence<UInt8>` at the call site: a CryptoKit digest as it
+is, an array, a slice, a string's `utf8`, or Foundation's `Data`. The call makes an array of it, which costs nothing for
+an array and is a copy for anything else. Each method also has an overload taking a `Span<UInt8>`, for bytes you already
+have borrowed, which allocates nothing for a hash or key of up to 64 bytes:
 
 ```swift
 let hashes = try Database(creating: MemoryStorage(), hashSize: 32)
 let hashed = try HashMap<ReadWrite>(hashes.rootCursor)
 
 let bytes = [UInt8](repeating: 7, count: 32)
-try hashed.put(.uint(1), forHash: sha256("anything"))
+try hashed.put(.uint(1), forHash: SHA256.hash(data: Array("anything".utf8)))
 try hashed.put(.uint(2), forHash: bytes)
 try hashed.put(.uint(3), forHash: bytes[...])
 try hashed.put(.uint(4), forHash: bytes.span)
@@ -237,6 +237,6 @@ try hashed.put(.uint(4), forHash: bytes.span)
 
 - <doc:CursorsAndValues>
 - <doc:MomentsAndHistory>
-- <doc:BringYourOwnHashes>
+- <doc:Hashing>
 - <doc:SortingAndPaginating>
 - <doc:LargeByteArrays>

@@ -41,17 +41,19 @@ without an error and reads back wrong. Recovery does not help there, and nothing
 
 ### Recovering
 
-``Database/recover(_:)`` scans the storage back from its end for the last trailer that verifies, cuts the storage off after it,
-writes that commit's end as the committed size, syncs, and opens the database:
+``Database/recover(_:)`` scans the storage back from its end for the last trailer that verifies, cuts the storage off
+after it, writes that commit's end as the committed size, syncs, and opens the database.
+``Database/recover(_:hashing:)`` does the same and opens it with a hasher, as ``Database/init(opening:hashing:)`` does;
+it checks the hasher's size first, and refuses another with ``XitDBError/invalidHashSize`` before it cuts anything:
 
 ```swift
 func openOrRecover(_ storage: any WritableStorage) throws(XitDBError) -> Database {
     do {
-        return try Database(opening: storage)
+        return try Database(opening: storage, hashing: SHA256.self)
     } catch .untrustedRootHeader(let lastVerified) {
         // Copy the file first if what lies past lastVerified might be wanted.
         print("cutting the file back to \(lastVerified) bytes")
-        return try Database.recover(storage)
+        return try Database.recover(storage, hashing: SHA256.self)
     }
 }
 ```

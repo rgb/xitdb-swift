@@ -1,5 +1,6 @@
 import Testing
 import XitDB
+import XitDBHashing
 
 #if canImport(Darwin)
     import Darwin
@@ -63,7 +64,13 @@ import XitDB
         #expect(throws: XitDBError.invalidDatabase) {
             try Database(opening: storage)
         }
-        _ = try Database(creating: storage, hashSize: 32)
+        #expect(throws: XitDBError.invalidDatabase) {
+            try Database(opening: storage, hashing: SHA256.self)
+        }
+        _ = try Database(creating: storage, hashing: SHA256.self)
+        #expect(throws: XitDBError.storageNotEmpty) {
+            try Database(creating: storage, hashing: SHA256.self)
+        }
         #expect(throws: XitDBError.storageNotEmpty) {
             try Database(creating: storage, hashSize: 32)
         }
@@ -76,8 +83,8 @@ import XitDB
         let storage = try BufferedFileStorage(path: scratch.path("main.db"), access: .create)
         let database =
             try storage.length == 0
-            ? Database(creating: storage, hashSize: 32, hashID: "sha2")
-            : Database(opening: storage, hashSize: 32)
+            ? Database(creating: storage, hashing: SHA256.self, hashID: "sha2")
+            : Database(opening: storage, hashing: SHA256.self)
         #expect(database.header.hashSize == 32)
     }
 
@@ -93,7 +100,7 @@ import XitDB
 
         // The reader: a storage of its own, opened read-only.
         let storage = try FileStorage(path: scratch.path("main.db"), access: .readOnly)
-        let database = try Database(opening: storage)
+        let database = try Database(opening: storage, hashing: SHA256.self)
         let list = try ArrayList<ReadOnly>(database.rootCursor)
         #expect(try list.count == 1)
 
@@ -132,16 +139,16 @@ import XitDB
     @Test func aMemoryStorageIsBytes() throws {
         // A database as a value to send.
         let source = MemoryStorage()
-        let database = try Database(creating: source, hashSize: 32)
+        let database = try Database(creating: source, hashing: SHA256.self)
         let map = try HashMap<ReadWrite>(database.rootCursor)
-        try map.put(.uint(42), forHash: sha256("answer"))
+        try map.put(UInt64(42), forKey: "answer")
 
         let bytes = source.bytes
 
         // On the other side there is nothing to decode.
-        let received = try Database(opening: MemoryStorage(bytes: bytes))
+        let received = try Database(opening: MemoryStorage(bytes: bytes), hashing: SHA256.self)
         let answers = try HashMap<ReadOnly>(received.rootCursor)
-        let answer = try answers.cursor(forHash: sha256("answer"))!.readUInt64()
+        let answer = try answers.value(forKey: "answer", as: UInt64.self)
         #expect(answer == 42)
     }
 

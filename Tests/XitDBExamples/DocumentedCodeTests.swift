@@ -6,16 +6,25 @@ import Testing
 /// DocC and a README cannot include a file, so the code they show is written
 /// out twice: here, where it is compiled and run, and there, where it is
 /// read. This suite is what stops the two from drifting apart: every fenced
-/// `swift` block of the README and of every module's catalogue must appear in
-/// this target's sources line for line.
+/// `swift` block of the README, of every module's catalogue, and of the
+/// documentation comments in the libraries' sources (`Sources/XitDB` and
+/// `Sources/XitDBHashing`) must appear in this target's sources line for
+/// line. The comments' blocks have their code in `CommentExamples.swift`.
 ///
 /// A block marked ` ```swift manifest ` is a package manifest and not a use of
 /// the library, and is not checked; that is the only exception.
 ///
 /// The comparison ignores what the documentation has no reason to show:
-/// indentation, blank lines, `import` lines, and in the sources `#expect`
-/// lines and the scratch directory around a file's name. A block may therefore
-/// run across the checks between its lines, but it cannot skip code.
+/// indentation, blank lines, `import` lines, a `private` or `fileprivate` that
+/// begins a line, so that two files can each declare a type of the same name,
+/// and in the sources `#expect` lines and the scratch directory around a file's
+/// name. A block may therefore run across the checks between its lines, but it
+/// cannot skip code.
+///
+/// A comment's block is matched in its runs between blank lines, each run whole
+/// and the runs in order in one file. A comment may declare a type and then use
+/// it in one block, and no file but a `main.swift` can hold that as one run of
+/// code: the declarations stay at the top level and the uses go in a test.
 @Suite("Documented code") struct DocumentedCodeTests {
     private static let packageRoot = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
@@ -30,10 +39,12 @@ import Testing
             .filter { FileManager.default.fileExists(atPath: $0.path) }
     }()
 
-    /// A piece of code the documentation shows, and where.
+    /// A piece of code the documentation shows, and where: its lines, in the
+    /// runs that are matched each as a whole and in order. A page's block is
+    /// one run.
     private struct ShownCode: CustomTestStringConvertible {
         let place: String
-        let lines: [String]
+        let runs: [[String]]
 
         var testDescription: String { place }
     }
@@ -59,19 +70,53 @@ import Testing
     private static func normalised(_ lines: some Sequence<String>) -> [String] {
         lines.map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty && !$0.hasPrefix("import ") }
+            .map { $0.replacing(#/^(private|fileprivate) /#, with: "") }
     }
 
     /// The fenced `swift` blocks of a document.
     private static func fencedBlocks(in url: URL) throws -> [ShownCode] {
+        let lines = try String(contentsOf: url, encoding: .utf8).components(separatedBy: "\n")
+        return fencedBlocks(in: lines.map { Optional($0) }, of: url, inRuns: false)
+    }
+
+    /// The fenced `swift` blocks of the documentation comments in a source
+    /// file: its `///` lines, without the slashes and the one space after
+    /// them. A line that is not such a comment ends nothing and starts
+    /// nothing, and a block it interrupts is reported.
+    private static func commentBlocks(in url: URL) throws -> [ShownCode] {
+        let lines = try String(contentsOf: url, encoding: .utf8).components(separatedBy: "\n")
+        return fencedBlocks(
+            in: lines.map { line in
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                guard trimmed.hasPrefix("///") else { return nil }
+                let text = trimmed.dropFirst(3)
+                return String(text.hasPrefix(" ") ? text.dropFirst() : text)
+            }, of: url, inRuns: true)
+    }
+
+    /// The fenced `swift` blocks of a document's lines, where a `nil` line is
+    /// one that cannot be inside a block, each block one run or, `inRuns`, its
+    /// runs between blank lines.
+    private static func fencedBlocks(in lines: [String?], of url: URL, inRuns: Bool) -> [ShownCode] {
         var blocks: [ShownCode] = []
         var current: [String]?
         var start = 0
-        let lines = try String(contentsOf: url, encoding: .utf8).components(separatedBy: "\n")
         for (index, line) in lines.enumerated() {
+            guard let line else {
+                if current != nil {
+                    Issue.record("\(relative(url)):\(start) has a code block that does not end")
+                    current = nil
+                }
+                continue
+            }
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if let block = current {
                 if trimmed == "```" {
-                    blocks.append(ShownCode(place: "\(relative(url)):\(start)", lines: normalised(block)))
+                    let runs =
+                        inRuns
+                        ? block.split { $0.trimmingCharacters(in: .whitespaces).isEmpty }.map { normalised($0) }
+                        : [normalised(block)]
+                    blocks.append(ShownCode(place: "\(relative(url)):\(start)", runs: runs.filter { !$0.isEmpty }))
                     current = nil
                 } else {
                     current = block + [line]
@@ -85,13 +130,23 @@ import Testing
         return blocks
     }
 
-    /// Everything the documentation shows: the fenced blocks of the README and
-    /// of the catalogues' pages.
+    /// The libraries whose documentation comments are checked.
+    private static let librarySources = ["XitDB", "XitDBHashing"].map {
+        packageRoot.appendingPathComponent("Sources/\($0)")
+    }
+
+    /// Everything the documentation shows: the fenced blocks of the README, of
+    /// the catalogues' pages, and of the libraries' documentation comments.
     private static func shownCode() throws -> [ShownCode] {
         var shown = try fencedBlocks(in: packageRoot.appendingPathComponent("README.md"))
         for catalogue in catalogues {
             for url in files(in: catalogue, withExtensions: ["md"]) {
                 shown += try fencedBlocks(in: url)
+            }
+        }
+        for library in librarySources {
+            for url in files(in: library, withExtensions: ["swift"]) {
+                shown += try commentBlocks(in: url)
             }
         }
         return shown
@@ -119,22 +174,37 @@ import Testing
         for module in ["XitDB", "XitDBHashing"] {
             #expect(shown.contains { $0.place.hasPrefix("Sources/\(module)/\(module).docc/") }, "\(module)'s catalogue")
         }
+        // The libraries' documentation comments, outside the catalogues.
+        #expect(shown.contains { $0.place.hasPrefix("Sources/XitDB/") && $0.place.contains(".swift:") })
+    }
+
+    /// How many of the runs, from the first, a compiled file holds in order.
+    private static func runsFound(_ runs: [[String]], in file: String) -> Int {
+        var rest = file[...]
+        for (index, run) in runs.enumerated() {
+            let wanted = "\n" + run.joined(separator: "\n") + "\n"
+            guard let found = rest.range(of: wanted) else { return index }
+            rest = rest[rest.index(before: found.upperBound)...]
+        }
+        return runs.count
     }
 
     @Test func everyShownLineIsCompiled() throws {
         let compiled = try Self.compiledCode()
         for code in try Self.shownCode() {
-            let wanted = "\n" + code.lines.joined(separator: "\n") + "\n"
-            guard !compiled.contains(where: { $0.contains(wanted) }) else { continue }
-            // The longest run of the block's first lines that is there says
-            // where it departs from the code.
+            let found = compiled.map { Self.runsFound(code.runs, in: $0) }.max() ?? 0
+            guard found < code.runs.count else { continue }
+            // The longest run of the first missing run's lines that is there,
+            // after the runs found, says where it departs from the code.
+            let earlier = Array(code.runs[..<found])
+            let lines = code.runs[found]
             var matched = 0
-            while matched < code.lines.count {
-                let prefix = "\n" + code.lines[...matched].joined(separator: "\n") + "\n"
-                guard compiled.contains(where: { $0.contains(prefix) }) else { break }
+            while matched < lines.count {
+                let prefix = earlier + [Array(lines[...matched])]
+                guard compiled.contains(where: { Self.runsFound(prefix, in: $0) == prefix.count }) else { break }
                 matched += 1
             }
-            let departure = matched < code.lines.count ? code.lines[matched] : "(the block as a whole)"
+            let departure = matched < lines.count ? lines[matched] : "(the block as a whole)"
             Issue.record("\(code.place): not in Tests/XitDBExamples, from this line: \(departure)")
         }
     }

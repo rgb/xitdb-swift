@@ -11,7 +11,7 @@ If you keep a way to reach the old roots, every earlier state of the database st
 The way to keep them is a list at the root, usually with one element per transaction. An element of that list is a
 *moment*: one state of the database. The list is the *history*.
 
-The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYourOwnHashes>. They force-unwrap a
+The examples are in a database given `SHA256` as the hasher of its keys: see <doc:Hashing>. They force-unwrap a
 lookup where the value was just written; real code handles the `nil` that means it is not there.
 
 ### The root
@@ -21,7 +21,7 @@ commit. A new database's root is empty, and it can hold anything. Making an ``Ar
 the root a list:
 
 ```swift
-let database = try Database(creating: MemoryStorage(), hashSize: 32)
+let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
 
 let history = try ArrayList<ReadWrite>(database.rootCursor)
 ```
@@ -39,7 +39,7 @@ it was given there, runs its body with a cursor at the element, and commits when
 for price: UInt64 in [10, 12, 15] {
     try history.append(.slot(try history.slot(at: -1))) { cursor in
         let moment = try HashMap<ReadWrite>(cursor)
-        try moment.put(.uint(price), forHash: sha256("price"))
+        try moment.put(price, forKey: "price")
     }
 }
 ```
@@ -50,7 +50,7 @@ it holds. None of that has been copied. In the first transaction there is no las
 and `.slot(nil)` writes a slot set to nothing, which ``HashMap`` then makes into a new map.
 
 Copying happens as the body changes things. Making the read-write ``HashMap`` copies the first block of the map
-it was given, and each ``HashMap/put(_:forHash:)-(_,Sequence<UInt8>)`` copies the blocks on the way to the entry it changes. Everything else stays shared
+it was given, and each ``HashMap/put(_:forKey:)-(StorableValue,_)`` copies the blocks on the way to the entry it changes. Everything else stays shared
 with earlier moments:
 
 ![A history of three moments, each a map. The first holds apples at 120 and pears at 300. The second shares the pears with the first and has a new price for apples. The third shares the new price and has no pears.](history.svg)
@@ -60,13 +60,13 @@ So a moment keeps what it does not change:
 ```swift
 try history.append(.slot(try history.slot(at: -1))) { cursor in
     let moment = try HashMap<ReadWrite>(cursor)
-    try moment.put(.bytes(Array("widget".utf8)), forHash: sha256("name"))
-    try moment.put(.uint(10), forHash: sha256("price"))
+    try moment.put("widget", forKey: "name")
+    try moment.put(UInt64(10), forKey: "price")
 }
 
 // The second moment starts as the first, so it still has the name.
 try history.append(.slot(try history.slot(at: -1))) { cursor in
-    try HashMap<ReadWrite>(cursor).put(.uint(12), forHash: sha256("price"))
+    try HashMap<ReadWrite>(cursor).put(UInt64(12), forKey: "price")
 }
 ```
 
@@ -77,10 +77,10 @@ A moment is an element of the list, so any of them can be read by its index, and
 ```swift
 // Each commit is an element: the first holds 10, the last holds 15.
 let first = try HashMap<ReadOnly>(history.cursor(at: 0)!)
-let firstPrice = try first.cursor(forHash: sha256("price"))!.readUInt64()
+let firstPrice = try first.value(forKey: "price", as: UInt64.self)
 
 let latest = try HashMap<ReadOnly>(history.cursor(at: -1)!)
-let latestPrice = try latest.cursor(forHash: sha256("price"))!.readUInt64()
+let latestPrice = try latest.value(forKey: "price", as: UInt64.self)
 ```
 
 The history can be walked like any list:
@@ -91,7 +91,7 @@ var prices: [UInt64] = []
 var moments = try history.iterator()
 while let cursor = try moments.next() {
     let moment = try HashMap<ReadOnly>(cursor)
-    prices.append(try moment.cursor(forHash: sha256("price"))!.readUInt64())
+    prices.append(try moment.value(forKey: "price", as: UInt64.self)!)
 }
 ```
 
@@ -162,10 +162,10 @@ directly:
 
 ```swift
 let map = try HashMap<ReadWrite>(database.rootCursor)
-try map.put(.uint(10), forHash: sha256("price"))
+try map.put(UInt64(10), forKey: "price")
 ```
 
-Each ``HashMap/put(_:forHash:)-(_,Sequence<UInt8>)`` is then a transaction of its own, unless you group them with ``Database/withTransaction(_:)``. The
+Each ``HashMap/put(_:forKey:)-(StorableValue,_)`` is then a transaction of its own, unless you group them with ``Database/withTransaction(_:)``. The
 bytes of earlier states are still in the file, with nothing in the database leading to them. The file still grows with
 every transaction until you compact it, by 160 bytes less per transaction in a short history because there is no list to
 copy, and 144 less for each level of a longer one.

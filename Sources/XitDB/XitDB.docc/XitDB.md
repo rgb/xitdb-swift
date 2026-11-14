@@ -14,25 +14,29 @@ it. It leaves what is already committed as it is, so every earlier state of the 
 in a list at the root, one element per transaction:
 
 ```swift
-let database = try Database(creating: MemoryStorage(), hashSize: 32)
+let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
 
 let history = try ArrayList<ReadWrite>(database.rootCursor)
 
 for price: UInt64 in [10, 12, 15] {
     try history.append(.slot(try history.slot(at: -1))) { cursor in
         let moment = try HashMap<ReadWrite>(cursor)
-        try moment.put(.uint(price), forHash: sha256("price"))
+        try moment.put(price, forKey: "price")
     }
 }
 ```
 
-Three things in that code are not what you might assume. You hash your own keys, here with a helper
-`sha256(_:)`: see <doc:BringYourOwnHashes>. A collection is a view of a slot, made from a cursor, and it comes
-in a read-only and a read-write form: see <doc:TheCollections>. And the file only grows until you compact it:
-see <doc:MomentsAndHistory> for what that costs.
+Three things in that code are not what you might assume. The database is given the hasher of its keys, `SHA256` from the
+package's `XitDBHashing`, and a put stores its value under the key's hash and not the key, as in the original: see
+<doc:Hashing>. A collection is a view of a slot, made from a cursor, and it comes in a read-only and a read-write form:
+see <doc:TheCollections>. And the file only grows until you compact it: see <doc:MomentsAndHistory> for what that costs.
 
 A database whose root header or last trailer is damaged does not open. Opening names the last commit that
 verifies, and one explicit call cuts the file back to it, which can lose the commits after it: see <doc:Recovery>.
+
+The package's `XitDBHashing` module, which has documentation of its own, has SHA-256 and SHA-1 under CryptoKit's names
+on every platform, to give a database as the hash of its keys. The package's `xitdb-dump` prints a file as it is on
+disk: see <doc:ReadingAFileWithXitdbDump>.
 
 To start, read the four articles under Essentials in order. After those, each article stands on its own.
 
@@ -90,6 +94,7 @@ A cursor is a position in the database: it reads the value there, and inside a t
 - ``ReadOnly``
 - ``ReadWrite``
 - ``CursorAccess``
+- ``StorableValue``
 - ``WritableData``
 - ``Slot``
 - ``Slot/Tag``
@@ -103,15 +108,17 @@ Elements addressed by position. A list is how a database usually keeps its histo
 - ``ArrayList``
 - ``LinkedArrayList``
 
-### Maps and sets by hash
+### Maps and sets by key
 
-Values and keys found by a hash that you compute, in no useful order.
+Values and keys found by the hash of their key, which the database's hasher computes, in no useful order.
 
-- <doc:BringYourOwnHashes>
+- <doc:Hashing>
 - ``HashMap``
 - ``HashSet``
 - ``CountedHashMap``
 - ``CountedHashSet``
+- ``KeyRepresentable``
+- ``KeyHashing``
 
 ### Sorted maps and sets
 

@@ -10,7 +10,7 @@ moment may still refer to it. So a file holds every earlier state of the databas
 Compaction writes a new database holding what the latest moment reaches, and nothing else. The source is not touched. In
 one test, a history of 1,000 small moments took 1,025,627 bytes, and its compacted copy 10,629.
 
-The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYourOwnHashes>. They force-unwrap a lookup
+The examples are in a database given `SHA256` as the hasher of its keys: see <doc:Hashing>. They force-unwrap a lookup
 where the value was just written; real code handles the `nil` that means it is not there. Where they use `database`, it is a
 database with a history, as in <doc:MomentsAndHistory>.
 
@@ -31,10 +31,10 @@ let compacted = try database.compact(into: target, offsetMap: &offsets)
 let history = try ArrayList<ReadOnly>(compacted.rootCursor)
 ```
 
-The new database takes this one's hash size, and its hash ID unless you give another. It gets a new random file ID unless
-you give one, so it is a new file as far as replicas are concerned: see <doc:Replication>. In an empty storage, or one that
-holds only what a creation that did not finish left, it is created at format version 2, whatever this one's version is:
-see <doc:Storage>.
+The new database takes this one's hash size and the hasher this one was given, and its hash ID unless you give another.
+It gets a new random file ID unless you give one, so it is a new file as far as replicas are concerned: see
+<doc:Replication>. In an empty storage, or one that holds only what a creation that did not finish left, it is created
+at format version 2, whatever this one's version is: see <doc:Storage>.
 
 The source can be a ``SnapshotDatabase``, made over a ``Snapshot``, so that another task compacts the snapshot's commit while
 the writer goes on committing. A snapshot of one collection, made with ``Snapshot/init(_:)``, is not a whole commit, and
@@ -68,14 +68,14 @@ elements, which you can use: see "Forgetting one thing" below.
 
 ```swift
 // A database you opened yourself, with its own file ID and hash ID.
-let target = try Database(creating: MemoryStorage(), hashSize: 32, hashID: "sha2")
+let target = try Database(creating: MemoryStorage(), hashing: SHA256.self, hashID: "sha2")
 var offsets = MemoryOffsetMap()
 try database.compact(into: target, offsetMap: &offsets)
 ```
 
-Its root has to be empty and its hash size the same as the source's. Otherwise the call throws
-``XitDBError/targetNotEmpty`` or ``XitDBError/invalidHashSize``. The first of these is also what stops you compacting a
-database into itself.
+Its root has to be empty and its hash size the same as the source's, and it keeps the hasher it was given. Otherwise the
+call throws ``XitDBError/targetNotEmpty`` or ``XitDBError/invalidHashSize``. The first of these is also what stops you
+compacting a database into itself.
 
 A compaction is one ordinary transaction on the target. If it fails, what it wrote is discarded at once, as after any
 transaction that fails, and nothing of it is reachable.
@@ -174,7 +174,7 @@ and compact:
 // Alice asks to be forgotten: clear her slot, and compact.
 try history.append(.slot(try history.slot(at: -1))) { cursor in
     let moment = try HashMap<ReadWrite>(cursor)
-    let people = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("people")))
+    let people = try ArrayList<ReadWrite>(moment.putCursor(forKey: "people"))
     try people.put(.slot(nil), at: 0)
 }
 

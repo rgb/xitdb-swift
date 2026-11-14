@@ -23,13 +23,13 @@ article is about why.
 The examples in this article start from a history whose first moment has a list of fruits:
 
 ```swift
-let database = try Database(creating: MemoryStorage(), hashSize: 32)
+let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
 let history = try ArrayList<ReadWrite>(database.rootCursor)
 try history.append(.slot(try history.slot(at: -1))) { cursor in
     let moment = try HashMap<ReadWrite>(cursor)
-    let fruits = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("fruits")))
-    try fruits.append(.bytes(Array("apple".utf8)))
-    try fruits.append(.bytes(Array("pear".utf8)))
+    let fruits = try ArrayList<ReadWrite>(moment.putCursor(forKey: "fruits"))
+    try fruits.append("apple")
+    try fruits.append("pear")
 }
 ```
 
@@ -40,10 +40,10 @@ try history.append(.slot(try history.slot(at: -1))) { cursor in
     let moment = try HashMap<ReadWrite>(cursor)
 
     // "food" starts as a copy of "fruits", which an earlier transaction made.
-    let fruits = try moment.slot(forHash: sha256("fruits"))
-    try moment.put(.slot(fruits), forHash: sha256("food"))
-    let food = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("food")))
-    try food.append(.bytes(Array("rice".utf8)))
+    let fruits = try moment.slot(forKey: "fruits")
+    try moment.put(.slot(fruits), forKey: "food")
+    let food = try ArrayList<ReadWrite>(moment.putCursor(forKey: "food"))
+    try food.append("rice")
 }
 ```
 
@@ -58,14 +58,14 @@ The same copy of a list that the transaction has just made does not work:
 try history.append(.slot(try history.slot(at: -1))) { cursor in
     let moment = try HashMap<ReadWrite>(cursor)
     let bigCities = try ArrayList<ReadWrite>(
-        moment.putCursor(forHash: sha256("big-cities")))
-    try bigCities.append(.bytes(Array("New York, NY".utf8)))
-    try bigCities.append(.bytes(Array("Los Angeles, CA".utf8)))
+        moment.putCursor(forKey: "big-cities"))
+    try bigCities.append("New York, NY")
+    try bigCities.append("Los Angeles, CA")
 
     // "cities" starts as a copy of "big-cities", which this transaction made.
-    try moment.put(.slot(try bigCities.slot), forHash: sha256("cities"))
-    let cities = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("cities")))
-    try cities.append(.bytes(Array("Charleston, SC".utf8)))
+    try moment.put(.slot(try bigCities.slot), forKey: "cities")
+    let cities = try ArrayList<ReadWrite>(moment.putCursor(forKey: "cities"))
+    try cities.append("Charleston, SC")
 }
 ```
 
@@ -80,20 +80,20 @@ Freeze after the copy, and take the collections again from the cursor the transa
 try history.append(.slot(try history.slot(at: -1))) { cursor in
     let moment = try HashMap<ReadWrite>(cursor)
     let bigCities = try ArrayList<ReadWrite>(
-        moment.putCursor(forHash: sha256("big-cities")))
-    try bigCities.append(.bytes(Array("New York, NY".utf8)))
-    try bigCities.append(.bytes(Array("Los Angeles, CA".utf8)))
+        moment.putCursor(forKey: "big-cities"))
+    try bigCities.append("New York, NY")
+    try bigCities.append("Los Angeles, CA")
 
     // 1. Copy the slot.
-    try moment.put(.slot(try bigCities.slot), forHash: sha256("cities"))
+    try moment.put(.slot(try bigCities.slot), forKey: "cities")
 
     // 2. Freeze: nothing written so far in this transaction changes in place any more.
     try cursor.database.freeze()
 
     // 3. Take the collections again, from the cursor the body was given.
     let again = try HashMap<ReadWrite>(cursor)
-    let cities = try ArrayList<ReadWrite>(again.putCursor(forHash: sha256("cities")))
-    try cities.append(.bytes(Array("Charleston, SC".utf8)))
+    let cities = try ArrayList<ReadWrite>(again.putCursor(forKey: "cities"))
+    try cities.append("Charleston, SC")
 }
 ```
 
@@ -106,7 +106,7 @@ After ``Database/freeze()``, every cursor and collection made before it in the t
 the transaction's body was given:
 
 - **A write through it is refused** with ``XitDBError/staleCursor``: a value, an append, a
-  ``HashMap/putCursor(forHash:)-(Sequence<UInt8>)``, a byte array, and making a collection again from its cursor. The guard runs
+  ``HashMap/putCursor(forKey:)``, a byte array, and making a collection again from its cursor. The guard runs
   before anything is written, so the transaction is not poisoned (see <doc:Transactions>) and goes on.
 - **A read through it works**, and reads what the handle points at, which the freeze keeps as it is. It does not see what
   fresh handles write afterwards, since they write copies.
@@ -142,8 +142,8 @@ called it included, and a write through one is refused. To go on, take the list 
 try tasks.append(contentsOf: more)
 // The list that joined is stale too. Take it again from the body's cursor.
 let joined = try LinkedArrayList<ReadWrite>(
-    HashMap<ReadWrite>(cursor).putCursor(forHash: sha256("tasks")))
-try joined.append(.uint(3))
+    HashMap<ReadWrite>(cursor).putCursor(forKey: "tasks"))
+try joined.append(UInt64(3))
 ```
 
 A join on one list stales the handles of every other in the transaction, since the freeze is the database's.
@@ -154,7 +154,7 @@ The original's documentation clones with ``Cursor/freeze()``, on the cursor of t
 
 ```swift
 // The original's pattern: copy the slot, freeze the cursor, make the list.
-var citiesCursor = try moment.putCursor(forHash: sha256("cities"))
+var citiesCursor = try moment.putCursor(forKey: "cities")
 try citiesCursor.write(.slot(try bigCities.slot))
 try citiesCursor.freeze()
 let cities = try ArrayList<ReadWrite>(citiesCursor)

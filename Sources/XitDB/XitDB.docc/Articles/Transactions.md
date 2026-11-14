@@ -8,7 +8,7 @@ Every write happens in a transaction, and a transaction commits whole or not at 
 one: give ``Database/withTransaction(_:)`` a body, or write through a collection at the root, where each write
 is a transaction of its own. The history pattern of <doc:MomentsAndHistory> is the second kind, with a body.
 
-The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYourOwnHashes>.
+The examples are in a database given `SHA256` as the hasher of its keys: see <doc:Hashing>.
 
 ### Running a transaction
 
@@ -16,12 +16,12 @@ The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYour
 returns, and gives back what the body returned:
 
 ```swift
-let database = try Database(creating: MemoryStorage(), hashSize: 32)
+let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
 
 let total = try database.withTransaction { cursor in
     let map = try HashMap<ReadWrite>(cursor)
-    try map.put(.uint(3), forHash: sha256("apples"))
-    try map.put(.uint(4), forHash: sha256("pears"))
+    try map.put(UInt64(3), forKey: "apples")
+    try map.put(UInt64(4), forKey: "pears")
     return 3 + 4
 }
 ```
@@ -33,7 +33,7 @@ struct OutOfStock: Error {}
 
 try database.withTransaction { cursor in
     let map = try HashMap<ReadWrite>(cursor)
-    try map.put(.uint(0), forHash: sha256("stock"))
+    try map.put(UInt64(0), forKey: "stock")
     throw OutOfStock()
 }
 ```
@@ -46,16 +46,16 @@ written to the storage poisons its transaction. From then on every write in it i
 whatever the body did with the error. Reads still work.
 
 ```swift
-let small = try Database(creating: MemoryStorage(maxSize: 2_000), hashSize: 32)
+let small = try Database(creating: MemoryStorage(maxSize: 2_000), hashing: SHA256.self)
 do {
     try small.withTransaction { cursor in
         let map = try HashMap<ReadWrite>(cursor)
-        try map.put(.uint(1), forHash: sha256("small"))
+        try map.put(UInt64(1), forKey: "small")
         do {
             // Too large for the storage, and only found out
             // after the entry was written.
             let large = [UInt8](repeating: 7, count: 3_000)
-            try map.put(.bytes(large), forHash: sha256("large"))
+            try map.put(large, forKey: "large")
         } catch XitDBError.maxSizeExceeded {
             // Caught, but the transaction is poisoned:
             // the next write, and the commit, fail.
@@ -82,19 +82,19 @@ left: see <doc:DifferencesFromTheOriginal>.
 A collection made from ``Database/rootCursor`` writes through the root, and each such write commits:
 
 ```swift
-let separately = try Database(creating: MemoryStorage(), hashSize: 32)
-let grouped = try Database(creating: MemoryStorage(), hashSize: 32)
+let separately = try Database(creating: MemoryStorage(), hashing: SHA256.self)
+let grouped = try Database(creating: MemoryStorage(), hashing: SHA256.self)
 
 // Three commits: making the map is one, and each write is another.
 let map = try HashMap<ReadWrite>(separately.rootCursor)
-try map.put(.uint(3), forHash: sha256("apples"))
-try map.put(.uint(4), forHash: sha256("pears"))
+try map.put(UInt64(3), forKey: "apples")
+try map.put(UInt64(4), forKey: "pears")
 
 // One commit.
 try grouped.withTransaction { cursor in
     let map = try HashMap<ReadWrite>(cursor)
-    try map.put(.uint(3), forHash: sha256("apples"))
-    try map.put(.uint(4), forHash: sha256("pears"))
+    try map.put(UInt64(3), forKey: "apples")
+    try map.put(UInt64(4), forKey: "pears")
 }
 ```
 

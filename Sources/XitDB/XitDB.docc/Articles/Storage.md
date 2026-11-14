@@ -31,11 +31,8 @@ Use ``BufferedFileStorage`` for a database in a file. Writes collect in a window
 fills up or a commit syncs. The window holds up to ``BufferedFileStorage/bufferLimit``, 2 MiB by default, and a write larger than
 that goes straight to the file.
 
-``FileStorage`` makes a system call for every read and write. That makes writing slower: 100,000 puts in one transaction took
-0.64 seconds against the buffered storage's 0.21. Reading came out the same, at about 0.26 seconds for 100,000 lookups, because
-the buffer only holds writes, so a storage that is only read has nothing to gain from it. These times are indicative: measured
-on 2026-11-07 on one machine, an Apple M4 with its internal SSD on APFS, in a release build with syncing off and the hashes
-computed beforehand.
+``FileStorage`` makes a system call for every read and write. On one machine that made 100,000 puts in one transaction
+about three times as slow as through the buffer, and reading no slower, since the buffer only holds writes.
 
 ``MemoryStorage`` keeps the bytes in memory. Syncing does nothing, so a commit costs only what it writes. The bytes are a complete
 database, so one can be a value to send. There is no decoding step on the other side:
@@ -43,16 +40,16 @@ database, so one can be a value to send. There is no decoding step on the other 
 ```swift
 // A database as a value to send.
 let source = MemoryStorage()
-let database = try Database(creating: source, hashSize: 32)
+let database = try Database(creating: source, hashing: SHA256.self)
 let map = try HashMap<ReadWrite>(database.rootCursor)
-try map.put(.uint(42), forHash: sha256("answer"))
+try map.put(UInt64(42), forKey: "answer")
 
 let bytes = source.bytes
 
 // On the other side there is nothing to decode.
-let received = try Database(opening: MemoryStorage(bytes: bytes))
+let received = try Database(opening: MemoryStorage(bytes: bytes), hashing: SHA256.self)
 let answers = try HashMap<ReadOnly>(received.rootCursor)
-let answer = try answers.cursor(forHash: sha256("answer"))!.readUInt64()
+let answer = try answers.value(forKey: "answer", as: UInt64.self)
 ```
 
 A memory storage can have a limit, ``MemoryStorage/maxSize``. A write that would pass it throws
@@ -75,17 +72,19 @@ path makes an empty file and the program goes on to the next error. With ``FileA
 
 A failure to open, including a missing file, throws ``XitDBError/storageFailure(errno:)``.
 
-A database is then either opened or created, and these are different calls.
-``Database/init(opening:hashSize:)`` throws ``XitDBError/invalidDatabase`` on an empty storage, and
-``Database/init(creating:hashSize:hashID:fileID:)`` throws ``XitDBError/storageNotEmpty`` on one with anything in it but what a
-creation that did not finish left (see below), so neither can do the other's job by accident. To do either, say so:
+A database is then either opened or created, and these are different calls. ``Database/init(opening:hashing:)`` throws
+``XitDBError/invalidDatabase`` on an empty storage, and ``Database/init(creating:hashing:hashID:fileID:)`` throws
+``XitDBError/storageNotEmpty`` on one with anything in it but what a creation that did not finish left (see below), so
+neither can do the other's job by accident. Each is given the hasher of the database's keys; the forms with a hash size
+in its place, ``Database/init(opening:hashSize:)`` and ``Database/init(creating:hashSize:hashID:fileID:)``, make a
+database that takes hashes alone (see <doc:Hashing>), and open and create the same files. To do either, say so:
 
 ```swift
 let storage = try BufferedFileStorage(path: "main.db", access: .create)
 let database =
     try storage.length == 0
-    ? Database(creating: storage, hashSize: 32, hashID: "sha2")
-    : Database(opening: storage, hashSize: 32)
+    ? Database(creating: storage, hashing: SHA256.self, hashID: "sha2")
+    : Database(opening: storage, hashing: SHA256.self)
 ```
 
 A creation or a copy that did not finish leaves a storage that is neither empty nor a whole database. A process that died
@@ -119,7 +118,7 @@ A reader opens the file read-only, with a storage of its own, and reads through 
 ```swift
 // The reader: a storage of its own, opened read-only.
 let storage = try FileStorage(path: "main.db", access: .readOnly)
-let database = try Database(opening: storage)
+let database = try Database(opening: storage, hashing: SHA256.self)
 let list = try ArrayList<ReadOnly>(database.rootCursor)
 ```
 

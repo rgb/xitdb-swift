@@ -16,8 +16,8 @@ key. Every query is a walk you write, so what it costs is what that code does.
 An ``ArrayList`` is no use for this. It keeps things in the order they were written, and as soon as you want any other
 order you need a structure that stays sorted by a key.
 
-The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYourOwnHashes>. They force-unwrap a lookup where
-the value was just written; real code handles the `nil` that means it is not there.
+The examples are in a database given `SHA256` as the hasher of its keys: see <doc:Hashing>. They force-unwrap a lookup
+where the value was just written; real code handles the `nil` that means it is not there.
 
 ### A primary store and an index
 
@@ -49,21 +49,18 @@ try history.append(.slot(try history.slot(at: -1))) { cursor in
     let moment = try HashMap<ReadWrite>(cursor)
 
     // The primary store: from a user's ID to the user's fields.
-    let idToUser = try HashMap<ReadWrite>(
-        moment.putCursor(forHash: sha256("id->user")))
+    let idToUser = try HashMap<ReadWrite>(moment.putCursor(forKey: "id->user"))
 
     // The index: from a username to the user's ID, in username order.
-    let usernameToID = try SortedMap<ReadWrite>(
-        moment.putCursor(forHash: sha256("username->id")))
+    let usernameToID = try SortedMap<ReadWrite>(moment.putCursor(forKey: "username->id"))
 
     for user in users {
-        let fields = try HashMap<ReadWrite>(
-            idToUser.putCursor(forHash: sha256(user.id)))
-        try fields.put(.bytes(Array(user.username.utf8)), forHash: sha256("username"))
-        try fields.put(.bytes(Array(user.name.utf8)), forHash: sha256("name"))
+        let fields = try HashMap<ReadWrite>(idToUser.putCursor(forKey: user.id))
+        try fields.put(user.username, forKey: "username")
+        try fields.put(user.name, forKey: "name")
 
         // Both in one transaction, so that they cannot disagree.
-        try usernameToID.put(.bytes(Array(user.id.utf8)), forKey: user.username.utf8)
+        try usernameToID.put(user.id, forKey: user.username)
     }
 }
 ```
@@ -78,9 +75,8 @@ position, and you walk forward as far as the page goes:
 
 ```swift
 let moment = try HashMap<ReadOnly>(history.cursor(at: -1)!)
-let idToUser = try HashMap<ReadOnly>(moment.cursor(forHash: sha256("id->user"))!)
-let usernameToID = try SortedMap<ReadOnly>(
-    moment.cursor(forHash: sha256("username->id"))!)
+let idToUser = try HashMap<ReadOnly>(moment.cursor(forKey: "id->user")!)
+let usernameToID = try SortedMap<ReadOnly>(moment.cursor(forKey: "username->id")!)
 
 // ORDER BY username LIMIT 2 OFFSET 2
 let pageSize = 2
@@ -90,11 +86,11 @@ var names: [String] = []
 var iterator = try usernameToID.iterator(fromIndex: offset)
 while names.count < pageSize, let cursor = try iterator.next() {
     let entry = try cursor.readEntry()
-    let id = String(decoding: try entry.value.readBytes(), as: UTF8.self)
+    let id = try entry.value.read(String.self)
 
-    let fields = try HashMap<ReadOnly>(idToUser.cursor(forHash: sha256(id))!)
-    let name = try fields.cursor(forHash: sha256("name"))!.readBytes()
-    names.append(String(decoding: name, as: UTF8.self))
+    let fields = try HashMap<ReadOnly>(idToUser.cursor(forKey: id)!)
+    let name = try fields.value(forKey: "name", as: String.self)!
+    names.append(name)
 }
 ```
 
@@ -105,34 +101,34 @@ for the page count, and it reads only a header.
 
 ### Seeking to a key
 
-An index can also seek to a key, which is what a list can never do. ``SortedMap/iterator(fromKey:)-(Sequence<UInt8>)`` starts
+An index can also seek to a key, which is what a list can never do. ``SortedMap/iterator(fromKey:)-(StringProtocol)`` starts
 at the first key that is not below the one you give, and that key does not have to exist. This is a type-ahead search:
 
 ```swift
 // Everyone whose username starts with "da".
-let prefix = Array("da".utf8)
+let prefix = "da"
 
 var usernames: [String] = []
 var iterator = try usernameToID.iterator(fromKey: prefix)
 while let cursor = try iterator.next() {
-    let key = try cursor.readEntry().key.readBytes()
-    guard key.starts(with: prefix) else { break }
-    usernames.append(String(decoding: key, as: UTF8.self))
+    let key = try cursor.readEntry().key.read(String.self)
+    guard key.utf8.starts(with: prefix.utf8) else { break }
+    usernames.append(key)
 }
 ```
 
 ### Positions
 
-A sorted collection can answer in both directions between keys and positions. ``SortedMap/rank(of:)-(Sequence<UInt8>)``
+A sorted collection can answer in both directions between keys and positions. ``SortedMap/rank(of:)-(StringProtocol)``
 gives the number of keys below a key, which is the position it has or would have. ``SortedMap/entry(at:)`` gives the entry at
 a position, and a negative position counts from the end:
 
 ```swift
 // alice bob carol dan dave eve
-let carol = try usernameToID.rank(of: "carol".utf8)  // 2
-let notThere = try usernameToID.rank(of: "david".utf8)  // 5: it would come before eve
-let third = try usernameToID.entry(at: 2)!.key.readBytes()  // carol
-let last = try usernameToID.entry(at: -1)!.key.readBytes()  // eve
+let carol = try usernameToID.rank(of: "carol")  // 2
+let notThere = try usernameToID.rank(of: "david")  // 5: it would come before eve
+let third = try usernameToID.entry(at: 2)!.key.read(String.self)  // carol
+let last = try usernameToID.entry(at: -1)!.key.read(String.self)  // eve
 ```
 
 There is no reverse iterator. To go backwards, ask for positions from the end, each of which costs a descent from the root:
@@ -141,8 +137,8 @@ There is no reverse iterator. To go backwards, ask for positions from the end, e
 // There is no reverse iterator. A position counts from either end.
 var usernames: [String] = []
 for index in 1...2 {
-    let key = try usernameToID.entry(at: -index)!.key.readBytes()
-    usernames.append(String(decoding: key, as: UTF8.self))
+    let key = try usernameToID.entry(at: -index)!.key.read(String.self)
+    usernames.append(key)
 }
 ```
 
@@ -150,14 +146,14 @@ If you mostly read an index backwards, store its keys so that they sort the othe
 
 ### Keys are bytes
 
-Keys compare as unsigned bytes from the first, and a key that is a prefix of another comes before it. That is the whole of
-what the collection knows about order, and it has consequences:
+Keys compare as unsigned bytes from the first, and a key that is a prefix of another comes before it. A key given as text
+is its UTF-8. That is the whole of what the collection knows about order, and it has consequences:
 
 ```swift
 let words = try SortedSet<ReadWrite>(database.rootCursor)
 
 for word in ["apple", "Zebra", "app", "éclair", "10", "9"] {
-    try words.insert(word.utf8)
+    try words.insert(word)
 }
 ```
 
@@ -200,17 +196,13 @@ a remove and a put, in the same transaction as the change to the data:
 // user's field, so that no moment has one without the other.
 try history.append(.slot(try history.slot(at: -1))) { cursor in
     let moment = try HashMap<ReadWrite>(cursor)
-    let idToUser = try HashMap<ReadWrite>(
-        moment.putCursor(forHash: sha256("id->user")))
-    let usernameToID = try SortedMap<ReadWrite>(
-        moment.putCursor(forHash: sha256("username->id")))
+    let idToUser = try HashMap<ReadWrite>(moment.putCursor(forKey: "id->user"))
+    let usernameToID = try SortedMap<ReadWrite>(moment.putCursor(forKey: "username->id"))
 
-    let fields = try HashMap<ReadWrite>(
-        idToUser.putCursor(forHash: sha256("user000000000003")))
-    try fields.put(.bytes(Array("caroline".utf8)), forHash: sha256("username"))
-    try usernameToID.remove(forKey: "carol".utf8)
-    try usernameToID.put(
-        .bytes(Array("user000000000003".utf8)), forKey: "caroline".utf8)
+    let fields = try HashMap<ReadWrite>(idToUser.putCursor(forKey: "user000000000003"))
+    try fields.put("caroline", forKey: "username")
+    try usernameToID.remove(forKey: "carol")
+    try usernameToID.put("user000000000003", forKey: "caroline")
 }
 ```
 
@@ -220,14 +212,14 @@ A remove leaves an empty place in its leaf and does not rebalance the tree. Posi
 
 You can keep as many indexes over one primary store as you have orders to show, each a ``SortedMap`` in the moment, each
 written in the same transactions. An index that holds no value is a ``SortedSet``, which has the same iterators, positions and
-ranks, and ``SortedSet/contains(_:)-(Sequence<UInt8>)``:
+ranks, and ``SortedSet/contains(_:)-(StringProtocol)``:
 
 ```swift
 let usernames = try SortedSet<ReadWrite>(database.rootCursor)
 
-try usernames.insert("alice".utf8)
-try usernames.insert("bob".utf8)
-try usernames.insert("alice".utf8)
+try usernames.insert("alice")
+try usernames.insert("bob")
+try usernames.insert("alice")
 ```
 
 That set has two keys. Inserting a key that is there already changes nothing.
@@ -237,4 +229,4 @@ That set has two keys. Inserting a key that is there already changes nothing.
 - ``SortedMap``
 - ``SortedSet``
 - <doc:TheCollections>
-- <doc:BringYourOwnHashes>
+- <doc:Hashing>

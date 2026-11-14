@@ -4,11 +4,10 @@ Writing and reading a value too large to hold in memory, a part at a time.
 
 ## Overview
 
-A byte array is a value like any other. ``WritableData/bytes(_:formatTag:)`` writes one whole, and
-``Cursor/readBytes(maxCount:)`` reads one whole. For a value you would rather not have in memory, a cursor can also
-write and read it in parts.
+A byte array is a value like any other: a put of a `[UInt8]` writes one whole, and ``Cursor/readBytes(maxCount:)`` reads
+one whole. For a value you would rather not have in memory, a cursor can also write and read it in parts.
 
-The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYourOwnHashes>. They force-unwrap a lookup
+The examples are in a database given `SHA256` as the hasher of its keys: see <doc:Hashing>. They force-unwrap a lookup
 where the value was just written; real code handles the `nil` that means it is not there. Where they use `moment`, it is a
 ``HashMap`` that is one moment of a history, as in <doc:MomentsAndHistory>: a read-only one to read through, and to write
 through a read-write one in a transaction's body.
@@ -20,7 +19,7 @@ the storage, and when the body returns the array is finished and the slot is poi
 remember to call at the end.
 
 ```swift
-var cursor = try moment.putCursor(forHash: sha256("long-text"))
+var cursor = try moment.putCursor(forKey: "long-text")
 try cursor.writeBytes { writer in
     for _ in 0..<50 {
         try writer.write(Array("hello, world!\n".utf8))
@@ -54,7 +53,7 @@ started.
 how many bytes that was, which is zero at the end. Here it counts the lines of the text above, a kilobyte at a time:
 
 ```swift
-var reader = try moment.cursor(forHash: sha256("long-text"))!.reader()
+var reader = try moment.cursor(forKey: "long-text")!.reader()
 var buffer = [UInt8](repeating: 0, count: 1024)
 var span = buffer.mutableSpan
 
@@ -76,10 +75,10 @@ reading the old value, which is still there:
 
 ```swift
 let map = try HashMap<ReadWrite>(database.rootCursor)
-try map.put(.bytes(Array("the first value".utf8)), forHash: sha256("value"))
+try map.put("the first value", forKey: "value")
 
-var reader = try map.cursor(forHash: sha256("value"))!.reader()
-try map.put(.bytes(Array("the second value".utf8)), forHash: sha256("value"))
+var reader = try map.cursor(forKey: "value")!.reader()
+try map.put("the second value", forKey: "value")
 ```
 
 The exception is a reader made through a cursor from a transaction that failed, whose bytes are gone: as through the
