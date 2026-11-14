@@ -1,9 +1,13 @@
 /// A hash set in a database.
 ///
-/// A set holds keys, each under its hash. **The set hashes nothing
-/// itself.** The caller hashes each key, with any function whose result
-/// has as many bytes as the database's hash size, and gives the hash with
-/// the key. Two keys with the same hash are the same key to the set.
+/// A set holds keys, each under its hash. Every call comes in two kinds.
+/// The calls that take a key, a string or bytes or anything
+/// ``KeyRepresentable``, hash it with the hasher the database was given,
+/// and ``insert(_:)`` stores the key's bytes as the member. The calls with
+/// a hash take one the caller made, with any function whose result has as
+/// many bytes as the database's hash size, and the key to store beside it:
+/// they work on every database. A keyed call is its call by hash with the
+/// key hashed. Two keys with the same hash are the same key to the set.
 ///
 /// A set is a view of a slot. Making one that can only read checks that
 /// the slot holds a set of this kind, or nothing. Making one that can
@@ -54,8 +58,7 @@ public struct HashSet<Access: CursorAccess> {
     ///   the set is not at the root and its cursor is from a transaction that
     ///   did not commit, or an error of the storage or of a damaged file.
     public func cursor(forHash hash: Span<UInt8>) throws(XitDBError) -> Cursor<ReadOnly>? {
-        let path: InlineArray<1, PathPart> = [.hashMapGet(.key, KeyHash(hash))]
-        return try cursor.readPath(path.span)
+        try cursor(forHash: KeyHash(hash))
     }
 
     /// A cursor at the key stored under a hash, or `nil` if the set has no
@@ -78,6 +81,19 @@ public struct HashSet<Access: CursorAccess> {
         return try cursor(forHash: bytes.span)
     }
 
+    /// A cursor at a key of the set, or `nil` if the set does not have it.
+    ///
+    /// The key is hashed by the hasher the database was given, and this is
+    /// ``cursor(forHash:)-(Span<UInt8>)`` with that hash.
+    ///
+    /// - Parameter key: The key.
+    /// - Throws: ``XitDBError/noKeyHashing`` if the database was given no
+    ///   hasher, before anything else is looked at, and what
+    ///   ``cursor(forHash:)-(Span<UInt8>)`` throws.
+    public func cursor(forKey key: some KeyRepresentable) throws(XitDBError) -> Cursor<ReadOnly>? {
+        try cursor(forHash: try cursor.keyHash(of: key))
+    }
+
     /// The slot of the key stored under a hash, or `nil` if the set has no
     /// entry for it or the entry's key was never written.
     ///
@@ -91,8 +107,7 @@ public struct HashSet<Access: CursorAccess> {
     ///   the set is not at the root and its cursor is from a transaction that
     ///   did not commit, or an error of the storage or of a damaged file.
     public func slot(forHash hash: Span<UInt8>) throws(XitDBError) -> Slot? {
-        let path: InlineArray<1, PathPart> = [.hashMapGet(.key, KeyHash(hash))]
-        return try cursor.readPathSlot(path.span)
+        try slot(forHash: KeyHash(hash))
     }
 
     /// The slot of the key stored under a hash, or `nil` if the set has no
@@ -115,6 +130,19 @@ public struct HashSet<Access: CursorAccess> {
         return try slot(forHash: bytes.span)
     }
 
+    /// The slot of a key of the set, or `nil` if the set does not have it.
+    ///
+    /// The key is hashed by the hasher the database was given, and this is
+    /// ``slot(forHash:)-(Span<UInt8>)`` with that hash.
+    ///
+    /// - Parameter key: The key.
+    /// - Throws: ``XitDBError/noKeyHashing`` if the database was given no
+    ///   hasher, before anything else is looked at, and what
+    ///   ``slot(forHash:)-(Span<UInt8>)`` throws.
+    public func slot(forKey key: some KeyRepresentable) throws(XitDBError) -> Slot? {
+        try slot(forHash: try cursor.keyHash(of: key))
+    }
+
     /// Whether a key is stored under a hash.
     ///
     /// An entry whose key was never written, from
@@ -131,7 +159,7 @@ public struct HashSet<Access: CursorAccess> {
     ///   the set is not at the root and its cursor is from a transaction that
     ///   did not commit, or an error of the storage or of a damaged file.
     public func contains(hash: Span<UInt8>) throws(XitDBError) -> Bool {
-        try slot(forHash: hash) != nil
+        try contains(hash: KeyHash(hash))
     }
 
     /// Whether a key is stored under a hash.
@@ -155,6 +183,22 @@ public struct HashSet<Access: CursorAccess> {
     public func contains(hash: some Sequence<UInt8>) throws(XitDBError) -> Bool {
         let bytes = Array(hash)
         return try contains(hash: bytes.span)
+    }
+
+    /// Whether the set has a key.
+    ///
+    /// An entry whose key was never written, from ``insertCursor(forKey:)``
+    /// with nothing written through the cursor, does not count.
+    ///
+    /// The key is hashed by the hasher the database was given, and this is
+    /// ``contains(hash:)-(Span<UInt8>)`` with that hash.
+    ///
+    /// - Parameter key: The key.
+    /// - Throws: ``XitDBError/noKeyHashing`` if the database was given no
+    ///   hasher, before anything else is looked at, and what
+    ///   ``contains(hash:)-(Span<UInt8>)`` throws.
+    public func contains(_ key: some KeyRepresentable) throws(XitDBError) -> Bool {
+        try contains(hash: try cursor.keyHash(of: key))
     }
 
 }
@@ -248,17 +292,7 @@ extension HashSet where Access == ReadWrite {
     ///   ``XitDBError/unexpectedTag`` if the slot no longer holds a hash map or
     ///   set, or an error of the storage or of a damaged file.
     public func insert(_ key: WritableData, forHash hash: Span<UInt8>) throws(XitDBError) {
-        let path: InlineArray<2, PathPart> = [.hashMapGet(.key, KeyHash(hash)), .ctx]
-        // The key is written inside the callback, so it is not a part of
-        // the path: check it here, after the cursor's checks and before the
-        // entry is made, as a write part would be checked.
-        try cursor.checkWritable(path.span)
-        try key.checkIsValue()
-        _ = try cursor.writePath(
-            path.span,
-            typed: { (keyCursor: inout Cursor<ReadWrite>) throws(XitDBError) in
-                try keyCursor.writeIfEmpty(key)
-            })
+        try insert(key, forHash: KeyHash(hash))
     }
 
     /// Adds a key to the set under its hash. If the set already has a key
@@ -286,6 +320,22 @@ extension HashSet where Access == ReadWrite {
         try insert(key, forHash: bytes.span)
     }
 
+    /// Adds a key to the set. If the set already has it, nothing is changed.
+    ///
+    /// The member of a set is its key, so the key's bytes are written, as a
+    /// byte array, and with them the format tag of a ``Bytes`` key that has
+    /// one. The key is hashed by the hasher the database was given, and this
+    /// is ``insert(_:forHash:)-(_,Span<UInt8>)`` with those bytes and that
+    /// hash.
+    ///
+    /// - Parameter key: The key.
+    /// - Throws: ``XitDBError/noKeyHashing`` if the database was given no
+    ///   hasher, before anything else is looked at, and what
+    ///   ``insert(_:forHash:)-(_,Span<UInt8>)`` throws.
+    public func insert(_ key: some KeyRepresentable) throws(XitDBError) {
+        try insert(key.keyData, forHash: try cursor.keyHash(of: key))
+    }
+
     /// A cursor at the key stored under a hash, for writing it. The set
     /// gets an entry for the hash if it has none.
     ///
@@ -307,8 +357,7 @@ extension HashSet where Access == ReadWrite {
     ///   ``XitDBError/unexpectedTag`` if the slot no longer holds a hash map or
     ///   set, or an error of the storage or of a damaged file.
     public func insertCursor(forHash hash: Span<UInt8>) throws(XitDBError) -> Cursor<ReadWrite> {
-        let path: InlineArray<1, PathPart> = [.hashMapGet(.key, KeyHash(hash))]
-        return try cursor.writePath(path.span)
+        try insertCursor(forHash: KeyHash(hash))
     }
 
     /// A cursor at the key stored under a hash, for writing it. The set
@@ -339,6 +388,26 @@ extension HashSet where Access == ReadWrite {
         return try insertCursor(forHash: bytes.span)
     }
 
+    /// A cursor at a key of the set, for writing it. The set gets an entry for
+    /// the key if it has none, and nothing is written there until the cursor
+    /// writes.
+    ///
+    /// Use it in a transaction. On a collection at the root the call is a
+    /// transaction of its own, committed by the time it returns, so a new entry
+    /// holds nothing and a write through the cursor throws
+    /// ``XitDBError/expectedTxStart``.
+    ///
+    /// The key is hashed by the hasher the database was given, and this is
+    /// ``insertCursor(forHash:)-(Span<UInt8>)`` with that hash.
+    ///
+    /// - Parameter key: The key.
+    /// - Throws: ``XitDBError/noKeyHashing`` if the database was given no
+    ///   hasher, before anything else is looked at, and what
+    ///   ``insertCursor(forHash:)-(Span<UInt8>)`` throws.
+    public func insertCursor(forKey key: some KeyRepresentable) throws(XitDBError) -> Cursor<ReadWrite> {
+        try insertCursor(forHash: try cursor.keyHash(of: key))
+    }
+
     /// Removes the entry stored under a hash.
     ///
     /// - Parameter hash: The key's hash, as many bytes as the database's hash
@@ -356,14 +425,7 @@ extension HashSet where Access == ReadWrite {
     ///   set, or an error of the storage or of a damaged file.
     @discardableResult
     public func remove(forHash hash: Span<UInt8>) throws(XitDBError) -> Bool {
-        let path: InlineArray<1, PathPart> = [.hashMapRemove(KeyHash(hash))]
-        do throws(XitDBError) {
-            _ = try cursor.writePath(path.span)
-        } catch {
-            guard error == .keyNotFound else { throw error }
-            return false
-        }
-        return true
+        try remove(forHash: KeyHash(hash))
     }
 
     /// Removes the entry stored under a hash.
@@ -390,6 +452,21 @@ extension HashSet where Access == ReadWrite {
         return try remove(forHash: bytes.span)
     }
 
+    /// Removes a key from the set.
+    ///
+    /// The key is hashed by the hasher the database was given, and this is
+    /// ``remove(forHash:)-(Span<UInt8>)`` with that hash.
+    ///
+    /// - Parameter key: The key.
+    /// - Returns: Whether there was such a key to remove.
+    /// - Throws: ``XitDBError/noKeyHashing`` if the database was given no
+    ///   hasher, before anything else is looked at, and what
+    ///   ``remove(forHash:)-(Span<UInt8>)`` throws.
+    @discardableResult
+    public func remove(forKey key: some KeyRepresentable) throws(XitDBError) -> Bool {
+        try remove(forHash: try cursor.keyHash(of: key))
+    }
+
 }
 
 extension HashSet {
@@ -397,5 +474,66 @@ extension HashSet {
     /// sure holds one.
     init(unchecked cursor: Cursor<Access>) {
         self.cursor = cursor
+    }
+}
+
+extension HashSet {
+    /// The call by a hash the engine holds already: what the forms of `cursor`
+    /// by a `Span` and by a key both come to.
+    func cursor(forHash hash: KeyHash) throws(XitDBError) -> Cursor<ReadOnly>? {
+        let path: InlineArray<1, PathPart> = [.hashMapGet(.key, hash)]
+        return try cursor.readPath(path.span)
+    }
+
+    /// The call by a hash the engine holds already: what the forms of `slot` by
+    /// a `Span` and by a key both come to.
+    func slot(forHash hash: KeyHash) throws(XitDBError) -> Slot? {
+        let path: InlineArray<1, PathPart> = [.hashMapGet(.key, hash)]
+        return try cursor.readPathSlot(path.span)
+    }
+
+    /// The call by a hash the engine holds already: what the forms of
+    /// `contains` by a `Span` and by a key both come to.
+    func contains(hash: KeyHash) throws(XitDBError) -> Bool {
+        try slot(forHash: hash) != nil
+    }
+}
+
+extension HashSet where Access == ReadWrite {
+    /// The call by a hash the engine holds already: what the forms of `insert`
+    /// by a `Span` and by a key both come to.
+    func insert(_ key: WritableData, forHash hash: KeyHash) throws(XitDBError) {
+        let path: InlineArray<2, PathPart> = [.hashMapGet(.key, hash), .ctx]
+        // The key is written inside the callback, so it is not a part of
+        // the path: check it here, after the cursor's checks and before the
+        // entry is made, as a write part would be checked.
+        try cursor.checkWritable(path.span)
+        try key.checkIsValue()
+        _ = try cursor.writePath(
+            path.span,
+            typed: { (keyCursor: inout Cursor<ReadWrite>) throws(XitDBError) in
+                try keyCursor.writeIfEmpty(key)
+            })
+    }
+
+    /// The call by a hash the engine holds already: what the forms of
+    /// `insertCursor` by a `Span` and by a key both come to.
+    func insertCursor(forHash hash: KeyHash) throws(XitDBError) -> Cursor<ReadWrite> {
+        let path: InlineArray<1, PathPart> = [.hashMapGet(.key, hash)]
+        return try cursor.writePath(path.span)
+    }
+
+    /// The call by a hash the engine holds already: what the forms of `remove`
+    /// by a `Span` and by a key both come to.
+    @discardableResult
+    func remove(forHash hash: KeyHash) throws(XitDBError) -> Bool {
+        let path: InlineArray<1, PathPart> = [.hashMapRemove(hash)]
+        do throws(XitDBError) {
+            _ = try cursor.writePath(path.span)
+        } catch {
+            guard error == .keyNotFound else { throw error }
+            return false
+        }
+        return true
     }
 }

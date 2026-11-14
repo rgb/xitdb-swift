@@ -111,6 +111,20 @@ public struct SortedMap<Access: CursorAccess> {
         return try iterator(fromKey: bytes.span)
     }
 
+    /// ``iterator(fromKey:)-(Span<UInt8>)`` for a key that is text: the key is
+    /// the string's UTF-8 bytes, with nothing added and nothing normalised, and
+    /// the call does and throws what that one does.
+    ///
+    /// Nothing is hashed, since a sorted map keeps the key itself: this works
+    /// on a database that was given no hasher.
+    ///
+    /// - Parameter key: The key.
+    @inlinable
+    public func iterator(fromKey key: some StringProtocol) throws(XitDBError) -> CollectionIterator {
+        let bytes = Array(key.utf8)
+        return try iterator(fromKey: bytes.span)
+    }
+
     /// The number of keys in the map that are below `key`, which need
     /// not be there: the position it has, or would have.
     ///
@@ -147,6 +161,20 @@ public struct SortedMap<Access: CursorAccess> {
     @inlinable
     public func rank(of key: some Sequence<UInt8>) throws(XitDBError) -> UInt64 {
         let bytes = Array(key)
+        return try rank(of: bytes.span)
+    }
+
+    /// ``rank(of:)-(Span<UInt8>)`` for a key that is text: the key is the
+    /// string's UTF-8 bytes, with nothing added and nothing normalised, and the
+    /// call does and throws what that one does.
+    ///
+    /// Nothing is hashed, since a sorted map keeps the key itself: this works
+    /// on a database that was given no hasher.
+    ///
+    /// - Parameter key: The key.
+    @inlinable
+    public func rank(of key: some StringProtocol) throws(XitDBError) -> UInt64 {
+        let bytes = Array(key.utf8)
         return try rank(of: bytes.span)
     }
 
@@ -200,6 +228,20 @@ public struct SortedMap<Access: CursorAccess> {
         return try cursor(forKey: bytes.span)
     }
 
+    /// ``cursor(forKey:)-(Span<UInt8>)`` for a key that is text: the key is the
+    /// string's UTF-8 bytes, with nothing added and nothing normalised, and the
+    /// call does and throws what that one does.
+    ///
+    /// Nothing is hashed, since a sorted map keeps the key itself: this works
+    /// on a database that was given no hasher.
+    ///
+    /// - Parameter key: The key.
+    @inlinable
+    public func cursor(forKey key: some StringProtocol) throws(XitDBError) -> Cursor<ReadOnly>? {
+        let bytes = Array(key.utf8)
+        return try cursor(forKey: bytes.span)
+    }
+
     /// The slot of the value stored under a key, or `nil` if the map has no
     /// entry for it or the entry's value was never written.
     ///
@@ -233,6 +275,20 @@ public struct SortedMap<Access: CursorAccess> {
         return try slot(forKey: bytes.span)
     }
 
+    /// ``slot(forKey:)-(Span<UInt8>)`` for a key that is text: the key is the
+    /// string's UTF-8 bytes, with nothing added and nothing normalised, and the
+    /// call does and throws what that one does.
+    ///
+    /// Nothing is hashed, since a sorted map keeps the key itself: this works
+    /// on a database that was given no hasher.
+    ///
+    /// - Parameter key: The key.
+    @inlinable
+    public func slot(forKey key: some StringProtocol) throws(XitDBError) -> Slot? {
+        let bytes = Array(key.utf8)
+        return try slot(forKey: bytes.span)
+    }
+
     /// The entry stored under a key, as a cursor for its key and one for
     /// its value, or `nil` if the map has no entry for it.
     ///
@@ -263,6 +319,20 @@ public struct SortedMap<Access: CursorAccess> {
     @inlinable
     public func entry(forKey key: some Sequence<UInt8>) throws(XitDBError) -> Entry? {
         let bytes = Array(key)
+        return try entry(forKey: bytes.span)
+    }
+
+    /// ``entry(forKey:)-(Span<UInt8>)`` for a key that is text: the key is the
+    /// string's UTF-8 bytes, with nothing added and nothing normalised, and the
+    /// call does and throws what that one does.
+    ///
+    /// Nothing is hashed, since a sorted map keeps the key itself: this works
+    /// on a database that was given no hasher.
+    ///
+    /// - Parameter key: The key.
+    @inlinable
+    public func entry(forKey key: some StringProtocol) throws(XitDBError) -> Entry? {
+        let bytes = Array(key.utf8)
         return try entry(forKey: bytes.span)
     }
 
@@ -384,6 +454,22 @@ extension SortedMap where Access == ReadWrite {
         try put(value, forKey: bytes.span)
     }
 
+    /// ``put(_:forKey:)-(_,Span<UInt8>)`` for a key that is text: the key is
+    /// the string's UTF-8 bytes, with nothing added and nothing normalised, and
+    /// the call does and throws what that one does.
+    ///
+    /// Nothing is hashed, since a sorted map keeps the key itself: this works
+    /// on a database that was given no hasher.
+    ///
+    /// - Parameters:
+    ///   - value: The value.
+    ///   - key: The key.
+    @inlinable
+    public func put(_ value: WritableData, forKey key: some StringProtocol) throws(XitDBError) {
+        let bytes = Array(key.utf8)
+        try put(value, forKey: bytes.span)
+    }
+
     /// A cursor at the value stored under a key, for writing it or for
     /// making a collection there. The map gets an entry for the key if it
     /// has none.
@@ -439,6 +525,20 @@ extension SortedMap where Access == ReadWrite {
         return try putCursor(forKey: bytes.span)
     }
 
+    /// ``putCursor(forKey:)-(Span<UInt8>)`` for a key that is text: the key is
+    /// the string's UTF-8 bytes, with nothing added and nothing normalised, and
+    /// the call does and throws what that one does.
+    ///
+    /// Nothing is hashed, since a sorted map keeps the key itself: this works
+    /// on a database that was given no hasher.
+    ///
+    /// - Parameter key: The key.
+    @inlinable
+    public func putCursor(forKey key: some StringProtocol) throws(XitDBError) -> Cursor<ReadWrite> {
+        let bytes = Array(key.utf8)
+        return try putCursor(forKey: bytes.span)
+    }
+
     /// Removes the entry for a key. The place it had in its leaf stays
     /// empty; the tree is not rebalanced.
     ///
@@ -489,6 +589,21 @@ extension SortedMap where Access == ReadWrite {
     @inlinable
     public func remove(forKey key: some Sequence<UInt8>) throws(XitDBError) -> Bool {
         let bytes = Array(key)
+        return try remove(forKey: bytes.span)
+    }
+
+    /// ``remove(forKey:)-(Span<UInt8>)`` for a key that is text: the key is the
+    /// string's UTF-8 bytes, with nothing added and nothing normalised, and the
+    /// call does and throws what that one does.
+    ///
+    /// Nothing is hashed, since a sorted map keeps the key itself: this works
+    /// on a database that was given no hasher.
+    ///
+    /// - Parameter key: The key.
+    @discardableResult
+    @inlinable
+    public func remove(forKey key: some StringProtocol) throws(XitDBError) -> Bool {
+        let bytes = Array(key.utf8)
         return try remove(forKey: bytes.span)
     }
 

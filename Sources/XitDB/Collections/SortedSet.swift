@@ -110,6 +110,20 @@ public struct SortedSet<Access: CursorAccess> {
         return try iterator(fromKey: bytes.span)
     }
 
+    /// ``iterator(fromKey:)-(Span<UInt8>)`` for a key that is text: the key is
+    /// the string's UTF-8 bytes, with nothing added and nothing normalised, and
+    /// the call does and throws what that one does.
+    ///
+    /// Nothing is hashed, since a sorted set keeps the key itself: this works
+    /// on a database that was given no hasher.
+    ///
+    /// - Parameter key: The key.
+    @inlinable
+    public func iterator(fromKey key: some StringProtocol) throws(XitDBError) -> CollectionIterator {
+        let bytes = Array(key.utf8)
+        return try iterator(fromKey: bytes.span)
+    }
+
     /// The number of keys in the set that are below `key`, which need
     /// not be there: the position it has, or would have.
     ///
@@ -146,6 +160,20 @@ public struct SortedSet<Access: CursorAccess> {
     @inlinable
     public func rank(of key: some Sequence<UInt8>) throws(XitDBError) -> UInt64 {
         let bytes = Array(key)
+        return try rank(of: bytes.span)
+    }
+
+    /// ``rank(of:)-(Span<UInt8>)`` for a key that is text: the key is the
+    /// string's UTF-8 bytes, with nothing added and nothing normalised, and the
+    /// call does and throws what that one does.
+    ///
+    /// Nothing is hashed, since a sorted set keeps the key itself: this works
+    /// on a database that was given no hasher.
+    ///
+    /// - Parameter key: The key.
+    @inlinable
+    public func rank(of key: some StringProtocol) throws(XitDBError) -> UInt64 {
+        let bytes = Array(key.utf8)
         return try rank(of: bytes.span)
     }
 
@@ -194,6 +222,20 @@ public struct SortedSet<Access: CursorAccess> {
     @inlinable
     public func contains(_ key: some Sequence<UInt8>) throws(XitDBError) -> Bool {
         let bytes = Array(key)
+        return try contains(bytes.span)
+    }
+
+    /// ``contains(_:)-(Span<UInt8>)`` for a key that is text: the key is the
+    /// string's UTF-8 bytes, with nothing added and nothing normalised, and the
+    /// call does and throws what that one does.
+    ///
+    /// Nothing is hashed, since a sorted set keeps the key itself: this works
+    /// on a database that was given no hasher.
+    ///
+    /// - Parameter key: The key.
+    @inlinable
+    public func contains(_ key: some StringProtocol) throws(XitDBError) -> Bool {
+        let bytes = Array(key.utf8)
         return try contains(bytes.span)
     }
 
@@ -314,6 +356,20 @@ extension SortedSet where Access == ReadWrite {
         try insert(bytes.span)
     }
 
+    /// ``insert(_:)-(Span<UInt8>)`` for a key that is text: the key is the
+    /// string's UTF-8 bytes, with nothing added and nothing normalised, and the
+    /// call does and throws what that one does.
+    ///
+    /// Nothing is hashed, since a sorted set keeps the key itself: this works
+    /// on a database that was given no hasher.
+    ///
+    /// - Parameter key: The key.
+    @inlinable
+    public func insert(_ key: some StringProtocol) throws(XitDBError) {
+        let bytes = Array(key.utf8)
+        try insert(bytes.span)
+    }
+
     /// Removes the entry for a key. The place it had in its leaf stays
     /// empty; the tree is not rebalanced.
     ///
@@ -364,6 +420,21 @@ extension SortedSet where Access == ReadWrite {
     @inlinable
     public func remove(forKey key: some Sequence<UInt8>) throws(XitDBError) -> Bool {
         let bytes = Array(key)
+        return try remove(forKey: bytes.span)
+    }
+
+    /// ``remove(forKey:)-(Span<UInt8>)`` for a key that is text: the key is the
+    /// string's UTF-8 bytes, with nothing added and nothing normalised, and the
+    /// call does and throws what that one does.
+    ///
+    /// Nothing is hashed, since a sorted set keeps the key itself: this works
+    /// on a database that was given no hasher.
+    ///
+    /// - Parameter key: The key.
+    @discardableResult
+    @inlinable
+    public func remove(forKey key: some StringProtocol) throws(XitDBError) -> Bool {
+        let bytes = Array(key.utf8)
         return try remove(forKey: bytes.span)
     }
 

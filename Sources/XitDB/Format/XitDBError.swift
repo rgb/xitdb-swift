@@ -230,11 +230,13 @@ public enum XitDBError: Error, Sendable {
     /// with.
     case hashSizeMismatch
 
-    /// A call that needs a key hashed was made on a database that was
-    /// given no hasher, or on a snapshot of one: the database was made
-    /// with a hash size alone, as ``Database/init(opening:hashSize:)``
-    /// makes it. Open it with ``Database/init(opening:hashing:)``, or hash
-    /// the key and give the hash.
+    /// A call that takes a key, such as ``HashMap/put(_:forKey:)``, was
+    /// made on a database that was given no hasher, or on a snapshot of
+    /// one: the database was made with a hash size alone, as
+    /// ``Database/init(opening:hashSize:)`` makes it. Open it with
+    /// ``Database/init(opening:hashing:)``, or hash the key and give the
+    /// hash to the call's `forHash:` form. It is thrown before anything
+    /// else about the call is looked at.
     case noKeyHashing
 
     /// The root header of a database being opened cannot be trusted: its

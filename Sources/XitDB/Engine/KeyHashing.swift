@@ -1,12 +1,14 @@
 /// A hash function that turns a key's bytes into the hash a hash map stores
 /// the key by.
 ///
-/// XitDB hashes nothing by itself. A database is given a conformer when it
-/// is made, with ``Database/init(creating:hashing:hashID:fileID:)`` or
-/// ``Database/init(opening:hashing:)``, and its snapshots and the target of
-/// a compaction take the conformer from it; a database made without one
-/// takes hashes alone, which its caller computes with a conformer or in any
-/// other way. The `XitDBHashing` target has SHA-256, SHA-1 and SipHash-128.
+/// XitDB has no hash function of its own. A database is given a conformer
+/// when it is made, with ``Database/init(creating:hashing:hashID:fileID:)``
+/// or ``Database/init(opening:hashing:)``, and the calls of its hash maps
+/// and sets that take a key hash the key's bytes with it; its snapshots and
+/// the target of a compaction take the conformer from it. A database made
+/// without one takes hashes alone, which its caller computes with a
+/// conformer or in any other way. The `XitDBHashing` target has SHA-256,
+/// SHA-1 and SipHash-128.
 ///
 /// ``size`` is the number of bytes every digest has. It is the hash size of
 /// a database created with the conformer, and a database of another hash

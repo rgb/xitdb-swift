@@ -119,8 +119,8 @@ moment.
 
 ### Keys
 
-A key is a ``KeyRepresentable``: a type that gives its bytes as ``KeyRepresentable/keyBytes`` and comes back from them
-through ``KeyRepresentable/init(keyBytes:)``, which gives `nil` for bytes that are no value of the type, such as the
+A key is a ``KeyRepresentable-1bzur``: a type that gives its bytes as ``KeyRepresentable-1bzur/keyBytes`` and comes back from them
+through ``KeyRepresentable-1bzur/init(keyBytes:)``, which gives `nil` for bytes that are no value of the type, such as the
 wrong number of them. A hash map stores an entry by the hash of the bytes. A sorted map or set stores the bytes
 themselves, and keeps them in byte order.
 
