@@ -12,9 +12,20 @@ import XitDBHashing
 /// file, and ``OriginalListing`` prints the same listing through the port.
 /// The original's listings of these three hundred files are eleven megabytes
 /// of text, so what is kept is the SHA-256 of each, in
-/// `Resources/listings/SHA256SUMS`, whose `README.md` says how they were
-/// made. A listing that differs fails here by its file's name; to see
-/// where, make the original's listing again and compare.
+/// `Resources/listings/SHA256SUMS`. A listing that differs fails here by
+/// its file's name; to see where, make the original's listing again and
+/// compare.
+///
+/// The digests are made again whenever the fixtures follow another commit
+/// of the original, since the expected files change with it. Build `dump`
+/// in the conformance repository at the commit the fixtures are copied
+/// from (`zig build` there, with the original beside it at the commit the
+/// fixtures' manifest names as `zig_commit`), run it on every `.db` under
+/// `fixtures/valid` and `fixtures/inputs`, and write the SHA-256 of what
+/// each prints; the loop is in `Resources/listings/README.md`. The ones
+/// here are from `dump` built at conformance `cfbc254`, whose
+/// `src/dump.zig` is the one at `4d26fbd`, against the original at
+/// `89da8e7`, with Zig 0.17.1.
 ///
 /// The four samples under `fixtures/samples/haxy` come with their listings,
 /// and `ClientAcceptanceTests` compares those line for line.
