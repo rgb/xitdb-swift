@@ -43,8 +43,9 @@ neither and does not compile: this module's is `XitDBHashing.SHA256` there, and 
 
 ### Where the hashes are computed
 
-The module computes both hashes with its own code, which needs only the standard library, so a hash is the same on every
-platform and the package takes no dependency for it. The code is tested against the published test vectors and the
+The module computes both hashes with its own code, which needs only the standard library: a key, or any short input, on
+every platform. On Apple platforms longer input goes to CryptoKit, which computes it faster there; the hash is the same
+either way, and the package takes no dependency for it. The code is tested against the published test vectors and the
 lengths where the padding changes shape on every platform, and against CryptoKit where CryptoKit exists.
 
 ### A hasher of your own
