@@ -6,7 +6,7 @@ What this package does differently from xitdb in Zig, and what it does the same 
 
 The port's first rule is that it writes the same bytes: given the same file ID, the same commit IDs and the same operations,
 it produces the same file as the original. The original here is xitdb at the commit the port follows, `89da8e7`. That is
-checked with 229 conformance scripts. In 131 the file must match byte for byte the one the original writes, or, for the few
+checked with 244 conformance scripts. In 146 the file must match byte for byte the one the original writes, or, for the few
 operations the port deliberately does differently, the one the original writes when it is made to do the same. The other 98
 must fail, as they do with the original: they check that a runner catches what is wrong.
 
@@ -60,9 +60,10 @@ and the port's files are compared with that branch's.
 - **A slot set to nothing, read as bytes**, gives an empty value from one of the original's calls and `EndOfStream` from the other.
   The port gives no bytes from both.
 - **A slot set to nothing, streamed,** gives `UnexpectedTag` in the original. The port gives an empty stream.
-- **A short value, streamed,** fails in the original for a cursor that has no position in the file, and otherwise reads from
-  the file, so it returns other bytes once the slot has been overwritten. The port reads the cursor's own slot, as every other
-  read does. Since `71ee0cf` the original gives a sorted set's key from an iterator a position, so that key streams in both.
+- **A short value, streamed,** fails in the original for a key that a lookup in a sorted map or set gives with no position in
+  the file: a key reached by a raw path to it, or a set's key in the pair that a read-only sorted map made over the set looks
+  up. Otherwise it reads from the file, so it returns other bytes once the slot has been overwritten. The port reads the
+  cursor's own slot, as every other read does.
 - **An array list's iterator after a slice** can give an element past the end of the list in the original, where an element
   appended and never written before 0.3.0, or by the original before `89da8e7`, lies inside the list's size. The port's stops
   at the list's size, agreeing with a lookup. For elements appended since, the two agree.

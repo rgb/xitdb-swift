@@ -42,7 +42,7 @@ It builds for macOS 26, iOS 26 and Linux, and is tested on macOS, on Linux and o
 ## How it is tested
 
 - **Conformance scripts**, written from the original's source and the file format by a separate project that never
-  reads the port. In 131 of the 229 the port must write the file the original writes, byte for byte, or, where the port
+  reads the port. In 146 of the 244 the port must write the file the original writes, byte for byte, or, where the port
   deliberately does otherwise, the file the original writes when it is made to do the same. The other 98 must fail, as
   they do with the original: they check that a runner catches what is wrong, such as an error nobody handles.
 - **The original's own tests**, all eleven, on each kind of storage the original runs them on.
