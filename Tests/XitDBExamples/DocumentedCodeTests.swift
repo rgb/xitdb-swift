@@ -113,6 +113,12 @@ import Testing
             } else if trimmed == "```swift" {
                 current = []
                 start = index + 1
+            } else if trimmed.hasPrefix("```"), trimmed.lowercased().contains("swift"),
+                trimmed != "```swift manifest"
+            {
+                // A fence that names Swift in another spelling would be skipped,
+                // and its code never checked.
+                Issue.record("\(relative(url)):\(index + 1) opens a code block with \(trimmed): write ```swift")
             }
         }
         #expect(current == nil, "\(relative(url)) has a code block that does not end")
@@ -136,6 +142,12 @@ import Testing
         for library in librarySources {
             for url in files(in: library, withExtensions: ["swift"]) {
                 shown += try commentBlocks(in: url)
+                // Only `///` comments are read: a `/** */` one would hold its
+                // blocks out of the check.
+                let text = try String(contentsOf: url, encoding: .utf8)
+                if text.contains("/**") {
+                    Issue.record("\(relative(url)) has a /** */ comment: write it with ///, which this check reads")
+                }
             }
         }
         return shown
