@@ -13,6 +13,7 @@
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/symbol-graphs.sh
 
 step() { printf '\n==> %s\n' "$*"; }
 
@@ -172,22 +173,11 @@ echo "ok"
 # warnings-as-errors flag: the debug and release builds above compile the same
 # sources with it, so a compiler warning cannot reach this step unseen.
 #
-# The documentation is built from symbol graphs, which the build keeps in its folder,
-# one folder for each module, from one run to the next. Nothing removes a graph that a
-# later tree no longer makes, and on Linux the graph of a module that re-exports
-# another carries that other one's comments and is not written again when only those
-# comments change. A step that read such a folder passed on comments that would fail,
-# and failed on comments that had been put right. So the folders are removed first, and
-# every graph the step reads is extracted from the sources as they are. Extracting them
-# takes seconds: nothing is compiled again.
+# The symbol graphs the build kept from earlier runs are removed first, so that the
+# documentation is built from the sources as they are: scripts/symbol-graphs.sh says
+# why, and what a step that read them got wrong.
 step "Documentation build"
-find .build -type d \( -name '*.symbolgraphs' -o -name 'extracted-symbols' \) -prune -exec rm -rf {} +
-kept=$(find .build -name '*.symbols.json' -not -path '.build/xcodebuild*' -not -path '.build/index-build/*')
-if [ -n "$kept" ]; then
-    echo "error: symbol graphs of an earlier run are kept where this step does not remove them:"
-    echo "$kept"
-    exit 1
-fi
+remove_kept_symbol_graphs
 swift package generate-documentation --target XitDB --warnings-as-errors
 swift package generate-documentation --target XitDBHashing --warnings-as-errors
 swift package generate-documentation --target XitDBStore --warnings-as-errors

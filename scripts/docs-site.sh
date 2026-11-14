@@ -18,9 +18,12 @@
 # the site then resolves links between the modules, which the archives the
 # gate builds one by one cannot. Warnings are errors here too, as in the
 # gate, so a site is never built from documentation with a broken link in it.
+# And as in the gate, the symbol graphs the build kept from earlier runs are
+# removed first, so that the site shows the comments the sources have now.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/symbol-graphs.sh
 
 base_path="${1:-}"
 output="${2:-.build/docs-site}"
@@ -34,6 +37,7 @@ if [[ -n "$base_path" && "$base_path" != "/" ]]; then
 fi
 
 mkdir -p "$output"
+remove_kept_symbol_graphs
 swift package --allow-writing-to-directory "$output" generate-documentation "${options[@]}"
 
 echo "The site is in $output"
