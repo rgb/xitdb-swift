@@ -88,6 +88,58 @@ private struct FailsAfterClearing: StorableValue {
     }
 }
 
+/// A value whose writing fails before it has written anything.
+private struct FailsAtOnce: StorableValue {
+    init() {}
+    init(reading cursor: Cursor<ReadOnly>) throws(XitDBError) {}
+
+    func write(to cursor: inout Cursor<ReadWrite>) throws(XitDBError) {
+        throw .keyNotFound
+    }
+}
+
+/// A type of the caller's that wraps one of the library's own values and
+/// writes itself as something else: a temperature kept as a `UInt64` and
+/// written as a signed integer.
+private struct Celsius: StorableValue, Equatable {
+    var degrees: UInt64
+
+    init(degrees: UInt64) { self.degrees = degrees }
+
+    init(reading cursor: Cursor<ReadOnly>) throws(XitDBError) {
+        degrees = UInt64(bitPattern: try cursor.readInt64())
+    }
+
+    func write(to cursor: inout Cursor<ReadWrite>) throws(XitDBError) {
+        try cursor.write(.int(Int64(bitPattern: degrees)))
+    }
+}
+
+/// A type of the caller's whose raw value is one of the library's own
+/// values, written as tagged bytes of its name.
+private enum Unit: UInt64, StorableValue {
+    case metre = 1
+    case second = 2
+
+    init(reading cursor: Cursor<ReadOnly>) throws(XitDBError) {
+        let bytes = try cursor.readBytesWithFormatTag()
+        guard bytes.formatTag == "un", let unit = Unit(name: bytes.value) else { throw .unexpectedTag }
+        self = unit
+    }
+
+    init?(name: [UInt8]) {
+        switch name {
+        case utf8("metre"): self = .metre
+        case utf8("second"): self = .second
+        default: return nil
+        }
+    }
+
+    func write(to cursor: inout Cursor<ReadWrite>) throws(XitDBError) {
+        try cursor.write(.bytes(utf8(self == .metre ? "metre" : "second"), formatTag: "un"))
+    }
+}
+
 /// A value and the data it stands for.
 private struct Case {
     let name: String
@@ -458,8 +510,8 @@ private struct ThroughACursor: TypedPlace {
     /// Inside a transaction a typed write through a cursor is the value's
     /// own writes, made in the transaction: the root cursor refuses it as
     /// it refuses any write then, the transaction's own cursor makes it,
-    /// also after a freeze, and a value that fails leaves what it had
-    /// written to the transaction's fate. Below the root with no
+    /// also after a freeze, and a value that fails rolls the transaction
+    /// back when its error is passed on. Below the root with no
     /// transaction it is refused as the write of data is.
     @Test func insideATransactionATypedWriteIsAWriteOfTheTransaction() throws {
         let alice = Person(name: "Alice", age: 25)
@@ -486,28 +538,244 @@ private struct ThroughACursor: TypedPlace {
         }
         #expect(storage.bytes == committed)
         #expect(try database.rootCursor.read(Person.self) == alice)
-        // What the value wrote before it failed is written, as if the
-        // caller had made those writes: a body that swallows the error
-        // commits them. (The collections' typed writes differ: there the
-        // value writes inside the collection's own write, whose failure
-        // poisons the transaction.)
-        var failure: XitDBError?
-        try database.withTransaction { body in
-            do {
-                try body.write(FailsAfterClearing())
-            } catch {
-                failure = error as? XitDBError
-            }
-        }
-        #expect(failure == .keyNotFound)
-        #expect(try database.rootCursor.slot.tag == Tag.none)
-        var root = database.rootCursor
-        try root.write(alice)
 
         let fields = try HashMap<ReadWrite>(database.rootCursor)
         var below = try fields.putCursor(forKey: "other")
         #expect(throws: XitDBError.expectedTxStart) { try below.write(alice) }
         #expect(throws: XitDBError.expectedTxStart) { try below.write(UInt64(1)) }
+    }
+
+    /// The ways a value is written into a place below the root, each given
+    /// the map of a moment being written: through a cursor, and through
+    /// each collection's typed write.
+    private static let doors:
+        [(name: String, write: @Sendable (HashMap<ReadWrite>, any StorableValue) throws -> Void)] = [
+            (
+                "a cursor",
+                { moment, value in
+                    var cursor = try moment.putCursor(forKey: "cursor")
+                    try cursor.write(value)
+                }
+            ),
+            (
+                "a hash map",
+                { moment, value in try HashMap<ReadWrite>(moment.putCursor(forKey: "map")).put(value, forKey: "k") }
+            ),
+            (
+                "a counted hash map",
+                { moment, value in
+                    try CountedHashMap<ReadWrite>(moment.putCursor(forKey: "counted")).put(value, forKey: "k")
+                }
+            ),
+            (
+                "a sorted map, by bytes",
+                { moment, value in
+                    try SortedMap<ReadWrite>(moment.putCursor(forKey: "sorted")).put(value, forKey: utf8("k"))
+                }
+            ),
+            (
+                "a sorted map, by text",
+                { moment, value in
+                    try SortedMap<ReadWrite>(moment.putCursor(forKey: "sorted 2")).put(value, forKey: "k")
+                }
+            ),
+            (
+                "a list's append",
+                { moment, value in try ArrayList<ReadWrite>(moment.putCursor(forKey: "list")).append(value) }
+            ),
+            (
+                "a list's put",
+                { moment, value in
+                    let list = try ArrayList<ReadWrite>(moment.putCursor(forKey: "list 2"))
+                    try list.append(.uint(0))
+                    try list.put(value, at: 0)
+                }
+            ),
+            (
+                "a linked list's append",
+                { moment, value in try LinkedArrayList<ReadWrite>(moment.putCursor(forKey: "linked")).append(value) }
+            ),
+            (
+                "a linked list's put",
+                { moment, value in
+                    let list = try LinkedArrayList<ReadWrite>(moment.putCursor(forKey: "linked 2"))
+                    try list.append(.uint(0))
+                    try list.put(value, at: 0)
+                }
+            ),
+            (
+                "a linked list's insert",
+                { moment, value in
+                    let list = try LinkedArrayList<ReadWrite>(moment.putCursor(forKey: "linked 3"))
+                    try list.append(.uint(0))
+                    try list.insert(value, at: 0)
+                }
+            ),
+        ]
+
+    /// A typed write is one thing to its caller: through every door, a
+    /// value that fails after it has written poisons the transaction. A
+    /// body that swallows the error cannot commit half a value: the next
+    /// write fails with `poisonedTransaction`, and so does the commit.
+    @Test func aValueThatFailsAfterWritingPoisonsTheTransactionThroughEveryDoor() throws {
+        for door in Self.doors {
+            let storage = MemoryStorage()
+            let database = try Database(creating: storage, hashing: SHA256.self)
+            try database.withTransaction { root in try HashMap<ReadWrite>(root).put(UInt64(1), forKey: "before") }
+            let committed = storage.bytes
+
+            var failure: XitDBError?
+            var next: XitDBError?
+            #expect(throws: XitDBError.poisonedTransaction, "\(door.name)") {
+                try database.withTransaction { root in
+                    let moment = try HashMap<ReadWrite>(root)
+                    do {
+                        try door.write(moment, FailsAfterClearing())
+                    } catch {
+                        failure = error as? XitDBError
+                    }
+                    do {
+                        try moment.put(UInt64(2), forKey: "after")
+                    } catch {
+                        next = error as? XitDBError
+                    }
+                }
+            }
+            #expect(failure == .keyNotFound, "\(door.name)")
+            #expect(next == .poisonedTransaction, "\(door.name)")
+            #expect(storage.bytes == committed, "\(door.name)")
+            // The database goes on with the next transaction.
+            try database.withTransaction { root in try HashMap<ReadWrite>(root).put(UInt64(3), forKey: "later") }
+            #expect(
+                try HashMap<ReadOnly>(database.rootCursor).value(forKey: "later", as: UInt64.self) == 3, "\(door.name)")
+        }
+    }
+
+    /// A value that fails before it has written anything poisons nothing
+    /// by itself: through a cursor nothing is written at all, and the
+    /// transaction goes on. Through a collection it depends on whether the
+    /// collection had written on the way to the value's place: an append
+    /// and an insert have always made room, and a put has where the entry
+    /// is new or its blocks are older than the transaction.
+    @Test func aValueThatFailsBeforeWritingPoisonsOnlyWhereTheCollectionHadWritten() throws {
+        /// Whether the transaction is poisoned after `door` was given a
+        /// value that fails at once.
+        func poisons(_ door: (HashMap<ReadWrite>) throws -> Void) throws -> Bool {
+            let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
+            var poisoned = false
+            do {
+                try database.withTransaction { root in
+                    let moment = try HashMap<ReadWrite>(root)
+                    #expect(throws: XitDBError.keyNotFound) { try door(moment) }
+                    do {
+                        try moment.put(UInt64(2), forKey: "after")
+                    } catch XitDBError.poisonedTransaction {
+                        poisoned = true
+                    }
+                }
+            } catch XitDBError.poisonedTransaction {
+                #expect(poisoned)
+            }
+            if !poisoned {
+                #expect(try HashMap<ReadOnly>(database.rootCursor).value(forKey: "after", as: UInt64.self) == 2)
+            }
+            return poisoned
+        }
+
+        // Through a cursor: nothing is written before the value.
+        #expect(
+            try !poisons { moment in
+                var cursor = try moment.putCursor(forKey: "cursor")
+                try cursor.write(FailsAtOnce())
+            })
+        // A put where the entry is there already, in blocks the
+        // transaction has written: the collection writes nothing first.
+        #expect(
+            try !poisons { moment in
+                try moment.put(UInt64(1), forKey: "k")
+                try moment.put(FailsAtOnce(), forKey: "k")
+            })
+        #expect(
+            try !poisons { moment in
+                let list = try ArrayList<ReadWrite>(moment.putCursor(forKey: "list"))
+                try list.append(.uint(0))
+                try list.put(FailsAtOnce(), at: 0)
+            })
+        // A put that makes the entry, an append and an insert: the
+        // collection has grown by the time the value fails.
+        #expect(try poisons { moment in try moment.put(FailsAtOnce(), forKey: "new") })
+        #expect(
+            try poisons { moment in
+                try SortedMap<ReadWrite>(moment.putCursor(forKey: "sorted")).put(FailsAtOnce(), forKey: "new")
+            })
+        #expect(
+            try poisons { moment in try ArrayList<ReadWrite>(moment.putCursor(forKey: "list")).append(FailsAtOnce()) })
+        #expect(
+            try poisons { moment in
+                try LinkedArrayList<ReadWrite>(moment.putCursor(forKey: "linked")).append(FailsAtOnce())
+            })
+        #expect(
+            try poisons { moment in
+                let list = try LinkedArrayList<ReadWrite>(moment.putCursor(forKey: "linked"))
+                try list.append(.uint(0))
+                try list.insert(FailsAtOnce(), at: 0)
+            })
+    }
+
+    /// The library's own values are told by their type alone. A type of
+    /// the caller's that wraps one of them, or whose raw value is one, is
+    /// the caller's: through every door it is written by its own
+    /// `write(to:)`, and not as the value it wraps would be.
+    @Test func aValueOfTheCallersThatWrapsOneOfTheLibrarysWritesWhatItSays() throws {
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
+        try database.withTransaction { root in
+            let moment = try HashMap<ReadWrite>(root)
+            for door in Self.doors {
+                try door.write(
+                    try HashMap<ReadWrite>(moment.putCursor(forKey: "celsius, \(door.name)")), Celsius(degrees: 21))
+                try door.write(try HashMap<ReadWrite>(moment.putCursor(forKey: "unit, \(door.name)")), Unit.second)
+            }
+        }
+        struct NothingThere: Error {}
+        func there(_ cursor: Cursor<ReadOnly>?) throws -> Cursor<ReadOnly> {
+            guard let cursor else { throw NothingThere() }
+            return cursor
+        }
+        /// The slot a door wrote the value into.
+        func written(_ kind: String, _ door: String) throws -> Cursor<ReadOnly> {
+            let moment = try HashMap<ReadOnly>(database.rootCursor)
+            let place = try HashMap<ReadOnly>(try there(try moment.cursor(forKey: "\(kind), \(door)")))
+            func under(_ name: String) throws -> Cursor<ReadOnly> { try there(try place.cursor(forKey: name)) }
+            switch door {
+            case "a cursor": return try under("cursor")
+            case "a hash map": return try there(try HashMap<ReadOnly>(try under("map")).cursor(forKey: "k"))
+            case "a counted hash map":
+                return try there(try CountedHashMap<ReadOnly>(try under("counted")).cursor(forKey: "k"))
+            case "a sorted map, by bytes":
+                return try there(try SortedMap<ReadOnly>(try under("sorted")).cursor(forKey: "k"))
+            case "a sorted map, by text":
+                return try there(try SortedMap<ReadOnly>(try under("sorted 2")).cursor(forKey: "k"))
+            case "a list's append": return try there(try ArrayList<ReadOnly>(try under("list")).cursor(at: 0))
+            case "a list's put": return try there(try ArrayList<ReadOnly>(try under("list 2")).cursor(at: 0))
+            case "a linked list's append":
+                return try there(try LinkedArrayList<ReadOnly>(try under("linked")).cursor(at: 0))
+            case "a linked list's put":
+                return try there(try LinkedArrayList<ReadOnly>(try under("linked 2")).cursor(at: 0))
+            default: return try there(try LinkedArrayList<ReadOnly>(try under("linked 3")).cursor(at: 0))
+            }
+        }
+        for door in Self.doors {
+            let celsius = try written("celsius", door.name)
+            // A signed integer, as `Celsius` writes itself, not the
+            // unsigned one a `UInt64` is.
+            #expect(try celsius.slot.tag == .int, "\(door.name)")
+            #expect(try celsius.readInt64() == 21, "\(door.name)")
+            #expect(try celsius.read(Celsius.self) == Celsius(degrees: 21), "\(door.name)")
+            #expect(throws: XitDBError.unexpectedTag, "\(door.name)") { try celsius.read(UInt64.self) }
+            let unit = try written("unit", door.name)
+            #expect(try unit.readBytesWithFormatTag() == Bytes(utf8("second"), formatTag: "un"), "\(door.name)")
+            #expect(try unit.read(Unit.self) == .second, "\(door.name)")
+        }
     }
 
     /// After a typed write the cursor is at what was written, as after a

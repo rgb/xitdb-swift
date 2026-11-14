@@ -106,7 +106,13 @@ public protocol StorableValue {
     ///
     /// The typed calls run this inside a transaction, their own when none
     /// is running, so everything written here is committed or dropped
-    /// together.
+    /// together. If it fails after it has written, the transaction it
+    /// wrote in is poisoned: every later write in it and its commit fail
+    /// with ``XitDBError/poisonedTransaction``, since a typed write is one
+    /// thing to its caller and half of one must not be committed. If it
+    /// fails before it has written anything, nothing of the value is in
+    /// the transaction, which goes on, unless the collection it was
+    /// written to had already made room for it, as an append always has.
     ///
     /// - Parameter cursor: A cursor at the slot. After the write it need
     ///   not be at what was written: the typed call that asked for the
@@ -277,11 +283,18 @@ extension Cursor where Access == ReadWrite {
     /// - Parameter value: The value.
     /// - Throws: What ``write(_:)-(WritableData)`` throws, and what a
     ///   conformer of your own throws. Through the root cursor the
-    ///   transaction is then rolled back. Inside a transaction, what the
-    ///   value had written before it failed stays written, as if the
-    ///   caller had made those writes one by one: pass the error on and
-    ///   the transaction rolls back with it.
+    ///   transaction is then rolled back. Inside a transaction, a value
+    ///   that fails after it has written poisons the transaction, as a
+    ///   collection's typed write does: half a value cannot be committed.
+    ///   One that fails before it has written anything leaves the
+    ///   transaction as it was.
     public mutating func write(_ value: some StorableValue) throws(XitDBError) {
+        // One of the library's own values is its data: one slot, written
+        // as the write of that data writes it.
+        if let data = WritableData(ownValue: value) {
+            try write(data)
+            return
+        }
         if isRoot, engine.transactionStart == nil {
             // One transaction for all the value writes: a path that is the
             // callback alone, which is what a transaction's body is.
@@ -298,21 +311,55 @@ extension Cursor where Access == ReadWrite {
         // is: after a freeze the transaction's own cursor goes on only
         // through a path that begins with a write or an init, which the
         // value's own writes do and a callback's path would not.
-        try value.write(to: &self)
-        // A value of the caller's may have written through a copy of the
-        // cursor, as a record does when it makes its map, which leaves
-        // this cursor remembering the slot as it was before. The library's
-        // own types write through the cursor they are given, which is then
-        // at what they wrote: they are spared the read.
-        if !Self.writesThroughItsCursor(type(of: value)), !isRoot, let position = slotPointer.position {
+        let engine = self.engine
+        let writesBefore = engine.writesIssued
+        do throws(XitDBError) {
+            try value.write(to: &self)
+        } catch {
+            // A typed write is one thing to its caller. What the value left
+            // when it failed cannot be undone short of the whole
+            // transaction, so the transaction can only roll back, as after
+            // any operation that fails once it has written.
+            if engine.writesIssued != writesBefore {
+                engine.poison()
+            }
+            throw error
+        }
+        // The value may have written through a copy of the cursor, as a
+        // record does when it makes its map, which leaves this cursor
+        // remembering the slot as it was before: read it again.
+        if !isRoot, let position = slotPointer.position {
             slotPointer.slot = try engine.reader.slot(at: position)
         }
     }
+}
 
-    /// Whether a type is one of the library's own values, each of which
-    /// writes its one slot through the cursor it is given.
-    private static func writesThroughItsCursor(_ type: (some StorableValue).Type) -> Bool {
-        type == UInt64.self || type == Int64.self || type == Double.self || type == String.self
-            || type == [UInt8].self || type == Bytes.self
+extension WritableData {
+    /// The data one of the library's own values is written as, or `nil`
+    /// for a conformer of the caller's, which writes itself.
+    ///
+    /// The six types are told by their type alone, so a type of the
+    /// caller's that wraps one of them is the caller's: it writes what its
+    /// own `write(to:)` says. With the data in hand a typed write takes the
+    /// path the write of ``WritableData`` takes, in place of a callback
+    /// and a second write, and leaves the same file by construction.
+    init?(ownValue value: some StorableValue) {
+        let type = type(of: value)
+        if type == UInt64.self {
+            self = .uint(value as! UInt64)
+        } else if type == Int64.self {
+            self = .int(value as! Int64)
+        } else if type == Double.self {
+            self = .double(value as! Double)
+        } else if type == String.self {
+            self = .bytes(Array((value as! String).utf8))
+        } else if type == [UInt8].self {
+            self = .bytes(value as! [UInt8])
+        } else if type == Bytes.self {
+            let bytes = value as! Bytes
+            self = .bytes(bytes.value, formatTag: bytes.formatTag)
+        } else {
+            return nil
+        }
     }
 }

@@ -736,9 +736,9 @@ private struct Twins<Hashing: KeyHashing> {
     }
 }
 
-/// The sorted collections take a key that is text as its UTF-8 bytes: each
-/// such call is the call by bytes, and hashes nothing.
-@Suite struct SortedTextKeyTests {
+/// The sorted collections take a key as its bytes: each call by a key is
+/// the call by a span of the key's bytes, and hashes nothing.
+@Suite struct SortedKeyFormTests {
     /// Two databases without a hasher, with the same header and commit IDs.
     private static func twins() throws -> (
         text: Database, textBytes: MemoryStorage, bytes: Database, bytesBytes: MemoryStorage
@@ -754,10 +754,10 @@ private struct Twins<Hashing: KeyHashing> {
 
     static let words = ["pear", "apple", "", "fig", "\u{E9}clair", "e\u{301}clair", "a longer key than a slot holds"]
 
-    /// Every write to a sorted map by a string writes what the write by
-    /// the string's UTF-8 bytes writes, and every read by a string reads
-    /// what the read by those bytes reads. The database has no hasher.
-    @Test func aSortedMapTakesTextAsItsBytes() throws {
+    /// Every write to a sorted map by a key writes what the write by a
+    /// span of the key's bytes writes, and every read by a key reads what
+    /// the read by that span reads. The database has no hasher.
+    @Test func aSortedMapTakesAKeyAsItsBytes() throws {
         let twins = try Self.twins()
         func step(
             _ what: String, text: (SortedMap<ReadWrite>) throws -> Void, bytes: (SortedMap<ReadWrite>) throws -> Void
@@ -771,18 +771,31 @@ private struct Twins<Hashing: KeyHashing> {
         try step("puts") { map in
             for (index, word) in Self.words.enumerated() { try map.put(.uint(UInt64(index)), forKey: word) }
         } bytes: { map in
-            for (index, word) in Self.words.enumerated() { try map.put(.uint(UInt64(index)), forKey: utf8(word)) }
+            for (index, word) in Self.words.enumerated() { try map.put(.uint(UInt64(index)), forKey: utf8(word).span) }
         }
         try step("a put by a substring") { map in
             try map.put(.uint(100), forKey: "a plum"[...].dropFirst(2))
         } bytes: { map in
-            try map.put(.uint(100), forKey: utf8("plum"))
+            try map.put(.uint(100), forKey: utf8("plum").span)
+        }
+        try step("puts by keys of every type") { map in
+            try map.put(.uint(11), forKey: [UInt8]([0, 1, 2, 255]))
+            try map.put(.uint(12), forKey: Bytes([9, 9], formatTag: "zz"))
+            try map.put(.uint(13), forKey: Field.age)
+            try map.put(.uint(14), forKey: Reversed(text: "abc"))
+            try map.put("typed", forKey: Field.name)
+        } bytes: { map in
+            try map.put(.uint(11), forKey: [UInt8]([0, 1, 2, 255]).span)
+            try map.put(.uint(12), forKey: [UInt8]([9, 9]).span)
+            try map.put(.uint(13), forKey: utf8("age").span)
+            try map.put(.uint(14), forKey: utf8("cba").span)
+            try map.put(.bytes(utf8("typed")), forKey: utf8("name").span)
         }
         try step("a put cursor and a write through it") { map in
             var cursor = try map.putCursor(forKey: "quince")
             try cursor.write(.int(-1))
         } bytes: { map in
-            var cursor = try map.putCursor(forKey: utf8("quince"))
+            var cursor = try map.putCursor(forKey: utf8("quince").span)
             try cursor.write(.int(-1))
         }
         try step("removes") { map in
@@ -791,24 +804,25 @@ private struct Twins<Hashing: KeyHashing> {
             #expect(try map.remove(forKey: "fig") == false)
             #expect(try map.remove(forKey: "absent") == false)
         } bytes: { map in
-            let removed = try map.remove(forKey: utf8("fig"))
+            let removed = try map.remove(forKey: utf8("fig").span)
             #expect(removed == true)
-            #expect(try map.remove(forKey: utf8("fig")) == false)
-            #expect(try map.remove(forKey: utf8("absent")) == false)
+            #expect(try map.remove(forKey: utf8("fig").span) == false)
+            #expect(try map.remove(forKey: utf8("absent").span) == false)
         }
 
         let map = try SortedMap<ReadOnly>(twins.text.rootCursor)
         for word in Self.words + ["plum", "quince", "absent", "b", "zzz"] {
             let key = utf8(word)
-            #expect(try map.slot(forKey: word) == map.slot(forKey: key), "slot of \(word)")
-            #expect(try map.cursor(forKey: word)?.slot == map.cursor(forKey: key)?.slot, "cursor of \(word)")
+            #expect(try map.slot(forKey: word) == map.slot(forKey: key.span), "slot of \(word)")
+            #expect(try map.cursor(forKey: word)?.slot == map.cursor(forKey: key.span)?.slot, "cursor of \(word)")
             let entry = try map.entry(forKey: word)
-            let twin = try map.entry(forKey: key)
+            let twin = try map.entry(forKey: key.span)
             #expect((entry == nil) == (twin == nil), "entry of \(word)")
             #expect(try entry?.key.readBytes() == twin?.key.readBytes())
             #expect(try entry?.value.slot == twin?.value.slot)
-            #expect(try map.rank(of: word) == map.rank(of: key), "rank of \(word)")
-            #expect(try Self.keys(from: map.iterator(fromKey: word)) == Self.keys(from: map.iterator(fromKey: key)))
+            #expect(try map.rank(of: word) == map.rank(of: key.span), "rank of \(word)")
+            #expect(
+                try Self.keys(from: map.iterator(fromKey: word)) == Self.keys(from: map.iterator(fromKey: key.span)))
         }
         #expect(try map.cursor(forKey: "pear")?.readUInt64() == 0)
         #expect(try map.cursor(forKey: "plum"[...])?.readUInt64() == 100)
@@ -817,11 +831,24 @@ private struct Twins<Hashing: KeyHashing> {
         #expect(try map.cursor(forKey: "\u{E9}clair")?.readUInt64() == 4)
         #expect(try map.cursor(forKey: "e\u{301}clair")?.readUInt64() == 5)
         #expect(try Self.keys(from: map.iterator(fromKey: "q")) == [utf8("quince"), utf8("\u{E9}clair")])
-        #expect(try map.rank(of: "b") == 3)
+        // Below "b": the empty key, the two keys of bytes, and three texts
+        // that begin with "a".
+        #expect(try map.rank(of: "b") == 6)
+        // A typed read by a key, and the keys of the other types.
+        #expect(try map.value(forKey: Field.name, as: String.self) == "typed")
+        #expect(try map.value(forKey: Field.age, as: UInt64.self) == 13)
+        #expect(try map.cursor(forKey: Reversed(text: "abc"))?.readUInt64() == 14)
+        #expect(try map.cursor(forKey: [UInt8]([0, 1, 2, 255]))?.readUInt64() == 11)
+        // Of a key of tagged bytes only the bytes are the key: it is found
+        // by them with any tag or none, and read back it has no tag.
+        #expect(try map.cursor(forKey: Bytes([9, 9], formatTag: "zz"))?.readUInt64() == 12)
+        #expect(try map.cursor(forKey: Bytes([9, 9]))?.readUInt64() == 12)
+        #expect(try map.cursor(forKey: Bytes([9, 9], formatTag: "ab"))?.readUInt64() == 12)
+        #expect(try map.entry(forKey: Bytes([9, 9], formatTag: "zz"))?.key.readBytesWithFormatTag() == Bytes([9, 9]))
     }
 
     /// The same for a sorted set.
-    @Test func aSortedSetTakesTextAsItsBytes() throws {
+    @Test func aSortedSetTakesAKeyAsItsBytes() throws {
         let twins = try Self.twins()
         func step(
             _ what: String, text: (SortedSet<ReadWrite>) throws -> Void, bytes: (SortedSet<ReadWrite>) throws -> Void
@@ -836,31 +863,115 @@ private struct Twins<Hashing: KeyHashing> {
             for word in Self.words { try set.insert(word) }
             try set.insert("a plum"[...].dropFirst(2))
         } bytes: { set in
-            for word in Self.words { try set.insert(utf8(word)) }
-            try set.insert(utf8("plum"))
+            for word in Self.words { try set.insert(utf8(word).span) }
+            try set.insert(utf8("plum").span)
+        }
+        try step("inserts of keys of every type") { set in
+            try set.insert([UInt8]([0, 1, 2, 255]))
+            try set.insert(Bytes([9, 9], formatTag: "zz"))
+            try set.insert(Field.age)
+            try set.insert(Reversed(text: "abc"))
+        } bytes: { set in
+            try set.insert([UInt8]([0, 1, 2, 255]).span)
+            try set.insert([UInt8]([9, 9]).span)
+            try set.insert(utf8("age").span)
+            try set.insert(utf8("cba").span)
         }
         try step("removes") { set in
             let removed = try set.remove(forKey: "fig")
             #expect(removed == true)
             #expect(try set.remove(forKey: "fig") == false)
         } bytes: { set in
-            let removed = try set.remove(forKey: utf8("fig"))
+            let removed = try set.remove(forKey: utf8("fig").span)
             #expect(removed == true)
-            #expect(try set.remove(forKey: utf8("fig")) == false)
+            #expect(try set.remove(forKey: utf8("fig").span) == false)
         }
 
         let set = try SortedSet<ReadOnly>(twins.text.rootCursor)
         for word in Self.words + ["plum", "absent", "b"] {
             let key = utf8(word)
-            #expect(try set.contains(word) == set.contains(key), "contains \(word)")
-            #expect(try set.rank(of: word) == set.rank(of: key), "rank of \(word)")
-            #expect(try Self.keys(from: set.iterator(fromKey: word)) == Self.keys(from: set.iterator(fromKey: key)))
+            #expect(try set.contains(word) == set.contains(key.span), "contains \(word)")
+            #expect(try set.rank(of: word) == set.rank(of: key.span), "rank of \(word)")
+            #expect(
+                try Self.keys(from: set.iterator(fromKey: word)) == Self.keys(from: set.iterator(fromKey: key.span)))
         }
         #expect(try set.contains("pear"))
         #expect(try set.contains("plum"[...]))
         #expect(try !set.contains("fig"))
-        #expect(try set.count == UInt64(Self.words.count))
+        #expect(try set.count == UInt64(Self.words.count) + 4)
         #expect(try Self.keys(from: set.iterator(fromKey: "pe")) == [utf8("pear"), utf8("plum"), utf8("\u{E9}clair")])
+        #expect(try set.contains(Field.age))
+        #expect(try !set.contains(Field.name))
+        #expect(try set.contains(Reversed(text: "abc")))
+        #expect(try set.contains([UInt8]([0, 1, 2, 255])))
+        // Of a key of tagged bytes only the bytes are the key.
+        #expect(try set.contains(Bytes([9, 9], formatTag: "zz")))
+        #expect(try set.contains(Bytes([9, 9])))
+        // Below it: the empty key and the other key of bytes.
+        #expect(try set.rank(of: Bytes([9, 9], formatTag: "ab")) == 2)
+        var first = try set.iterator(fromKey: Bytes([9, 9], formatTag: "zz"))
+        #expect(try first.next()?.readEntry().key.readBytesWithFormatTag() == Bytes([9, 9]))
+    }
+
+    /// A key of bytes and a type whose raw value is a key work on the sorted
+    /// collections as they do on the hashed ones: every form of one key
+    /// names one entry. They differ in what is kept of a key of tagged
+    /// bytes: a hash set keeps the key it is given, its tag included, and a
+    /// sorted set keeps the bytes alone.
+    @Test func everyFormOfAKeyNamesOneEntryOnTheSortedCollectionsAsOnTheHashed() throws {
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
+        let tagged = Bytes(utf8("name"), formatTag: "tg")
+        try database.withTransaction { root in
+            let moment = try HashMap<ReadWrite>(root)
+            let sorted = try SortedMap<ReadWrite>(moment.putCursor(forKey: "sorted map"))
+            let hashed = try CountedHashMap<ReadWrite>(moment.putCursor(forKey: "hash map"))
+            let sortedSet = try SortedSet<ReadWrite>(moment.putCursor(forKey: "sorted set"))
+            let hashedSet = try CountedHashSet<ReadWrite>(moment.putCursor(forKey: "hash set"))
+
+            try sorted.put(UInt64(1), forKey: "name")
+            try sorted.put(UInt64(2), forKey: "the name"[...].dropFirst(4))
+            try sorted.put(UInt64(3), forKey: utf8("name"))
+            try sorted.put(UInt64(4), forKey: Bytes(utf8("name")))
+            try sorted.put(UInt64(5), forKey: tagged)
+            try sorted.put(UInt64(6), forKey: Field.name)
+            try sorted.put(.uint(7), forKey: utf8("name").span)
+            try hashed.put(UInt64(1), forKey: "name")
+            try hashed.put(UInt64(2), forKey: "the name"[...].dropFirst(4))
+            try hashed.put(UInt64(3), forKey: utf8("name"))
+            try hashed.put(UInt64(4), forKey: Bytes(utf8("name")))
+            try hashed.put(UInt64(5), forKey: tagged)
+            try hashed.put(UInt64(6), forKey: Field.name)
+            try hashed.put(.uint(7), forHash: SHA256.hash(data: utf8("name")))
+
+            try sortedSet.insert(tagged)
+            try sortedSet.insert("name")
+            try sortedSet.insert(Field.name)
+            try sortedSet.insert(utf8("name").span)
+            try hashedSet.insert(tagged)
+            try hashedSet.insert("name")
+            try hashedSet.insert(Field.name)
+
+            #expect(try sorted.count == 1)
+            #expect(try hashed.count == 1)
+            #expect(try sortedSet.count == 1)
+            #expect(try hashedSet.count == 1)
+            let keys: [any KeyRepresentable] = [
+                "name", "the name"[...].dropFirst(4), utf8("name"), Bytes(utf8("name")), tagged, Field.name,
+            ]
+            for key in keys {
+                #expect(try sorted.readOnly.value(forKey: key, as: UInt64.self) == 7, "\(key)")
+                #expect(try hashed.readOnly.value(forKey: key, as: UInt64.self) == 7, "\(key)")
+                #expect(try sortedSet.readOnly.contains(key), "\(key)")
+                #expect(try hashedSet.readOnly.contains(key), "\(key)")
+            }
+            // What is kept of the tagged key: a hash set keeps the first
+            // key it was given for the entry, with its tag; a sorted set
+            // keeps the bytes.
+            #expect(try hashedSet.readOnly.cursor(forKey: "name")?.readBytesWithFormatTag() == tagged)
+            var iterator = try sortedSet.readOnly.iterator()
+            #expect(try iterator.next()?.readEntry().key.readBytesWithFormatTag() == Bytes(utf8("name")))
+            #expect(try sorted.readOnly.entry(forKey: tagged)?.key.readBytesWithFormatTag() == Bytes(utf8("name")))
+        }
     }
 
     /// The keys an iterator gives, in its order.

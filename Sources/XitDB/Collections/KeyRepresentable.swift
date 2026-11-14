@@ -1,13 +1,17 @@
-/// A key, as the bytes a hash map or set hashes it by.
+/// A key, as the bytes that stand for it.
 ///
-/// The calls of ``HashMap``, ``CountedHashMap``, ``HashSet`` and
-/// ``CountedHashSet`` that take a key take any conformer. The key's bytes
-/// are hashed by the hasher the database was given, and the hash names the
-/// entry: two keys with the same bytes are one key, whatever their types.
+/// The calls of the maps and sets that take a key take any conformer. On
+/// ``HashMap``, ``CountedHashMap``, ``HashSet`` and ``CountedHashSet`` the
+/// key's bytes are hashed by the hasher the database was given, and the
+/// hash names the entry. On ``SortedMap`` and ``SortedSet`` the bytes are
+/// the key itself, kept in the collection and compared byte by byte, and
+/// nothing is hashed. Either way two keys with the same bytes are one key,
+/// whatever their types.
+///
 /// A `String` or a `Substring` is its UTF-8, with nothing added and
-/// nothing normalised, so the hash is the one a program in any language
-/// computes over the same text; `[UInt8]` is itself, and ``Bytes`` is its
-/// value without its format tag.
+/// nothing normalised, so the bytes are the ones a program in any language
+/// has for the same text; `[UInt8]` is itself, and ``Bytes`` is its value
+/// without its format tag.
 ///
 /// A type of your own gives its bytes. One whose raw value is a key
 /// conforms by declaring the conformance, and is then the key its raw
@@ -20,11 +24,13 @@
 /// try person.put(.uint(25), forKey: Field.age)
 /// ```
 ///
-/// A database that was given no hasher has none of these calls: each
-/// throws ``XitDBError/noKeyHashing``. The calls that take a hash work on
-/// every database.
+/// A database that was given no hasher has none of the hashed
+/// collections' calls by key: each throws ``XitDBError/noKeyHashing``.
+/// The calls that take a hash work on every database, and so do the
+/// sorted collections' calls by key.
 public protocol KeyRepresentable {
-    /// The bytes that stand for the key: what is hashed.
+    /// The bytes that stand for the key: what a hashed collection hashes
+    /// and a sorted one keeps.
     var keyBytes: [UInt8] { get }
 }
 

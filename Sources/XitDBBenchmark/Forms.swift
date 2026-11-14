@@ -61,13 +61,15 @@ func mapByHashDigest(_ size: Int, kinds: [StorageKind]) -> Workload {
     }
 }
 
-/// The three forms a sorted map's key comes in.
+/// The forms a sorted map's key comes in: a span, and two kinds of key
+/// through the one form that takes a key.
 enum SortedKeyForm: String {
     /// The bytes borrowed from the array that holds them.
     case span
-    /// The array, through the form that takes any sequence of bytes.
+    /// The array as a key, whose bytes are itself.
     case bytes
-    /// A `String`, whose UTF-8 the form copies into an array.
+    /// A `String` as a key, whose bytes are its UTF-8, copied into an
+    /// array.
     case text
 }
 

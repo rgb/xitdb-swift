@@ -5,6 +5,14 @@
 /// gives its keys in that order, from the start, from a key or from a
 /// position, and the position of any key, whether or not it is there.
 ///
+/// A call takes its key as borrowed bytes, a `Span`, or as a
+/// ``KeyRepresentable``: text, an array of bytes, ``Bytes``, or a type of
+/// your own. Either way the key is those bytes themselves: nothing is
+/// hashed, where a ``HashSet`` given the same key finds its place by the
+/// key's hash. A sorted set therefore works on a database that was given
+/// no hasher. Of a ``Bytes`` key only the bytes are the key: its format
+/// tag is not kept.
+///
 /// Underneath is a tree whose leaves hold up to sixteen entries in key
 /// order and whose branches carry a separator key and a count for each
 /// child. A key of up to eight bytes without a zero byte is stored in its
@@ -91,27 +99,10 @@ public struct SortedSet<Access: CursorAccess> {
         try cursor.iterator(fromSortedMapKey: SortedKey(key))
     }
 
-    /// An iterator over the set's entries in key order, from the first
-    /// key that is not below `key` on, which need not be there. A key
-    /// beyond every entry gives an iterator of nothing.
-    ///
-    /// - Parameter key: The key's bytes, in any sequence of bytes: an array, a
-    ///   slice, `Data`, a string's `utf8`. Anything but an array is copied
-    ///   once; the `Span` overload takes bytes already borrowed.
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something other
-    ///   than a sorted map or set, ``XitDBError/invalidBTreeNode`` if the tree
-    ///   does not hold what its header or its branches say,
-    ///   ``XitDBError/staleCursor`` if the set is not at the root and its
-    ///   cursor is from a transaction that did not commit, or an error of the
-    ///   storage or of a damaged file.
-    @inlinable
-    public func iterator(fromKey key: some Sequence<UInt8>) throws(XitDBError) -> CollectionIterator {
-        let bytes = Array(key)
-        return try iterator(fromKey: bytes.span)
-    }
-
-    /// ``iterator(fromKey:)-(Span<UInt8>)`` for a key that is text: the key is
-    /// the string's UTF-8 bytes, with nothing added and nothing normalised, and
+    /// ``iterator(fromKey:)-(Span<UInt8>)`` for a key in the form
+    /// the caller holds it: text, an array of bytes, ``Bytes``, or a type of
+    /// the caller's. The key is what ``KeyRepresentable/keyBytes`` gives, for
+    /// text its UTF-8 bytes with nothing added and nothing normalised, and
     /// the call does and throws what that one does.
     ///
     /// Nothing is hashed, since a sorted set keeps the key itself: this works
@@ -119,8 +110,8 @@ public struct SortedSet<Access: CursorAccess> {
     ///
     /// - Parameter key: The key.
     @inlinable
-    public func iterator(fromKey key: some StringProtocol) throws(XitDBError) -> CollectionIterator {
-        let bytes = Array(key.utf8)
+    public func iterator(fromKey key: some KeyRepresentable) throws(XitDBError) -> CollectionIterator {
+        let bytes = key.keyBytes
         return try iterator(fromKey: bytes.span)
     }
 
@@ -145,35 +136,19 @@ public struct SortedSet<Access: CursorAccess> {
         }
     }
 
-    /// The number of keys in the set that are below `key`, which need
-    /// not be there: the position it has, or would have.
-    ///
-    /// - Parameter key: The key's bytes, in any sequence of bytes: an array, a
-    ///   slice, `Data`, a string's `utf8`. Anything but an array is copied
-    ///   once; the `Span` overload takes bytes already borrowed.
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something other
-    ///   than a sorted map or set, ``XitDBError/invalidBTreeNode`` if the tree
-    ///   does not hold what its header or its branches say,
-    ///   ``XitDBError/staleCursor`` if the set is not at the root and its
-    ///   cursor is from a transaction that did not commit, or an error of the
-    ///   storage or of a damaged file.
-    @inlinable
-    public func rank(of key: some Sequence<UInt8>) throws(XitDBError) -> UInt64 {
-        let bytes = Array(key)
-        return try rank(of: bytes.span)
-    }
-
-    /// ``rank(of:)-(Span<UInt8>)`` for a key that is text: the key is the
-    /// string's UTF-8 bytes, with nothing added and nothing normalised, and the
-    /// call does and throws what that one does.
+    /// ``rank(of:)-(Span<UInt8>)`` for a key in the form
+    /// the caller holds it: text, an array of bytes, ``Bytes``, or a type of
+    /// the caller's. The key is what ``KeyRepresentable/keyBytes`` gives, for
+    /// text its UTF-8 bytes with nothing added and nothing normalised, and
+    /// the call does and throws what that one does.
     ///
     /// Nothing is hashed, since a sorted set keeps the key itself: this works
     /// on a database that was given no hasher.
     ///
     /// - Parameter key: The key.
     @inlinable
-    public func rank(of key: some StringProtocol) throws(XitDBError) -> UInt64 {
-        let bytes = Array(key.utf8)
+    public func rank(of key: some KeyRepresentable) throws(XitDBError) -> UInt64 {
+        let bytes = key.keyBytes
         return try rank(of: bytes.span)
     }
 
@@ -208,34 +183,19 @@ public struct SortedSet<Access: CursorAccess> {
         return try cursor.readPath(path.span) != nil
     }
 
-    /// Whether `key` is in the set.
-    ///
-    /// - Parameter key: The key's bytes, in any sequence of bytes: an array, a
-    ///   slice, `Data`, a string's `utf8`. Anything but an array is copied
-    ///   once; the `Span` overload takes bytes already borrowed.
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something other
-    ///   than a sorted map or set, ``XitDBError/invalidBTreeNode`` if the tree
-    ///   does not hold what its header or its branches say,
-    ///   ``XitDBError/staleCursor`` if the set is not at the root and its
-    ///   cursor is from a transaction that did not commit, or an error of the
-    ///   storage or of a damaged file.
-    @inlinable
-    public func contains(_ key: some Sequence<UInt8>) throws(XitDBError) -> Bool {
-        let bytes = Array(key)
-        return try contains(bytes.span)
-    }
-
-    /// ``contains(_:)-(Span<UInt8>)`` for a key that is text: the key is the
-    /// string's UTF-8 bytes, with nothing added and nothing normalised, and the
-    /// call does and throws what that one does.
+    /// ``contains(_:)-(Span<UInt8>)`` for a key in the form
+    /// the caller holds it: text, an array of bytes, ``Bytes``, or a type of
+    /// the caller's. The key is what ``KeyRepresentable/keyBytes`` gives, for
+    /// text its UTF-8 bytes with nothing added and nothing normalised, and
+    /// the call does and throws what that one does.
     ///
     /// Nothing is hashed, since a sorted set keeps the key itself: this works
     /// on a database that was given no hasher.
     ///
     /// - Parameter key: The key.
     @inlinable
-    public func contains(_ key: some StringProtocol) throws(XitDBError) -> Bool {
-        let bytes = Array(key.utf8)
+    public func contains(_ key: some KeyRepresentable) throws(XitDBError) -> Bool {
+        let bytes = key.keyBytes
         return try contains(bytes.span)
     }
 
@@ -333,40 +293,19 @@ extension SortedSet where Access == ReadWrite {
         _ = try cursor.writePath(path.span)
     }
 
-    /// Adds `key` to the set. A key that is there already is left as it
-    /// is.
-    ///
-    /// - Parameter key: The key's bytes, in any sequence of bytes: an array, a
-    ///   slice, `Data`, a string's `utf8`. Anything but an array is copied
-    ///   once; the `Span` overload takes bytes already borrowed.
-    /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not the
-    ///   root cursor and no transaction is in progress,
-    ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
-    ///   this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a sorted map or set,
-    ///   ``XitDBError/invalidBTreeNode`` if the tree does not hold what its
-    ///   header or its branches say, or an error of the storage or of a damaged
-    ///   file.
-    @inlinable
-    public func insert(_ key: some Sequence<UInt8>) throws(XitDBError) {
-        let bytes = Array(key)
-        try insert(bytes.span)
-    }
-
-    /// ``insert(_:)-(Span<UInt8>)`` for a key that is text: the key is the
-    /// string's UTF-8 bytes, with nothing added and nothing normalised, and the
-    /// call does and throws what that one does.
+    /// ``insert(_:)-(Span<UInt8>)`` for a key in the form
+    /// the caller holds it: text, an array of bytes, ``Bytes``, or a type of
+    /// the caller's. The key is what ``KeyRepresentable/keyBytes`` gives, for
+    /// text its UTF-8 bytes with nothing added and nothing normalised, and
+    /// the call does and throws what that one does.
     ///
     /// Nothing is hashed, since a sorted set keeps the key itself: this works
     /// on a database that was given no hasher.
     ///
     /// - Parameter key: The key.
     @inlinable
-    public func insert(_ key: some StringProtocol) throws(XitDBError) {
-        let bytes = Array(key.utf8)
+    public func insert(_ key: some KeyRepresentable) throws(XitDBError) {
+        let bytes = key.keyBytes
         try insert(bytes.span)
     }
 
@@ -398,34 +337,11 @@ extension SortedSet where Access == ReadWrite {
         return true
     }
 
-    /// Removes the entry for a key. The place it had in its leaf stays
-    /// empty; the tree is not rebalanced.
-    ///
-    /// - Parameter key: The key's bytes, in any sequence of bytes: an array, a
-    ///   slice, `Data`, a string's `utf8`. Anything but an array is copied
-    ///   once; the `Span` overload takes bytes already borrowed.
-    /// - Returns: Whether there was an entry to remove.
-    /// - Throws: ``XitDBError/expectedTxStart`` if the set's cursor is not the
-    ///   root cursor and no transaction is in progress,
-    ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
-    ///   this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a sorted map or set,
-    ///   ``XitDBError/invalidBTreeNode`` if the tree does not hold what its
-    ///   header or its branches say, or an error of the storage or of a damaged
-    ///   file.
-    @discardableResult
-    @inlinable
-    public func remove(forKey key: some Sequence<UInt8>) throws(XitDBError) -> Bool {
-        let bytes = Array(key)
-        return try remove(forKey: bytes.span)
-    }
-
-    /// ``remove(forKey:)-(Span<UInt8>)`` for a key that is text: the key is the
-    /// string's UTF-8 bytes, with nothing added and nothing normalised, and the
-    /// call does and throws what that one does.
+    /// ``remove(forKey:)-(Span<UInt8>)`` for a key in the form
+    /// the caller holds it: text, an array of bytes, ``Bytes``, or a type of
+    /// the caller's. The key is what ``KeyRepresentable/keyBytes`` gives, for
+    /// text its UTF-8 bytes with nothing added and nothing normalised, and
+    /// the call does and throws what that one does.
     ///
     /// Nothing is hashed, since a sorted set keeps the key itself: this works
     /// on a database that was given no hasher.
@@ -433,8 +349,8 @@ extension SortedSet where Access == ReadWrite {
     /// - Parameter key: The key.
     @discardableResult
     @inlinable
-    public func remove(forKey key: some StringProtocol) throws(XitDBError) -> Bool {
-        let bytes = Array(key.utf8)
+    public func remove(forKey key: some KeyRepresentable) throws(XitDBError) -> Bool {
+        let bytes = key.keyBytes
         return try remove(forKey: bytes.span)
     }
 
