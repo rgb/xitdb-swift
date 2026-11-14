@@ -497,6 +497,12 @@ private struct UnclearedPerson: StorableValue {
         let age = try moment.entry(forKey: "age")!
         #expect(try age.key.slot.isEmpty)
         #expect(try age.key.read(String.self) == "")
+        // A cursor at a slot never written has no nil to give, and reads as
+        // a slot set to nothing does.
+        #expect(try age.key.read([UInt8].self) == [])
+        #expect(throws: XitDBError.unexpectedTag) { try age.key.read(UInt64.self) }
+        #expect(throws: XitDBError.unexpectedTag) { try age.key.read(Int64.self) }
+        #expect(throws: XitDBError.unexpectedTag) { try age.key.read(Double.self) }
         #expect(try moment.keyCursor(forKey: "age") == nil)
 
         let entry = try moment.entry(forKey: "name")!

@@ -80,13 +80,16 @@ func describe(_ cursor: Cursor<ReadOnly>) throws -> String {
 
 ### No value, and nothing
 
-Where there is no value to give, a typed read says which of two cases it is:
+Where there is no value to give, the typed reads of a collection say which of two cases it is:
 
 - **No value**: the map has no entry for the key, the list no element at the index, or the slot is one that was
-  never written, all zeros, for which ``Slot/isEmpty`` is true. The read gives `nil`.
+  never written, all zeros, for which ``Slot/isEmpty`` is true. ``HashMap/value(forKey:as:)`` and
+  ``ArrayList/value(at:as:)`` give `nil`.
 - **Nothing**: the value was set to nothing with `.slot(nil)`, and the slot has the tag ``Slot/Tag/none``. It is
   there. Read as a `String`, a `[UInt8]` or ``Bytes`` it is empty, and read as a number it throws
   ``XitDBError/unexpectedTag``.
+
+A cursor's own ``Cursor/read(_:)`` has no `nil` to give: at a slot never written it reads as at one set to nothing.
 
 So an empty string and nothing read alike, as they do in the original, whose read of a slot set to nothing gives no
 bytes. A reader who must tell them apart looks at the slot:

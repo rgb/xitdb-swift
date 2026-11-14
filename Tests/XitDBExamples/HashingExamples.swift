@@ -28,20 +28,28 @@ private enum TwentyZeros: KeyHashing {
         #expect(try users.keyCursor(forKey: "alice") == nil)
 
         // Two databases written side by side, one by key and one by hash,
-        // with the same IDs, are the same bytes.
-        let byKey = try Database(creating: MemoryStorage(), hashing: SHA256.self, hashID: "sha2", fileID: 7)
-        let byHash = try Database(creating: MemoryStorage(), hashSize: 32, hashID: "sha2", fileID: 7)
-        try HashMap<ReadWrite>(byKey.rootCursor).put("Alice", forKey: "alice")
-        try HashMap<ReadWrite>(byHash.rootCursor).put(.bytes(Array("Alice".utf8)), forHash: hash)
-        let keyedBytes = try byKey.readCommitted(from: 0, to: byKey.committedSize)
-        let hashedBytes = try byHash.readCommitted(from: 0, to: byHash.committedSize)
-        // The commit IDs are random, so the files are compared by their size
-        // and by the slot under the hash.
-        #expect(keyedBytes.count == hashedBytes.count)
-        #expect(keyedBytes.count == keyed.count)
-        #expect(
-            try HashMap<ReadOnly>(byKey.rootCursor).slot(forHash: hash)
-                == HashMap<ReadOnly>(byHash.rootCursor).slot(forHash: hash))
+        // with the same file ID and the same commit IDs, are the same file.
+        let byKey = MemoryStorage()
+        let byHash = MemoryStorage()
+        let keyedDatabase = try Database(
+            creating: byKey, hashSize: 32, hashID: "sha2", fileID: 7, random: RandomSource(Counting()),
+            hasher: KeyHasher(SHA256.self))
+        let hashedDatabase = try Database(
+            creating: byHash, hashSize: 32, hashID: "sha2", fileID: 7, random: RandomSource(Counting()))
+        try HashMap<ReadWrite>(keyedDatabase.rootCursor).put("Alice", forKey: "alice")
+        try HashMap<ReadWrite>(hashedDatabase.rootCursor)
+            .put(.bytes(Array("Alice".utf8)), forHash: SHA256.hash(data: Array("alice".utf8)))
+        #expect(byKey.bytes == byHash.bytes)
+        #expect(byKey.bytes.count == keyed.count)
+    }
+
+    /// Commit IDs 1, 2, 3, … so that two databases draw the same ones.
+    private struct Counting: RandomNumberGenerator {
+        var last: UInt64 = 0
+        mutating func next() -> UInt64 {
+            last += 1
+            return last
+        }
     }
 
     @Test func aKeyIsItsBytes() throws {

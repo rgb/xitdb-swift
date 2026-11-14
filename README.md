@@ -150,8 +150,7 @@ After this transaction the moment holds, if it were written as JSON:
 The names are there for the reader. In the file each value is under the SHA-256 hash of its name, and the names are not
 stored, as in the original: a map of names that must be listed stores each with `putKey(_:)`. A number says which of the
 format's kinds it is, as it does in the original: `UInt64(25)` is the unsigned integer, and `put(25, forKey: "age")`
-does not compile. Only the hasher's size, 32 bytes, is checked against the file. `"sha2"` is the label in the header
-that says which hash it is, for whoever reads the file next.
+does not compile. `"sha2"` is the label in the header that says which hash it is, for whoever reads the file next.
 
 Run it twice and the second run opens the file, adds a second moment, and the first stays readable with
 `history.cursor(at: 0)`.

@@ -18,6 +18,8 @@ let users = try HashMap<ReadWrite>(database.rootCursor)
 try users.put("Alice", forKey: "alice")
 ```
 
+<!-- Pinned by `aDatabaseIsGivenItsHasher` in XitDBExamples: the two puts, on two databases with the same IDs, leave the same file. -->
+
 A keyed call is its call by hash with the hash computed for it, and writes nothing more: that put writes what
 `users.put(.bytes(Array("Alice".utf8)), forHash: SHA256.hash(data: Array("alice".utf8)))` writes, which is what a Zig
 program writes with `hashInt` and `put`. Neither stores the key, and ``HashMap/putKey(_:)`` is the call that does (see
@@ -25,16 +27,9 @@ program writes with `hashInt` and `put`. Neither stores the key, and ``HashMap/p
 call: a loop that uses one key many times hashes it once and goes by `forHash:`.
 
 What is hashed is the key's bytes. A `String` is its UTF-8, with nothing added and nothing normalised, so the hash is
-the one a program in any language computes over the same text. A `[UInt8]` is itself, and a ``Bytes`` its value without
-its format tag. Any type that gives its bytes is a ``KeyRepresentable``, and one whose raw value is a string is a key
-once it says so, which keeps the names of a record's fields in one place:
-
-```swift
-enum Field: String, KeyRepresentable {
-    case name, age
-}
-try person.put(UInt64(25), forKey: Field.age)
-```
+the one a program in any language computes over the same text, and a file is shared with a Zig program that hashes the
+same text. A `[UInt8]` is itself, and a ``Bytes`` its value without its format tag; any other type that gives its bytes
+is a ``KeyRepresentable``.
 
 The package's `XitDBHashing` module has `SHA256` and `Insecure.SHA1`, under CryptoKit's names on every platform. A
 hasher of your own gives a ``KeyHashing/size``, the number of bytes in every digest, and a ``KeyHashing/hash(_:)``: the
@@ -142,14 +137,7 @@ let value = try map.value(forKey: "ab", as: String.self)
 ```
 
 With a good hash of 20 bytes or more this does not happen by accident. Whether it can happen on purpose is the question
-to ask when your keys come from someone else, and it is why 32 bytes is the default to reach for. With a shorter hash,
-``HashMap/putKey(_:)`` tells: it writes a key only once, so the key stored under a hash is the first that had it.
-
-```swift
-try map.putKey("ab")
-try map.putKey("ba")
-let collided = try map.keyCursor(forKey: "ba")?.read(String.self) != "ba"
-```
+to ask when your keys come from someone else, and it is why 32 bytes is the default to reach for.
 
 ## See Also
 
