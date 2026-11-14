@@ -414,4 +414,66 @@ import Testing
             #expect(try #require(try map1.cursor(forKey: utf8("k0001"))).readUInt64() == 7)
         }
     }
+
+    /// A short key of a sorted set, reached through a sorted map made over
+    /// the set, read-only and then writable, by `entry(forKey:)` and
+    /// `entry(at:)`. The original gives the key's cursor no position by
+    /// this route and cannot stream it, at `89da8e7` as before (finding 9;
+    /// its `71ee0cf` gave a position only to the key of a set's own entry).
+    /// The port streams a short value from the cursor's own slot wherever
+    /// the cursor came from, so the key reads with a reader here as it does
+    /// through the set.
+    @Test(arguments: storageKinds)
+    func aSetsShortKeyStreamsThroughAMapOverTheSet(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let database = try Database(creating: subject.storage, hashSize: 20)
+        // in key order; the first is stored outside its slot, the other two in it
+        let keys = ["a-much-longer-key-stored-externally", "mid", "short"]
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
+        try history.append(.slot(try history.slot(at: -1))) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            let set = try SortedSet<ReadWrite>(try moment.putCursor(forHash: hashInt("set")))
+            for key in keys.reversed() {
+                try set.insert(utf8(key))
+            }
+        }
+
+        func streamsItsKeys<Access>(_ map: SortedMap<Access>, _ comment: Comment) throws {
+            #expect(try map.count == 3, comment)
+            for (index, text) in keys.enumerated() {
+                let key = utf8(text)
+                let byKey = try #require(try map.entry(forKey: key), comment)
+                let byIndex = try #require(try map.entry(at: index), comment)
+                for entry in [byKey, byIndex] {
+                    #expect(try entry.key.slot.tag == (key.count > 8 ? .bytes : .shortBytes), comment)
+                    #expect(try entry.key.readBytes() == key, comment)
+                    var reader = try entry.key.reader()
+                    #expect(try readAll(&reader, size: key.count) == key, comment)
+                    #expect(throws: XitDBError.endOfStream, comment) { try readAll(&reader, size: 1) }
+                    reader.seek(to: 1)
+                    let rest = try readShort(&reader, size: 64)
+                    #expect(Array(rest.buffer[..<rest.count]) == Array(key[1...]), comment)
+                }
+            }
+        }
+
+        // read-only, over a slot that says it is a set
+        let moment = try HashMap<ReadOnly>(try #require(try history.cursor(at: -1)))
+        let setCursor = try #require(try moment.cursor(forHash: hashInt("set")))
+        #expect(try setCursor.slot.tag == .sortedSet)
+        try streamsItsKeys(try SortedMap<ReadOnly>(setCursor), "a read-only map over the set")
+
+        // writable, which writes the slot's tag as a map and keeps the entries
+        try history.append(.slot(try history.slot(at: -1))) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            let map = try SortedMap<ReadWrite>(try moment.putCursor(forHash: hashInt("set")))
+            try streamsItsKeys(map, "a writable map over the set, in its transaction")
+        }
+        let later = try HashMap<ReadOnly>(try #require(try history.cursor(at: -1)))
+        let mapCursor = try #require(try later.cursor(forHash: hashInt("set")))
+        #expect(try mapCursor.slot.tag == .sortedMap)
+        try streamsItsKeys(try SortedMap<ReadOnly>(mapCursor), "the map the set became")
+        // the moment before still has its set
+        try streamsItsKeys(try SortedMap<ReadOnly>(setCursor), "the earlier moment's set, afterwards")
+    }
 }
