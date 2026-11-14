@@ -42,4 +42,5 @@ version 1 sample, with the two changes of seed 4811 placed anywhere in the file 
 stated hash size takes the header's word, and `compact` trapped on the first key-value pair it met: it kept each
 block it copied in room sized for a tree's largest block, 418 bytes, and a pair is its hash and 18 bytes more. A
 damaged header was not needed: compacting any database created with a hash size above 400 trapped the same way, in
-0.2.0 and 0.2.1. The file passes on the library from the commit that added it, and traps on the one before.
+every release before 0.3.0, 0.1.0 to 0.2.1. The file passes on the library from the commit that added it, and traps
+on the one before.

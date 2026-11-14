@@ -12,7 +12,8 @@ import Testing
 /// trapped on the first pair of a longer hash: the fuzzer found it on a
 /// version 1 file whose header a seed had damaged to claim a hash size of
 /// 4,116, and a database created with a hash size of 401 could not be
-/// compacted at all. 0.2.0 and 0.2.1 have the trap.
+/// compacted at all. Every release before 0.3.0 has the trap, 0.1.0 to
+/// 0.2.1.
 @Suite struct LargeHashTests {
     /// A hash of `size` bytes for a name: the SHA-1 of the name, repeated.
     static func hash(_ name: String, _ size: Int) -> [UInt8] {
