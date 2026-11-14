@@ -4,10 +4,11 @@
 /// key or the hash. The calls with `forKey:` take the key, a string or
 /// bytes or anything ``KeyRepresentable``, and hash it with the hasher the
 /// database was given. The calls with `forHash:` take a hash the caller
-/// made, with any function whose result has as many bytes as the
-/// database's hash size: they work on every database, and are the way in
-/// for a key that is a hash already. A keyed call is its call by hash with
-/// the key hashed, and writes nothing more. The two calls that take or
+/// made, with a hasher's ``KeyHashing/keyHash(of:)`` or with any function
+/// whose result has as many bytes as the database's hash size: they work
+/// on every database, and are the way in for a key that is a hash
+/// already. A keyed call is its call by hash with the key hashed, and
+/// writes nothing more. The two calls that take or
 /// give a value as a type, the typed put and `value(forKey:as:)`, take a
 /// key and have no form by hash. Two keys with the same hash are the same
 /// key to the map.
@@ -17,8 +18,9 @@
 /// able to read the keys of a map, for instance when iterating over it,
 /// store each key beside its value with ``putKey(_:)``, or with
 /// ``putKey(_:forHash:)-(_,Sequence<UInt8>)`` where the key to keep is not
-/// the bytes that were hashed. An entry whose key was not stored still has
-/// a key cursor, at an empty slot, which reads as no bytes and as `""`:
+/// the bytes that were hashed. An entry whose key was not stored, read
+/// with ``Cursor/readEntry()``, has a key at an empty slot, which reads as
+/// no bytes and as `""`, while ``keyCursor(forKey:)`` gives `nil` for it:
 /// look at the slot's `isEmpty` before taking an entry's key for a name.
 ///
 /// A counted map keeps the number of its entries, which ``count`` reads
@@ -650,7 +652,7 @@ extension CountedHashMap {
     /// `try map.value(forKey: "name", as: String.self)`, or `let name:
     /// String? = try map.value(forKey: "name")`.
     ///
-    /// `nil` means there is nothing under the key: no entry, or an entry
+    /// `nil` means there is no value under the key: no entry, or an entry
     /// whose value was never written. A value that is there is read
     /// strictly, as ``StorableValue`` says: one of another kind than the
     /// type is written as is an error and not `nil`. A value that was set

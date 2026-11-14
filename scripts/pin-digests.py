@@ -8,6 +8,9 @@ Tests/XitDBHashingTests/Hex.swift: the pattern at every length from 0 to 300, th
 macOS a test holds the system's routine to the same table, so a table that disagreed with this script's
 messages, or with the system, fails there; on every platform the package's own code is held to it.
 
+The table in the repository was made on macOS by the system's python3, Python 3.9.6, whose hashlib is
+LibreSSL 2.8.3. Any Python 3 with hashlib makes the same table.
+
 Run it from the package's root, and look at the diff before committing it:
 
     python3 scripts/pin-digests.py
