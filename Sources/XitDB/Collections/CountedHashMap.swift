@@ -2,7 +2,7 @@
 ///
 /// A map holds values, each under the hash of its key. Every call comes in
 /// two kinds. The calls with `forKey:` take the key, a string or bytes or
-/// anything `KeyRepresentable`, and hash it with the hasher the database
+/// anything ``KeyRepresentable``, and hash it with the hasher the database
 /// was given. The calls with `forHash:` take a hash the caller made, with
 /// any function whose result has as many bytes as the database's hash size:
 /// they work on every database, and are the way in for a key that is a
@@ -845,7 +845,7 @@ extension CountedHashMap {
     ///
     /// `nil` means there is nothing under the key: no entry, or an entry
     /// whose value was never written. A value that is there is read
-    /// strictly, as `StorableValue` says: one of another kind than the
+    /// strictly, as ``StorableValue`` says: one of another kind than the
     /// type is written as is an error and not `nil`. A value that was set
     /// to nothing with `.slot(nil)` is there: read as a number it is that
     /// error, and read as a `String`, a `[UInt8]` or ``Bytes`` it is empty.

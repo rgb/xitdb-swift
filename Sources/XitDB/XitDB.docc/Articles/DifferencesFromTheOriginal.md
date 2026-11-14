@@ -122,9 +122,7 @@ The file format and the operations are the same, and the API follows Swift:
   ``Slot``, ``Bytes`` and ``XitDBError`` are `Sendable`, and so is a ``Snapshot`` of one commit, which is how another task reads a
   database: see <doc:ConcurrencyAndSnapshots>.
 
-Every operation of the original is here, and read snapshots beyond it. Beyond it too are two more modules: `XitDBHashing`, with
-ready-made hashes, and `XitDBStore`, a Swift layer over this one, with keys as Swift values, values as Swift types, and handles
-that name a place rather than hold a cursor. Each has documentation of its own.
+Every operation of the original is here, and read snapshots beyond it.
 
 ### The names
 

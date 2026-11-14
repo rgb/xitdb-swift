@@ -1,8 +1,8 @@
-// The hashes a store can name, with CryptoKit's spelling and one set of
-// names on every platform: where CryptoKit exists the types forward to it
+// The hashes a database can be given, with CryptoKit's spelling and one set
+// of names on every platform: where CryptoKit exists the types forward to it
 // and hand out its digests, so nothing of this package is on the path;
 // where it does not, the portable implementations compute them. Each type
-// conforms to XitDB's `KeyHashing`. SipHash-128 is in its own file.
+// conforms to XitDB's `KeyHashing`.
 
 public import XitDB
 
@@ -10,8 +10,8 @@ public import XitDB
     public import CryptoKit
 #endif
 
-/// SHA-256 (FIPS 180-4): the hash to choose for a store when you have no
-/// reason to choose another.
+/// SHA-256 (FIPS 180-4): the hash to choose for a database when you have
+/// no reason to choose another.
 ///
 /// 32 bytes, so the database's hash size is 32. Where CryptoKit exists the
 /// digest is CryptoKit's own, computed by it; elsewhere it is computed here.

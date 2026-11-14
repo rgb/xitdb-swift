@@ -175,13 +175,6 @@ crash it throws an error.
 A freeze writes nothing. Its cost comes at the first write after it, which copies what lies on the way to the place it changes,
 as a write to committed data does. Writes after that, to places already copied, are in place again.
 
-### Handles that name a place
-
-The package's `XitDBStore` module is a Swift layer over this one. Its handles name a place by its path from the moment's
-root, and in a transaction a handle looks its path up again each time it is used, so a freeze or a join leaves none of them
-stale, and nothing has to be taken again after it. See the article "Keys, values and handles" in that module's
-documentation.
-
 ## See Also
 
 - <doc:MomentsAndHistory>

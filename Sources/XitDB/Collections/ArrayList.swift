@@ -356,7 +356,7 @@ extension ArrayList {
     /// try list.value(at: 0)`.
     ///
     /// `nil` means the index names no element. An element that is there is
-    /// read strictly, as `StorableValue` says: one of another kind than
+    /// read strictly, as ``StorableValue`` says: one of another kind than
     /// the type is written as is an error and not `nil`. An element that
     /// was set to nothing, or appended and never written, is there: read
     /// as a number it is that error, and read as a `String`, a `[UInt8]`

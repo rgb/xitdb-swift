@@ -58,7 +58,7 @@ them says whether the last ends at the file's end.
 
 Then comes the last moment, `moment 1`. Each line is a label, a colon, and what the slot holds. An entry of a map is
 labelled by the first eight bytes of its hash. Where the file stores the key's name beside the hash, as
-``HashMap/putKey(_:forHash:)-(_,Sequence<UInt8>)`` does, and the `XitDBStore` module's `Codable` records do, the name
+``HashMap/putKey(_:forHash:)-(_,Sequence<UInt8>)`` does, the name
 comes first, in quotes: `"short"`. The other entries here store hashes alone. A plain map or set keeps no count, so `map (10 entries)` counts the entries the dump found,
 while a counted map, a sorted map or set and a list show the count they keep: `counted map (1)`, `list (2)`.
 
@@ -131,7 +131,7 @@ or `--depth`; and a million nodes in all, or ten times `--limit` if that is more
 | `--path k1/k2/#3` | Start below the moment's root: a key by its name, or by its whole hash in hex (`--full-hashes` shows it), and a list element by `#` and its index. |
 | `--json` | The same tree as one JSON document, for tools. |
 | `--keys FILE` | Key names, one per line, hashed to label the entries that store no name. |
-| `--hash NAME` | The hash for `--keys` and for the names in `--path`: `sha256` by default, `sha1` or `siphash128`. |
+| `--hash NAME` | The hash for `--keys` and for the names in `--path`: `sha256` by default, or `sha1`. |
 | `--verify` | Walk the file's commits by their trailers and checksums, and list them. |
 | `--offsets` | After each record, `@` its position in the file and `+` its size where the format fixes it. |
 | `--full-hashes` | Whole hashes instead of their first eight bytes. |

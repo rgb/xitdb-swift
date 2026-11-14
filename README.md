@@ -13,16 +13,13 @@ inside your program and keeps its data in one file or in memory.
   new file.
 - Readers on other threads and tasks get a snapshot: a `Sendable` value that reads one commit from any task
   while the writer goes on.
-- Over the API that mirrors the original, a Swift layer, `XitDBStore`: keys as Swift values, values as Swift
-  types, `Codable` records stored as maps a field at a time, and handles that name a place in a moment.
 - The port reads and writes the same files as the original, byte for byte. Given the same operations and the
   same IDs, the two produce identical files, apart from the few operations the port deliberately does
   differently, which the article "Where the port differs from the original" lists.
-- It is pure Swift with no run-time dependencies, down to the system's file calls. Only the store uses Foundation,
-  for the `Codable` forms of dates, data and URLs.
+- It is pure Swift with no run-time dependencies, down to the system's file calls.
 
 Immutability has a cost: the file only grows until you compact it. The design leaves two jobs to you as well: you
-hash your own keys, unless the store does it for you, and you keep your own indexes. If you want queries or a schema,
+hash your own keys, and you keep your own indexes. If you want queries or a schema,
 use SQLite.
 
 ## Status
@@ -32,12 +29,6 @@ version 1 files, which stay version 1. Beyond that, it refuses with an error mos
 through to damage data, such as a cursor kept for a later transaction, a handle held across a freeze, or a write after
 a failure in the same transaction, and it recovers, when asked, a file whose root header or last trailer is damaged,
 which the original cannot open. It also hands one commit to other threads and tasks as a read snapshot.
-
-Two more modules come with it. `XitDBStore` is a Swift layer over the API shown here, and writes through it: string,
-integer and byte keys, typed values, `Codable` records, and handles that name a place rather than hold a cursor.
-`XitDBStore` will be removed in 0.4.0: keys and typed values move into `XitDB` itself, onto the collections shown
-here, so new code should not build on the store. `XitDBHashing` has SHA-256 and SHA-1 under CryptoKit's names on every
-platform, CryptoKit's own where it exists, and SipHash-128.
 
 It builds for macOS 26, iOS 26 and Linux, and is tested on macOS, on Linux and on an iOS simulator.
 
@@ -70,9 +61,6 @@ targets: [
         ])
 ]
 ```
-
-For the Swift layer, depend on the product `XitDBStore` instead. It brings `XitDB` and `XitDBHashing` with it, and
-`import XitDBStore` is the one import a file needs.
 
 ## A first look
 
@@ -157,17 +145,16 @@ Run it twice and the second run opens the file, adds a second moment, and the fi
 
 ## Documentation
 
-The documentation is a DocC catalogue for each module: [`Sources/XitDB/XitDB.docc`](Sources/XitDB/XitDB.docc),
-[`Sources/XitDBStore/XitDBStore.docc`](Sources/XitDBStore/XitDBStore.docc) and
+The documentation is a DocC catalogue for each module: [`Sources/XitDB/XitDB.docc`](Sources/XitDB/XitDB.docc) and
 [`Sources/XitDBHashing/XitDBHashing.docc`](Sources/XitDBHashing/XitDBHashing.docc): a reference curated by task, and
 articles for the concepts. Read it through DocC, where the links between articles resolve and the diagrams appear. Start
-with the article "Moments and history" for XitDB, and "Keys, values and handles" for the store. To read it in a browser:
+with the article "Moments and history" for XitDB. To read it in a browser:
 
 ```sh
 swift package --disable-sandbox preview-documentation --target XitDB
 ```
 
-with `--target XitDBStore` or `--target XitDBHashing` for the other two.
+with `--target XitDBHashing` for the other.
 
 To look at a file itself, `swift run xitdb-dump FILE` prints it as it is on disk: its header, the last moment or any
 other, and with `--verify` its commits. Built once with `swift build -c release --product xitdb-dump`, it runs as

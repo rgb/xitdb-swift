@@ -116,7 +116,7 @@ import Testing
         #expect(shown.count > 0)
         #expect(shown.contains { $0.place.hasPrefix("README.md") })
         #expect(shown.contains { $0.place.contains(".docc/Articles/") })
-        for module in ["XitDB", "XitDBHashing", "XitDBStore"] {
+        for module in ["XitDB", "XitDBHashing"] {
             #expect(shown.contains { $0.place.hasPrefix("Sources/\(module)/\(module).docc/") }, "\(module)'s catalogue")
         }
     }

@@ -21,7 +21,6 @@
 import Foundation
 import XitDB
 import XitDBHashing
-import XitDBStore
 
 struct BenchmarkFailure: Error, CustomStringConvertible {
     let description: String
@@ -73,7 +72,8 @@ final class RunStorage {
 /// sorted map, for each `i` below the workload's key count.
 struct Keys {
     var hashes: [KeyHash] = []
-    /// The same hashes as plain arrays, the store workloads' keys.
+    /// The same hashes as plain arrays, as a caller who hashed a key holds
+    /// them.
     var hashBytes: [[UInt8]] = []
     var texts: [[UInt8]] = []
     var sortedKeys: [SortedKey] = []
@@ -107,71 +107,6 @@ struct Keys {
     }
 }
 
-/// The hash of the store workloads: the key's bytes are the hash, so that
-/// the keys are the faithful workloads' precomputed hashes and the
-/// comparison shows the layer's own cost, not the hashing's.
-/// The key of the map the store workloads keep their records under: a
-/// hash already, since `PrecomputedHash` passes keys through as they are,
-/// the SHA-1 of "users" so that it is the size the database expects.
-let usersKey = Array(Insecure.SHA1.hash(Array("users".utf8)))
-
-struct PrecomputedHash: KeyHashing {
-    static var size: Int { 20 }
-
-    static func hash(_ bytes: some Collection<UInt8>) -> [UInt8] {
-        Array(bytes)
-    }
-}
-
-/// `map_insert` through the store layer: the same keys and values, put and
-/// read through a map under a key of the moment, `usersKey`, as application
-/// code keeps its records, so that every put goes through the moment's map
-/// and its cache. `resolving` reads through a fresh moment and handle for
-/// every key, which resolves the path from the root each time, where the
-/// plain form keeps one handle, which caches its cursor in a read-only
-/// moment. The difference between the two bounds the read cache's worth
-/// from above and does not isolate it: the resolving form also pays for a
-/// moment per key, the history lookup and the moment's own making.
-func storeMapInsert(_ size: Int, kinds: [StorageKind], resolving: Bool) -> Workload {
-    let name = resolving ? "store_map_resolve" : "store_map_insert"
-    return Workload(name: name, size: size, kinds: kinds, keyKind: .hashes, keyCount: size) { database, keys in
-        let store = try Store(database, hashing: PrecomputedHash.self)
-        try store.transaction { moment in
-            let map = moment[usersKey].map([UInt8].self, UInt64.self)
-            for (index, key) in keys.hashBytes.enumerated() {
-                try map.put(UInt64(index), forKey: key)
-            }
-        }
-    } read: { reading, keys in
-        if resolving {
-            for (index, key) in keys.hashBytes.enumerated() {
-                let moment = try reading.storeMoment(hashing: PrecomputedHash.self)
-                guard try moment[usersKey].map([UInt8].self, UInt64.self)[key] == UInt64(index) else {
-                    throw BenchmarkFailure(description: "key \(index) does not read back through a fresh handle")
-                }
-            }
-        } else {
-            let moment = try reading.storeMoment(hashing: PrecomputedHash.self)
-            let map = moment[usersKey].map([UInt8].self, UInt64.self)
-            for (index, key) in keys.hashBytes.enumerated() {
-                guard try map[key] == UInt64(index) else {
-                    throw BenchmarkFailure(description: "key \(index) does not read back through the store")
-                }
-            }
-        }
-    } iterate: { reading, keys in
-        let moment = try reading.storeMoment(hashing: PrecomputedHash.self)
-        var values = try moment[usersKey].map([UInt8].self, UInt64.self).values()
-        var count = 0
-        while try values.next() != nil {
-            count += 1
-        }
-        guard count == keys.hashBytes.count else {
-            throw BenchmarkFailure(description: "the store iterated \(count) values, not \(keys.hashBytes.count)")
-        }
-    }
-}
-
 func newDatabase(_ storage: any WritableStorage) throws -> Database {
     try Database(creating: storage, hashSize: 20, hashID: "sha1", fileID: 0x0011_2233_4455_6677)
 }
@@ -189,29 +124,15 @@ func milliseconds(_ body: () throws -> Void) rethrows -> Double {
 struct Reading {
     let root: Cursor<ReadOnly>
     let database: Database?
-    /// The snapshot's database under `--snapshot`, for the store workloads,
-    /// which read a moment of a database and not a cursor.
-    let snapshotDatabase: SnapshotDatabase?
 
     init(_ database: Database) {
         root = database.rootCursor.readOnly
         self.database = database
-        snapshotDatabase = nil
     }
 
     init(snapshotOf database: Database) throws {
-        let snapshot = SnapshotDatabase(try database.snapshot())
-        root = snapshot.rootCursor
+        root = SnapshotDatabase(try database.snapshot()).rootCursor
         self.database = nil
-        snapshotDatabase = snapshot
-    }
-
-    /// The latest moment as the store reads it, from the live database or
-    /// the snapshot's.
-    func storeMoment(hashing: (some KeyHashing).Type) throws -> Moment {
-        if let database { return try Moment(reading: database, hashing: hashing) }
-        guard let snapshotDatabase else { throw BenchmarkFailure(description: "no database to read a moment from") }
-        return try Moment(reading: snapshotDatabase, hashing: hashing)
     }
 
     /// The live database, for a phase that needs one.
@@ -428,10 +349,9 @@ func mapByKey(_ size: Int, kinds: [StorageKind]) -> Workload {
         })
 }
 
-/// A key's bytes, asked for as a collection asks: through the protocol.
-/// (While the store is in the package a `String` has two `keyBytes`, the
-/// store's and the library's, and this says which.)
-func keyBytes(of key: some XitDB.KeyRepresentable) -> [UInt8] {
+/// A key's bytes, asked for as a collection asks: through the protocol,
+/// from code that does not know the key's type.
+func keyBytes(of key: some KeyRepresentable) -> [UInt8] {
     key.keyBytes
 }
 
@@ -849,9 +769,6 @@ let workloads: [Workload] = [
     mapByHash(sized(100_000), kinds: [.memory, .bufferedFile]),
     mapByKey(sized(100_000), kinds: [.memory, .bufferedFile]),
     keyHashing(sized(100_000)),
-    storeMapInsert(sized(100_000), kinds: [.memory, .bufferedFile], resolving: false),
-    storeMapInsert(sized(10_000), kinds: [.file], resolving: false),
-    storeMapInsert(sized(100_000), kinds: [.memory, .bufferedFile], resolving: true),
     listAppend(sized(1_000_000), kinds: [.memory, .bufferedFile]),
     mapTransactions(sized(2_000), kinds: [.memory, .bufferedFile]),
     linkedAppend(sized(100_000), kinds: [.memory, .bufferedFile]),

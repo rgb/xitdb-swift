@@ -8,14 +8,13 @@ package struct DumpOptions: Sendable {
     /// The hash key names are hashed with, for `--keys` and for a `--path`
     /// step given by name.
     package enum Hash: String, Sendable {
-        case sha256, sha1, siphash128
+        case sha256, sha1
 
         /// The hash of a key's bytes, the database's hash size long.
         package func hash(_ bytes: [UInt8]) -> [UInt8] {
             switch self {
             case .sha256: Array(SHA256.hash(bytes))
             case .sha1: Array(Insecure.SHA1.hash(bytes))
-            case .siphash128: Array(SipHash128.hash(bytes))
             }
         }
     }
