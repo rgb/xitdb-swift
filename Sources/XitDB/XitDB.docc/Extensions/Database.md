@@ -6,6 +6,11 @@
 
 See <doc:Storage>, and <doc:Recovery> for a file whose root header or last trailer is damaged.
 
+A database given a hasher takes keys; one given a hash size alone takes hashes. See <doc:Hashing>.
+
+- ``init(opening:hashing:)``
+- ``init(creating:hashing:hashID:fileID:)``
+- ``recover(_:hashing:)``
 - ``init(opening:hashSize:)``
 - ``init(creating:hashSize:hashID:fileID:)``
 - ``recover(_:)``

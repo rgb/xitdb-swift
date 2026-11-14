@@ -195,10 +195,10 @@ not fit in an `Int64` names no element: a lookup gives `nil`, and a write or an 
 
 ### Hashes and keys
 
-A key of a hash map or set is any ``KeyRepresentable``: a `String` or a `Substring`, as its UTF-8; a `[UInt8]`; a
-``Bytes``, hashed without its format tag, which the calls that store a key keep; or a type of your own that gives its
-bytes. Two keys with the same bytes are one key. A type whose raw value is a string is a key once it says so, which
-keeps the names of a record's fields in one place, here in `person`, a map of one person's fields:
+A key is any ``KeyRepresentable``, on all six collections: a `String` or a `Substring`, as its UTF-8; a `[UInt8]`; a
+``Bytes``; or a type of your own that gives its bytes. Two keys with the same bytes are one key. A type whose raw value
+is a string is a key once it says so, which keeps the names of a record's fields in one place, here in `person`, a map
+of one person's fields:
 
 ```swift
 enum Field: String, KeyRepresentable {
@@ -207,8 +207,9 @@ enum Field: String, KeyRepresentable {
 try person.put(UInt64(25), forKey: Field.age)
 ```
 
-A sorted map or set has no hash. It keeps the key's bytes themselves, in their order, and takes a key as text, by its
-UTF-8, or as bytes:
+A hash map or set hashes the key with the database's hasher and keeps the hash; a ``Bytes`` key is hashed without its
+format tag, which ``HashSet/insert(_:)`` and ``HashMap/putKey(_:)`` keep. A sorted map or set hashes nothing: it keeps
+the key's bytes, in their order, without a ``Bytes`` key's tag, and needs no hasher:
 
 ```swift
 let sorted = try SortedMap<ReadWrite>(database.rootCursor)
@@ -217,10 +218,9 @@ try sorted.put(UInt64(1), forKey: "apple")
 try sorted.put(UInt64(2), forKey: Array("pear".utf8))
 ```
 
-A hash, or a sorted collection's key given as bytes, is `some Sequence<UInt8>` at the call site: a CryptoKit digest as it
-is, an array, a slice, a string's `utf8`, or Foundation's `Data`. The call makes an array of it, which costs nothing for
-an array and is a copy for anything else. Each method also has an overload taking a `Span<UInt8>`, for bytes you already
-have borrowed, which allocates nothing for a hash or key of up to 64 bytes:
+A sorted collection also takes a key as a `Span<UInt8>` of borrowed bytes; a slice, a string's `utf8` or `Data` goes in
+as `Array(…)` or its span. A hash given by `forHash:` is `some Sequence<UInt8>`, a digest as it is, an array, a slice or
+`Data`, made into an array that costs nothing for an array; or a `Span<UInt8>`, with no allocation up to 64 bytes:
 
 ```swift
 let hashes = try Database(creating: MemoryStorage(), hashSize: 32)

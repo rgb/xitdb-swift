@@ -13,6 +13,10 @@
 
 ### Reading values
 
+- ``value(forKey:as:)``
+- ``cursor(forKey:)``
+- ``slot(forKey:)``
+- ``entry(forKey:)``
 - ``cursor(forHash:)-(Span<UInt8>)``
 - ``cursor(forHash:)-(Sequence<UInt8>)``
 - ``slot(forHash:)-(Span<UInt8>)``
@@ -23,6 +27,10 @@
 
 ### Reading keys
 
+A map has a key to give only where one was stored, with ``putKey(_:)``. See <doc:CursorsAndValues>.
+
+- ``keyCursor(forKey:)``
+- ``keySlot(forKey:)``
 - ``keyCursor(forHash:)-(Span<UInt8>)``
 - ``keyCursor(forHash:)-(Sequence<UInt8>)``
 - ``keySlot(forHash:)-(Span<UInt8>)``
@@ -30,6 +38,14 @@
 
 ### Writing
 
+A put stores the value under the key's hash, and not the key. See <doc:Hashing>.
+
+- ``put(_:forKey:)-(StorableValue,_)``
+- ``put(_:forKey:)-(WritableData,_)``
+- ``putCursor(forKey:)``
+- ``putKey(_:)``
+- ``putKeyCursor(forKey:)``
+- ``remove(forKey:)``
 - ``put(_:forHash:)-(_,Span<UInt8>)``
 - ``put(_:forHash:)-(_,Sequence<UInt8>)``
 - ``putCursor(forHash:)-(Span<UInt8>)``

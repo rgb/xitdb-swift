@@ -402,6 +402,18 @@ import XitDBHashing
         try sorted.put(UInt64(3), forKey: name.utf8.prefix(5) + [0x21])
         #expect(try sorted.count == 3)
         #expect(try sorted.rank(of: "pear") == 2)
+
+        // The key is its bytes: no Bytes key's format tag is kept, a span
+        // and an array of a slice go in, and no hasher is needed.
+        let plain = try Database(creating: MemoryStorage(), hashSize: 32)
+        let keys = try SortedMap<ReadWrite>(plain.rootCursor)
+        try keys.put(UInt64(1), forKey: Bytes(Array("tagged".utf8), formatTag: "zz"))
+        #expect(try keys.entry(at: 0)!.key.read(Bytes.self) == Bytes(Array("tagged".utf8)))
+        let text = "a long key"
+        try keys.put(UInt64(2), forKey: Array(text.utf8.prefix(6)))
+        #expect(try keys.value(forKey: "a long", as: UInt64.self) == 2)
+        let borrowed = Array("tagged".utf8)
+        #expect(try keys.cursor(forKey: borrowed.span) != nil)
     }
 
     @Test func anyBytesAsAHash() throws {

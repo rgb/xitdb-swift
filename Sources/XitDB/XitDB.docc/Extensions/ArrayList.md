@@ -14,6 +14,7 @@
 ### Reading
 
 - ``count``
+- ``value(at:as:)``
 - ``cursor(at:)``
 - ``slot(at:)``
 - ``iterator()``
@@ -21,9 +22,11 @@
 
 ### Writing
 
+- ``append(_:)-(StorableValue)``
 - ``append(_:)-(WritableData)``
 - ``append(_:_:)``
 - ``appendCursor()``
+- ``put(_:at:)-(StorableValue,_)``
 - ``put(_:at:)-(WritableData,_)``
 - ``putCursor(at:)``
 - ``truncate(to:)``

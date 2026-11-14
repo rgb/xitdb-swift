@@ -10,6 +10,13 @@
 - ``database-7kom4``
 - ``readOnly``
 
+### Reading and writing a value by its type
+
+A value is one of the library's six types, or a ``StorableValue`` of your own. See <doc:CursorsAndValues>.
+
+- ``read(_:)``
+- ``write(_:)-(StorableValue)``
+
 ### Reading numbers
 
 - ``readUInt64()``
