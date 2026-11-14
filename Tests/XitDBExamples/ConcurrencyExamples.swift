@@ -73,7 +73,7 @@ import XitDBHashing
         let reader = Task.detached {
             let history = try ArrayList<ReadOnly>(snapshot.rootCursor)
             let moment = try HashMap<ReadOnly>(history.cursor(at: -1)!)
-            return try moment.value(forKey: "count", as: UInt64.self)
+            return try moment.value(forKey: "count", as: UInt64.self)!
         }
 
         // The writer goes on, and the reader reads the commit it was given.

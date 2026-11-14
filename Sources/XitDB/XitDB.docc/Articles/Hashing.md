@@ -60,9 +60,10 @@ anything else is, and refuses another with ``XitDBError/invalidHashSize``, the o
 compared with the hasher, and the hasher gives none: created with one and no `hashID:`, a database has a hash ID of
 zeros. So a file opened with the wrong hasher of the right size opens, and its keyed lookups find nothing.
 
-A snapshot carries the hasher of its database, and the target of a compaction takes its source's. A database given no
-hasher, created with a hash size or opened without a hasher, has only the calls that take a hash: a keyed call on it
-throws ``XitDBError/noKeyHashing``, before anything else about the call is looked at.
+A snapshot carries the hasher of its database, and a database that a compaction opens over a storage takes its source's;
+a target you opened yourself keeps its own. A database given no hasher, created with a hash size or opened without a
+hasher, has only the calls that take a hash: a keyed call on it throws ``XitDBError/noKeyHashing``, before anything else
+about the call is looked at.
 
 ### Choosing the hasher by the file
 

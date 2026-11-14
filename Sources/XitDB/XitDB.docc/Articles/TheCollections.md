@@ -7,10 +7,10 @@ The eight collections, when to use which, and what they have in common at the ca
 A database is a tree of collections. An element of a list and a value of a map can be anything, another collection
 included. A collection is a value you make from a cursor, and it reads and writes the slot that cursor is at.
 
-The examples are in a database given `SHA256` as the hasher of its keys (see <doc:Hashing>). They force-unwrap a lookup
-where the value was just written; real code handles the `nil` that means it is not there. Where they use `moment`, it is
-a ``HashMap`` in a transaction's body, as in <doc:MomentsAndHistory>. The values, reading them and iterating over a
-collection are in <doc:CursorsAndValues>.
+Unless one makes its own, the examples are in a database given `SHA256` as the hasher of its keys (see <doc:Hashing>).
+They force-unwrap a lookup where the value was just written; real code handles the `nil` that means it is not there.
+Where they use `moment`, it is a ``HashMap`` in a transaction's body, as in <doc:MomentsAndHistory>. The values, reading
+them and iterating over a collection are in <doc:CursorsAndValues>.
 
 ### When to use which
 
@@ -139,11 +139,12 @@ try map.putKey("age")
 **A map stores the value under the key's hash, and not the key**, as the original's map does. ``HashMap/putKey(_:)``
 stores the key beside it, which is what makes keys readable when you iterate: a map whose keys were not stored lists
 hashes and values (see <doc:CursorsAndValues>). The number is `UInt64(25)`, since `25` does not compile: a number says
-which of the format's kinds it is. ``HashMap/remove(forKey:)`` returns whether there was an entry to remove. Every call
-that takes a key has a twin by hash, `forHash:`, which the keyed call is with the hash computed: see <doc:Hashing>.
+which of the format's kinds it is. Each untyped keyed call has a twin by hash, `forHash:` (`hash:` for a set's
+`contains`), which it is with the hash computed (see <doc:Hashing>); the typed calls have none, so by hash a value is
+put as `.uint(25)` and read with `cursor(forHash:)?.read(UInt64.self)`.
 
-**A set stores its members.** A member is a key, so ``HashSet/insert(_:)`` writes the key's bytes, as the original's set
-does, and iterating gives them back:
+**A set stores its members.** A member is a key, so ``HashSet/insert(_:)`` writes its bytes, with a ``Bytes`` key's
+format tag, as the original's set does, and iterating gives them back:
 
 ```swift
 let tags = try HashSet<ReadWrite>(database.rootCursor)
@@ -170,8 +171,7 @@ That map's count is 2. The lists and the sorted collections always know their co
 
 ### Indices
 
-A list's index, or a sorted collection's position, can be negative, which counts from the end. `-1` is the last
-element:
+A list's index, or a sorted collection's position, can be negative, which counts from the end. `-1` is the last element:
 
 ```swift
 let list = try ArrayList<ReadWrite>(database.rootCursor)
@@ -196,9 +196,9 @@ not fit in an `Int64` names no element: a lookup gives `nil`, and a write or an 
 ### Hashes and keys
 
 A key of a hash map or set is any ``KeyRepresentable``: a `String` or a `Substring`, as its UTF-8; a `[UInt8]`; a
-``Bytes``, without its format tag; or a type of your own that gives its bytes. Two keys with the same bytes are one key,
-whatever their types. A type whose raw value is a string is a key once it says so, which keeps the names of a record's
-fields in one place, here in `person`, a map of one person's fields:
+``Bytes``, hashed without its format tag, which the calls that store a key keep; or a type of your own that gives its
+bytes. Two keys with the same bytes are one key. A type whose raw value is a string is a key once it says so, which
+keeps the names of a record's fields in one place, here in `person`, a map of one person's fields:
 
 ```swift
 enum Field: String, KeyRepresentable {

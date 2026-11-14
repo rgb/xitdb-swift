@@ -122,11 +122,11 @@ import XitDBHashing
 
         func openOrRecover(_ storage: any WritableStorage) throws(XitDBError) -> Database {
             do {
-                return try Database(opening: storage)
+                return try Database(opening: storage, hashing: SHA256.self)
             } catch .untrustedRootHeader(let lastVerified) {
                 // Copy the file first if what lies past lastVerified might be wanted.
                 print("cutting the file back to \(lastVerified) bytes")
-                return try Database.recover(storage)
+                return try Database.recover(storage, hashing: SHA256.self)
             }
         }
 

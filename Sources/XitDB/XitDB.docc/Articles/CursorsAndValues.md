@@ -91,8 +91,8 @@ Where there is no value to give, the typed reads of a collection say which of tw
 A cursor's own ``Cursor/read(_:)`` has no `nil` to give: at a slot never written it reads as at one set to nothing.
 
 So an empty string and nothing read alike, as they do through the original's `readBytesAlloc`, which gives no bytes for
-a slot set to nothing (its read into a buffer refuses one: see <doc:DifferencesFromTheOriginal>). A reader who must tell
-them apart looks at the slot:
+a slot set to nothing (its read into a buffer refuses one unless the buffer is empty: see
+<doc:DifferencesFromTheOriginal>). A reader who must tell them apart looks at the slot:
 
 ```swift
 try moment.put("", forKey: "empty")
