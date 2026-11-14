@@ -696,6 +696,12 @@ extension SortedMap where Access == ReadWrite {
     /// The typed put by the key's bytes, which the two public forms come
     /// to.
     func put(_ value: some StorableValue, forKeyBytes key: Span<UInt8>) throws(XitDBError) {
+        // One of the library's own values is its data, and takes the put
+        // of data's own path; a value of the caller's writes itself.
+        if let data = WritableData(ownValue: value) {
+            try put(data, forKey: key)
+            return
+        }
         let path: InlineArray<2, PathPart> = [.sortedMapGet(.value, SortedKey(key)), .ctx]
         _ = try cursor.writePath(
             path.span,

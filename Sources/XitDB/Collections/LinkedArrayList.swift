@@ -526,6 +526,12 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   grown poisons the transaction, as any write that fails after it
     ///   has written does.
     public func append(_ value: some StorableValue) throws(XitDBError) {
+        // One of the library's own values is its data, and takes the
+        // append of data's own path; a value of the caller's writes itself.
+        if let data = WritableData(ownValue: value) {
+            try append(data)
+            return
+        }
         let path: InlineArray<2, PathPart> = [.linkedArrayListAppend, .ctx]
         _ = try cursor.writePath(
             path.span,
@@ -547,6 +553,10 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   ``XitDBError/indexOutOfRange`` for an index that names no element
     ///   among them, and what the value's own writing throws.
     public func put(_ value: some StorableValue, at index: some BinaryInteger) throws(XitDBError) {
+        if let data = WritableData(ownValue: value) {
+            try put(data, at: index)
+            return
+        }
         let index = try listIndex(index)
         let path: InlineArray<2, PathPart> = [.linkedArrayListGet(index), .ctx]
         _ = try cursor.writePath(
@@ -569,6 +579,10 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   ``XitDBError/indexOutOfRange`` for an index that names no element
     ///   among them, and what the value's own writing throws.
     public func insert(_ value: some StorableValue, at index: some BinaryInteger) throws(XitDBError) {
+        if let data = WritableData(ownValue: value) {
+            try insert(data, at: index)
+            return
+        }
         let index = try listIndex(index)
         let path: InlineArray<2, PathPart> = [.linkedArrayListInsert(index), .ctx]
         _ = try cursor.writePath(
