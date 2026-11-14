@@ -136,9 +136,9 @@ private func unfinishedCreation(of database: [UInt8]) -> [UInt8] {
         try check(WideHash.self)
     }
 
-    /// A hasher of another size is refused with `hashSizeMismatch`, and the
-    /// storage is as it was. A size stated as a number that is not the
-    /// file's stays `invalidHashSize`.
+    /// A hasher of another size is refused with `invalidHashSize`, the
+    /// error of a size stated as a number that is not the file's, as in
+    /// the original, and the storage is as it was.
     @Test(arguments: StorageKind.allCases)
     func openingWithAHasherOfAnotherSizeIsRefused(kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
@@ -146,9 +146,9 @@ private func unfinishedCreation(of database: [UInt8]) -> [UInt8] {
         try subject.storage.flush()
         let before = try subject.stored()
 
-        #expect(throws: XitDBError.hashSizeMismatch) { try Database(opening: subject.storage, hashing: SHA256.self) }
-        #expect(throws: XitDBError.hashSizeMismatch) { try Database(opening: subject.storage, hashing: TinyHash.self) }
-        #expect(throws: XitDBError.hashSizeMismatch) { try Database(opening: subject.storage, hashing: WideHash.self) }
+        #expect(throws: XitDBError.invalidHashSize) { try Database(opening: subject.storage, hashing: SHA256.self) }
+        #expect(throws: XitDBError.invalidHashSize) { try Database(opening: subject.storage, hashing: TinyHash.self) }
+        #expect(throws: XitDBError.invalidHashSize) { try Database(opening: subject.storage, hashing: WideHash.self) }
         #expect(throws: XitDBError.invalidHashSize) { try Database(opening: subject.storage, hashSize: 32) }
         try subject.storage.flush()
         #expect(try subject.stored() == before)
@@ -169,7 +169,7 @@ private func unfinishedCreation(of database: [UInt8]) -> [UInt8] {
         try subject.write(bigEndianBytes(subject.end(3) + 1), at: subject.header.fileSizePosition)
         let storage = subject.storage.storage
 
-        #expect(throws: XitDBError.hashSizeMismatch) { try Database(opening: storage, hashing: SHA256.self) }
+        #expect(throws: XitDBError.invalidHashSize) { try Database(opening: storage, hashing: SHA256.self) }
         #expect(throws: XitDBError.untrustedRootHeader(lastVerified: subject.end(3))) {
             try Database(opening: storage, hashing: Insecure.SHA1.self)
         }
@@ -203,7 +203,7 @@ private func unfinishedCreation(of database: [UInt8]) -> [UInt8] {
         let database = try Database(opening: storage, hashing: Insecure.SHA1.self)
         #expect(database.header.version == 1)
         try Self.expectHashes(database, as: Insecure.SHA1.self)
-        #expect(throws: XitDBError.hashSizeMismatch) { try Database(opening: storage, hashing: SHA256.self) }
+        #expect(throws: XitDBError.invalidHashSize) { try Database(opening: storage, hashing: SHA256.self) }
     }
 
     // MARK: No hasher
@@ -367,7 +367,7 @@ private func unfinishedCreation(of database: [UInt8]) -> [UInt8] {
         try subject.write(bigEndianBytes(subject.end(3) + 40), at: subject.header.fileSizePosition)
         let damaged = try subject.stored()
 
-        #expect(throws: XitDBError.hashSizeMismatch) {
+        #expect(throws: XitDBError.invalidHashSize) {
             try Database.recover(subject.storage.storage, hashing: SHA256.self)
         }
         #expect(try subject.stored() == damaged)
@@ -399,10 +399,10 @@ private func unfinishedCreation(of database: [UInt8]) -> [UInt8] {
         func random() -> RandomSource { RandomSource(FixedRandom([1, 2, 3])) }
 
         let empty = MemoryStorage()
-        #expect(throws: XitDBError.hashSizeMismatch) {
+        #expect(throws: XitDBError.invalidHashSize) {
             try Database(creating: empty, hashSize: 20, hashID: nil, fileID: nil, random: random(), hasher: sha256)
         }
-        #expect(throws: XitDBError.hashSizeMismatch) {
+        #expect(throws: XitDBError.invalidHashSize) {
             try Database(storage: empty, hashSize: 20, random: random(), hasher: sha256)
         }
         #expect(empty.bytes.isEmpty)
@@ -413,10 +413,10 @@ private func unfinishedCreation(of database: [UInt8]) -> [UInt8] {
         _ = try Database(creating: created, hashSize: 20)
         let left = unfinishedCreation(of: created.bytes)
         let unfinished = MemoryStorage(bytes: left)
-        #expect(throws: XitDBError.hashSizeMismatch) {
+        #expect(throws: XitDBError.invalidHashSize) {
             try Database(storage: unfinished, hashSize: 20, random: random(), hasher: sha256)
         }
-        #expect(throws: XitDBError.hashSizeMismatch) {
+        #expect(throws: XitDBError.invalidHashSize) {
             try Database(creating: unfinished, hashSize: 20, hashID: nil, fileID: nil, random: random(), hasher: sha256)
         }
         #expect(unfinished.bytes == left)
@@ -424,28 +424,22 @@ private func unfinishedCreation(of database: [UInt8]) -> [UInt8] {
         let existing = MemoryStorage()
         _ = try Database(creating: existing, hashSize: 20)
         let before = existing.bytes
-        #expect(throws: XitDBError.hashSizeMismatch) {
+        #expect(throws: XitDBError.invalidHashSize) {
             try Database(opening: existing, hashSize: nil, random: random(), hasher: sha256)
         }
-        #expect(throws: XitDBError.hashSizeMismatch) {
+        #expect(throws: XitDBError.invalidHashSize) {
             try Database(opening: existing, hashSize: 20, random: random(), hasher: sha256)
         }
-        #expect(throws: XitDBError.hashSizeMismatch) {
+        #expect(throws: XitDBError.invalidHashSize) {
             try Database(storage: existing, hashSize: nil, random: random(), hasher: sha256)
         }
-        #expect(throws: XitDBError.hashSizeMismatch) {
+        #expect(throws: XitDBError.invalidHashSize) {
             try Database(storage: existing, hashSize: 20, random: random(), hasher: sha256)
         }
-        #expect(throws: XitDBError.hashSizeMismatch) {
+        #expect(throws: XitDBError.invalidHashSize) {
             try Database.recover(existing, random: random(), hasher: sha256)
         }
         #expect(existing.bytes == before)
-
-        // A stated size that is not the file's is reported as such, before
-        // the hasher is looked at.
-        #expect(throws: XitDBError.invalidHashSize) {
-            try Database(opening: existing, hashSize: 32, random: random(), hasher: sha256)
-        }
 
         let sha1 = KeyHasher(Insecure.SHA1.self)
         try Self.expectHashes(

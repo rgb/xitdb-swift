@@ -12,7 +12,7 @@
 ///
 /// ``size`` is the number of bytes every digest has. It is the hash size of
 /// a database created with the conformer, and a database of another hash
-/// size is refused with ``XitDBError/hashSizeMismatch`` when it is opened
+/// size is refused with ``XitDBError/invalidHashSize`` when it is opened
 /// with it, before anything but its header is read. A hash of the wrong
 /// size given to a collection directly is refused by that call. Two keys
 /// with the same digest name one entry, so a hash that is not secure

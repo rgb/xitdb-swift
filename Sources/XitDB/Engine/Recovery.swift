@@ -164,9 +164,9 @@ extension Database {
     ///   - hashing: The hash function of the database's keys. Its
     ///     ``KeyHashing/size`` must be the database's hash size.
     /// - Returns: The recovered database, open.
-    /// - Throws: ``XitDBError/hashSizeMismatch`` if the database's hash
-    ///   size is not the hasher's, in which case the storage is left as it
-    ///   was, and what ``recover(_:)`` throws.
+    /// - Throws: ``XitDBError/invalidHashSize`` if the database's hash size
+    ///   is not the hasher's, in which case the storage is left as it was,
+    ///   and what ``recover(_:)`` throws.
     public static func recover(_ storage: any WritableStorage, hashing: (some KeyHashing).Type)
         throws(XitDBError) -> Database
     {
@@ -185,14 +185,14 @@ extension Database {
     /// from a source another database draws from, and holds the hasher
     /// given, if any.
     ///
-    /// - Throws: What ``recover(_:)`` throws, and `hashSizeMismatch`,
+    /// - Throws: What ``recover(_:)`` throws, and `invalidHashSize`,
     ///   before anything is cut, if the database's hash size is not the
     ///   hasher's.
     package static func recover(_ storage: any WritableStorage, random: RandomSource, hasher: KeyHasher? = nil)
         throws(XitDBError) -> Database
     {
         let header = try DatabaseHeader(reading: storage)
-        if let hasher, Int(header.hashSize) != hasher.size { throw .hashSizeMismatch }
+        if let hasher, Int(header.hashSize) != hasher.size { throw .invalidHashSize }
         let reader = DatabaseReader(storage: BuiltInStorage(storage), identity: DatabaseIdentity(header: header))
         guard let lastVerified = try reader.lastVerifiedCommitEnd() else { throw .invalidDatabase }
         // The trailer's root slot must be one this implementation reads,

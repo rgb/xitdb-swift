@@ -52,8 +52,21 @@ public enum XitDBError: Error, Sendable {
     /// not read.
     case invalidVersion
 
-    /// The hash size requested by the caller differs from the one recorded in
-    /// the file.
+    /// A hash size that is not the database's, or that no database can
+    /// have.
+    ///
+    /// Opening or recovering: the size stated with `hashSize:`, or the
+    /// size of the hasher given with `hashing:`, is not the one the file
+    /// records. It is checked once the header has been read and before
+    /// anything else is, by ``Database/recover(_:hashing:)`` before it
+    /// cuts anything. Creating: the size, or the hasher's, is 0 or more
+    /// than 65535, or the storage holds what an unfinished creation of a
+    /// database with another hash size left, which is left as it is. A
+    /// call on a hash map or set: the hash given does not have as many
+    /// bytes as the database's hash size, or the database's hasher gave a
+    /// digest that has not, once there is a map to look in. A compaction
+    /// or a sync from 0: the target, or the bytes coming in, are of
+    /// another hash size.
     case invalidHashSize
 
     /// The storage of a database already open is shorter than the committed
@@ -222,12 +235,10 @@ public enum XitDBError: Error, Sendable {
     case poisonedTransaction
 
     /// The database's header records a hash size other than the one the
-    /// hasher produces: ``Database/init(opening:hashing:)`` and
-    /// ``Database/recover(_:hashing:)`` refuse the database, once its
-    /// header has been read and before anything else is read or written,
-    /// and so does `XitDBStore`. The size a ``KeyHashing`` hash produces is
-    /// its ``KeyHashing/size``; the database's is the one it was created
-    /// with.
+    /// store's hash produces: `XitDBStore` refuses to open it, before anything
+    /// is read or written through the store. Only the store layer raises it,
+    /// and it goes with the store: a database opened with a hasher of
+    /// another size is refused with ``invalidHashSize``.
     case hashSizeMismatch
 
     /// A call that takes a key, such as ``HashMap/put(_:forKey:)``, was
