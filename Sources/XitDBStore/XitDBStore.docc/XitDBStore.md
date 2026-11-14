@@ -4,6 +4,9 @@ The Swift layer over XitDB: keys as Swift values, values as Swift types, and han
 
 ## Overview
 
+This module will be removed in 0.4.0: keys and typed values move into `XitDB` itself, onto its own collections. New
+code should not build on it.
+
 `XitDBStore` sits over the `XitDB` module, which mirrors the original xitdb call for call. Through the store you do not
 hash your own keys or make collections from cursors. A key is a string, an integer or bytes, a value is a Swift type,
 a record is a `Codable` type, and a ``Handle`` names a place in a moment, by its path from the moment's root:

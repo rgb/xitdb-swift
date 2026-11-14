@@ -27,15 +27,17 @@ use SQLite.
 
 ## Status
 
-The port does everything the original does. Beyond that, it refuses with an error most of the misuse that the original
-lets through to damage data, such as a cursor kept for a later transaction, a handle held across a freeze, or a write
-after a failure in the same transaction, and it recovers, when asked, a file whose root header or last trailer is
-damaged, which the original cannot open. It also hands one commit to other threads and tasks as a read snapshot.
+The port does everything the original does. It writes the original's file format version 2, and reads and writes
+version 1 files, which stay version 1. Beyond that, it refuses with an error most of the misuse that the original lets
+through to damage data, such as a cursor kept for a later transaction, a handle held across a freeze, or a write after
+a failure in the same transaction, and it recovers, when asked, a file whose root header or last trailer is damaged,
+which the original cannot open. It also hands one commit to other threads and tasks as a read snapshot.
 
 Two more modules come with it. `XitDBStore` is a Swift layer over the API shown here, and writes through it: string,
 integer and byte keys, typed values, `Codable` records, and handles that name a place rather than hold a cursor.
-`XitDBHashing` has SHA-256 and SHA-1 under CryptoKit's names on every platform, CryptoKit's own where it exists, and
-SipHash-128.
+`XitDBStore` will be removed in 0.4.0: keys and typed values move into `XitDB` itself, onto the collections shown
+here, so new code should not build on the store. `XitDBHashing` has SHA-256 and SHA-1 under CryptoKit's names on every
+platform, CryptoKit's own where it exists, and SipHash-128.
 
 It builds for macOS 26, iOS 26 and Linux, and is tested on macOS, on Linux and on an iOS simulator.
 
@@ -57,7 +59,7 @@ The package needs Swift 6.4 and macOS 26, iOS 26 or Linux. In your `Package.swif
 
 ```swift manifest
 dependencies: [
-    .package(url: "https://github.com/rgb/xitdb-swift", from: "0.2.1")
+    .package(url: "https://github.com/rgb/xitdb-swift", from: "0.3.0")
 ],
 targets: [
     .target(name: "MyTarget", dependencies: [.product(name: "XitDB", package: "xitdb-swift")])
