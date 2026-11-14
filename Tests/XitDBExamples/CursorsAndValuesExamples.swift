@@ -15,8 +15,10 @@ func describe(_ cursor: Cursor<ReadOnly>) throws -> String {
     }
 }
 
-// The article's record, a value of the examples' own.
-struct Person {
+// The article's record, a value of the examples' own. Private, as the
+// comment of `StorableValue` has a record of the same name in
+// CommentExamples.swift.
+private struct Person {
     var name: String
     var age: UInt64
 }
