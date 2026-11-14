@@ -1,3 +1,4 @@
+xitdb file: 32 bytes, 0 committed; version 2, hash size 20, hash id "sha1", file id 0000000000000002
 verify: 0 commits verify; 32 bytes past the last do not
 note: no commit verifies
-note: not an xitdb file that opens: invalidDatabase
+note: the file is a creation that did not finish: a header that reads, no first commit, and no more bytes than a new database has; there is nothing to show, and creating a database in it starts it over

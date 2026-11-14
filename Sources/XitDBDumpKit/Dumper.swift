@@ -70,6 +70,18 @@ package struct Dumper {
                 return dump
             }
         } catch {
+            // A header that reads, no first commit and no more bytes than
+            // a new database has: a creation that did not finish. The
+            // library creates over such a file, which holds nothing, so
+            // the dump says what it is and shows the header it has.
+            if let left = try? Database.unfinishedCreation(in: storage) {
+                dump.header = header(of: left, fileSize: fileSize, committedSize: 0)
+                dump.notes.append(
+                    "the file is a creation that did not finish: a header that reads, no first commit, and no more bytes than a new database has; there is nothing to show, and creating a database in it starts it over"
+                )
+                dump.exitCode = 1
+                return dump
+            }
             dump.notes.append("not an xitdb file that opens: \(error)")
             dump.exitCode = 2
             return dump
@@ -91,7 +103,7 @@ package struct Dumper {
                 database = recovered
             } else {
                 dump.notes.append("\(what), and no commit in it verifies: there is nothing to show")
-                dump.header = header(of: database, fileSize: fileSize, committedSize: 0)
+                dump.header = header(of: database.header, fileSize: fileSize, committedSize: 0)
                 return dump
             }
         }
@@ -114,21 +126,21 @@ package struct Dumper {
         return MemoryStorage(bytes: bytes)
     }
 
-    /// The dump's first line from a database's header: the format's
+    /// The dump's first line from a database header: the format's
     /// version, the hash size, the hash ID as text when its bytes are
     /// printable, the file ID; the count of moments is filled in once the
     /// root has been read.
-    private func header(of database: Database, fileSize: UInt64, committedSize: UInt64) -> Dump.Header {
-        let hashID = database.header.hashID.rawValue
+    private func header(of header: DatabaseHeader, fileSize: UInt64, committedSize: UInt64) -> Dump.Header {
+        let hashID = header.hashID.rawValue
         let hashIDBytes = [
             UInt8(hashID >> 24), UInt8(hashID >> 16 & 0xFF), UInt8(hashID >> 8 & 0xFF), UInt8(hashID & 0xFF),
         ]
         let hashIDText =
             hashIDBytes.allSatisfy({ $0 >= 0x20 && $0 < 0x7F }) ? String(decoding: hashIDBytes, as: UTF8.self) : nil
         return Dump.Header(
-            fileSize: fileSize, committedSize: committedSize, version: Int(database.header.version),
-            hashSize: Int(database.header.hashSize), hashIDText: hashIDText, hashIDHex: Self.hex(hashIDBytes),
-            fileID: Self.hex(bigEndian: database.header.fileID), momentCount: nil)
+            fileSize: fileSize, committedSize: committedSize, version: Int(header.version),
+            hashSize: Int(header.hashSize), hashIDText: hashIDText, hashIDHex: Self.hex(hashIDBytes),
+            fileID: Self.hex(bigEndian: header.fileID), momentCount: nil)
     }
 
     private mutating func read(_ database: Database, fileSize: UInt64, into dump: inout Dump) {
@@ -139,7 +151,7 @@ package struct Dumper {
         }
         let root = database.rootCursor.readOnly
         var header = header(
-            of: database, fileSize: fileSize, committedSize: (try? database.committedSize) ?? fileSize)
+            of: database.header, fileSize: fileSize, committedSize: (try? database.committedSize) ?? fileSize)
         let history: ArrayList<ReadOnly>?
         do {
             let list = try ArrayList<ReadOnly>(root)

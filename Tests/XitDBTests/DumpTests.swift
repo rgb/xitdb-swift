@@ -516,6 +516,78 @@ import XitDBHashing
         _ = JSONRenderer.render(empty, options: Self.verifying)
     }
 
+    /// A header that reads, no first commit and no more bytes than a new
+    /// database has: what a creation that did not finish leaves. The
+    /// library creates over such a file, and the dump names it: the header
+    /// line with a committed size of 0, a note that says what the file is,
+    /// and exit code 1, where it used to say that the file does not open.
+    @Test func aCreationThatDidNotFinishIsNamed() throws {
+        let storage = MemoryStorage()
+        _ = try Database(creating: storage, hashSize: 20, hashID: HashID(string: "sha1"), fileID: 7)
+        // The database header, and a root header that is still empty.
+        let left = Array(storage.bytes[0..<20]) + [UInt8](repeating: 0, count: 12)
+        // The header alone is one too: the creation stopped earlier.
+        for bytes in [left, Array(left[0..<20])] {
+            let dump = Self.dump(bytes, Self.verifying)
+            #expect(dump.exitCode == 1)
+            #expect(dump.header?.version == 2)
+            #expect(dump.header?.hashSize == 20)
+            #expect(dump.header?.hashIDText == "sha1")
+            #expect(dump.header?.fileID == "0000000000000007")
+            #expect(dump.header?.fileSize == UInt64(bytes.count))
+            #expect(dump.header?.committedSize == 0)
+            #expect(dump.header?.momentCount == nil)
+            #expect(dump.moments.isEmpty)
+            #expect(dump.verification?.commits.isEmpty == true)
+            #expect(
+                dump.notes.contains { $0.contains("a creation that did not finish") && $0.contains("nothing to show") })
+            #expect(!dump.notes.contains { $0.contains("not an xitdb file") })
+            let text = TextRenderer.render(dump, options: Self.verifying)
+            #expect(
+                text.hasPrefix(
+                    "xitdb file: \(bytes.count) bytes, 0 committed; version 2, hash size 20, hash id \"sha1\", file id 0000000000000007\n"
+                ))
+            let json = JSONRenderer.render(dump, options: Self.verifying)
+            #expect(json.contains("\"committed\": 0"))
+            #expect(json.contains("a creation that did not finish"))
+            // It is what the library creates over.
+            _ = try Database(creating: MemoryStorage(bytes: bytes), hashSize: 20)
+        }
+
+        // Not one: the same headers with more bytes than a new database
+        // has are a file without a first commit, which the dump names as
+        // that; and a header that does not read is no xitdb file.
+        let longer = Self.dump(left + [UInt8](repeating: 0xAA, count: 100), Self.verifying)
+        #expect(longer.exitCode == 1)
+        #expect(longer.notes.contains { $0.contains("no first commit") })
+        #expect(!longer.notes.contains { $0.contains("a creation that did not finish") })
+        let short = Self.dump(Array(left[0..<10]), Self.verifying)
+        #expect(short.exitCode == 2)
+        #expect(short.notes.contains { $0.contains("not an xitdb file that opens") })
+    }
+
+    /// The hash ID in the first line stands between double quotes as a
+    /// value's text does: a double quote and a backslash in it have a
+    /// backslash before them, so that the line reads one way.
+    @Test func theHashIDIsEscapedInTheFirstLine() throws {
+        func firstLine(hashID: String) throws -> (text: String, json: String) {
+            let storage = MemoryStorage()
+            _ = try Database(creating: storage, hashSize: 20, hashID: HashID(string: hashID), fileID: 1)
+            let dump = Self.dump(storage.bytes, DumpOptions())
+            #expect(dump.header?.hashIDText == hashID)
+            let text = TextRenderer.render(dump, options: DumpOptions())
+            return (String(text.prefix { $0 != "\n" }), JSONRenderer.render(dump, options: DumpOptions()))
+        }
+        let quoted = try firstLine(hashID: "a\"\\b")
+        #expect(quoted.text.contains(#"hash id "a\"\\b", file id 0000000000000001"#))
+        #expect(quoted.json.contains(#""hashId": "a\"\\b""#))
+        // An ID with neither is as it was.
+        let plain = try firstLine(hashID: "sha1")
+        #expect(plain.text.contains(#"hash id "sha1", file id 0000000000000001"#))
+        let spaced = try firstLine(hashID: "a b ")
+        #expect(spaced.text.contains(#"hash id "a b ", file id"#))
+    }
+
     /// A file that is not xitdb exits with 2 and says why.
     @Test func filesThatAreNotXitdb() throws {
         for bytes in [[UInt8](), Array("hello, not a database".utf8), [UInt8](repeating: 0, count: 100)] {

@@ -521,6 +521,11 @@ private struct ThroughACursor: TypedPlace {
             var root = database.rootCursor
             #expect(throws: XitDBError.nestedTopLevelWrite) { try root.write(alice) }
             #expect(throws: XitDBError.nestedTopLevelWrite) { try root.write(UInt64(1)) }
+            // Whatever the value: one that would fail before it wrote, or
+            // after, is not asked to write. The root cursor's refusal
+            // comes first, and nothing is written or poisoned.
+            #expect(throws: XitDBError.nestedTopLevelWrite) { try root.write(FailsAtOnce()) }
+            #expect(throws: XitDBError.nestedTopLevelWrite) { try root.write(FailsAfterClearing()) }
             try body.write(UInt64(1))
             try database.freeze()
             // After a freeze the transaction's own cursor goes on.

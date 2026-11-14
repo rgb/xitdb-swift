@@ -518,19 +518,24 @@ extension SortedMap where Access == ReadWrite {
     ///   value's own writing throws. A value that fails once the map has
     ///   made its entry poisons the transaction, as any write that fails
     ///   after it has written does.
+    @inlinable
     public func put(_ value: some StorableValue, forKey key: some KeyRepresentable) throws(XitDBError) {
         let bytes = key.keyBytes
-        try put(value, forKeyBytes: bytes.span)
-    }
-
-    /// The typed put by the key's bytes, which the public form comes to.
-    func put(_ value: some StorableValue, forKeyBytes key: Span<UInt8>) throws(XitDBError) {
-        // One of the library's own values is its data, and takes the put
-        // of data's own path; a value of the caller's writes itself.
+        // One of the library's own values is its data, and its typed write
+        // is the write of that data. Where the caller's code knows the
+        // value's type, the compiler settles which it is, and for the
+        // library's six this call is that write and nothing else.
         if let data = WritableData(ownValue: value) {
-            try put(data, forKey: key)
+            try put(data, forKey: bytes.span)
             return
         }
+        try putWritingItself(value, forKeyBytes: bytes.span)
+    }
+
+    /// The put of a value of the caller's own, which writes itself in the
+    /// entry the map makes for the key.
+    @usableFromInline
+    func putWritingItself(_ value: some StorableValue, forKeyBytes key: Span<UInt8>) throws(XitDBError) {
         let path: InlineArray<2, PathPart> = [.sortedMapGet(.value, SortedKey(key)), .ctx]
         _ = try cursor.writePath(
             path.span,

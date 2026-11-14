@@ -393,7 +393,7 @@ public final class Database {
     /// anything else, bytes that are no database included.
     ///
     /// - Throws: Only the storage's own errors.
-    static func unfinishedCreation(in storage: any ReadableStorage) throws(XitDBError) -> DatabaseHeader? {
+    package static func unfinishedCreation(in storage: any ReadableStorage) throws(XitDBError) -> DatabaseHeader? {
         let header: DatabaseHeader
         do throws(XitDBError) {
             header = try DatabaseHeader(reading: storage)
