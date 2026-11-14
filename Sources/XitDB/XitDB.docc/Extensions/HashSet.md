@@ -13,6 +13,9 @@
 
 ### Reading
 
+- ``contains(_:)``
+- ``cursor(forKey:)``
+- ``slot(forKey:)``
 - ``contains(hash:)-(Span<UInt8>)``
 - ``contains(hash:)-(Sequence<UInt8>)``
 - ``cursor(forHash:)-(Span<UInt8>)``
@@ -23,6 +26,11 @@
 
 ### Writing
 
+A member is its key, so ``insert(_:)`` stores the key's bytes.
+
+- ``insert(_:)``
+- ``insertCursor(forKey:)``
+- ``remove(forKey:)``
 - ``insert(_:forHash:)-(_,Span<UInt8>)``
 - ``insert(_:forHash:)-(_,Sequence<UInt8>)``
 - ``insertCursor(forHash:)-(Span<UInt8>)``

@@ -14,6 +14,7 @@
 ### Reading
 
 - ``count``
+- ``value(at:as:)``
 - ``cursor(at:)``
 - ``slot(at:)``
 - ``iterator()``
@@ -21,11 +22,14 @@
 
 ### Adding and changing elements
 
+- ``append(_:)-(StorableValue)``
 - ``append(_:)-(WritableData)``
 - ``append(_:_:)``
 - ``appendCursor()``
+- ``insert(_:at:)-(StorableValue,_)``
 - ``insert(_:at:)-(WritableData,_)``
 - ``insertCursor(at:)``
+- ``put(_:at:)-(StorableValue,_)``
 - ``put(_:at:)-(WritableData,_)``
 - ``putCursor(at:)``
 - ``remove(at:)``

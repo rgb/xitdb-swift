@@ -13,6 +13,7 @@
 
 ### Reading by key
 
+- ``value(forKey:as:)``
 - ``cursor(forKey:)-(Span<UInt8>)``
 - ``cursor(forKey:)-(KeyRepresentable)``
 - ``slot(forKey:)-(Span<UInt8>)``
@@ -35,6 +36,7 @@ See <doc:SortingAndPaginating>.
 
 ### Writing
 
+- ``put(_:forKey:)-(StorableValue,_)``
 - ``put(_:forKey:)-(_,Span<UInt8>)``
 - ``put(_:forKey:)-(WritableData,KeyRepresentable)``
 - ``putCursor(forKey:)-(Span<UInt8>)``
