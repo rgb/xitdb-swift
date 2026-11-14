@@ -95,6 +95,7 @@ A cursor is a position in the database: it reads the value there, and inside a t
 - ``ReadOnly``
 - ``ReadWrite``
 - ``CursorAccess``
+- ``StorableValue``
 - ``WritableData``
 - ``Slot``
 - ``Slot/Tag``
@@ -108,15 +109,17 @@ Elements addressed by position. A list is how a database usually keeps its histo
 - ``ArrayList``
 - ``LinkedArrayList``
 
-### Maps and sets by hash
+### Maps and sets by key
 
-Values and keys found by a hash that you compute, in no useful order.
+Values and keys found by the hash of their key, which the database's hasher computes, in no useful order.
 
 - <doc:Hashing>
 - ``HashMap``
 - ``HashSet``
 - ``CountedHashMap``
 - ``CountedHashSet``
+- ``KeyRepresentable``
+- ``KeyHashing``
 
 ### Sorted maps and sets
 
