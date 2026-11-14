@@ -4,10 +4,12 @@
 /// The calls that take a key, a string or bytes or anything
 /// ``KeyRepresentable``, hash it with the hasher the database was given,
 /// and ``insert(_:)`` stores the key's bytes as the member. The calls with
-/// a hash take one the caller made, with any function whose result has as
-/// many bytes as the database's hash size, and the key to store beside it:
-/// they work on every database. A keyed call is its call by hash with the
-/// key hashed. Two keys with the same hash are the same key to the set.
+/// a hash take one the caller made, with a hasher's
+/// ``KeyHashing/keyHash(of:)`` or with any function whose result has as
+/// many bytes as the database's hash size, and work on every database;
+/// ``insert(_:forHash:)-(_,Span<UInt8>)`` takes the key to store beside the
+/// hash as well. A keyed call is its call by hash with the key hashed. Two
+/// keys with the same hash are the same key to the set.
 ///
 /// A counted set keeps the number of its entries, which ``count`` reads
 /// without going through them. It costs eight bytes each time the set's

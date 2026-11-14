@@ -433,7 +433,7 @@ extension SortedMap {
     ///
     /// The type can be given or left to what the result is assigned to.
     ///
-    /// `nil` means there is nothing under the key: no entry, or an entry
+    /// `nil` means there is no value under the key: no entry, or an entry
     /// whose value was never written. A value that is there is read
     /// strictly, as ``StorableValue`` says: one of another kind than the
     /// type is written as is an error and not `nil`. A value that was set

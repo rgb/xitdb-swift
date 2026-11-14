@@ -171,12 +171,14 @@ public enum XitDBError: Error, Sendable {
     /// Only the package-level path API raises it; nothing public does.
     case notImplemented
 
-    /// The storage underneath the database reported a failure: `ENOENT` for
-    /// a missing file, `EWOULDBLOCK` for a lock that is held, `EBADF` for a
-    /// write to a read-only file, `ENOSPC` for a full disk, `EINVAL` for a
-    /// path with a NUL byte in it.
+    /// The storage refused, or the system did: `ENOENT` for a missing file,
+    /// `EWOULDBLOCK` for a lock that is held, `EBADF` for a write to a
+    /// read-only file, `ENOSPC` for a full disk, `EINVAL` for a path with a
+    /// NUL byte in it.
     ///
-    /// - Parameter errno: The error number reported by the operating system.
+    /// - Parameter errno: The system's number for the error, also where the
+    ///   storage refuses before it calls the system, as it does for the
+    ///   NUL byte.
     case storageFailure(errno: Int32)
 
     /// A type of the caller's threw: a ``ByteSink``, a ``ByteSource`` or an
@@ -266,12 +268,16 @@ public enum XitDBError: Error, Sendable {
     /// transaction can only roll back. Its commit fails with this too.
     case poisonedTransaction
 
-    /// A call that takes a key, such as ``HashMap/put(_:forKey:)-(WritableData,_)``, was
-    /// made on a database that was given no hasher, or on a snapshot of
-    /// one: the database was made with a hash size alone, as
-    /// ``Database/init(opening:hashSize:)`` makes it. Open it with
-    /// ``Database/init(opening:hashing:)``, or hash the key and give the
-    /// hash to the untyped call's `forHash:` form; the typed calls,
+    /// A call of a hash map or set that takes a key, such as
+    /// ``HashMap/put(_:forKey:)-(WritableData,_)``, was made on a database
+    /// that was given no hasher, or on a snapshot of one: the database was
+    /// made with a hash size alone, as ``Database/init(opening:hashSize:)``
+    /// makes it. A sorted map or set takes a key on any database, since it
+    /// hashes nothing.
+    ///
+    /// Open the database with ``Database/init(opening:hashing:)``, or make
+    /// the key's hash with a hasher's ``KeyHashing/keyHash(of:)`` and give
+    /// it to the untyped call's `forHash:` form; the typed calls,
     /// `put(_:forKey:)` of a value and `value(forKey:as:)`, have no form by
     /// hash. It is thrown before anything else about the call is looked at.
     case noKeyHashing
