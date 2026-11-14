@@ -82,7 +82,10 @@ import Testing
                             newest = first
                             reads += 1
                         }
-                        if done { break }
+                        // Cancelled when the writer throws: the group then
+                        // waits for its readers, which must not wait for a
+                        // finish that will not come.
+                        if done || Task.isCancelled { break }
                         await Task.yield()
                     }
                     return reads > 0 ? mismatches : 1
@@ -143,7 +146,10 @@ import Testing
                                 refused += 1
                             }
                         }
-                        if done { break }
+                        // Cancelled when the writer throws: the group then
+                        // waits for its readers, which must not wait for a
+                        // finish that will not come.
+                        if done || Task.isCancelled { break }
                         await Task.yield()
                     }
                     return (wrong, refused, read)
