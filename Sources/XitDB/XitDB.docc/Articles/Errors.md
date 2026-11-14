@@ -26,11 +26,12 @@ These mean the code asked for something it should not have. Most are worth fixin
 
 ``XitDBError/invalidHashSize`` is the one error for a hash size, as it is in the original: a hasher or a stated size
 that is not the file's when it is opened or recovered, a size no database can have, or a storage that holds an
-unfinished creation of another size, when it is created; a hash of another length, given to a map or set or made by the
-hasher, once there is a map or set to look in; and a compaction target or a sync from 0 of another size. Some come from
-the data rather than the code: ``XitDBError/unexpectedTag`` from a typed read of another kind than the slot holds,
-``XitDBError/invalidUTF8`` from bytes read as a `String` that are not UTF-8, and ``XitDBError/streamTooLong`` from a
-value longer than the limit it is read with. A program that reads what another wrote catches those where it reads.
+unfinished creation of another size, when it is created; a hash of another length given to a map or set, or a shorter
+one made by the hasher, once there is a map or set to look in; and a compaction target or a sync from 0 of another size.
+Some come from the data rather than the code: ``XitDBError/unexpectedTag`` from a typed read of another kind than the
+slot holds, ``XitDBError/invalidUTF8`` from bytes read as a `String` that are not UTF-8, and
+``XitDBError/streamTooLong`` from a value longer than the limit it is read with. A program that reads what another wrote
+catches those where it reads.
 
 ### The file
 
@@ -84,11 +85,12 @@ them, so give it a `default` and keep it: new cases may be added in minor versio
 
 ### What does stop the program
 
-A few mistakes are preconditions, because they are bugs in the code and not conditions at run time, and no file can cause
-them: a string literal of the wrong length as a ``FormatTag`` or a ``HashID`` (``FormatTag/init(string:)`` and
-``HashID/init(string:)`` give `nil` for a string computed at run time), and a range outside the buffer given to
-``ReadableStorage/read(into:range:at:)``. An in-memory database without a limit stops the process if it asks for more memory
-than can be had, as any array would: see ``MemoryStorage/maxSize``.
+A few mistakes are preconditions, because they are bugs in the code and not conditions at run time, and no file can
+cause them: a string literal of the wrong length as a ``FormatTag`` or a ``HashID`` (``FormatTag/init(string:)`` and
+``HashID/init(string:)`` give `nil` for a string computed at run time), a range outside the buffer given to
+``ReadableStorage/read(into:range:at:)``, and a hasher that appends more bytes than its ``KeyHashing/size``. An
+in-memory database without a limit stops the process if it asks for more memory than can be had, as any array would: see
+``MemoryStorage/maxSize``.
 
 ## See Also
 

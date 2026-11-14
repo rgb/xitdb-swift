@@ -6,8 +6,7 @@ SHA-256 and SHA-1 on every platform, as hashers a database can be given.
 
 XitDB has no hash function of its own. A database can be given a hasher, a type that conforms to XitDB's `KeyHashing`,
 and its hash maps and sets then hash their keys with it; one made with a hash size alone takes hashes. This module has
-two, ``SHA256`` and ``Insecure/SHA1``, named and spelled as CryptoKit names and spells them, so code that hashes is the
-same on every platform:
+two, ``SHA256`` and ``Insecure/SHA1``, the same on every platform:
 
 ```swift
 import XitDB
@@ -27,28 +26,35 @@ written or checked, so say which hash it is in the `hashID` of a new database, `
 "Hashing" says how a database is given its hasher, how to choose one by a file's header, and what happens when two keys
 share a hash.
 
-### Where the hashes are computed
+### What a hasher offers
 
-Where CryptoKit exists, ``SHA256`` and ``Insecure/SHA1`` forward to it, and their digests are CryptoKit's own types.
-Where it does not, on Linux, the package computes them itself. Its implementations are tested on every platform against
-published test vectors, and against CryptoKit where both exist. The names are CryptoKit's, so code that hashes with
-`SHA256.hash(data:)` is the same on every platform, and the package takes no dependency for it.
-
-A digest is a sequence of its bytes, so `Array(digest)` gives them, and a call that takes a hash takes a digest as it is:
+Each hasher has a `size`, the number of bytes in every hash, and a `hash(_:into:)`, which appends the hash of some bytes
+where the database holds it: what `KeyHashing` asks for, and all the database calls. A hash by hand, for the calls that
+take a hash, is `keyHash(of:)`, which XitDB gives every hasher: an array of `size` bytes, the hash that a database given
+the hasher computes for the key.
 
 ```swift
-let digest = SHA256.keyHash(of: "alice")
-let bytes = Array(digest)  // 32 of them
+let hash = SHA256.keyHash(of: "alice")  // 32 bytes
 ```
 
-`XitDBHashing` does not re-export CryptoKit. Where the digest is CryptoKit's type, its members beyond its bytes are
-CryptoKit's, and where member import visibility is on (the upcoming feature `MemberImportVisibility`), a file that uses
-them imports CryptoKit.
+The module hashes keys and offers nothing more: a digest of data for its own sake is CryptoKit's, or another library's.
+CryptoKit has types named `SHA256` and `Insecure` as well. In a file that imports both modules a bare `SHA256` is
+whichever one the code around it can use, `SHA256.keyHash(of:)` this module's and `SHA256.hash(data:)` CryptoKit's, and
+does not compile where nothing tells them apart, as in a type annotation or `let hasher = SHA256.self`.
+`XitDBHashing.SHA256` and `CryptoKit.SHA256` always say which.
+
+### Where the hashes are computed
+
+The module computes both hashes with its own code, which needs only the standard library: on every platform for input a
+few blocks long, as most keys are, and on Linux for input of any length. On Apple's platforms longer input goes to
+CryptoKit, which is faster there. The hash is the same either way, and the package takes no dependency for it. The code
+is tested against the published test vectors and the lengths where the padding changes shape on every platform, and
+against CryptoKit where CryptoKit exists.
 
 ### A hasher of your own
 
-Any type that conforms to `KeyHashing` is a hasher: its `size`, the number of bytes in every digest, and its `hash(_:)`,
-which returns the digest of a key's bytes. A SHA-512, or a hash of your keys' own, goes in as these two do.
+Any type that conforms to `KeyHashing` is a hasher, with its `size` and its `hash(_:into:)`. XitDB's article "Hashing"
+has one of a single byte; a SHA-512 that you already have, or a hash of your keys' own, goes in the same way.
 
 ## Topics
 
@@ -56,4 +62,3 @@ which returns the digest of a key's bytes. A SHA-512, or a hash of your keys' ow
 
 - ``SHA256``
 - ``Insecure``
-

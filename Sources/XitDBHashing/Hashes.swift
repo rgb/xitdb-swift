@@ -22,8 +22,12 @@ public import XitDB
 /// hash for a call that takes the hash.
 ///
 /// CryptoKit has a type of this name too. In a file that imports both
-/// modules a bare `SHA256` is neither, and does not compile: this one is
-/// `XitDBHashing.SHA256` there, and CryptoKit's is `CryptoKit.SHA256`.
+/// modules a bare `SHA256` is whichever one the code around it can use:
+/// `SHA256.keyHash(of:)` and `hashing: SHA256.self` are this module's,
+/// `SHA256.hash(data:)` is CryptoKit's. Where nothing tells the two apart
+/// it does not compile: in a type annotation, a type alias, an extension,
+/// or `let hasher = SHA256.self`. `XitDBHashing.SHA256` and
+/// `CryptoKit.SHA256` always say which.
 public enum SHA256: KeyHashing {
     /// 32: the number of bytes in a hash.
     public static var size: Int { 32 }
@@ -54,8 +58,11 @@ public enum SHA256: KeyHashing {
 /// tests and by default in a xit repository; anything new should use
 /// ``SHA256``.
 ///
-/// CryptoKit has a namespace of this name too: in a file that imports both
-/// modules this one is `XitDBHashing.Insecure`.
+/// CryptoKit has a namespace of this name too. In a file that imports both
+/// modules a bare `Insecure.SHA1` is this module's where the code around it
+/// can use no other, as in `hashing: Insecure.SHA1.self` and
+/// `Insecure.SHA1.keyHash(of:)`, and does not compile where nothing tells
+/// the two apart; `XitDBHashing.Insecure` always says which.
 public enum Insecure {
     /// SHA-1 (FIPS 180-4).
     ///

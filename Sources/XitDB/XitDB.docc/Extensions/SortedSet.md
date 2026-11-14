@@ -11,13 +11,16 @@
 - ``slot``
 - ``readOnly``
 
+### Reading by key
+
+- ``contains(_:)-(Span<UInt8>)``
+- ``contains(_:)-(KeyRepresentable)``
+
 ### Reading in order
 
 See <doc:SortingAndPaginating>.
 
 - ``count``
-- ``contains(_:)-(Span<UInt8>)``
-- ``contains(_:)-(KeyRepresentable)``
 - ``iterator()``
 - ``iterator(fromIndex:)``
 - ``iterator(fromKey:)-(Span<UInt8>)``

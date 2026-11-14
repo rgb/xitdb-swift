@@ -21,20 +21,22 @@ try users.put("Alice", forKey: "alice")
 <!-- Pinned by `aDatabaseIsGivenItsHasher` in XitDBExamples: the two puts, on two databases with the same IDs, leave the same file. -->
 
 A keyed call is its call by hash with the hash computed for it, and writes nothing more: that put writes what
-`users.put(.bytes(Array("Alice".utf8)), forHash: SHA256.hash(data: Array("alice".utf8)))` writes, which is what a Zig
-program writes with `put` and a `hashInt` that is SHA-256 (the original's README makes its `hashInt` SHA-1). Neither
-stores the key, and ``HashMap/putKey(_:)`` is the call that does (see <doc:TheCollections>). A keyed call costs its call
-by hash and the hash, and in memory the hash can cost more than the call: a loop that uses one key many times hashes it
-once and goes by `forHash:`.
+`users.put(.bytes(Array("Alice".utf8)), forHash: SHA256.keyHash(of: "alice"))` writes, which is what a Zig program
+writes with `put` and a `hashInt` that is SHA-256 (the original's README makes its `hashInt` SHA-1). Neither stores the
+key, and ``HashMap/putKey(_:)`` is the call that does (see <doc:TheCollections>). A keyed call costs its call by hash
+and the hash of the key. For a short key in memory the hash is a good part of the call, about as much again for a read,
+and on a file a few percent; a loop that uses one key many times can hash it once with ``KeyHashing/keyHash(of:)`` and
+go by `forHash:`.
 
 What is hashed is the key's bytes. A `String` is its UTF-8, with nothing added and nothing normalised, so the hash is
 the one a program in any language computes over the same text, and a file is shared with a Zig program that hashes the
 same text. A `[UInt8]` is itself, and a ``Bytes`` its value without its format tag; any other type that gives its bytes
 is a ``KeyRepresentable``.
 
-The package's `XitDBHashing` module has `SHA256` and `Insecure.SHA1`, under CryptoKit's names on every platform. A
-hasher of your own gives a ``KeyHashing/size``, the number of bytes in every digest, and a ``KeyHashing/hash(_:into:)``: the
-last section has one.
+The package's `XitDBHashing` module has two hashers, `SHA256` and `Insecure.SHA1`. A hasher of your own gives a
+``KeyHashing/size``, the number of bytes in every hash, and a ``KeyHashing/hash(_:into:)`` that appends the hash of some
+bytes where the database holds it: the last section has one. Any hasher's ``KeyHashing/keyHash(of:)`` gives a key's hash
+by hand.
 
 ### Which hash
 
@@ -49,8 +51,8 @@ more.
 | 64 | SHA-512 | If you already have one, as a hasher of your own. |
 | 8 | Your own 64-bit IDs | Keys that are unique already: see below. |
 
-Nobody knows how to make two SHA-256 hashes collide. SHA-1 is broken: someone who chooses your keys and has the
-computing power can make two collide on purpose, so keep it for keys you make yourself.
+Nobody knows how to make two SHA-256 hashes collide. SHA-1 is broken: someone who chooses your keys and has the computing
+power can make two collide on purpose.
 
 ### Only the size is checked
 
@@ -94,7 +96,7 @@ program; ``HashID/init(string:)`` gives `nil` instead, for a string computed at 
 ### A key that is a hash already
 
 A key that is a hash already goes in by `forHash:` as it is, on any database, given a hasher or not. A hash is any
-sequence of bytes, a digest as it is or an array, of the database's size: one of another size throws
+sequence of bytes, an array or a CryptoKit digest as it is, of the database's size: one of another size throws
 ``XitDBError/invalidHashSize`` as soon as there is a map to look in. Keys that are unique already, such as 64-bit IDs,
 can be their own hash, which costs nothing to compute, in a database of 8-byte hashes, in big-endian:
 
@@ -109,8 +111,6 @@ let database = try Database(creating: MemoryStorage(), hashSize: 8)
 let users = try HashMap<ReadWrite>(database.rootCursor)
 try users.put(.bytes(Array("Alice".utf8)), forHash: hash(1))
 try users.put(.bytes(Array("Bob".utf8)), forHash: hash(2))
-
-let bob = try users.cursor(forHash: hash(2))?.read(String.self)
 ```
 
 The order matters because the map's trie takes four bits per level, starting from the low bits of the *last* byte of the

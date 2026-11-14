@@ -47,9 +47,9 @@ moment 1: map (10 entries)
 
 The first line is the header. It gives the file's size, with its committed size where the two differ; then the format
 version, the hash size, the hash ID, the file ID, and how many moments the history holds. The hash ID is the four bytes
-the file's creator wrote, in quotes, as they are, when all four are printable ASCII (0x20 to 0x7E), and as hex
-otherwise, such as `hash id 0x00000000`. The tool never names
-an algorithm from it, since the format does not interpret it: see <doc:Hashing>.
+the file's creator wrote, in quotes, as they are, when all four are printable ASCII (0x20 to 0x7E), with a backslash
+before a double quote or a backslash, and as hex otherwise, such as `hash id 0x00000000`. The tool never names an
+algorithm from it, since the format does not interpret it: see <doc:Hashing>.
 
 `--verify` walks the file's commits by their trailers and checksums, and lists each one that verifies, with where it
 ends, its commit ID and the kind of root it left. Commit 0 is the one that creating the database wrote: 57 bytes, with
@@ -159,18 +159,19 @@ says that what follows is what recovery would open.
 A file without a first commit that is longer than a new database, as a full copy that did not finish leaves it, opens,
 though nothing in it can be read (see <doc:Recovery>). The dump shows it the same way: a note says what the file is and
 where the last commit that arrived whole ends, the header line gives that end as the committed size where it is short of
-the file's end, and the dump is of what recovery would open. Where no commit in the file verifies, the dump is the header
-line, with a committed size of 0, and a note that there is nothing to show. A file no longer than a new database, such as
-the headers alone that a copy which stopped in its first block leaves, does not open: the dump says
-`not an xitdb file that opens: invalidDatabase`.
+the file's end, and the dump is of what recovery would open. Where no commit in the file verifies, the dump is the
+header line, with a committed size of 0, and a note that there is nothing to show. A file no longer than a new database,
+with a header that reads and no first commit, such as the headers alone that a copy which stopped in its first block
+leaves, is a creation that did not finish: the dump is the header line, with a committed size of 0, and a note that
+there is nothing to show and that creating a database in it starts it over.
 
 The exit code says what the tool found:
 
 | Code | Meaning |
 |---|---|
 | 0 | The file is sound. |
-| 1 | The file is damaged or has no first commit, and what could be read was dumped. |
-| 2 | The file is not xitdb or does not open, or the arguments are not understood. |
+| 1 | The file is damaged, has no first commit, or is a creation that did not finish, and what could be read was dumped. |
+| 2 | The file is not xitdb or cannot be read as one, or the arguments are not understood. |
 
 ## See Also
 

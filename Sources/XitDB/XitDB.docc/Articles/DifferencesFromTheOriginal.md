@@ -154,7 +154,7 @@ that reads as Swift. If you are coming from the original's documentation:
 | `db.runContext(ctx)` | ``Database/withTransaction(_:)`` |
 | `list.appendContext(data, ctx)` | ``ArrayList/append(_:_:)`` |
 | `list.getCursor(i)`, `list.getSlot(i)` | ``ArrayList/cursor(at:)``, ``ArrayList/slot(at:)`` |
-| `HashInt`, `hashInt(key)` | A hasher given to the database: ``Database/init(creating:hashing:hashID:fileID:)`` |
+| `HashInt`, `hashInt(key)` | A hasher given to the database, ``Database/init(creating:hashing:hashID:fileID:)``; a hash by hand, ``KeyHashing/keyHash(of:)`` |
 | `map.getCursor(hash)`, `map.put(hash, data)` | ``HashMap/cursor(forHash:)-(Sequence<UInt8>)``, ``HashMap/put(_:forHash:)-(_,Sequence<UInt8>)`` |
 | `map.getCursor(hashInt(key))`, `map.put(hashInt(key), data)` | ``HashMap/cursor(forKey:)``, ``HashMap/put(_:forKey:)-(WritableData,_)``, or with a typed value ``HashMap/put(_:forKey:)-(StorableValue,_)`` |
 | `map.putKey(hash, data)` | ``HashMap/putKey(_:forHash:)-(_,Sequence<UInt8>)``, or by key ``HashMap/putKey(_:)`` |

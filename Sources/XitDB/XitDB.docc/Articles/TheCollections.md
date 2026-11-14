@@ -195,10 +195,10 @@ not fit in an `Int64` names no element: a lookup gives `nil`, and a write or an 
 
 ### Hashes and keys
 
-A key is any ``KeyRepresentable``, on all six collections: a `String` or a `Substring`, as its UTF-8; a `[UInt8]`; a
-``Bytes``; or a type of your own that gives its bytes. Two keys with the same bytes are one key. A type whose raw value
-is a string is a key once it says so, which keeps the names of a record's fields in one place, here in `person`, a map
-of one person's fields:
+A key is any ``KeyRepresentable`` on the six collections that take keys, all but the lists: a `String` or a `Substring`,
+as its UTF-8; a `[UInt8]`; a ``Bytes``; or a type of your own that gives its bytes. Two keys with the same bytes are one
+key. A type whose raw value is a string is a key once it says so, which keeps the names of a record's fields in one
+place, here in `person`, a map of one person's fields:
 
 ```swift
 enum Field: String, KeyRepresentable {
@@ -218,9 +218,9 @@ try sorted.put(UInt64(1), forKey: "apple")
 try sorted.put(UInt64(2), forKey: Array("pear".utf8))
 ```
 
-A sorted collection also takes a key as a `Span<UInt8>` of borrowed bytes; a slice, a string's `utf8` or `Data` goes in
-as `Array(…)` or its span. A hash given by `forHash:` is `some Sequence<UInt8>`, a digest as it is, an array, a slice or
-`Data`, made into an array that costs nothing for an array; or a `Span<UInt8>`, with no allocation up to 64 bytes:
+A sorted collection's untyped calls also take a key as a `Span<UInt8>`; to its typed calls a slice, a string's `utf8` or
+`Data` goes in as `Array(…)`. A hash by `forHash:` is `some Sequence<UInt8>`, a CryptoKit digest, an array, a slice or
+`Data`, made into an array, free for an array; or a `Span<UInt8>`, with no allocation up to 64 bytes:
 
 ```swift
 let hashes = try Database(creating: MemoryStorage(), hashSize: 32)
