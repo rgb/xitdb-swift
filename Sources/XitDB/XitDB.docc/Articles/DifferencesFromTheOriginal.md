@@ -105,6 +105,8 @@ where the Go, Java and TypeScript ports chose otherwise for their keys:
 - **A slot set to nothing reads as no bytes**, as the original's `readBytesAlloc` reads it, and a number read from it is
   refused, as the original's `readUint` refuses any tag but its own.
 
+And these of the original's ways stay as they are, hazards included:
+
 - **A copy made within a transaction** is a second name for something still mutable, until a freeze. That is the original's
   design, and the port keeps it: see <doc:CloningFreezeAndStaleHandles>.
 - **A freeze of one cursor**, ``Cursor/freeze()``, protects the data from writes through that cursor and from nothing else. The
@@ -121,10 +123,11 @@ where the Go, Java and TypeScript ports chose otherwise for their keys:
 
 The file format and the operations are the same, and the API follows Swift:
 
-- **The hash is a value, not a type.** The original's database is generic over the integer its hashes are, and the caller
-  hashes each key. Here a database is given a hasher, a ``KeyHashing`` type, or a hash size alone, and ``Database`` is
-  not generic. The collections take a key beside a hash, and a keyed call is its call by hash with the hash computed for
-  it: see <doc:Hashing>.
+- **The hasher is a value, not a type parameter.** The original's database is generic over the integer its hashes are, and
+  the caller hashes each key. Here a database is given a hasher, a ``KeyHashing`` type passed as a value, or a hash size
+  alone, and ``Database`` is not generic. The collections take a key beside a hash: an untyped keyed call is its call by
+  hash with the hash computed for it, and a typed one writes what the same value written by hash writes (see
+  <doc:Hashing>).
 - **The storage is a value too.** ``Database`` is not generic over it either, and any ``WritableStorage`` will do.
 - **Opening and creating are separate calls**, and a file's access mode has no default: see <doc:Storage>. The original's one
   call creates over what a creation that did not finish left; here creating does, and opening refuses it.
@@ -153,7 +156,7 @@ that reads as Swift. If you are coming from the original's documentation:
 | `list.getCursor(i)`, `list.getSlot(i)` | ``ArrayList/cursor(at:)``, ``ArrayList/slot(at:)`` |
 | `HashInt`, `hashInt(key)` | A hasher given to the database: ``Database/init(creating:hashing:hashID:fileID:)`` |
 | `map.getCursor(hash)`, `map.put(hash, data)` | ``HashMap/cursor(forHash:)-(Sequence<UInt8>)``, ``HashMap/put(_:forHash:)-(_,Sequence<UInt8>)`` |
-| `map.getCursor(hashInt(key))`, `map.put(hashInt(key), data)` | ``HashMap/cursor(forKey:)``, ``HashMap/put(_:forKey:)-(StorableValue,_)`` |
+| `map.getCursor(hashInt(key))`, `map.put(hashInt(key), data)` | ``HashMap/cursor(forKey:)``, ``HashMap/put(_:forKey:)-(WritableData,_)``, or with a typed value ``HashMap/put(_:forKey:)-(StorableValue,_)`` |
 | `map.putKey(hash, data)` | ``HashMap/putKey(_:forHash:)-(_,Sequence<UInt8>)``, or by key ``HashMap/putKey(_:)`` |
 | `set.put(hash, data)`, `sorted_set.put(key)` | ``HashSet/insert(_:forHash:)-(_,Sequence<UInt8>)``, ``HashSet/insert(_:)``, ``SortedSet/insert(_:)-(Sequence<UInt8>)`` |
 | `list.concat(slot)`, `list.slice(offset, size)` | ``LinkedArrayList/append(contentsOf:)-(LinkedArrayList<CursorAccess>)``, ``LinkedArrayList/formSlice(offset:count:)`` |

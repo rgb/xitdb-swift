@@ -30,12 +30,12 @@ a failure in the same transaction, and it recovers, when asked, a file whose roo
 which the original cannot open. It also hands one commit to other threads and tasks as a read snapshot.
 
 Its collections take keys and typed values as well as the hashes and the format's own data that the original's calls
-take. A keyed call hashes the key with the database's hasher and writes what the call by hash writes, so the files are
-the same either way.
+take. A keyed call hashes the key with the database's hasher and writes what the same value written by hash writes, so
+the files are the same either way.
 
-The package has three products. `XitDB` is the library. `XitDBHashing` has SHA-256 and SHA-1 under CryptoKit's names on
-every platform, CryptoKit's own where it exists, to give a database as the hash of its keys. `xitdb-dump` is a tool that
-prints a file as it is on disk.
+The package declares three products. `XitDB` is the library. `XitDBHashing` has SHA-256 and SHA-1 under CryptoKit's
+names on every platform, CryptoKit's own where it exists, to give a database as the hash of its keys. `xitdb-dump` is a
+tool that prints a file as it is on disk.
 
 It builds for macOS 26, iOS 26 and Linux, and is tested on macOS, on Linux and on an iOS simulator.
 

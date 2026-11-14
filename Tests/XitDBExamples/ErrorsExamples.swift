@@ -175,4 +175,38 @@ import XitDBHashing
             try database.withTransaction { _ in throw Mine() }
         }
     }
+
+    /// The article's list of what `invalidHashSize` covers, and the errors
+    /// it says come from the data.
+    @Test func theUsesOfInvalidHashSize() throws {
+        // Creating over an unfinished creation of another size.
+        let full = MemoryStorage()
+        _ = try Database(creating: full, hashing: Insecure.SHA1.self)
+        // Its header, and a committed size of zero: what a process that died
+        // while creating it leaves.
+        let unfinished = MemoryStorage(bytes: Array(full.bytes[..<24]) + [UInt8](repeating: 0, count: 8))
+        #expect(throws: XitDBError.invalidHashSize) { try Database(creating: unfinished, hashing: SHA256.self) }
+        #expect(throws: XitDBError.invalidHashSize) { try Database(creating: unfinished, hashSize: 32) }
+        _ = try Database(creating: unfinished, hashSize: 20)
+
+        // A hasher whose digest is not its size, once there is a map.
+        enum Short: KeyHashing {
+            static var size: Int { 20 }
+            static func hash(_ bytes: some Collection<UInt8>) -> [UInt8] { [1, 2, 3] }
+        }
+        let database = try Database(creating: MemoryStorage(), hashing: Short.self)
+        let short = try HashMap<ReadWrite>(database.rootCursor)
+        #expect(throws: XitDBError.invalidHashSize) { try short.put("x", forKey: "x") }
+
+        // A hash of another length on a read-only view of an empty slot has
+        // no map to look in, and finds nothing.
+        let empty = try Database(creating: MemoryStorage(), hashSize: 32)
+        #expect(try HashMap<ReadOnly>(empty.rootCursor).cursor(forHash: [1, 2, 3]) == nil)
+
+        // A value longer than the limit it is read with.
+        let values = try Database(creating: MemoryStorage(), hashing: SHA256.self)
+        let map = try HashMap<ReadWrite>(values.rootCursor)
+        try map.put("hello, world", forKey: "greeting")
+        #expect(throws: XitDBError.streamTooLong) { try map.cursor(forKey: "greeting")!.readBytes(maxCount: 4) }
+    }
 }

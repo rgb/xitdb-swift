@@ -4,9 +4,10 @@ SHA-256 and SHA-1 under CryptoKit's names on every platform, as hashers a databa
 
 ## Overview
 
-XitDB has no hash function of its own. A database is given a hasher, a type that conforms to XitDB's `KeyHashing`,
-and its hash maps and sets hash their keys with it. This module has two, ``SHA256`` and ``Insecure/SHA1``, named and
-spelled as CryptoKit names and spells them, so code that hashes is the same on every platform:
+XitDB has no hash function of its own. A database can be given a hasher, a type that conforms to XitDB's `KeyHashing`,
+and its hash maps and sets then hash their keys with it; one made with a hash size alone takes hashes. This module has
+two, ``SHA256`` and ``Insecure/SHA1``, named and spelled as CryptoKit names and spells them, so code that hashes is the
+same on every platform:
 
 ```swift
 import XitDB
@@ -41,7 +42,8 @@ let bytes = Array(digest)  // 32 of them
 ```
 
 `XitDBHashing` does not re-export CryptoKit. Where the digest is CryptoKit's type, its members beyond its bytes are
-CryptoKit's, and a file that uses them imports CryptoKit.
+CryptoKit's, and where member import visibility is on (the upcoming feature `MemberImportVisibility`), a file that uses
+them imports CryptoKit.
 
 ### A hasher of your own
 

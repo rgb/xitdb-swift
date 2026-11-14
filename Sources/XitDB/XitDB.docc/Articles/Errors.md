@@ -25,11 +25,12 @@ These mean the code asked for something it should not have. Most are worth fixin
 ``XitDBError/emptyLastMoment``, ``XitDBError/invalidRange`` and ``XitDBError/invalidLength``.
 
 ``XitDBError/invalidHashSize`` is the one error for a hash size, as it is in the original: a hasher or a stated size
-that is not the file's when it is opened or recovered, a size no database can have when it is created, a hash of another
-length given to a map or set, and a compaction target or a sync from 0 of another size. Two come from the data rather
-than the code: ``XitDBError/unexpectedTag`` from a typed read of another kind than the slot holds, and
-``XitDBError/invalidUTF8`` from bytes read as a `String` that are not UTF-8. A program that reads what another wrote
-catches those where it reads.
+that is not the file's when it is opened or recovered, a size no database can have, or a storage that holds an
+unfinished creation of another size, when it is created; a hash of another length, given to a map or set or made by the
+hasher, once there is a map or set to look in; and a compaction target or a sync from 0 of another size. Some come from
+the data rather than the code: ``XitDBError/unexpectedTag`` from a typed read of another kind than the slot holds,
+``XitDBError/invalidUTF8`` from bytes read as a `String` that are not UTF-8, and ``XitDBError/streamTooLong`` from a
+value longer than the limit it is read with. A program that reads what another wrote catches those where it reads.
 
 ### The file
 
@@ -45,10 +46,11 @@ the end of the last commit that verifies, and leaves the decision to recover to 
 
 ### The storage
 
-``XitDBError/storageFailure(errno:)`` is the system's refusal, with its error number, and ``XitDBError/maxSizeExceeded`` a
-write that would pass a memory storage's limit. A transaction that fails this way rolls back like any other. The exception is
-the second sync of a commit, which comes after the root header has been rewritten. If that one fails, the call throws, and
-the commit stands, but it may not survive a crash or a power loss.
+``XitDBError/storageFailure(errno:)`` is the system's refusal, or the one the system would have made, with its error
+number, and ``XitDBError/maxSizeExceeded`` a write that would pass a memory storage's limit, or what an array can hold
+if it has none. A transaction that fails this way rolls back like any other. The exception is the second sync of a
+commit, which comes after the root header has been rewritten. If that one fails, the call throws, and the commit stands,
+but it may not survive a crash or a power loss.
 
 ### Your own types
 
