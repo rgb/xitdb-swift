@@ -219,8 +219,8 @@ try sorted.put(UInt64(2), forKey: Array("pear".utf8))
 ```
 
 A sorted collection also takes a key as a `Span<UInt8>` of borrowed bytes; a slice, a string's `utf8` or `Data` goes in
-as `Array(…)` or its span. A hash given by `forHash:` is `some Sequence<UInt8>`, a digest as it is, an array, a slice or
-`Data`, made into an array that costs nothing for an array; or a `Span<UInt8>`, with no allocation up to 64 bytes:
+as `Array(…)` or its span. A hash by `forHash:` is `some Sequence<UInt8>`, a CryptoKit digest as it is, an array, a
+slice or `Data`, made into an array, free for an array; or a `Span<UInt8>`, with no allocation up to 64 bytes:
 
 ```swift
 let hashes = try Database(creating: MemoryStorage(), hashSize: 32)

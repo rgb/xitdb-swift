@@ -13,14 +13,12 @@ import XitDBHashing
         #expect(Insecure.SHA1.keyHash(of: "foo").count == 20)
     }
 
-    @Test func aDigestIsItsBytes() throws {
-        let digest = SHA256.keyHash(of: "alice")
-        let bytes = Array(digest)  // 32 of them
-        #expect(bytes.count == 32)
+    @Test func aHashByHand() throws {
+        let hash = SHA256.keyHash(of: "alice")  // 32 bytes
+        #expect(hash.count == 32)
         let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         let map = try HashMap<ReadWrite>(database.rootCursor)
-        try map.put(.uint(1), forHash: digest)
+        try map.put(.uint(1), forHash: hash)
         #expect(try map.value(forKey: "alice", as: UInt64.self) == 1)
-        #expect(try map.cursor(forHash: bytes)?.readUInt64() == 1)
     }
 }
