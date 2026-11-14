@@ -10,7 +10,8 @@
 //   hasher        through the hasher a database holds, to the engine's hash:
 //                 what a keyed call does
 //   portable      the package's own implementation, which stands behind the
-//                 public names where CryptoKit is not, to the engine's hash
+//                 public names where CryptoKit is not, into a buffer on the
+//                 stack and from there into the engine's hash
 //   cryptokit     CryptoKit called directly, the digest read where it is and
 //                 put straight into the engine's hash (where CryptoKit is)
 //   commoncrypto  the system's one-shot C routine, into a buffer on the stack
@@ -46,12 +47,21 @@ private enum MeasuredHash: String, CaseIterable {
         }
     }
 
-    /// The hash by the package's own implementation, as the engine holds
-    /// it.
+    /// The hash by the package's own implementation, appended to a buffer
+    /// on the stack and from there put into the engine's hash: no array is
+    /// made on the way.
     func portable(_ key: [UInt8]) -> KeyHash {
         switch self {
-        case .sha1: KeyHash(PortableSHA1.hash(key).bytes)
-        case .sha256: KeyHash(PortableSHA256.hash(key).bytes)
+        case .sha1:
+            let digest = InlineArray<20, UInt8> { (output: inout OutputSpan<UInt8>) in
+                PortableSHA1.hash(key.span, into: &output)
+            }
+            return KeyHash(digest.span)
+        case .sha256:
+            let digest = InlineArray<32, UInt8> { (output: inout OutputSpan<UInt8>) in
+                PortableSHA256.hash(key.span, into: &output)
+            }
+            return KeyHash(digest.span)
         }
     }
 

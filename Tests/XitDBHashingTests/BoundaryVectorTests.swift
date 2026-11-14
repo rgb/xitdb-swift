@@ -36,15 +36,30 @@ struct BoundaryVectorTests {
             120, "b6a12ab83aa1401c53feea97ecab9f5d57c7f6a9acddb2d2677a789109eaf872",
             "e0ca83b1d70b5170bcf2a25cf23c5de3da2ee820"
         ),
+        (
+            127, "8011c1f438ba1c645e218f08e0b42f3cec65ee804182b54203312ca62a1e80d7",
+            "d147169d95568a06e9f2dbf055b34d46ea673309"
+        ),
+        (
+            128, "bbbffdb194df66e16afc6180e24849a9901ef565868a5376d37632fb216d5dc0",
+            "3316d9b9aaba6c1971840653d36ecdedf15208bd"
+        ),
     ]
+
+    @Test("the vectors are the boundary lengths")
+    func everyBoundary() {
+        #expect(Self.vectors.map(\.length) == boundaryLengths)
+    }
 
     @Test("SHA-256 at the boundaries", arguments: vectors)
     func sha256(vector: (length: Int, sha256: String, sha1: String)) {
         #expect(PortableSHA256.hash(pattern(count: vector.length)).hex == vector.sha256)
+        #expect(appendedSHA256(pattern(count: vector.length)) == bytes(fromHex: vector.sha256))
     }
 
     @Test("SHA-1 at the boundaries", arguments: vectors)
     func sha1(vector: (length: Int, sha256: String, sha1: String)) {
         #expect(PortableSHA1.hash(pattern(count: vector.length)).hex == vector.sha1)
+        #expect(appendedSHA1(pattern(count: vector.length)) == bytes(fromHex: vector.sha1))
     }
 }

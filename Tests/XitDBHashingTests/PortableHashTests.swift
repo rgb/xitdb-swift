@@ -22,12 +22,26 @@ struct PortableSHA256Tests {
         let digest = PortableSHA256.hash(vector.message.utf8)
         #expect(digest.hex == vector.digest)
         #expect(digest.bytes == bytes(fromHex: vector.digest))
+        #expect(appendedSHA256(Array(vector.message.utf8)) == bytes(fromHex: vector.digest))
     }
 
     @Test("one million a")
     func oneMillionA() {
-        let digest = PortableSHA256.hash([UInt8](repeating: UInt8(ascii: "a"), count: 1_000_000))
+        let message = [UInt8](repeating: UInt8(ascii: "a"), count: 1_000_000)
+        let digest = PortableSHA256.hash(message)
         #expect(digest.hex == "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0")
+        #expect(appendedSHA256(message) == digest.bytes)
+    }
+
+    /// The entry that appends the digest where the caller holds it and the
+    /// entry that returns it are one computation: the same bytes at every
+    /// length to 300, which is past four blocks.
+    @Test("both entries, at every length to 300")
+    func bothEntries() {
+        for length in 0...300 {
+            let message = pattern(count: length)
+            #expect(appendedSHA256(message) == PortableSHA256.hash(message).bytes, "\(length)")
+        }
     }
 
     @Test("the same bytes from an array, a slice and a lazy sequence")
@@ -54,11 +68,23 @@ struct PortableSHA1Tests {
         let digest = PortableSHA1.hash(vector.message.utf8)
         #expect(digest.hex == vector.digest)
         #expect(digest.bytes == bytes(fromHex: vector.digest))
+        #expect(appendedSHA1(Array(vector.message.utf8)) == bytes(fromHex: vector.digest))
     }
 
     @Test("one million a")
     func oneMillionA() {
-        let digest = PortableSHA1.hash([UInt8](repeating: UInt8(ascii: "a"), count: 1_000_000))
+        let message = [UInt8](repeating: UInt8(ascii: "a"), count: 1_000_000)
+        let digest = PortableSHA1.hash(message)
         #expect(digest.hex == "34aa973cd4c4daa4f61eeb2bdbad27316534016f")
+        #expect(appendedSHA1(message) == digest.bytes)
+    }
+
+    /// As for SHA-256: the two entries are one computation.
+    @Test("both entries, at every length to 300")
+    func bothEntries() {
+        for length in 0...300 {
+            let message = pattern(count: length)
+            #expect(appendedSHA1(message) == PortableSHA1.hash(message).bytes, "\(length)")
+        }
     }
 }
