@@ -18,9 +18,8 @@ inside your program and keeps its data in one file or in memory.
   differently, which the article "Where the port differs from the original" lists.
 - It is pure Swift with no run-time dependencies, down to the system's file calls.
 
-Immutability has a cost: the file only grows until you compact it. The design leaves two jobs to you as well: you
-hash your own keys, and you keep your own indexes. If you want queries or a schema,
-use SQLite.
+Immutability has a cost: the file only grows until you compact it. The design leaves two jobs to you as well: you choose
+the hash a database's keys are hashed with, and you keep your own indexes. If you want queries or a schema, use SQLite.
 
 ## Status
 
@@ -29,6 +28,14 @@ version 1 files, which stay version 1. Beyond that, it refuses with an error mos
 through to damage data, such as a cursor kept for a later transaction, a handle held across a freeze, or a write after
 a failure in the same transaction, and it recovers, when asked, a file whose root header or last trailer is damaged,
 which the original cannot open. It also hands one commit to other threads and tasks as a read snapshot.
+
+Its collections take keys and typed values as well as the hashes and the format's own data that the original's calls
+take. A keyed call hashes the key with the database's hasher and writes what the call by hash writes, so the files are
+the same either way.
+
+The package has three products. `XitDB` is the library. `XitDBHashing` has SHA-256 and SHA-1 under CryptoKit's names on
+every platform, CryptoKit's own where it exists, to give a database as the hash of its keys. `xitdb-dump` is a tool that
+prints a file as it is on disk.
 
 It builds for macOS 26, iOS 26 and Linux, and is tested on macOS, on Linux and on an iOS simulator.
 
@@ -145,10 +152,11 @@ Run it twice and the second run opens the file, adds a second moment, and the fi
 
 ## Documentation
 
-The documentation is a DocC catalogue for each module: [`Sources/XitDB/XitDB.docc`](Sources/XitDB/XitDB.docc) and
-[`Sources/XitDBHashing/XitDBHashing.docc`](Sources/XitDBHashing/XitDBHashing.docc): a reference curated by task, and
-articles for the concepts. Read it through DocC, where the links between articles resolve and the diagrams appear. Start
-with the article "Moments and history" for XitDB. To read it in a browser:
+The documentation is a DocC catalogue for each library: [`Sources/XitDB/XitDB.docc`](Sources/XitDB/XitDB.docc), a
+reference curated by task and articles for the concepts, and
+[`Sources/XitDBHashing/XitDBHashing.docc`](Sources/XitDBHashing/XitDBHashing.docc), a page for the hashes. Read it through
+DocC, where the links between articles resolve and the diagrams appear. Start with the article "Moments and history". To
+read it in a browser:
 
 ```sh
 swift package --disable-sandbox preview-documentation --target XitDB

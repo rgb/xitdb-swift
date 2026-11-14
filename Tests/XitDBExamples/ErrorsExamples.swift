@@ -1,5 +1,6 @@
 import Testing
 import XitDB
+import XitDBHashing
 
 @Suite("Errors") struct ErrorsExamples {
     private func newDatabaseBytes() throws -> [UInt8] {
@@ -102,7 +103,7 @@ import XitDB
         // a root header that cannot be trusted among them.
         func open(_ storage: any WritableStorage) throws -> Database? {
             do {
-                return try Database(opening: storage)
+                return try Database(opening: storage, hashing: SHA256.self)
             } catch .invalidDatabase, .endOfStream {
                 return nil
             }
