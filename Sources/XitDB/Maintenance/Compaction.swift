@@ -9,10 +9,11 @@
 // mapping recorded when the block is first reached, before its children
 // are visited, and the block is written when they are all done. The
 // target's bytes depend on that order, so every rule of Zig's walk is
-// kept. The blocks' bytes live in one buffer of the compactor's, a slot of
-// a node's size per stack level, and a frame holds only where its block is
-// and how far its walk has got, so that pushing and popping frames copies
-// nothing but a few words (brief package-21).
+// kept. The blocks' bytes live in one buffer of the compactor's, the
+// frames' blocks one after another, each with a node's size or with a
+// key-value pair's where the hashes make a pair longer; a frame holds only
+// where its block is and how far its walk has got, so that pushing and
+// popping frames copies nothing but a few words (brief package-21).
 
 extension Database {
     /// Compacts this database into `target`.
@@ -195,18 +196,26 @@ extension Database {
 struct Compactor {
     private let source: DatabaseReader
     private let target: BuiltInStorage
-    /// A branch's worth of zeros, what a reserve writes.
-    private let zeros = InlineArray<418, UInt8>(repeating: 0)
 
-    /// The bytes of the blocks being copied, one slot of ``Frame/capacity``
-    /// bytes per stack level: the frame at level n works in slot n. It
-    /// grows as the walk goes deeper and is never shrunk; a compactor lives
-    /// for one compaction.
+    /// As many zeros as the source's largest block has bytes, what a
+    /// reserve writes: a sorted branch's worth, or a key-value pair's where
+    /// the source's hashes make a pair longer than that.
+    private let zeros: [UInt8]
+
+    /// The bytes of the blocks being copied, the frames' blocks one after
+    /// another in the order of the stack: each has ``Frame/room`` bytes,
+    /// so the frame at level n starts at n times a branch's size unless a
+    /// pair below it is longer than a branch. It grows as the walk goes
+    /// deeper and is never shrunk; a compactor lives for one compaction.
     private var blockBytes: [UInt8] = []
 
     init(source: Database, target: Database) {
         self.source = source.reader
         self.target = target.storage
+        // A database may be created with any hash size up to 65,535 bytes,
+        // and a file's header may claim any: a pair, the hash and eighteen
+        // bytes, is longer than a tree's largest block from 401 on.
+        zeros = [UInt8](repeating: 0, count: max(Frame.largestTreeBlock, Int(source.header.hashSize) + 18))
     }
 
     /// What a frame waits for from the child it is at: a slot copied through
@@ -251,12 +260,13 @@ struct Compactor {
             case arrayListPartial(size: UInt64, childSize: UInt64, shift: UInt8)
         }
 
-        /// The most bytes a block has: a sorted branch's.
-        static let capacity = 418
+        /// The most bytes a block has whatever the hash size: a sorted
+        /// branch's. Only a key-value pair can be longer, when the hashes
+        /// are of more than 400 bytes.
+        static let largestTreeBlock = 418
 
-        /// The stack level the frame works at, which names its slot in the
-        /// compactor's block bytes.
-        let level: Int
+        /// Where the frame's block starts in the compactor's block bytes.
+        let start: Int
         let kind: Kind
         let targetOffset: UInt64
         /// How many slots the block has to deal with.
@@ -267,16 +277,18 @@ struct Compactor {
         /// first slot of a block that needs a visit.
         var task: Task?
 
-        init(level: Int, kind: Kind, targetOffset: UInt64, count: Int, task: Task? = nil) {
-            self.level = level
+        init(start: Int, kind: Kind, targetOffset: UInt64, count: Int, task: Task? = nil) {
+            self.start = start
             self.kind = kind
             self.targetOffset = targetOffset
             self.count = count
             self.task = task
         }
 
-        /// Where the frame's block starts in the compactor's block bytes.
-        var start: Int { level * Self.capacity }
+        /// The bytes the frame has in the compactor's block bytes: a
+        /// branch's, so that every frame but a long pair's is the same
+        /// size, or the pair's own.
+        var room: Int { max(Self.largestTreeBlock, byteCount) }
 
         /// How many bytes the block takes.
         var byteCount: Int {
@@ -331,9 +343,16 @@ struct Compactor {
         frame.next += 1
     }
 
-    /// Makes room in the block bytes for a frame at `level`.
-    private mutating func ensureLevel(_ level: Int) {
-        let needed = (level + 1) * Frame.capacity
+    /// Where the block of a frame put on top of `stack` starts in the block
+    /// bytes: after the room of the frame on top.
+    private func start(above stack: [Frame]) -> Int {
+        guard let top = stack.last else { return 0 }
+        return top.start + top.room
+    }
+
+    /// Makes room in the block bytes for `frame`.
+    private mutating func ensureRoom(for frame: Frame) {
+        let needed = frame.start + frame.room
         if blockBytes.count < needed {
             blockBytes.append(contentsOf: repeatElement(0, count: needed - blockBytes.count))
         }
@@ -351,10 +370,10 @@ struct Compactor {
     /// - Throws: `endOfStream` if the source ends first, `invalidEnumTag`
     ///   for a pair whose key or value has a tag that is not one.
     private mutating func readFrame(
-        level: Int, _ kind: Frame.Kind, at position: UInt64, targetOffset: UInt64, count: Int, task: Task? = nil
+        start: Int, _ kind: Frame.Kind, at position: UInt64, targetOffset: UInt64, count: Int, task: Task? = nil
     ) throws(XitDBError) -> Frame {
-        let frame = Frame(level: level, kind: kind, targetOffset: targetOffset, count: count, task: task)
-        ensureLevel(level)
+        let frame = Frame(start: start, kind: kind, targetOffset: targetOffset, count: count, task: task)
+        ensureRoom(for: frame)
         let storage = source.storage
         let wanted = frame.byteCount
         var span = blockBytes.mutableSpan
@@ -516,14 +535,14 @@ struct Compactor {
                 let offset = try reserve(144)
                 try offsetMap.record(slot.value, offset)
                 let frame = try readFrame(
-                    level: stack.count, .slots(prefix: 0), at: slot.value, targetOffset: offset, count: 16)
+                    start: start(above: stack), .slots(prefix: 0), at: slot.value, targetOffset: offset, count: 16)
                 return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             case .countedHashMap, .countedHashSet:
                 if let offset = try offsetMap.lookup(slot.value) { return offset }
                 let offset = try reserve(152)
                 try offsetMap.record(slot.value, offset)
                 let frame = try readFrame(
-                    level: stack.count, .slots(prefix: 8), at: slot.value, targetOffset: offset, count: 16)
+                    start: start(above: stack), .slots(prefix: 8), at: slot.value, targetOffset: offset, count: 16)
                 return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             case .arrayList:
                 if let offset = try offsetMap.lookup(slot.value) { return offset }
@@ -532,7 +551,7 @@ struct Compactor {
                 let header = try source.arrayListHeader(at: slot.value)
                 let shift = header.size <= Trie.slotsPerBlock ? 0 : Trie.arrayListShift(lastIndex: header.size - 1)
                 let frame = try readFrame(
-                    level: stack.count, .arrayListHeader, at: slot.value, targetOffset: offset, count: 0,
+                    start: start(above: stack), .arrayListHeader, at: slot.value, targetOffset: offset, count: 0,
                     task: .arrayListIndex(header.ptr, size: header.size, shift: shift))
                 stack.append(frame)
                 return nil
@@ -542,7 +561,7 @@ struct Compactor {
                 try offsetMap.record(slot.value, offset)
                 let header = try source.bTreeHeader(at: slot.value)
                 let frame = try readFrame(
-                    level: stack.count, .treeHeader, at: slot.value, targetOffset: offset, count: 0,
+                    start: start(above: stack), .treeHeader, at: slot.value, targetOffset: offset, count: 0,
                     task: .bTreeNode(header.rootPtr))
                 stack.append(frame)
                 return nil
@@ -552,7 +571,7 @@ struct Compactor {
                 try offsetMap.record(slot.value, offset)
                 let header = try source.bTreeHeader(at: slot.value)
                 let frame = try readFrame(
-                    level: stack.count, .treeHeader, at: slot.value, targetOffset: offset, count: 0,
+                    start: start(above: stack), .treeHeader, at: slot.value, targetOffset: offset, count: 0,
                     task: .sortedNode(header.rootPtr))
                 stack.append(frame)
                 return nil
@@ -562,14 +581,15 @@ struct Compactor {
                 let offset = try reserve(hashSize + 18)
                 try offsetMap.record(slot.value, offset)
                 let frame = try readFrame(
-                    level: stack.count, .kvPair(hashSize: hashSize), at: slot.value, targetOffset: offset, count: 2)
+                    start: start(above: stack), .kvPair(hashSize: hashSize), at: slot.value, targetOffset: offset,
+                    count: 2)
                 return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             case .sortedKvPair:
                 if let offset = try offsetMap.lookup(slot.value) { return offset }
                 let offset = try reserve(18)
                 try offsetMap.record(slot.value, offset)
                 let frame = try readFrame(
-                    level: stack.count, .kvPair(hashSize: 0), at: slot.value, targetOffset: offset, count: 2)
+                    start: start(above: stack), .kvPair(hashSize: 0), at: slot.value, targetOffset: offset, count: 2)
                 return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             }
 
@@ -581,13 +601,13 @@ struct Compactor {
                 let offset = try reserve(146)
                 try offsetMap.record(nodePtr, offset)
                 let frame = try readFrame(
-                    level: stack.count, .slots(prefix: 2), at: nodePtr, targetOffset: offset, count: 16)
+                    start: start(above: stack), .slots(prefix: 2), at: nodePtr, targetOffset: offset, count: 16)
                 return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             case .branch:
                 let offset = try reserve(274)
                 try offsetMap.record(nodePtr, offset)
                 let frame = try readFrame(
-                    level: stack.count, .bTreeBranch, at: nodePtr, targetOffset: offset, count: 16)
+                    start: start(above: stack), .bTreeBranch, at: nodePtr, targetOffset: offset, count: 16)
                 return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             }
 
@@ -598,13 +618,13 @@ struct Compactor {
                 let offset = try reserve(146)
                 try offsetMap.record(nodePtr, offset)
                 let frame = try readFrame(
-                    level: stack.count, .slots(prefix: 2), at: nodePtr, targetOffset: offset, count: 16)
+                    start: start(above: stack), .slots(prefix: 2), at: nodePtr, targetOffset: offset, count: 16)
                 return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             case .branch:
                 let offset = try reserve(418)
                 try offsetMap.record(nodePtr, offset)
                 let frame = try readFrame(
-                    level: stack.count, .sortedBranch, at: nodePtr, targetOffset: offset, count: 32)
+                    start: start(above: stack), .sortedBranch, at: nodePtr, targetOffset: offset, count: 32)
                 return try settle(frame, stack: &stack, offsetMap: &offsetMap)
             }
 
@@ -626,12 +646,12 @@ struct Compactor {
             // those are read, and each is checked as the walk reaches it;
             // the rest of the block stays empty.
             let frame = Frame(
-                level: stack.count, kind: .arrayListPartial(size: size, childSize: childSize, shift: shift),
+                start: start(above: stack), kind: .arrayListPartial(size: size, childSize: childSize, shift: shift),
                 targetOffset: offset, count: used)
-            ensureLevel(frame.level)
+            ensureRoom(for: frame)
             // Only the used children are read, and the whole block is
-            // written: the rest of the slot has to be zeros, not what an
-            // earlier frame at this level left there.
+            // written: the rest of it has to be zeros, not what an earlier
+            // frame left in these bytes.
             blockBytes.replaceSubrange(
                 frame.start..<(frame.start + frame.byteCount), with: repeatElement(0, count: frame.byteCount))
             if used > 0 {

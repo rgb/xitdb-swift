@@ -73,7 +73,7 @@ import XitDBDumpKit
             _ = JSONRenderer.render(dump, options: Self.verifying)
             damaged += 1
         }
-        #expect(damaged == 14)
+        #expect(damaged == 15)
         let fixtures = try Self.resources().appendingPathComponent("fixtures/valid")
         for name in ["worked-example", "every-construct-linked--port"] {
             let whole = try Self.bytes(fixtures.appendingPathComponent("\(name).db"))
