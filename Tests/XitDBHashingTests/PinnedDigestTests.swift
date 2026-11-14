@@ -80,8 +80,8 @@ struct PinnedDigestTests {
         }
     }
 
-    /// The public hashers, by the call a database makes: where the system
-    /// has a routine, the long messages of the table go through it.
+    /// The public hashers, by the call a database makes: the processor's
+    /// instructions on Apple silicon, the portable code everywhere else.
     @Test("the public hashers give the table's digests")
     func publicHashers() throws {
         for line in try Self.table() {

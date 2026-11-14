@@ -8,11 +8,13 @@
 //   by_hand       the hash as an array, as the caller of a call by hash
 //                 holds it: `SHA256.keyHash(of: key)`
 //   hasher        through the hasher a database holds, to the engine's hash:
-//                 what a keyed call does
-//   portable      the hashing module's own code, into a buffer on the stack
-//                 and from there into the engine's hash
-//   system_copy   the system's routine as the hashing module reaches it, with
-//                 nothing unsafe: the bytes copied into an array, CryptoKit,
+//                 what a keyed call does. On Apple silicon it is the
+//                 processor's SHA instructions, elsewhere the portable code
+//   portable      the hashing module's portable code, into a buffer on the
+//                 stack and from there into the engine's hash
+//   system_copy   the system's routine as a module with nothing unsafe
+//                 reaches it, and as the hashing module did while it had a
+//                 switch to it: the bytes copied into an array, CryptoKit,
 //                 the digest appended byte by byte (where CryptoKit is)
 //   cryptokit     CryptoKit called directly on the array, which is what
 //                 reaching it through a pointer would cost: the digest read
@@ -21,8 +23,8 @@
 //                 and from there into the engine's hash (where it is)
 //
 // The lengths are a short key, one block and a byte, and a kilobyte; the
-// longest message of one to eight blocks, which shows where the hashing
-// module's own code and the system's routine cross; and 64 KB and a megabyte.
+// longest message of one to eight blocks, which shows where the portable
+// code and the system's routine cross; and 64 KB and a megabyte.
 //
 // Every way but the first checks each hash against the one computed before
 // the clock started, so the ways are held to one another and none can skip
@@ -133,19 +135,34 @@ private func measuredKeys(length: Int, count: Int) -> [[UInt8]] {
 #endif
 
 #if canImport(CryptoKit)
-    /// The hash by the system's routine as the hashing module reaches it
-    /// from a span, by a copy, into a buffer on the stack and from there
-    /// into the engine's hash.
+    /// The bytes of a span as an array: the copy that stands between a
+    /// span and CryptoKit where nothing unsafe is written.
+    private func copy(of bytes: Span<UInt8>) -> [UInt8] {
+        [UInt8](capacity: bytes.count) { (output: inout OutputSpan<UInt8>) in
+            for index in bytes.indices {
+                output.append(bytes[index])
+            }
+        }
+    }
+
+    /// The hash by the system's routine reached from a span with nothing
+    /// unsafe: a copy of the bytes, CryptoKit, the digest appended byte by
+    /// byte into a buffer on the stack and from there into the engine's
+    /// hash.
     private func systemByCopy(_ hash: MeasuredHash, _ key: [UInt8]) -> KeyHash {
         switch hash {
         case .sha1:
             let digest = InlineArray<20, UInt8> { (output: inout OutputSpan<UInt8>) in
-                SystemHashes.sha1(key.span, into: &output)
+                for byte in CryptoKit.Insecure.SHA1.hash(data: copy(of: key.span)) {
+                    output.append(byte)
+                }
             }
             return KeyHash(digest.span)
         case .sha256:
             let digest = InlineArray<32, UInt8> { (output: inout OutputSpan<UInt8>) in
-                SystemHashes.sha256(key.span, into: &output)
+                for byte in CryptoKit.SHA256.hash(data: copy(of: key.span)) {
+                    output.append(byte)
+                }
             }
             return KeyHash(digest.span)
         }

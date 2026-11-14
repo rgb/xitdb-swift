@@ -4,37 +4,37 @@
     import Testing
     import XitDBHashing
 
-    /// The portable implementations against CryptoKit, where it exists: the
-    /// same digest for every length to 300 of the pattern, at the boundary
-    /// lengths once more by name, and for three thousand seeded messages of
-    /// up to 64 KB.
+    /// Every way the build has of computing the hashes against CryptoKit,
+    /// where it exists: the same digest for every length to 300 of the
+    /// pattern, at the boundary lengths once more by name, and for three
+    /// thousand seeded messages of up to 64 KB.
     @Suite("agreement with CryptoKit")
     struct CryptoKitAgreementTests {
-        @Test("SHA-256 at every length to 300")
-        func sha256Lengths() {
+        @Test("SHA-256 at every length to 300", arguments: HashPath.all)
+        func sha256Lengths(path: HashPath) {
             for length in 0...300 {
                 let message = pattern(count: length)
-                #expect(appendedSHA256(message) == Array(CryptoKit.SHA256.hash(data: message)), "\(length)")
+                #expect(sha256(message, by: path) == Array(CryptoKit.SHA256.hash(data: message)), "\(length)")
             }
         }
 
-        @Test("SHA-1 at every length to 300")
-        func sha1Lengths() {
+        @Test("SHA-1 at every length to 300", arguments: HashPath.all)
+        func sha1Lengths(path: HashPath) {
             for length in 0...300 {
                 let message = pattern(count: length)
-                #expect(
-                    appendedSHA1(message) == Array(CryptoKit.Insecure.SHA1.hash(data: message)), "\(length)")
+                #expect(sha1(message, by: path) == Array(CryptoKit.Insecure.SHA1.hash(data: message)), "\(length)")
             }
         }
 
-        @Test("the seeded messages, to 64 KB")
-        func seeded() {
+        @Test("the seeded messages, to 64 KB", arguments: HashPath.all)
+        func seeded(path: HashPath) {
             for (length, seed) in seededMessages {
                 let message = seededMessage(count: length, seed: seed)
                 #expect(
-                    appendedSHA256(message) == Array(CryptoKit.SHA256.hash(data: message)), "\(length), seed \(seed)")
+                    sha256(message, by: path) == Array(CryptoKit.SHA256.hash(data: message)),
+                    "\(length), seed \(seed)")
                 #expect(
-                    appendedSHA1(message) == Array(CryptoKit.Insecure.SHA1.hash(data: message)),
+                    sha1(message, by: path) == Array(CryptoKit.Insecure.SHA1.hash(data: message)),
                     "\(length), seed \(seed)")
             }
         }
@@ -42,8 +42,10 @@
         @Test("the boundary lengths", arguments: boundaryLengths)
         func boundaries(length: Int) {
             let message = pattern(count: length)
-            #expect(appendedSHA256(message) == Array(CryptoKit.SHA256.hash(data: message)))
-            #expect(appendedSHA1(message) == Array(CryptoKit.Insecure.SHA1.hash(data: message)))
+            for path in HashPath.all {
+                #expect(sha256(message, by: path) == Array(CryptoKit.SHA256.hash(data: message)), "\(path)")
+                #expect(sha1(message, by: path) == Array(CryptoKit.Insecure.SHA1.hash(data: message)), "\(path)")
+            }
         }
     }
 #endif
