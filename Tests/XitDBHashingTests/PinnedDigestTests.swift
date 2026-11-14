@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import XitDB
 import XitDBHashing
 
 #if canImport(CryptoKit)
@@ -76,6 +77,20 @@ struct PinnedDigestTests {
     func sha1() throws {
         for line in try Self.table() {
             #expect(appendedSHA1(line.message) == line.sha1, "\(line.length), seed \(String(describing: line.seed))")
+        }
+    }
+
+    /// The public hashers, by the call a database makes: where the system
+    /// has a routine, the long messages of the table go through it.
+    @Test("the public hashers give the table's digests")
+    func publicHashers() throws {
+        for line in try Self.table() {
+            let message = line.message
+            #expect(
+                required(SHA256.self, message) == line.sha256, "\(line.length), seed \(String(describing: line.seed))")
+            #expect(
+                required(Insecure.SHA1.self, message) == line.sha1,
+                "\(line.length), seed \(String(describing: line.seed))")
         }
     }
 
