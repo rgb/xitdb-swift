@@ -8,7 +8,7 @@ A byte array is a value like any other. ``WritableData/bytes(_:formatTag:)`` wri
 ``Cursor/readBytes(maxCount:)`` reads one whole. For a value you would rather not have in memory, a cursor can also
 write and read it in parts.
 
-The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYourOwnHashes>. They force-unwrap a lookup
+The examples use `sha256(_:)`, a helper that hashes a string: see <doc:Hashing>. They force-unwrap a lookup
 where the value was just written; real code handles the `nil` that means it is not there. Where they use `moment`, it is a
 ``HashMap`` that is one moment of a history, as in <doc:MomentsAndHistory>: a read-only one to read through, and to write
 through a read-write one in a transaction's body.

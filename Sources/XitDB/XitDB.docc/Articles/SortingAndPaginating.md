@@ -16,7 +16,7 @@ key. Every query is a walk you write, so what it costs is what that code does.
 An ``ArrayList`` is no use for this. It keeps things in the order they were written, and as soon as you want any other
 order you need a structure that stays sorted by a key.
 
-The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYourOwnHashes>. They force-unwrap a lookup where
+The examples use `sha256(_:)`, a helper that hashes a string: see <doc:Hashing>. They force-unwrap a lookup where
 the value was just written; real code handles the `nil` that means it is not there.
 
 ### A primary store and an index
@@ -237,4 +237,4 @@ That set has two keys. Inserting a key that is there already changes nothing.
 - ``SortedMap``
 - ``SortedSet``
 - <doc:TheCollections>
-- <doc:BringYourOwnHashes>
+- <doc:Hashing>

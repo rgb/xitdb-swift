@@ -11,7 +11,7 @@ If you keep a way to reach the old roots, every earlier state of the database st
 The way to keep them is a list at the root, usually with one element per transaction. An element of that list is a
 *moment*: one state of the database. The list is the *history*.
 
-The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYourOwnHashes>. They force-unwrap a
+The examples use `sha256(_:)`, a helper that hashes a string: see <doc:Hashing>. They force-unwrap a
 lookup where the value was just written; real code handles the `nil` that means it is not there.
 
 ### The root

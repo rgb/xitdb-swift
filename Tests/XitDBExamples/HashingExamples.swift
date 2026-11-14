@@ -3,51 +3,181 @@ import Testing
 import XitDB
 import XitDBHashing
 
-@Suite("Bring your own hashes") struct HashingExamples {
-    @Test func aHashHasTheSizeOfTheDatabase() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 32)
-        let map = try HashMap<ReadWrite>(database.rootCursor)
+// A hasher of 20 bytes that is not SHA-1, for the test that only the size is
+// checked.
+private enum TwentyZeros: KeyHashing {
+    static let size = 20
+    static func hash(_ bytes: some Collection<UInt8>) -> [UInt8] {
+        [UInt8](repeating: 0, count: 20)
+    }
+}
 
-        // The hash is the caller's. It only has to have the right size.
+@Suite("Hashing") struct HashingExamples {
+    @Test func aDatabaseIsGivenItsHasher() throws {
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self, hashID: "sha2")
+        let users = try HashMap<ReadWrite>(database.rootCursor)
+
+        try users.put("Alice", forKey: "alice")
+        let keyed = try database.readCommitted(from: 0, to: database.committedSize)
+
+        // The same entry by its hash: the keyed put is this put.
+        let hash = SHA256.hash(data: Array("alice".utf8))
+        try users.put(.bytes(Array("Alice".utf8)), forHash: hash)
+        #expect(try users.cursor(forHash: hash)!.read(String.self) == "Alice")
+        #expect(try users.value(forKey: "alice", as: String.self) == "Alice")
+        #expect(try users.keyCursor(forKey: "alice") == nil)
+
+        // Two databases written side by side, one by key and one by hash,
+        // with the same IDs, are the same bytes.
+        let byKey = try Database(creating: MemoryStorage(), hashing: SHA256.self, hashID: "sha2", fileID: 7)
+        let byHash = try Database(creating: MemoryStorage(), hashSize: 32, hashID: "sha2", fileID: 7)
+        try HashMap<ReadWrite>(byKey.rootCursor).put("Alice", forKey: "alice")
+        try HashMap<ReadWrite>(byHash.rootCursor).put(.bytes(Array("Alice".utf8)), forHash: hash)
+        let keyedBytes = try byKey.readCommitted(from: 0, to: byKey.committedSize)
+        let hashedBytes = try byHash.readCommitted(from: 0, to: byHash.committedSize)
+        // The commit IDs are random, so the files are compared by their size
+        // and by the slot under the hash.
+        #expect(keyedBytes.count == hashedBytes.count)
+        #expect(keyedBytes.count == keyed.count)
+        #expect(
+            try HashMap<ReadOnly>(byKey.rootCursor).slot(forHash: hash)
+                == HashMap<ReadOnly>(byHash.rootCursor).slot(forHash: hash))
+    }
+
+    @Test func aKeyIsItsBytes() throws {
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
+        let person = try HashMap<ReadWrite>(database.rootCursor)
+
+        enum Field: String, KeyRepresentable {
+            case name, age
+        }
+        try person.put(UInt64(25), forKey: Field.age)
+
+        // The enum's case is its raw value's key, and a String's key is its
+        // UTF-8, so all of these name one entry.
+        #expect(try person.value(forKey: "age", as: UInt64.self) == 25)
+        #expect(try person.value(forKey: Array("age".utf8), as: UInt64.self) == 25)
+        #expect(try person.value(forKey: Bytes(Array("age".utf8), formatTag: "xx"), as: UInt64.self) == 25)
+        #expect(try person.value(forKey: "age"[...], as: UInt64.self) == 25)
+        #expect(try person.cursor(forHash: sha256("age"))!.readUInt64() == 25)
+        // Nothing is normalised: the decomposed form of a name is another key.
+        try person.put("composed", forKey: "\u{E9}")
+        #expect(try person.value(forKey: "e\u{301}", as: String.self) == nil)
+    }
+
+    @Test func aHashSizeHasLimits() throws {
+        #expect(throws: XitDBError.invalidHashSize) {
+            try Database(creating: MemoryStorage(), hashSize: 0)
+        }
+        #expect(throws: XitDBError.invalidHashSize) {
+            try Database(creating: MemoryStorage(), hashSize: 70_000)
+        }
+        _ = try Database(creating: MemoryStorage(), hashSize: 1)
+        _ = try Database(creating: MemoryStorage(), hashSize: 65_535)
+    }
+
+    @Test func onlyTheSizeIsChecked() throws {
+        let storage = MemoryStorage()
+        let created = try Database(creating: storage, hashing: Insecure.SHA1.self)
+        try HashMap<ReadWrite>(created.rootCursor).put("Alice", forKey: "alice")
+
+        // The hasher gives no hash ID: without one the header holds zeros.
+        #expect(created.header.hashSize == 20)
+        #expect(created.header.hashID.rawValue == 0)
+
+        // Another size is refused, before anything else is read.
+        #expect(throws: XitDBError.invalidHashSize) {
+            try Database(opening: storage, hashing: SHA256.self)
+        }
+        #expect(throws: XitDBError.invalidHashSize) {
+            try Database.recover(storage, hashing: SHA256.self)
+        }
+
+        // Another hasher of the same size opens the file, and its lookups
+        // miss.
+        let mistaken = try Database(opening: storage, hashing: TwentyZeros.self)
+        #expect(try HashMap<ReadOnly>(mistaken.rootCursor).value(forKey: "alice", as: String.self) == nil)
+    }
+
+    @Test func aDatabaseWithoutAHasher() throws {
+        let storage = MemoryStorage()
+        let created = try Database(creating: storage, hashing: SHA256.self)
+        try HashMap<ReadWrite>(created.rootCursor).put("Alice", forKey: "alice")
+        let hash = SHA256.hash(data: Array("alice".utf8))
+
+        let plain = try Database(opening: storage)
+        let map = try HashMap<ReadOnly>(plain.rootCursor)
+        let alice = try map.cursor(forHash: hash)
+        #expect(try alice?.read(String.self) == "Alice")
+
+        #expect(throws: XitDBError.noKeyHashing) { try map.cursor(forKey: "alice") }
+        #expect(throws: XitDBError.noKeyHashing) { try map.value(forKey: "alice", as: String.self) }
+        // Before anything else about the call is looked at: on an empty root
+        // a lookup by hash finds nothing, and the keyed one is refused.
+        let bySize = try Database(creating: MemoryStorage(), hashSize: 32)
+        let empty = try HashMap<ReadOnly>(bySize.rootCursor)
+        #expect(try empty.cursor(forHash: hash) == nil)
+        #expect(throws: XitDBError.noKeyHashing) { try empty.cursor(forKey: "x") }
+        let writable = try HashMap<ReadWrite>(bySize.rootCursor)
+        let sizeBefore = try bySize.committedSize
+        #expect(throws: XitDBError.noKeyHashing) { try writable.put("x", forKey: "x") }
+        #expect(try bySize.committedSize == sizeBefore)
+
+        // A snapshot carries its database's hasher, and a compaction's target
+        // takes its source's.
+        let snapshot = SnapshotDatabase(try created.snapshot())
+        #expect(try HashMap<ReadOnly>(snapshot.rootCursor).value(forKey: "alice", as: String.self) == "Alice")
+        let source = try Database(creating: MemoryStorage(), hashing: SHA256.self)
+        let history = try ArrayList<ReadWrite>(source.rootCursor)
+        try history.append(.slot(nil)) { cursor in
+            try HashMap<ReadWrite>(cursor).put("Alice", forKey: "alice")
+        }
+        var offsets = MemoryOffsetMap()
+        let target = try source.compact(into: MemoryStorage(), offsetMap: &offsets)
+        let moment = try HashMap<ReadOnly>(ArrayList<ReadOnly>(target.rootCursor).cursor(at: -1)!)
+        #expect(try moment.value(forKey: "alice", as: String.self) == "Alice")
+    }
+
+    @Test func choosingTheHasherByTheFile() throws {
+        let storage = MemoryStorage()
+        let created = try Database(creating: storage, hashing: Insecure.SHA1.self, hashID: "sha1")
+        try HashMap<ReadWrite>(created.rootCursor).put("Alice", forKey: "alice")
+
+        let header = try DatabaseHeader(reading: storage)
+        let hashing: (any KeyHashing.Type)? =
+            switch (header.hashID, header.hashSize) {
+            case ("sha1", 20): Insecure.SHA1.self
+            case ("sha2", 32): SHA256.self
+            default: nil
+            }
+        #expect(hashing != nil)
+
+        if let hashing {
+            let database = try Database(opening: storage, hashing: hashing)
+            #expect(try HashMap<ReadOnly>(database.rootCursor).value(forKey: "alice", as: String.self) == "Alice")
+        }
+
+        // The header reads without the root header: a creation that did not
+        // finish has a header that reads, and does not open.
+        let unfinished = MemoryStorage(bytes: Array(storage.bytes[..<32]))
+        #expect(try DatabaseHeader(reading: unfinished).hashID == "sha1")
+        #expect(throws: XitDBError.invalidDatabase) { try Database(opening: unfinished) }
+        #expect(throws: XitDBError.invalidDatabase) { try DatabaseHeader(reading: MemoryStorage()) }
+
+        // A hash ID computed at run time may turn out not to be four bytes.
+        #expect(HashID(string: "sha2") == "sha2")
+        #expect(HashID(string: "sha256") == nil)
+    }
+
+    @Test func aHashHasTheSizeOfTheDatabase() throws {
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
+        let map = try HashMap<ReadWrite>(database.rootCursor)
         try map.put(.uint(1), forHash: SHA256.hash(data: Array("alice".utf8)))
 
         #expect(throws: XitDBError.invalidHashSize) {
             // 20 bytes, in a database of 32.
             try map.put(.uint(1), forHash: Insecure.SHA1.hash(data: Array("alice".utf8)))
         }
-    }
-
-    @Test func aSharedHashIsASharedKey() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 1)
-        let map = try HashMap<ReadWrite>(database.rootCursor)
-
-        // A hash of one byte, the sum of the key's: "ab" and "ba" collide.
-        func weakHash(_ key: String) -> [UInt8] {
-            [key.utf8.reduce(0, &+)]
-        }
-
-        try map.put(.bytes(Array("first".utf8)), forHash: weakHash("ab"))
-        try map.put(.bytes(Array("second".utf8)), forHash: weakHash("ba"))
-
-        // One entry: the second put replaced the first without a word.
-        let value = try map.cursor(forHash: weakHash("ab"))!.readBytes()
-        #expect(value == Array("second".utf8))
-    }
-
-    @Test func detectingACollision() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 1)
-        let map = try HashMap<ReadWrite>(database.rootCursor)
-        func weakHash(_ key: String) -> [UInt8] {
-            [key.utf8.reduce(0, &+)]
-        }
-
-        try map.putKey(.bytes(Array("ab".utf8)), forHash: weakHash("ab"))
-
-        // putKey writes once, so the stored key is the first one.
-        try map.putKey(.bytes(Array("ba".utf8)), forHash: weakHash("ba"))
-        let stored = try map.keyCursor(forHash: weakHash("ba"))!.readBytes()
-        let collided = stored != Array("ba".utf8)
-        #expect(collided)
     }
 
     @Test func aHashNeedNotBeCryptographic() throws {
@@ -62,7 +192,8 @@ import XitDBHashing
         try users.put(.bytes(Array("Alice".utf8)), forHash: hash(1))
         try users.put(.bytes(Array("Bob".utf8)), forHash: hash(2))
 
-        #expect(try users.cursor(forHash: hash(2))!.readBytes() == Array("Bob".utf8))
+        let bob = try users.cursor(forHash: hash(2))?.read(String.self)
+        #expect(bob == "Bob")
     }
 
     /// The trie goes by a hash's last bytes first, so a hash whose last bytes
@@ -89,18 +220,6 @@ import XitDBHashing
         #expect(littleEndian == 2364)
     }
 
-    @Test func aKeyOfTheRightSizeIsItsOwnHash() throws {
-        let database = try Database(creating: MemoryStorage(), hashSize: 5)
-        let map = try HashMap<ReadWrite>(database.rootCursor)
-
-        try map.put(.uint(1), forHash: "alice".utf8)
-
-        #expect(try map.cursor(forHash: "alice".utf8)!.readUInt64() == 1)
-        #expect(throws: XitDBError.invalidHashSize) {
-            try map.put(.uint(2), forHash: "bob".utf8)
-        }
-    }
-
     @Test func aHashIsAnySequenceOfBytes() throws {
         // A digest as it is.
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
@@ -108,7 +227,8 @@ import XitDBHashing
         try map.put(.uint(1), forHash: SHA256.hash(data: Array("alice".utf8)))
         #expect(try map.cursor(forHash: Array(sha256("alice")))!.readUInt64() == 1)
 
-        // An array, a slice, `Data`, and a string's `utf8` that has the right length.
+        // An array, a slice, `Data`, a span, and a string's `utf8` that has
+        // the right length.
         let small = try Database(creating: MemoryStorage(), hashSize: 5)
         let words = try HashMap<ReadWrite>(small.rootCursor)
         try words.put(.uint(1), forHash: "alice".utf8)
@@ -120,48 +240,28 @@ import XitDBHashing
         #expect(throws: XitDBError.invalidHashSize) { try words.cursor(forHash: "bob".utf8) }
     }
 
-    @Test func recordingTheAlgorithm() throws {
-        let storage = MemoryStorage()
-
-        let created = try Database(creating: storage, hashSize: 32, hashID: "sha2")
-        #expect(created.header.hashID == "sha2")
-
-        // Opened without a size, a database takes the one it records, and the
-        // header says what the hash is.
-        let database = try Database(opening: storage)
-        let header = database.header
-        #expect(header.hashSize == 32)
-        #expect(header.hashID == "sha2")
-        #expect(header.hashID.description == "sha2")
-
-        enum HashAlgorithm { case sha1, sha256, sha512 }
-
-        let algorithm: HashAlgorithm? =
-            switch (header.hashID, header.hashSize) {
-            case ("sha1", 20): .sha1
-            case ("sha2", 32): .sha256
-            case ("sha2", 64): .sha512
-            default: nil
-            }
-        #expect(algorithm == .sha256)
-
-        // Stating a size that is not the file's is refused.
-        #expect(throws: XitDBError.invalidHashSize) {
-            try Database(opening: storage, hashSize: 20)
+    @Test func aSharedHashIsASharedKey() throws {
+        // A hash of one byte, the sum of the key's: "ab" and "ba" collide.
+        enum ByteSum: KeyHashing {
+            static var size: Int { 1 }
+            static func hash(_ bytes: some Collection<UInt8>) -> [UInt8] { [bytes.reduce(0, &+)] }
         }
 
-        // A hash ID computed at run time may turn out not to be four bytes.
-        #expect(HashID(string: "sha2") == "sha2")
-        #expect(HashID(string: "sha256") == nil)
-    }
+        let database = try Database(creating: MemoryStorage(), hashing: ByteSum.self)
+        let map = try HashMap<ReadWrite>(database.rootCursor)
+        try map.put("first", forKey: "ab")
+        try map.put("second", forKey: "ba")
 
-    @Test func aHashSizeHasLimits() throws {
-        #expect(throws: XitDBError.invalidHashSize) {
-            try Database(creating: MemoryStorage(), hashSize: 0)
-        }
-        #expect(throws: XitDBError.invalidHashSize) {
-            try Database(creating: MemoryStorage(), hashSize: 70_000)
-        }
+        // One entry: the second put replaced the first without a word.
+        let value = try map.value(forKey: "ab", as: String.self)
+        #expect(value == "second")
+        #expect(database.header.hashSize == 1)
+
+        try map.putKey("ab")
+        try map.putKey("ba")
+        let collided = try map.keyCursor(forKey: "ba")?.read(String.self) != "ba"
+        #expect(collided)
+        #expect(try map.keyCursor(forKey: "ba")?.read(String.self) == "ab")
     }
 
     @Test func spansAreTakenWithoutACopy() throws {

@@ -27,7 +27,7 @@ for price: UInt64 in [10, 12, 15] {
 ```
 
 Three things in that code are not what you might assume. You hash your own keys, here with a helper
-`sha256(_:)`: see <doc:BringYourOwnHashes>. A collection is a view of a slot, made from a cursor, and it comes
+`sha256(_:)`: see <doc:Hashing>. A collection is a view of a slot, made from a cursor, and it comes
 in a read-only and a read-write form: see <doc:TheCollections>. And the file only grows until you compact it:
 see <doc:MomentsAndHistory> for what that costs.
 
@@ -112,7 +112,7 @@ Elements addressed by position. A list is how a database usually keeps its histo
 
 Values and keys found by a hash that you compute, in no useful order.
 
-- <doc:BringYourOwnHashes>
+- <doc:Hashing>
 - ``HashMap``
 - ``HashSet``
 - ``CountedHashMap``

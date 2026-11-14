@@ -10,7 +10,7 @@ moment may still refer to it. So a file holds every earlier state of the databas
 Compaction writes a new database holding what the latest moment reaches, and nothing else. The source is not touched. In
 one test, a history of 1,000 small moments took 1,025,627 bytes, and its compacted copy 10,629.
 
-The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYourOwnHashes>. They force-unwrap a lookup
+The examples use `sha256(_:)`, a helper that hashes a string: see <doc:Hashing>. They force-unwrap a lookup
 where the value was just written; real code handles the `nil` that means it is not there. Where they use `database`, it is a
 database with a history, as in <doc:MomentsAndHistory>.
 

@@ -49,7 +49,7 @@ The first line is the header. It gives the file's size, with its committed size 
 version, the hash size, the hash ID, the file ID, and how many moments the history holds. The hash ID is the four bytes
 the file's creator wrote, in quotes, as they are, when all four are printable ASCII (0x20 to 0x7E), and as hex
 otherwise, such as `hash id 0x00000000`. The tool never names
-an algorithm from it, since the format does not interpret it: see <doc:BringYourOwnHashes>.
+an algorithm from it, since the format does not interpret it: see <doc:Hashing>.
 
 `--verify` walks the file's commits by their trailers and checksums, and lists each one that verifies, with where it
 ends, its commit ID and the kind of root it left. Commit 0 is the one that creating the database wrote: 57 bytes, with

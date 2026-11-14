@@ -62,7 +62,12 @@ dependencies: [
     .package(url: "https://github.com/rgb/xitdb-swift", from: "0.3.0")
 ],
 targets: [
-    .target(name: "MyTarget", dependencies: [.product(name: "XitDB", package: "xitdb-swift")])
+    .target(
+        name: "MyTarget",
+        dependencies: [
+            .product(name: "XitDB", package: "xitdb-swift"),
+            .product(name: "XitDBHashing", package: "xitdb-swift"),
+        ])
 ]
 ```
 
@@ -71,23 +76,19 @@ For the Swift layer, depend on the product `XitDBStore` instead. It brings `XitD
 
 ## A first look
 
-History as a list of moments, a map in each, a value written and read back:
+History as a list of moments, a map in each, values written and read back, on the original's own example:
 
 ```swift
-import CryptoKit
 import XitDB
+import XitDBHashing
 
-// XitDB never hashes anything itself: the caller hashes each key.
-func sha256(_ key: String) -> SHA256Digest {
-    SHA256.hash(data: Array(key.utf8))
-}
-
-// Open the file, and create the database in it if it is new.
+// Open the file, and create the database in it if it is new. The database
+// is given the hash its keys are hashed with.
 let storage = try BufferedFileStorage(path: "main.db", access: .create)
 let database =
     try storage.length == 0
-    ? Database(creating: storage, hashSize: 32, hashID: "sha2")
-    : Database(opening: storage, hashSize: 32)
+    ? Database(creating: storage, hashing: SHA256.self, hashID: "sha2")
+    : Database(opening: storage, hashing: SHA256.self)
 
 // The root is a list with one element for each transaction, so that
 // every earlier state of the database stays readable: the history.
@@ -99,34 +100,39 @@ let history = try ArrayList<ReadWrite>(database.rootCursor)
 try history.append(.slot(try history.slot(at: -1))) { cursor in
     let moment = try HashMap<ReadWrite>(cursor)
 
-    try moment.put(.bytes(Array("foo".utf8)), forHash: sha256("foo"))
-    try moment.put(.bytes(Array("bar".utf8)), forHash: sha256("bar"))
+    // A put hashes the key and stores the value under the hash.
+    try moment.put("foo", forKey: "foo")
+    try moment.put("bar", forKey: "bar")
 
-    let fruits = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("fruits")))
-    try fruits.append(.bytes(Array("apple".utf8)))
-    try fruits.append(.bytes(Array("pear".utf8)))
-    try fruits.append(.bytes(Array("grape".utf8)))
+    let fruits = try ArrayList<ReadWrite>(moment.putCursor(forKey: "fruits"))
+    try fruits.append("apple")
+    try fruits.append("pear")
+    try fruits.append("grape")
 
-    let people = try ArrayList<ReadWrite>(moment.putCursor(forHash: sha256("people")))
+    let people = try ArrayList<ReadWrite>(moment.putCursor(forKey: "people"))
 
     let alice = try HashMap<ReadWrite>(people.appendCursor())
-    try alice.put(.bytes(Array("Alice".utf8)), forHash: sha256("name"))
-    try alice.put(.uint(25), forHash: sha256("age"))
+    try alice.put("Alice", forKey: "name")
+    try alice.put(UInt64(25), forKey: "age")
 
     let bob = try HashMap<ReadWrite>(people.appendCursor())
-    try bob.put(.bytes(Array("Bob".utf8)), forHash: sha256("name"))
-    try bob.put(.uint(42), forHash: sha256("age"))
+    try bob.put("Bob", forKey: "name")
+    try bob.put(UInt64(42), forKey: "age")
 }
 
 // The latest moment: -1 is the last element of a list.
 let moment = try HashMap<ReadOnly>(history.cursor(at: -1)!)
 
-let foo = try moment.cursor(forHash: sha256("foo"))!.readBytes()
-print(String(decoding: foo, as: UTF8.self))  // foo
+// A read names the type it reads, and gives nil where there is no value.
+let foo = try moment.value(forKey: "foo", as: String.self)
+print(foo ?? "none")  // foo
 
-let fruits = try ArrayList<ReadOnly>(moment.cursor(forHash: sha256("fruits"))!)
-let apple = try fruits.cursor(at: 0)!.readBytes()
-print(String(decoding: apple, as: UTF8.self))  // apple
+let fruits = try ArrayList<ReadOnly>(moment.cursor(forKey: "fruits")!)
+let apple = try fruits.value(at: 0, as: String.self)
+print(apple ?? "none")  // apple
+
+// The map holds the hash of "foo" and the value, and not the key.
+print(try moment.keyCursor(forKey: "foo") == nil)  // true
 ```
 
 After this transaction the moment holds, if it were written as JSON:
@@ -141,11 +147,14 @@ After this transaction the moment holds, if it were written as JSON:
  ]}
 ```
 
+The names are there for the reader. In the file each value is under the SHA-256 hash of its name, and the names are not
+stored, as in the original: a map of names that must be listed stores each with `putKey(_:)`. A number says which of the
+format's kinds it is, as it does in the original: `UInt64(25)` is the unsigned integer, and `put(25, forKey: "age")`
+does not compile. Only the hasher's size, 32 bytes, is checked against the file. `"sha2"` is the label in the header
+that says which hash it is, for whoever reads the file next.
+
 Run it twice and the second run opens the file, adds a second moment, and the first stays readable with
 `history.cursor(at: 0)`.
-
-Every block of code that uses the library, in this README and in the documentation, is compiled and run by the
-`XitDBExamples` test target, which imports the library as you would. A test there fails if the two ever differ.
 
 ## Documentation
 

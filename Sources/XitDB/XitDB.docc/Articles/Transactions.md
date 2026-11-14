@@ -8,7 +8,7 @@ Every write happens in a transaction, and a transaction commits whole or not at 
 one: give ``Database/withTransaction(_:)`` a body, or write through a collection at the root, where each write
 is a transaction of its own. The history pattern of <doc:MomentsAndHistory> is the second kind, with a body.
 
-The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYourOwnHashes>.
+The examples use `sha256(_:)`, a helper that hashes a string: see <doc:Hashing>.
 
 ### Running a transaction
 

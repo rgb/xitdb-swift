@@ -7,7 +7,7 @@ The eight collections, when to use which, and what they have in common at the ca
 A database is a tree of collections. An element of a list and a value of a map can be anything, another collection
 included. A collection is a value you make from a cursor, and it reads and writes the slot that cursor is at.
 
-The examples use `sha256(_:)`, a helper that hashes a string: see <doc:BringYourOwnHashes>. They force-unwrap a
+The examples use `sha256(_:)`, a helper that hashes a string: see <doc:Hashing>. They force-unwrap a
 lookup where the value was just written; real code handles the `nil` that means it is not there. Where they use `moment`,
 it is a ``HashMap`` in a transaction's body, as in <doc:MomentsAndHistory>. Reading a value and iterating over a collection
 are in <doc:CursorsAndValues>.
@@ -237,6 +237,6 @@ try hashed.put(.uint(4), forHash: bytes.span)
 
 - <doc:CursorsAndValues>
 - <doc:MomentsAndHistory>
-- <doc:BringYourOwnHashes>
+- <doc:Hashing>
 - <doc:SortingAndPaginating>
 - <doc:LargeByteArrays>
