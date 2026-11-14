@@ -26,17 +26,20 @@
     /// SHA-256 by the processor's instructions: what ``SHA256`` computes on
     /// Apple silicon, at every length.
     ///
-    /// On long input CryptoKit's SHA-256 is faster than this by about an
-    /// eighth, and the module does not turn to it. PROVISIONAL, from rough
-    /// passes on an Apple M-series machine on 2026-11-14 and before the
-    /// measurement: 64 KB takes about 23,300 ns here and 21,500 by CryptoKit
-    /// given a copy of the bytes, which is how a module without unsafe code
-    /// reaches it; a megabyte 371,000 against 330,000. A kilobyte takes 380
-    /// against 700, and the two cross near 8 KB. One path for every key,
-    /// with nothing allocated and no routine of the system's, was judged
-    /// worth that eighth on input a key almost never is; who hashes
-    /// megabytes for their own sake has CryptoKit. SHA-1 is within a tenth
-    /// of CryptoKit's at every length.
+    /// On long input CryptoKit's SHA-256 is faster than this, and the module
+    /// does not turn to it. Measured on an Apple M-series machine on
+    /// 2026-11-14, in nanoseconds a hash, against CryptoKit given a copy of
+    /// the bytes, which is how a module without unsafe code reaches it:
+    /// 64 KB takes 23,404 here and 21,749 by CryptoKit, 8% more, and a
+    /// megabyte 373,249 against 332,420, 12% more. A kilobyte takes 397
+    /// against 697, and by these figures the two cross near 9 KB. One path
+    /// for every key, with nothing allocated and no routine of the system's,
+    /// was judged worth that eighth on input a key almost never is; who
+    /// hashes megabytes for their own sake has CryptoKit. Should it ever
+    /// matter, SHA-256 alone could send input above that length to CryptoKit
+    /// with no public change, for the price of the import and the copy.
+    /// SHA-1 is level with CryptoKit's this way: 21,071 against 21,724 at
+    /// 64 KB, 334,827 against 333,937 at a megabyte.
     package enum InstructionSHA256: Sendable {
         /// Appends the digest of `message` to `output`: 32 bytes. Nothing is
         /// allocated.
