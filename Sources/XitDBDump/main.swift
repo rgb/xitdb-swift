@@ -1,7 +1,7 @@
 // xitdb-dump: prints an xitdb file as it is on disk.
 //
 //   xitdb-dump FILE [--moment N] [--all-moments] [--depth D] [--path k1/k2/#3]
-//              [--json] [--keys NAMES] [--hash sha256|sha1|siphash128]
+//              [--json] [--keys NAMES] [--hash sha256|sha1]
 //              [--verify] [--offsets] [--full-hashes] [--limit N]
 //
 // Exit code 0 for a sound file, 1 for a damaged one that was partly dumped,
@@ -26,7 +26,7 @@ let usage = """
       --path k1/k2/#3   start under the moment's root: a key by name, by hex hash, or #index
       --json            JSON instead of text
       --keys FILE       key names, one per line, to label hash-only entries
-      --hash NAME       sha256 (default), sha1 or siphash128, for --keys and named path steps
+      --hash NAME       sha256 (default) or sha1, for --keys and named path steps
       --verify          walk the commits' trailers and report them
       --offsets         each record's position and size
       --full-hashes     whole hashes instead of their first eight bytes
@@ -105,7 +105,7 @@ func parse(_ given: [String]) -> (DumpOptions, String) {
         case "--keys": options.keys += readLines(next(argument))
         case "--hash":
             guard let hash = DumpOptions.Hash(rawValue: next(argument)) else {
-                fail("--hash takes sha256, sha1 or siphash128")
+                fail("--hash takes sha256 or sha1")
             }
             options.hash = hash
         case "--verify": options.verify = true

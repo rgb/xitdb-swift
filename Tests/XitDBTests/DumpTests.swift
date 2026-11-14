@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import XitDB
 import XitDBDumpKit
+import XitDBHashing
 
 /// `xitdb-dump` through its kit: every fixture dumps as pinned, the
 /// damaged files dump without a trap, the JSON is the text's tree, paths
@@ -146,6 +147,21 @@ import XitDBDumpKit
         #expect(missing.exitCode == 1)
         options.path = [.key("nothing-here")]
         #expect(Self.dump(bytes, options).moments.first?.root.kind == .unreadable)
+    }
+
+    /// The names `--hash` takes are those of the hashes the package has:
+    /// `sha256` and `sha1`. `siphash128` was one until SipHash-128 left the
+    /// package with the store, and is refused now as any unknown name is:
+    /// the tool gives its usage error for a name this does not know.
+    @Test func theHashNamesTheToolTakes() {
+        #expect(DumpOptions.Hash(rawValue: "sha256") == .sha256)
+        #expect(DumpOptions.Hash(rawValue: "sha1") == .sha1)
+        #expect(DumpOptions.Hash(rawValue: "siphash128") == nil)
+        #expect(DumpOptions.Hash(rawValue: "SHA256") == nil)
+        #expect(DumpOptions.Hash(rawValue: "") == nil)
+        let name = utf8("name")
+        #expect(DumpOptions.Hash.sha256.hash(name) == Array(SHA256.hash(data: name)))
+        #expect(DumpOptions.Hash.sha1.hash(name) == Array(Insecure.SHA1.hash(data: name)))
     }
 
     /// `--verify` lists the commits; a truncated file shows what recovery

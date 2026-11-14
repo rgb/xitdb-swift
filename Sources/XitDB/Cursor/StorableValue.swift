@@ -38,24 +38,26 @@
 /// ``XitDBError/invalidUTF8``; `[UInt8]` reads any bytes.
 ///
 /// A type of your own conforms by saying how it is written, and then goes
-/// wherever a value goes. A record is usually a map of its fields. This
-/// one clears its slot first, so that it takes the place of whatever was
+/// wherever a value goes. A record is usually a map of its fields. The
+/// conformance is in an extension, which leaves the struct the initialiser
+/// Swift gives it. This one clears its slot first, so that it takes the place of whatever was
 /// there, a value of another kind included; without that line it would
 /// write into a map that is there already and keep the fields it does not
 /// write, and be refused by a slot that holds a number:
 ///
 /// ```swift
-/// struct Person: StorableValue {
+/// struct Person {
 ///     var name: String
 ///     var age: UInt64
+/// }
 ///
+/// extension Person: StorableValue {
 ///     init(reading cursor: Cursor<ReadOnly>) throws(XitDBError) {
 ///         let fields = try HashMap<ReadOnly>(cursor)
 ///         guard let name = try fields.value(forKey: "name", as: String.self),
 ///             let age = try fields.value(forKey: "age", as: UInt64.self)
 ///         else { throw .keyNotFound }
-///         self.name = name
-///         self.age = age
+///         self.init(name: name, age: age)
 ///     }
 ///
 ///     func write(to cursor: inout Cursor<ReadWrite>) throws(XitDBError) {

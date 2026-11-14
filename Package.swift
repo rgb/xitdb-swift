@@ -26,7 +26,6 @@ let package = Package(
     products: [
         .library(name: "XitDB", targets: ["XitDB"]),
         .library(name: "XitDBHashing", targets: ["XitDBHashing"]),
-        .library(name: "XitDBStore", targets: ["XitDBStore"]),
         .executable(name: "xitdb-dump", targets: ["XitDBDump"]),
     ],
     dependencies: [
@@ -43,20 +42,13 @@ let package = Package(
             name: "XitDB",
             swiftSettings: languageSettings + [.strictMemorySafety()]
         ),
-        // The hashes a store names, as the module's own types: SHA-256 and
-        // SHA-1 forwarding to CryptoKit where it exists and to the portable
-        // implementations where it does not, and SipHash-128; each conforms to
-        // XitDB's KeyHashing. No dependency: the package takes none (D15).
+        // The hashes a database can be given, as the module's own types:
+        // SHA-256 and SHA-1 forwarding to CryptoKit where it exists and to the
+        // portable implementations where it does not; each conforms to XitDB's
+        // KeyHashing. No dependency: the package takes none (D15).
         .target(
             name: "XitDBHashing",
             dependencies: ["XitDB"],
-            swiftSettings: languageSettings + [.strictMemorySafety()]
-        ),
-        // The Swift layer over the faithful one (M10): keys as values, values
-        // as types, handles that name a place, the collections over them.
-        .target(
-            name: "XitDBStore",
-            dependencies: ["XitDB", "XitDBHashing"],
             swiftSettings: languageSettings + [.strictMemorySafety()]
         ),
         // The benchmark of spec/benchmarks.md. An executable target is an
@@ -64,7 +56,7 @@ let package = Package(
         // package is meant to, and it brings no dependency.
         .executableTarget(
             name: "XitDBBenchmark",
-            dependencies: ["XitDB", "XitDBHashing", "XitDBStore"],
+            dependencies: ["XitDB", "XitDBHashing"],
             swiftSettings: languageSettings
         ),
         // The corruption fuzzer, which checks that a damaged file gives an error
@@ -96,13 +88,8 @@ let package = Package(
             swiftSettings: languageSettings
         ),
         .testTarget(
-            name: "XitDBStoreTests",
-            dependencies: ["XitDBStore", "XitDBHashing"],
-            swiftSettings: languageSettings
-        ),
-        .testTarget(
             name: "XitDBTests",
-            dependencies: ["XitDB", "XitDBHashing", "XitDBStore", "XitDBDumpKit"],
+            dependencies: ["XitDB", "XitDBHashing", "XitDBDumpKit"],
             exclude: ["Resources/fixtures-source.txt"],
             resources: [
                 .copy("Resources/test.db"),
@@ -114,11 +101,10 @@ let package = Package(
         // Every code block of the README and the articles, as a test
         // that runs it, importing the library as a client does: the proof that the
         // public surface is enough for what the documentation shows.
-        // The examples hash through XitDBHashing, as the articles' readers do,
-        // and the store's examples import XitDBStore alone.
+        // The examples hash through XitDBHashing, as the articles' readers do.
         .testTarget(
             name: "XitDBExamples",
-            dependencies: ["XitDB", "XitDBHashing", "XitDBStore"],
+            dependencies: ["XitDB", "XitDBHashing"],
             swiftSettings: languageSettings
         ),
     ],

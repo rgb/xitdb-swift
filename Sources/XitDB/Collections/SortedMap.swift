@@ -627,7 +627,7 @@ extension SortedMap {
     ///
     /// `nil` means there is nothing under the key: no entry, or an entry
     /// whose value was never written. A value that is there is read
-    /// strictly, as `StorableValue` says: one of another kind than the
+    /// strictly, as ``StorableValue`` says: one of another kind than the
     /// type is written as is an error and not `nil`. A value that was set
     /// to nothing with `.slot(nil)` is there: read as a number it is that
     /// error, and read as a `String`, a `[UInt8]` or ``Bytes`` it is empty.

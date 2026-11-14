@@ -7,8 +7,8 @@
 /// and sets that take a key hash the key's bytes with it; its snapshots and
 /// the target of a compaction take the conformer from it. A database made
 /// without one takes hashes alone, which its caller computes with a
-/// conformer or in any other way. The `XitDBHashing` target has SHA-256,
-/// SHA-1 and SipHash-128.
+/// conformer or in any other way. The `XitDBHashing` target has SHA-256
+/// and SHA-1.
 ///
 /// ``size`` is the number of bytes every digest has. It is the hash size of
 /// a database created with the conformer, and a database of another hash

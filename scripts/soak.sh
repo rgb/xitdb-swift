@@ -12,4 +12,4 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-XITDB_MODEL_SOAK="${1:-300}" swift test --filter "ModelTests/soak|StoreModelTests/soak" 2>&1 | grep -E "soak:|✘|✔ Test run|↳" || true
+XITDB_MODEL_SOAK="${1:-300}" swift test --filter "ModelTests/soak|KeyedModelTests/soak" 2>&1 | grep -E "soak:|✘|✔ Test run|↳" || true
