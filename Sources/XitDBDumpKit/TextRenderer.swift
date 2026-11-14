@@ -6,7 +6,9 @@ package enum TextRenderer {
         if let header = dump.header {
             var line = "xitdb file: \(header.fileSize) bytes"
             if header.committedSize != header.fileSize { line += ", \(header.committedSize) committed" }
-            let hashID = header.hashIDText.map { "\"\($0)\"" } ?? "0x" + header.hashIDHex
+            // Between double quotes as a value's text is: a double quote
+            // and a backslash in the ID with a backslash before them.
+            let hashID = header.hashIDText.map { "\"\(Dumper.escaped($0))\"" } ?? "0x" + header.hashIDHex
             line += "; version \(header.version), hash size \(header.hashSize), hash id \(hashID)"
             line += ", file id \(header.fileID)"
             if let count = header.momentCount { line += "; \(count) moment\(count == 1 ? "" : "s")" }
