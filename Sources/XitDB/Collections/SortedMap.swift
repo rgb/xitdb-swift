@@ -616,3 +616,91 @@ extension SortedMap {
         self.cursor = cursor
     }
 }
+
+// MARK: Typed values
+
+extension SortedMap {
+    /// The value stored under a key, read as a type, or `nil` if the map
+    /// has no entry for the key or the entry's value was never written.
+    ///
+    /// The type can be given or left to what the result is assigned to.
+    ///
+    /// `nil` means there is nothing under the key: no entry, or an entry
+    /// whose value was never written. A value that is there is read
+    /// strictly, as ``StorableValue`` says: one of another kind than the
+    /// type is written as is an error and not `nil`. A value that was set
+    /// to nothing with `.slot(nil)` is there: read as a number it is that
+    /// error, and read as a `String`, a `[UInt8]` or ``Bytes`` it is empty.
+    ///
+    /// - Parameters:
+    ///   - key: The key's bytes, in any sequence of bytes.
+    ///   - type: The type to read.
+    /// - Throws: What ``cursor(forKey:)-(Span<UInt8>)`` throws, and what
+    ///   ``Cursor/read(_:)`` throws, ``XitDBError/unexpectedTag`` for a
+    ///   value of another kind among them.
+    public func value<Value: StorableValue>(forKey key: some Sequence<UInt8>, as type: Value.Type = Value.self)
+        throws(XitDBError) -> Value?
+    {
+        guard let cursor = try cursor(forKey: key) else { return nil }
+        return try Value(reading: cursor)
+    }
+
+    /// The value stored under a key that is text, read as a type: the form
+    /// of `value(forKey:as:)` by bytes with the string's UTF-8 as the key,
+    /// which does and throws what that one does.
+    ///
+    /// - Parameters:
+    ///   - key: The key.
+    ///   - type: The type to read.
+    public func value<Value: StorableValue>(forKey key: some StringProtocol, as type: Value.Type = Value.self)
+        throws(XitDBError) -> Value?
+    {
+        guard let cursor = try cursor(forKey: key) else { return nil }
+        return try Value(reading: cursor)
+    }
+}
+
+extension SortedMap where Access == ReadWrite {
+    /// Stores a value under a key, in place of any value that was there.
+    /// The map gets an entry for the key if it has none.
+    ///
+    /// The value writes itself where the put of ``WritableData`` writes
+    /// its data, in the same transaction: a value of one of the library's
+    /// types leaves the file that put leaves, and a type of your own
+    /// writes what it says, a collection included.
+    ///
+    /// - Parameters:
+    ///   - value: The value.
+    ///   - key: The key's bytes, in any sequence of bytes.
+    /// - Throws: What the put of ``WritableData`` throws, and what the
+    ///   value's own writing throws. A value that fails once the map has
+    ///   made its entry poisons the transaction, as any write that fails
+    ///   after it has written does.
+    public func put(_ value: some StorableValue, forKey key: some Sequence<UInt8>) throws(XitDBError) {
+        let bytes = Array(key)
+        try put(value, forKeyBytes: bytes.span)
+    }
+
+    /// Stores a value under a key that is text: the form of the typed put
+    /// by bytes with the string's UTF-8 as the key, which does and throws
+    /// what that one does.
+    ///
+    /// - Parameters:
+    ///   - value: The value.
+    ///   - key: The key.
+    public func put(_ value: some StorableValue, forKey key: some StringProtocol) throws(XitDBError) {
+        let bytes = Array(key.utf8)
+        try put(value, forKeyBytes: bytes.span)
+    }
+
+    /// The typed put by the key's bytes, which the two public forms come
+    /// to.
+    func put(_ value: some StorableValue, forKeyBytes key: Span<UInt8>) throws(XitDBError) {
+        let path: InlineArray<2, PathPart> = [.sortedMapGet(.value, SortedKey(key)), .ctx]
+        _ = try cursor.writePath(
+            path.span,
+            typed: { (valueCursor: inout Cursor<ReadWrite>) throws(XitDBError) in
+                try value.write(to: &valueCursor)
+            })
+    }
+}

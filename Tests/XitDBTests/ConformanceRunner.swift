@@ -686,8 +686,10 @@ final class ScriptRunner {
         case .poisonedTransaction: "PoisonedTransaction"
         case .untrustedRootHeader: "UntrustedRootHeader"
         case .hashSizeMismatch: "HashSizeMismatch"
-        // No script gives a database a hasher or a key.
+        // No script gives a database a hasher or a key, or reads a value
+        // as a type.
         case .noKeyHashing: "NoKeyHashing"
+        case .invalidUTF8: "InvalidUTF8"
         case .invalidRange: "InvalidRange"
         case .invalidLength: "InvalidLength"
         case .targetNotEmpty: "TargetNotEmpty"

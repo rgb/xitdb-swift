@@ -113,7 +113,7 @@ the transaction's body was given:
 - **The cursor the body was given goes on.** Its slot is in a record the engine keeps for the transaction, the copy of
   the root slot, or in ``ArrayList/append(_:_:)`` on a history the new element's slot in the history's block, and nothing in
   the transaction can copy that record. So after a freeze it can still make a collection, and the cursors and collections
-  that gives are fresh. It can also write a value, with ``Cursor/write(_:)`` or ``Cursor/writeIfEmpty(_:)``, which rewrites
+  that gives are fresh. It can also write a value, with ``Cursor/write(_:)-(WritableData)`` or ``Cursor/writeIfEmpty(_:)``, which rewrites
   that slot in place, as the original does. A byte writer through it is refused like any other write. The engine goes by
   the slot, so the cursor of a collection made from it, such as `moment.cursor`, can do the same, whenever the collection
   was made. Writes through the collection itself are refused all the same.

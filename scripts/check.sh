@@ -2,7 +2,7 @@
 #
 # The gate. Run it from anywhere; it must pass at every commit offered for review.
 #
-#   1. debug build and tests
+#   1. debug build and tests, and what must not compile
 #   2. release build and tests, a smoke run of the benchmark and the corruption fuzzer
 #   3. import check for Sources/XitDB
 #   4. formatting check
@@ -57,6 +57,13 @@ esac
 step "Debug build and tests"
 swift build "${strict[@]}"
 swift test --skip SnapshotProofTests "${strict[@]}"
+
+# D35, item 4: an integer whose kind is not spelled does not compile, since `Int` is
+# not a value. A test target cannot hold code the compiler has to refuse, so two files
+# are type-checked against the library the debug build made: one that must compile,
+# and one that must be refused on each marked line with the library's own message.
+step "What must not compile"
+scripts/must-not-compile.sh
 
 # The snapshot concurrency suite under the thread sanitizer, in a build of its
 # own: a race in a snapshot's read half would be a wrong read that no plain run

@@ -21,9 +21,9 @@
 
 ### Writing
 
-- ``append(_:)``
+- ``append(_:)-(WritableData)``
 - ``append(_:_:)``
 - ``appendCursor()``
-- ``put(_:at:)``
+- ``put(_:at:)-(WritableData,_)``
 - ``putCursor(at:)``
 - ``truncate(to:)``

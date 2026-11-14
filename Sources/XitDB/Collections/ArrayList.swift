@@ -344,3 +344,80 @@ func listIndex(_ index: some BinaryInteger) throws(XitDBError) -> Int64 {
     guard let index = Int64(exactly: index) else { throw .indexOutOfRange }
     return index
 }
+
+// MARK: Typed values
+
+extension ArrayList {
+    /// The element at an index, read as a type, or `nil` if the index
+    /// names no element.
+    ///
+    /// The type can be given or left to what the result is assigned to:
+    /// `try list.value(at: 0, as: String.self)`, or `let first: String? =
+    /// try list.value(at: 0)`.
+    ///
+    /// `nil` means the index names no element. An element that is there is
+    /// read strictly, as ``StorableValue`` says: one of another kind than
+    /// the type is written as is an error and not `nil`. An element that
+    /// was set to nothing, or appended and never written, is there: read
+    /// as a number it is that error, and read as a `String`, a `[UInt8]`
+    /// or ``Bytes`` it is empty.
+    ///
+    /// - Parameters:
+    ///   - index: The element's index. A negative index counts from the
+    ///     end: -1 is the last element.
+    ///   - type: The type to read.
+    /// - Throws: What ``cursor(at:)`` throws, and what ``Cursor/read(_:)``
+    ///   throws, ``XitDBError/unexpectedTag`` for an element of another
+    ///   kind among them.
+    public func value<Value: StorableValue>(at index: some BinaryInteger, as type: Value.Type = Value.self)
+        throws(XitDBError) -> Value?
+    {
+        guard let cursor = try cursor(at: index) else { return nil }
+        return try Value(reading: cursor)
+    }
+}
+
+extension ArrayList where Access == ReadWrite {
+    /// Appends a value to the list.
+    ///
+    /// The value writes itself into the new element, in the same
+    /// transaction: a value of one of the library's types leaves the file
+    /// the append of ``WritableData`` leaves, and a type of your own
+    /// writes what it says, a collection included.
+    ///
+    /// - Parameter value: The value.
+    /// - Throws: What the append of ``WritableData`` throws, and what the
+    ///   value's own writing throws. A value that fails once the list has
+    ///   grown poisons the transaction, as any write that fails after it
+    ///   has written does.
+    public func append(_ value: some StorableValue) throws(XitDBError) {
+        let path: InlineArray<2, PathPart> = [.arrayListAppend, .ctx]
+        _ = try cursor.writePath(
+            path.span,
+            typed: { (element: inout Cursor<ReadWrite>) throws(XitDBError) in
+                try value.write(to: &element)
+            })
+    }
+
+    /// Stores a value at an index, in place of the element that was there.
+    ///
+    /// The value writes itself into the element, in the same transaction,
+    /// as ``append(_:)-(StorableValue)`` says.
+    ///
+    /// - Parameters:
+    ///   - value: The value.
+    ///   - index: The element's index. A negative index counts from the
+    ///     end.
+    /// - Throws: What the put of ``WritableData`` throws,
+    ///   ``XitDBError/indexOutOfRange`` for an index that names no element
+    ///   among them, and what the value's own writing throws.
+    public func put(_ value: some StorableValue, at index: some BinaryInteger) throws(XitDBError) {
+        let index = try listIndex(index)
+        let path: InlineArray<2, PathPart> = [.arrayListGet(index), .ctx]
+        _ = try cursor.writePath(
+            path.span,
+            typed: { (element: inout Cursor<ReadWrite>) throws(XitDBError) in
+                try value.write(to: &element)
+            })
+    }
+}

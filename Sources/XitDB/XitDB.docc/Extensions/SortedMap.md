@@ -36,7 +36,7 @@ See <doc:SortingAndPaginating>.
 ### Writing
 
 - ``put(_:forKey:)-(_,Span<UInt8>)``
-- ``put(_:forKey:)-(_,Sequence<UInt8>)``
+- ``put(_:forKey:)-(WritableData,Sequence<UInt8>)``
 - ``putCursor(forKey:)-(Span<UInt8>)``
 - ``putCursor(forKey:)-(Sequence<UInt8>)``
 - ``remove(forKey:)-(Span<UInt8>)``

@@ -135,8 +135,8 @@ that joined included, and a write through one is refused with ``XitDBError/stale
 transaction's cursor, the one its body was given, as the example does with `joined`. Making it again from the list's own
 cursor is refused too: see <doc:CloningFreezeAndStaleHandles>.
 
-``LinkedArrayList/insert(_:at:)`` needs an element to insert before, so an index equal to the count throws
-``XitDBError/indexOutOfRange``. Use ``LinkedArrayList/append(_:)`` to add at the end.
+``LinkedArrayList/insert(_:at:)-(WritableData,_)`` needs an element to insert before, so an index equal to the count throws
+``XitDBError/indexOutOfRange``. Use ``LinkedArrayList/append(_:)-(WritableData)`` to add at the end.
 
 ### The hash maps and sets
 

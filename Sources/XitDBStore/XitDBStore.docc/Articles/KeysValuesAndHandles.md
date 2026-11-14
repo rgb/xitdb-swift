@@ -167,7 +167,7 @@ collection changes while it runs, as the faithful one can.
 
 ### Values
 
-A value is a ``StorableValue``: a type that reads itself from a faithful read-only cursor and writes itself through a
+A value is a ``StorableValue-9ta53``: a type that reads itself from a faithful read-only cursor and writes itself through a
 read-write one. The format has unsigned and signed integers, doubles and byte arrays, and the conformances are those:
 
 - `UInt64`, `Int64` and `Double` are the format's scalars.

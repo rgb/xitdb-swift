@@ -832,3 +832,61 @@ extension CountedHashMap where Access == ReadWrite {
         return true
     }
 }
+
+// MARK: Typed values
+
+extension CountedHashMap {
+    /// The value stored under a key, read as a type, or `nil` if the map
+    /// has no entry for the key or the entry's value was never written.
+    ///
+    /// The type can be given or left to what the result is assigned to:
+    /// `try map.value(forKey: "name", as: String.self)`, or `let name:
+    /// String? = try map.value(forKey: "name")`.
+    ///
+    /// `nil` means there is nothing under the key: no entry, or an entry
+    /// whose value was never written. A value that is there is read
+    /// strictly, as ``StorableValue`` says: one of another kind than the
+    /// type is written as is an error and not `nil`. A value that was set
+    /// to nothing with `.slot(nil)` is there: read as a number it is that
+    /// error, and read as a `String`, a `[UInt8]` or ``Bytes`` it is empty.
+    ///
+    /// - Parameters:
+    ///   - key: The key.
+    ///   - type: The type to read.
+    /// - Throws: ``XitDBError/noKeyHashing`` if the database was given no
+    ///   hasher, what ``cursor(forKey:)`` throws, and what
+    ///   ``Cursor/read(_:)`` throws, ``XitDBError/unexpectedTag`` for a
+    ///   value of another kind among them.
+    public func value<Value: StorableValue>(forKey key: some KeyRepresentable, as type: Value.Type = Value.self)
+        throws(XitDBError) -> Value?
+    {
+        guard let cursor = try cursor(forKey: key) else { return nil }
+        return try Value(reading: cursor)
+    }
+}
+
+extension CountedHashMap where Access == ReadWrite {
+    /// Stores a value under a key, in place of any value that was there.
+    ///
+    /// The value writes itself where the put of ``WritableData`` writes
+    /// its data, in the same transaction: a value of one of the library's
+    /// types leaves the file that put leaves, and a type of your own
+    /// writes what it says, a collection included. The key is not stored.
+    ///
+    /// - Parameters:
+    ///   - value: The value.
+    ///   - key: The key.
+    /// - Throws: ``XitDBError/noKeyHashing`` if the database was given no
+    ///   hasher, before anything else is looked at; what the put of
+    ///   ``WritableData`` throws; and what the value's own writing throws.
+    ///   A value that fails once the map has made its entry poisons the
+    ///   transaction, as any write that fails after it has written does.
+    public func put(_ value: some StorableValue, forKey key: some KeyRepresentable) throws(XitDBError) {
+        let path: InlineArray<2, PathPart> = [.hashMapGet(.value, try cursor.keyHash(of: key)), .ctx]
+        _ = try cursor.writePath(
+            path.span,
+            typed: { (valueCursor: inout Cursor<ReadWrite>) throws(XitDBError) in
+                try value.write(to: &valueCursor)
+            })
+    }
+}

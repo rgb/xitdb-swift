@@ -634,7 +634,7 @@ extension Cursor where Access == ReadWrite {
     /// now, and when this cursor was made on a slot that had been set to
     /// nothing, which is not empty.
     ///
-    /// - Throws: As ``write(_:)``, and ``XitDBError/invalidEnumTag`` or
+    /// - Throws: As ``write(_:)-(WritableData)``, and ``XitDBError/invalidEnumTag`` or
     ///   ``XitDBError/endOfStream`` if the slot cannot be read.
     public mutating func writeIfEmpty(_ data: WritableData) throws(XitDBError) {
         // Inside a transaction the checks of a write come first, stale
@@ -688,7 +688,7 @@ extension Cursor where Access == ReadWrite {
     ///     none. `body` can also set it, through the writer.
     ///   - body: Writes the bytes.
     /// - Throws: ``XitDBError/cursorNotWritable`` on a root cursor, to
-    ///   which bytes are written with ``write(_:)``, or if the slot has no
+    ///   which bytes are written with ``write(_:)-(WritableData)``, or if the slot has no
     ///   position; ``XitDBError/expectedTxStart`` outside a transaction;
     ///   ``XitDBError/staleCursor`` if the cursor is from before the last
     ///   freeze of this transaction or from an earlier transaction;
@@ -842,7 +842,7 @@ extension Database {
     /// `body` is given is the transaction's cursor: after a freeze,
     /// ``Database/freeze()`` or a join, it is the one place from before the
     /// freeze that a write may go through, making a collection or writing a
-    /// value with ``Cursor/write(_:)`` or ``Cursor/writeIfEmpty(_:)``, a byte
+    /// value with ``Cursor/write(_:)-(WritableData)`` or ``Cursor/writeIfEmpty(_:)``, a byte
     /// writer excepted, it or any cursor at the same slot, such as the cursor of a
     /// collection made from it, so a collection made again from either is
     /// fresh. It and every cursor and

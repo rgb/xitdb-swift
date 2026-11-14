@@ -169,7 +169,7 @@ public enum XitDBError: Error, Sendable {
     /// ``Database/withTransaction(_:)`` or a history append hands its body, or
     /// any cursor at the same slot, such as the cursor of a collection made
     /// from it: making a collection from it is allowed, and so is writing a
-    /// value through it, with ``Cursor/write(_:)`` or
+    /// value through it, with ``Cursor/write(_:)-(WritableData)`` or
     /// ``Cursor/writeIfEmpty(_:)``, since its slot is the engine's own record
     /// that nothing inside the transaction can copy; every cursor taken from
     /// it is fresh, and a byte writer through it is refused like any other
@@ -241,7 +241,7 @@ public enum XitDBError: Error, Sendable {
     /// another size is refused with ``invalidHashSize``.
     case hashSizeMismatch
 
-    /// A call that takes a key, such as ``HashMap/put(_:forKey:)``, was
+    /// A call that takes a key, such as ``HashMap/put(_:forKey:)-(WritableData,_)``, was
     /// made on a database that was given no hasher, or on a snapshot of
     /// one: the database was made with a hash size alone, as
     /// ``Database/init(opening:hashSize:)`` makes it. Open it with
@@ -249,6 +249,10 @@ public enum XitDBError: Error, Sendable {
     /// hash to the call's `forHash:` form. It is thrown before anything
     /// else about the call is looked at.
     case noKeyHashing
+
+    /// Bytes read as a `String` are not valid UTF-8. A typed read repairs
+    /// nothing: read such bytes as `[UInt8]`, which reads any.
+    case invalidUTF8
 
     /// The root header of a database being opened cannot be trusted: its
     /// size is past the end of the file, smaller than a database can be, or

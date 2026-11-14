@@ -21,12 +21,12 @@
 
 ### Adding and changing elements
 
-- ``append(_:)``
+- ``append(_:)-(WritableData)``
 - ``append(_:_:)``
 - ``appendCursor()``
-- ``insert(_:at:)``
+- ``insert(_:at:)-(WritableData,_)``
 - ``insertCursor(at:)``
-- ``put(_:at:)``
+- ``put(_:at:)-(WritableData,_)``
 - ``putCursor(at:)``
 - ``remove(at:)``
 

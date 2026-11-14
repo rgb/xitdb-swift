@@ -36,7 +36,7 @@ See <doc:LargeByteArrays> for reading a part at a time.
 Only on a cursor of ``ReadWrite`` access, and only in a transaction. See <doc:CloningFreezeAndStaleHandles> for how the
 two freezes differ.
 
-- ``write(_:)``
+- ``write(_:)-(WritableData)``
 - ``writeIfEmpty(_:)``
 - ``writeBytes(formatTag:_:)``
 - ``freeze()``

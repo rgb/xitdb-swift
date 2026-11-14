@@ -53,7 +53,7 @@ A handle names a place in a moment, and is looked up when it is used.
 ### Keys and values
 
 - ``KeyRepresentable-1bzur``
-- ``StorableValue``
+- ``StorableValue-9ta53``
 
 ### Collections
 

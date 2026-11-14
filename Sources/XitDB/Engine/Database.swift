@@ -558,7 +558,7 @@ public final class Database {
     /// cursor of a collection made from it: making a collection from it is
     /// allowed, so a collection made again from it is fresh, and so is every
     /// cursor taken from it, and so is writing a value through it, with
-    /// ``Cursor/write(_:)`` or ``Cursor/writeIfEmpty(_:)``; its slot is the
+    /// ``Cursor/write(_:)-(WritableData)`` or ``Cursor/writeIfEmpty(_:)``; its slot is the
     /// engine's own record, which nothing inside
     /// the transaction can copy, and every write re-reads it. A byte writer
     /// through it is refused, and so is every other cursor from before the
