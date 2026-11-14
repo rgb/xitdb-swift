@@ -235,12 +235,18 @@ extension Database {
     /// the root slot that nothing reads, are not taken from the source: the
     /// replica has zeros there.
     ///
-    /// What a failure leaves is what the original leaves. Otherwise than
-    /// at 0, bytes that do not end with a trailer, or a source that ends
-    /// short, leave what was written past the committed size, which the
-    /// next sync or transaction discards. At 0, a failure after the storage
+    /// What a failure leaves is what the original leaves. The data is
+    /// written in blocks of 4096 bytes, counted from where it starts, each
+    /// once all of it has arrived, so a source that ends short or throws
+    /// leaves the blocks that arrived whole and nothing of the one it
+    /// stopped in. Otherwise than at 0, those blocks, or bytes that do not
+    /// end with a trailer, stay past the committed size, where the next
+    /// sync or transaction discards them. At 0, a failure after the storage
     /// was emptied leaves a database without a first commit: the incoming
-    /// header, a committed size of zero, and what arrived. Its
+    /// header, a committed size of zero, and the blocks that arrived whole.
+    /// With no whole block it is no longer than a new database, and is what
+    /// a creation that did not finish leaves, which
+    /// ``init(creating:hashSize:hashID:fileID:)`` creates over. Its
     /// ``replicaState`` is a size of zero and a checksum of zero, to which
     /// the source answers 0, so the next sync replaces it; everything else
     /// throws ``XitDBError/invalidDatabase`` until then, as
@@ -291,16 +297,37 @@ extension Database {
         // was allocated and zeroed again, once per byte for a source that
         // gives one at a time.
         var buffer = [UInt8](repeating: 0, count: Int(min(remaining, UInt64(Self.streamChunk))))
+        // What has arrived of a block that is not whole yet. The data
+        // reaches the storage in the original's blocks, each once all of
+        // it has arrived, so a source that stops leaves the blocks before
+        // the one it stopped in and nothing of that one.
+        var partial: [UInt8] = []
         while remaining > 0 {
-            if remaining < UInt64(buffer.count) {
-                buffer.removeLast(buffer.count - Int(remaining))
+            let unread = remaining - UInt64(partial.count)
+            if unread < UInt64(buffer.count) {
+                buffer.removeLast(buffer.count - Int(unread))
             }
             var span = buffer.mutableSpan
             let read = try XitDBError.carrying { try source.read(into: &span) }
             guard read > 0, read <= buffer.count else { throw .endOfStream }
-            try storage.write(buffer.span.extracting(0..<read), at: position)
-            position = try position.offset(by: UInt64(read))
-            remaining -= UInt64(read)
+            // The last block is as long as what remains, and whole when
+            // all of that has arrived.
+            let arrived = partial.count + read
+            let whole = UInt64(arrived) == remaining ? arrived : arrived - arrived % Self.copyBlock
+            if partial.isEmpty {
+                if whole > 0 {
+                    try storage.write(buffer.span.extracting(0..<whole), at: position)
+                }
+                partial.append(contentsOf: buffer[whole..<read])
+            } else {
+                partial.append(contentsOf: buffer[0..<read])
+                if whole > 0 {
+                    try storage.write(partial.span.extracting(0..<whole), at: position)
+                    partial.removeFirst(whole)
+                }
+            }
+            position = try position.offset(by: UInt64(whole))
+            remaining -= UInt64(whole)
         }
 
         try commitApplied(at: start, count: count)
@@ -406,8 +433,15 @@ extension Database {
     }
 
     /// The size of the chunks the streams move: large enough that a file is
-    /// read or written in few calls, small enough to sit in a buffer.
-    private static let streamChunk = 256 * 1024
+    /// read or written in few calls, small enough to sit in a buffer. A
+    /// whole number of blocks.
+    private static let streamChunk = 64 * copyBlock
+
+    /// The size of the blocks in which a sync's data reaches the storage,
+    /// which is the original's. They count from where the data starts: the
+    /// committed size for an append, the end of the root header for a copy
+    /// from 0.
+    private static let copyBlock = 4096
 
     /// Streams the storage's bytes from `start` up to `end` into `sink`.
     ///

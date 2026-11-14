@@ -209,16 +209,17 @@ struct CollectingSink: ByteSink {
         }
         #expect(try replicaSubject.storage.length == Self.newSize)
 
-        // a count larger than the source gives: the bytes written stay past
-        // the committed size, and the next sync writes over them
+        // a count larger than the source gives: the ten bytes that came are
+        // not the whole of a block, so nothing of them is written
         var short = ArrayByteSource(Array(tail[0..<10]))
         #expect(throws: XitDBError.endOfStream) {
             try replica.applyReplicated(at: Self.newSize, from: &short, count: UInt64(tail.count))
         }
         #expect(try replica.committedSize == Self.newSize)
-        #expect(try replicaSubject.storage.length == Self.newSize + 10)
+        #expect(try replicaSubject.storage.length == Self.newSize)
 
-        // bytes that do not end with a trailer: the same
+        // bytes that do not end with a trailer: they are written, stay past
+        // the committed size, and the next sync writes over them
         #expect(throws: XitDBError.invalidDatabase) {
             try replica.applyReplicated(at: Self.newSize, bytes: Array(tail.dropLast()))
         }
@@ -249,8 +250,9 @@ struct CollectingSink: ByteSink {
     /// inside it, or claims more than the buffer holds, is `endOfStream`
     /// with the replica as it was. A source that ends after its header has
     /// replaced the replica by then: what is left has the source's header
-    /// and no first commit. A whole one from a source puts it right, the
-    /// same as from an array.
+    /// and no first commit, and nothing of a block of data that did not
+    /// arrive whole. A whole one from a source puts it right, the same as
+    /// from an array.
     @Test(arguments: StorageKind.allCases)
     func aStreamingSyncAtZeroThatEndsShort(kind: StorageKind) throws {
         let (_, source) = try makeSource(kind)
@@ -277,13 +279,15 @@ struct CollectingSink: ByteSink {
         #expect(try replica.committedSize == Self.newSize)
 
         // forty bytes of fifty-seven: the header came, so the replica is
-        // the source's database by now, without a first commit
+        // the source's database by now, without a first commit; the eight
+        // bytes of data that came are not the whole of its one block, so the
+        // storage holds the two headers and no more
         var short = ArrayByteSource(Array(whole[0..<40]))
         #expect(throws: XitDBError.endOfStream) {
             try replica.applyReplicated(at: 0, from: &short, count: Self.newSize)
         }
         #expect(replica.header.fileID == 6)
-        #expect(try replicaSubject.storage.length == 40)
+        #expect(try replicaSubject.storage.length == Self.dataStart)
         #expect(throws: XitDBError.invalidDatabase) { try replica.committedSize }
         #expect(try replica.replicaState == ReplicaState(committedSize: 0, checksum: 0))
 
@@ -297,7 +301,8 @@ struct CollectingSink: ByteSink {
 
     /// A source that gives one byte per read syncs the same bytes as one
     /// that gives them whole, at 0 and at the committed size: the loop
-    /// takes a short read for what it is and asks again.
+    /// takes a short read for what it is and asks again, and writes a
+    /// block once it is whole, not a byte at a time.
     @Test(arguments: StorageKind.allCases)
     func aSourceThatGivesOneByteAtATimeSyncs(kind: StorageKind) throws {
         let (_, source) = try makeSource(kind)
@@ -310,20 +315,67 @@ struct CollectingSink: ByteSink {
         var first = OneByteSource(try readCommitted(source, from: 0, to: Self.newSize))
         var writes = faulty.writeCount
         try replica.applyReplicated(at: 0, from: &first, count: Self.newSize)
-        // the header, the empty root header, one write per byte of the data,
-        // and the committed size
-        #expect(faulty.writeCount - writes == 2 + Int(Self.newSize - Self.dataStart) + 1)
+        // the header, the empty root header, the data in one write once
+        // all twenty-five bytes of it have come, and the committed size
+        #expect(faulty.writeCount - writes == 2 + 1 + 1)
         #expect(try replica.committedSize == Self.newSize)
         #expect(replica.header.fileID == 6)
 
         var rest = OneByteSource(Array(whole[Int(Self.newSize)...]))
         writes = faulty.writeCount
         try replica.applyReplicated(at: Self.newSize, from: &rest, count: committed - Self.newSize)
-        // one write per byte, and one for the root header
-        #expect(UInt64(faulty.writeCount - writes) == committed - Self.newSize + 1)
+        // less than a block, so one write when the last byte has come, and
+        // one for the root header
+        try #require(committed - Self.newSize < 4096)
+        #expect(faulty.writeCount - writes == 1 + 1)
         #expect(try replica.committedSize == committed)
         #expect(try readCommitted(replica, from: 0, to: committed) == whole)
         #expect(try replica.replicaState == (try source.replicaState))
+    }
+
+    /// A streaming sync writes its data a block of 4096 bytes at a time
+    /// when the source gives less than that per read, and a chunk at a time
+    /// when the source fills the buffer; a block's write that fails leaves
+    /// the blocks written before it.
+    @Test(arguments: StorageKind.allCases)
+    func aStreamingSyncWritesWholeBlocks(kind: StorageKind) throws {
+        let (_, source) = try FirstCommitTests.makeLargeSource(.two)
+        let committed = try source.committedSize
+        let whole = try source.readCommitted(from: 0, to: committed)
+        // two whole blocks of data and a third that is shorter
+        let dataCount = whole.count - Int(Self.dataStart)
+        try #require(dataCount > 2 * 4096 && dataCount < 3 * 4096)
+        let replicaSubject = try StorageUnderTest(kind)
+        let faulty = FaultInjectingStorage(replicaSubject.storage)
+        let replica = try Database(storage: faulty, hashSize: 20, hashID: nil, fileID: 7, random: FixedRandom([1]))
+
+        // a byte at a time: the header, the empty root header, the three
+        // blocks, and the committed size
+        var slow = OneByteSource(whole)
+        var writes = faulty.writeCount
+        try replica.applyReplicated(at: 0, from: &slow, count: committed)
+        #expect(faulty.writeCount - writes == 2 + 3 + 1)
+        #expect(try replica.readCommitted(from: 0, to: committed) == whole)
+
+        // all at once: the data in one write
+        var all = ArrayByteSource(whole)
+        writes = faulty.writeCount
+        try replica.applyReplicated(at: 0, from: &all, count: committed)
+        #expect(faulty.writeCount - writes == 2 + 1 + 1)
+        #expect(try replica.readCommitted(from: 0, to: committed) == whole)
+
+        // the second block's write fails: the first block stays
+        var again = OneByteSource(whole)
+        faulty.faults = [.failWrite(faulty.writeCount + 4)]
+        #expect(throws: FaultInjectingStorage.failure) {
+            try replica.applyReplicated(at: 0, from: &again, count: committed)
+        }
+        #expect(try faulty.length == Self.dataStart + 4096)
+        #expect(try replica.replicaState == ReplicaState(committedSize: 0, checksum: 0))
+
+        faulty.faults = []
+        try replica.applyReplicated(at: 0, bytes: whole)
+        #expect(try replica.committedSize == committed)
     }
 
     /// A source or a sink of the caller's that fails: a source claiming more
@@ -389,8 +441,8 @@ struct CollectingSink: ByteSink {
     /// is missing. At 0: the replica is emptied first and takes the
     /// source's header once that header is written, so every failure up to
     /// the committed size's write leaves a database without a first
-    /// commit, with what had arrived; after it the copy is made and only
-    /// its last sync is missing.
+    /// commit, with what had been written; after it the copy is made and
+    /// only its last sync is missing.
     @Test(arguments: StorageKind.allCases)
     func aStorageThatFailsDuringASync(kind: StorageKind) throws {
         let (_, source) = try makeSource(kind)
@@ -417,14 +469,15 @@ struct CollectingSink: ByteSink {
         #expect(try replica.committedSize == Self.newSize)
         #expect(try faulty.length == Self.newSize + 5)
 
-        // the second write of a streaming sync fails: the first byte stays
+        // the write of a streaming sync fails: the bytes are less than a
+        // block, written once the last has come, so nothing is written
         var slow = OneByteSource(tail)
-        faulty.faults = [.failWrite(faulty.writeCount + 2)]
+        faulty.faults = [.failWrite(faulty.writeCount + 1)]
         #expect(throws: failure) {
             try replica.applyReplicated(at: Self.newSize, from: &slow, count: UInt64(tail.count))
         }
         #expect(try replica.committedSize == Self.newSize)
-        #expect(try faulty.length == Self.newSize + 1)
+        #expect(try faulty.length == Self.newSize)
 
         // the sync before the root header fails: the bytes stay, uncommitted
         faulty.faults = [.failSync(faulty.syncCount + 1)]
