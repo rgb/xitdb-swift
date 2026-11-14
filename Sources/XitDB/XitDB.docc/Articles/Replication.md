@@ -38,11 +38,12 @@ Over a network, the replica sends its ``ReplicaState``, which is two integers, i
 ``ReplicaState/checksum``. The source replies with the start, the count and the bytes. A state read off a wire is made with
 ``ReplicaState/init(committedSize:checksum:)``.
 
-After a sync the replica is the same bytes as the source, and that is what a byte-identical replica buys. The one
-exception is the bytes between the database header and the committed size, which a full copy leaves as zeros: padding in
-a version 2 file, and in a version 1 file a copy of the root slot that nothing reads. It is an ordinary
-database, so anything that reads the source can read it, with its whole history, and it can be copied, compacted or
-promoted to be the source with no conversion. It can be checked by comparing bytes.
+After a sync the replica is the same bytes as the source, and that is what a byte-identical replica buys. A full copy
+does not take the bytes between the database header and the committed size, and leaves zeros there: in a version 2 file that
+is padding, zeros in the source too, and in a version 1 file a copy of the root slot that nothing reads, so a version 1
+replica can differ from its source there. It is an ordinary database, so anything that reads the source can read it, with
+its whole history, and it can be copied, compacted or promoted to be the source with no conversion. It can be checked by
+comparing bytes, those aside.
 
 For bytes held in memory, ``Database/readCommitted(from:to:)`` and ``Database/applyReplicated(at:bytes:)`` skip the sink and
 the source, and go in one copy:
@@ -136,19 +137,20 @@ let bytes = try source.readCommitted(from: start, to: end)
 var half = ArrayByteSource(Array(bytes[..<(bytes.count / 2)]))
 ```
 
-A sync at 0 is the exception. It reads and checks the incoming header before it touches the replica, so bytes too few to
-hold the headers, bytes that are not a database, and a database of a format version this package does not read or of
-another hash size leave the replica as it was. After that the replica is emptied, so a copy that fails then leaves a
-database without a first commit: the incoming header, a committed size of zero, and what arrived. Its
-``Database/replicaState`` is a size of zero and a checksum of zero, to which the source answers 0, so the next sync
-replaces it; everything else on it throws ``XitDBError/invalidDatabase`` until then. What did arrive may still hold the
-source's earlier commits whole, and ``Database/recover(_:)`` keeps the last of them, after which the source sends only the
-rest: see <doc:Recovery>. On a ``BufferedFileStorage``, what arrives after the headers waits in the storage's buffer, so
-unless the storage is flushed before it goes away, the file keeps only the headers and what the buffer had already written
-out. The headers alone are what a creation that did not finish leaves, which opening refuses and creating builds over: see
-<doc:Storage>.
+A sync at 0 is the exception. It reads and checks the incoming database header before it touches the replica, so a count too
+small for the headers, bytes that do not start with a database header, a format version this package does not read, another
+hash size, and a source that ends or throws within those first 20 bytes leave the replica as it was. After that the replica
+is emptied, so a copy that fails then leaves a database without a first commit: the incoming header, a committed size of
+zero, and what arrived. Its ``Database/replicaState`` is a size of zero and a checksum of zero, to which the source answers
+0, so the next sync replaces it; everything else on it throws ``XitDBError/invalidDatabase`` until then. What did arrive may
+still hold the source's earlier commits whole, and ``Database/recover(_:)`` keeps the last of them, after which the source
+sends only the rest: see <doc:Recovery>. Opened again, the file opens if it is longer than a new database; one no longer than
+that is taken for a creation that did not finish, which opening refuses and creating builds over (see <doc:Storage>). On a
+``BufferedFileStorage``, what arrives after the headers waits in the storage's buffer, so unless the storage is flushed
+before it goes away, the file keeps only the headers and what the buffer had already written out.
 
-If that matters, check for it, and write the copy to a new file, which takes the place of the old one only when it is complete:
+If a replica must not be left without a first commit, check for a full sync, and write the copy to a new file, which takes the
+place of the old one only when it is complete:
 
 ```swift
 let start = try source.replicationStart(for: try replica.replicaState)

@@ -77,8 +77,8 @@ A failure to open, including a missing file, throws ``XitDBError/storageFailure(
 
 A database is then either opened or created, and these are different calls.
 ``Database/init(opening:hashSize:)`` throws ``XitDBError/invalidDatabase`` on an empty storage, and
-``Database/init(creating:hashSize:hashID:fileID:)`` throws ``XitDBError/storageNotEmpty`` on one with a database in it, so neither
-can do the other's job by accident. To do either, say so:
+``Database/init(creating:hashSize:hashID:fileID:)`` throws ``XitDBError/storageNotEmpty`` on one with anything in it but what a
+creation that did not finish left (see below), so neither can do the other's job by accident. To do either, say so:
 
 ```swift
 let storage = try BufferedFileStorage(path: "main.db", access: .create)
@@ -88,12 +88,14 @@ let database =
     : Database(opening: storage, hashSize: 32)
 ```
 
-Two kinds of storage are neither empty nor a whole database. A process that died while creating a database leaves its header
-and nothing committed. Opening refuses that with ``XitDBError/endOfStream``, ``XitDBError/invalidDatabase`` or, where the first
-commit's trailer is whole, ``XitDBError/untrustedRootHeader(lastVerified:)``, so the pattern above gets one of those errors.
-Creating accepts it, for the same hash size, and creates over it; where the trailer is whole, ``Database/recover(_:)`` finishes
-the creation instead. A sync from 0 that did not finish leaves a database without a first commit that is longer than a new
-one: that opens, for the next sync to replace, as <doc:Replication> says.
+A creation or a copy that did not finish leaves a storage that is neither empty nor a whole database. A process that died
+while creating a database leaves its header and nothing committed. Opening refuses that with ``XitDBError/endOfStream``,
+``XitDBError/invalidDatabase`` or, where the first commit's trailer is whole,
+``XitDBError/untrustedRootHeader(lastVerified:)``, so the pattern above gets one of those errors. Creating accepts it, for
+the same hash size, and creates over it; where the trailer is whole, ``Database/recover(_:)`` finishes the creation instead.
+A sync from 0 that did not finish leaves a database without a first commit. If that is longer than a new database, it opens,
+for the next sync to replace, as <doc:Replication> says; if not, as when the copy stopped before the source's first commit
+arrived, it is taken for a creation that did not finish.
 
 A ``Durability`` says how far a commit goes to reach the disk, ``Durability/full`` by default: see <doc:Transactions>.
 
@@ -211,7 +213,7 @@ The engine relies on these points:
 - **``ReadableStorage/length`` counts what has been written**, including anything not yet flushed.
 - **``WritableStorage/sync(_:)`` comes twice in every commit**, a replica's sync included, and three times in a sync at 0,
   which syncs the incoming headers before their data. ``SyncPoint`` says which it is.
-  The data has to reach the disk before the header does. A failure of either reaches the caller of the transaction.
+  The data has to reach the disk before the header does. A failure of any of them reaches the caller of the transaction.
 
 Report a failure with ``XitDBError/storageFailure(errno:)``. A storage is used from one thread at a time, and it should be a class,
 which the protocol requires, since a database and its cursors share the one instance.

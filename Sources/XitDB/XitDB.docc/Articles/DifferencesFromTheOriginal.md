@@ -38,16 +38,16 @@ and the port's files are compared with that branch's.
   later write in it and the commit throw ``XitDBError/poisonedTransaction``: see <doc:Transactions>.
 - **``Cursor/writeIfEmpty(_:)``.** The original goes by the cursor's copy of the slot, so it can overwrite a value written since
   through another cursor. The port goes by the slot as it is now: it writes when the slot is empty, or set to nothing while the
-  cursor's own copy is empty, as an element's just appended is, and it keeps any value.
+  cursor's own copy is empty, as the cursor of an element just appended has, and it keeps any value.
 - **A slot that belongs to a tree, written as a value.** In the original that builds a tree it cannot read, or panics at a hash size
   of 64. The port refuses it with ``XitDBError/structuralSlot``.
 - **A sorted map's key.** The original lets a key be overwritten through the key cursor of an entry, which leaves the map out of
   order. In the port an ``Entry`` is read-only, and the engine refuses the write as well.
 - **Compacting an array list at the root whose last element is empty**: a list with no elements, or one whose last element
-  was appended and never written in a file written before 0.3.0, or by the original before `89da8e7`. The original gives an
+  was appended and never written before 0.3.0, or by the original before `89da8e7`. The original gives an
   empty database, losing the list and every element before the empty one. The port refuses with
   ``XitDBError/emptyLastMoment``, before writing anything. An element appended and never written since then is a slot set to
-  nothing, and both compact it as one: see <doc:Compaction>.
+  nothing, and both compact it, to one moment set to nothing: see <doc:Compaction>.
 
 ### An error or a sensible result where the original crashes or disagrees
 
@@ -63,9 +63,9 @@ and the port's files are compared with that branch's.
 - **A short value, streamed,** fails in the original for a cursor that has no position in the file, and otherwise reads from
   the file, so it returns other bytes once the slot has been overwritten. The port reads the cursor's own slot, as every other
   read does. Since `71ee0cf` the original gives a sorted set's key from an iterator a position, so that key streams in both.
-- **An array list's iterator after a slice** can give an element past the end of the list in the original, in a file written
-  before 0.3.0 or before the original's `89da8e7` that has an element appended and never written inside the list's size. The
-  port's stops at the list's size, agreeing with a lookup. In files written since, the two agree.
+- **An array list's iterator after a slice** can give an element past the end of the list in the original, where an element
+  appended and never written before 0.3.0, or by the original before `89da8e7`, lies inside the list's size. The port's stops
+  at the list's size, agreeing with a lookup. For elements appended since, the two agree.
 - **A gap left by a write past the end** reads as an error in the original's buffered file until it is flushed, and as zeros
   everywhere else. The port reads zeros on every storage.
 - **Setting a storage's length larger** is refused in memory and allowed for a file in the original. The port's
@@ -86,8 +86,9 @@ and the port's files are compared with that branch's.
 - **A file whose root header or last trailer is damaged** does not open in the original, even though every commit before it is
   intact. The port's opening names the end of the last commit that verifies, with
   ``XitDBError/untrustedRootHeader(lastVerified:)``, and ``Database/recover(_:)`` cuts the file back to it, which can lose a
-  commit and is never done without being asked: see <doc:Recovery>. A committed size of zero is not damage in either: it is a
-  database without a first commit, which a creation or a full copy that did not finish leaves.
+  commit and is never done without being asked: see <doc:Recovery>. In the original a committed size of zero is not damage: it is
+  a database without a first commit, which a creation or a full copy that did not finish leaves. The port opens such a full
+  copy, and creates over such a creation, which its opening refuses: see <doc:Storage>.
 
 ### The same as the original
 

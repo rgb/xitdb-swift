@@ -53,7 +53,7 @@ These mean the code asked for something it should not have. Most are worth fixin
   finish left, which is created over: see <doc:Storage>.
 - ``XitDBError/targetNotEmpty``: Compacting into a database whose root holds something.
 - ``XitDBError/emptyLastMoment``: Compacting a database whose root is an array list with no elements, or whose last element
-  is empty, as one appended and never written was in a file written before 0.3.0, which would keep nothing of it: see
+  is empty, as one appended and never written before 0.3.0 is, which would keep nothing of it: see
   <doc:Compaction>.
 - ``XitDBError/invalidRange``: A range of committed bytes that makes no sense: past the committed size, starting inside the root header, a replica's start that is neither 0 nor its size, or a sync from 0
   of fewer bytes than the headers.

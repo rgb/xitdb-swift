@@ -49,11 +49,11 @@ What happens depends on the root:
 - **A root that is anything else** is copied whole, a ``LinkedArrayList`` or a root set to nothing included.
 - **An empty root** commits nothing, and you get an empty database.
 - **An ``ArrayList`` at the root whose last element is empty is refused** with ``XitDBError/emptyLastMoment``, before
-  anything is written to the target: a list with no elements, or, in a file written before 0.3.0, a last element that was
-  appended and never written, however many elements come before it, and whether you meant the list as a history or not.
-  Compacting it would give you an empty database, with neither the list nor those elements in it, which is what the original
-  does. A last element set to nothing, with `.slot(nil)`, is a moment, and compacts. So does one appended and never written
-  in a file written since 0.3.0, which keeps it as a slot set to nothing: you get one moment, set to nothing.
+  anything is written to the target: a list with no elements, or a last element that was appended and never written before
+  0.3.0, or by the original before `89da8e7`, however many elements come before it, and whether you meant the list as a
+  history or not. Compacting it would give you an empty database, with neither the list nor those elements in it, which is
+  what the original does. A last element set to nothing, with `.slot(nil)`, is a moment, and compacts. So does one appended
+  and never written since then, which 0.3.0 keeps as a slot set to nothing: you get one moment, set to nothing.
 
 A value or a collection is copied once, however many slots point at it, so two keys that shared a value before share it
 afterwards, and a cycle ends. The exception is the partly filled blocks at the end of an array list, which are copied for each

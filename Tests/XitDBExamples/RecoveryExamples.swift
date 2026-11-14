@@ -222,6 +222,15 @@ import XitDB
                 .applyReplicated(at: 0, from: &early40, count: UInt64(good.count))
         }
         #expect(throws: XitDBError.invalidDatabase) { try Database.recover(beforeFirst) }
+        // What is left is no longer than a new database, so opening takes it
+        // for a creation that did not finish and refuses it, and a database
+        // created over it takes the next sync from 0.
+        #expect(beforeFirst.bytes.count == 40)
+        #expect(throws: XitDBError.invalidDatabase) { try Database(opening: beforeFirst) }
+        let again = try Database(creating: beforeFirst, hashSize: 32)
+        #expect(try source.replicationStart(for: try again.replicaState) == 0)
+        try again.applyReplicated(at: 0, bytes: good)
+        #expect(beforeFirst.bytes == good)
 
         // A sync that failed inside the source's header changed nothing: the
         // replica is the database it was.

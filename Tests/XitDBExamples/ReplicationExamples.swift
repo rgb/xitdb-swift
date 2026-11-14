@@ -281,7 +281,7 @@ import XitDB
         try interruptedCopy(to: scratch.path("unflushed.db"), flushing: false)
         let headers = try BufferedFileStorage(path: scratch.path("unflushed.db"), access: .readWrite)
         #expect(try headers.length == 32)
-        #expect(throws: XitDBError.self) { try Database(opening: headers) }
+        #expect(throws: XitDBError.invalidDatabase) { try Database(opening: headers) }
         #expect(try Database(creating: headers, hashSize: 32).committedSize == 57)
 
         // Flushed: the headers and what arrived, a database without a first
