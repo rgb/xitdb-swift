@@ -270,6 +270,23 @@ private func unfinishedCreation(of database: [UInt8]) -> [UInt8] {
         #expect(hash.count == 3)
     }
 
+    /// The same where the hash is longer than the engine keeps inline:
+    /// sixty-five bytes promised and three given make a hash of three, by
+    /// the database and by hand, and a map refuses it.
+    @Test func aLongHashThatComesShortIsTakenAsItComes() throws {
+        let database = try Database(creating: MemoryStorage(), hashing: ShortWideHash.self)
+        #expect(database.header.hashSize == 65)
+        let hash = try database.keyHash(of: utf8("name"))
+        #expect(hash.count == 3)
+        #expect(hash.bytes == mixedDigest(utf8("name"), count: 3))
+        #expect(ShortWideHash.keyHash(of: "name") == mixedDigest(utf8("name"), count: 3))
+        // A wide hasher that keeps its word, beside it: all sixty-five.
+        let wide = try Database(creating: MemoryStorage(), hashing: WideHash.self)
+        #expect(try wide.keyHash(of: utf8("name")).count == 65)
+        let map = try HashMap<ReadWrite>(database.rootCursor)
+        #expect(throws: XitDBError.invalidHashSize) { try map.put(.uint(1), forKey: "name") }
+    }
+
     // MARK: Who carries the hasher on
 
     /// A snapshot carries the hasher: the database over it hashes as the
