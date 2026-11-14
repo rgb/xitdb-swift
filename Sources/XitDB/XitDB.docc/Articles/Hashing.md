@@ -24,9 +24,9 @@ A keyed call is its call by hash with the hash computed for it, and writes nothi
 `users.put(.bytes(Array("Alice".utf8)), forHash: SHA256.keyHash(of: "alice"))` writes, which is what a Zig program
 writes with `put` and a `hashInt` that is SHA-256 (the original's README makes its `hashInt` SHA-1). Neither stores the
 key, and ``HashMap/putKey(_:)`` is the call that does (see <doc:TheCollections>). A keyed call costs its call by hash
-and the hash of the key. On Apple silicon the hash of a short key is a fraction of the call: in memory a keyed put costs
-about a third more than its call by hash and a read about half more, and on a file a few percent. On Linux, where
-portable code computes the hash, more of the call is the hash. A loop that uses one key many times can hash it once with
+and the hash of the key. On Apple silicon the hash of a short key is a fraction of the call: in memory a keyed call
+costs somewhat more than its call by hash, and on a file a few percent more. On Linux, where portable code computes the
+hash, more of the call is the hash. A loop that uses one key many times can hash it once with
 ``KeyHashing/keyHash(of:)`` and go by `forHash:`.
 
 What is hashed is the key's bytes. A `String` is its UTF-8, with nothing added and nothing normalised, so the hash is
