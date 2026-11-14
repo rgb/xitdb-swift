@@ -152,7 +152,7 @@ An entry there has its whole hash.
 A damaged file does not stop the tool. What cannot be read is a line that begins `unreadable:` and says why, and the
 dump goes on with the rest. When the root header cannot be trusted, as when a file was cut short, the dump is of what
 ``Database/recover(_:)`` would open: the bytes up to the last commit that verifies. The header line then gives the
-committed size beside the file's, `--verify` says how many bytes past the last good commit do not verify, and a note
+committed size beside the file's where the two differ, `--verify` says how many bytes past the last good commit do not verify, and a note
 says that what follows is what recovery would open.
 
 A file without a first commit that is longer than a new database, as a full copy that did not finish leaves it, opens,
