@@ -1,13 +1,10 @@
-{ "format": "xitdb-script/1", "description": "Finding 26, as the port does it: an iterator goes through the positions from where it starts up to the size of the list, skipping one that was never written, so it agrees with a read by index.", "hash_size": 20, "hash_id": "sha1", "file_id": "0011223344556677",
+{ "format": "xitdb-script/1", "description": "Finding 26, as the port does it, on a version 1 file (inputs/v1-sliced-holes): an iterator goes through the positions from where it starts up to the size of the list, skipping one that is truly empty, so it agrees with a read by index.", "hash_size": 20, "hash_id": "sha1", "file_id": "0011223344556677",
   "ops": [
-    { "op": "write_path", "on": "root", "path": ["array_list_init", { "ctx": { "as": "l", "ops": [
-      { "op": "write_path", "on": "l", "path": ["array_list_append"], "note": "never written" },
-      { "op": "write_path", "on": "l", "path": ["array_list_append", { "write": { "uint": 1 } }] },
-      { "op": "write_path", "on": "l", "path": ["array_list_append", { "write": { "uint": 2 } }] },
-      { "op": "write_path", "on": "l", "path": ["array_list_append", { "write": { "uint": 3 } }] }
-    ] } }] },
-    { "op": "write_path", "on": "root", "path": ["array_list_init", { "array_list_slice": { "size": 2 } }] },
+    { "op": "close" },
+    { "op": "raw_load", "input": "v1-sliced-holes", "note": "[never written, 1, 2, 3] sliced to a size of 2, written at 6b93af1, where an element never written is a truly empty slot" },
+    { "op": "reopen" },
     { "op": "count", "on": "root", "expect": 2 },
+    { "op": "read_path_slot", "on": "root", "path": [{ "array_list_get": 0 }], "expect_null": true, "note": "truly empty" },
     { "op": "read_path", "on": "root", "path": [{ "array_list_get": 2 }], "expect_null": true, "note": "by index, it isn't there" },
     { "op": "iterator", "on": "root", "as": "it" },
     { "op": "next", "on": "it", "as": "e", "expect_null": false },
@@ -16,5 +13,13 @@
     { "op": "iterator", "on": "root", "from_index": 0, "as": "it" },
     { "op": "next", "on": "it", "as": "e", "expect_null": false },
     { "op": "read_uint", "on": "e", "expect": 1 },
+    { "op": "next", "on": "it", "expect_null": true, "note": "that was the end of the list" },
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "write": { "uint": 9 } }], "note": "an append writes index 2, and doesn't repair the empty slot or take away the 3 at index 3" },
+    { "op": "count", "on": "root", "expect": 3 },
+    { "op": "iterator", "on": "root", "as": "it" },
+    { "op": "next", "on": "it", "as": "e", "expect_null": false },
+    { "op": "read_uint", "on": "e", "expect": 1 },
+    { "op": "next", "on": "it", "as": "e", "expect_null": false },
+    { "op": "read_uint", "on": "e", "expect": 9 },
     { "op": "next", "on": "it", "expect_null": true, "note": "that was the end of the list" }
   ] }

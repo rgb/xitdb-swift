@@ -1,0 +1,326 @@
+version: 2
+hash size: 20
+hash id: sha1
+file id: 0a74393ee87bf0d7
+moments: 6
+moment 0: hash_map
+  entry 5c6fa26f4938297f3faec24b512673f0ba5875d3:
+    value: bytes hex 000000006af6379c72657365745f616464007b22746172676574223a7b22726566223a7b226b696e64223a7b2268656164223a7b7d7d2c226e616d65223a226d6173746572227d7d7d
+  entry 94233733c0867d50ac1f63a6ab3f5bcb32e7a286:
+    value: hash_set
+      entry 7beb154244f8644b1f14114de8a1acc836d67e88:
+        key: bytes "ref: refs/heads/master"
+  entry 7138a51661947b19b5088da5a2bfede2876f49b9:
+    value: bytes "ref: refs/heads/master"
+  entry dfba7aade0868074c2861c98e2a9a92f3178a51b:
+    value: sorted_map of 1
+      [0]:
+        key: short_bytes "core"
+        value: sorted_map of 1
+          [0]:
+            key: short_bytes "bare"
+            value: short_bytes "false"
+moment 1: hash_map
+  entry 5c6fa26f4938297f3faec24b512673f0ba5875d3:
+    value: bytes hex 000000006af6379c636f6e666967007b22616374696f6e223a7b22616464223a7b226e616d65223a22726563656976652e64656e7963757272656e746272616e6368222c2276616c7565223a22757064617465496e7374656164227d7d7d
+  entry 94233733c0867d50ac1f63a6ab3f5bcb32e7a286:
+    value: hash_set
+      entry 7beb154244f8644b1f14114de8a1acc836d67e88:
+        key: bytes "ref: refs/heads/master"
+  entry 7138a51661947b19b5088da5a2bfede2876f49b9:
+    value: bytes "ref: refs/heads/master"
+  entry dfba7aade0868074c2861c98e2a9a92f3178a51b:
+    value: sorted_map of 2
+      [0]:
+        key: short_bytes "core"
+        value: sorted_map of 1
+          [0]:
+            key: short_bytes "bare"
+            value: short_bytes "false"
+      [1]:
+        key: short_bytes "receive"
+        value: sorted_map of 1
+          [0]:
+            key: bytes "denycurrentbranch"
+            value: bytes "updateInstead"
+moment 2: hash_map
+  entry 5c6fa26f4938297f3faec24b512673f0ba5875d3:
+    value: bytes hex 000000006af6379c616464007b227061746873223a5b2241424f55542e6d64225d7d
+  entry e540cdd1328b2b21e29a95405c301b9313b7c346:
+    value: sorted_map of 1
+      [0]:
+        key: short_bytes "ABOUT.md"
+        value: bytes hex 6af6379c0269d48b6af6379c0269d48b000000000bd064a6000081a4000001f500000000000000000000006e22db09502baeacfe17230ccb0b16f2ac94120d610008
+  entry 94233733c0867d50ac1f63a6ab3f5bcb32e7a286:
+    value: hash_set
+      entry 7beb154244f8644b1f14114de8a1acc836d67e88:
+        key: bytes "ref: refs/heads/master"
+  entry a145e6ec47b73768e4421d5c208dac3e3f397be6:
+    value: counted_hash_map of 1
+      entry 22db09502baeacfe17230ccb0b16f2ac94120d61:
+        key: short_bytes "blob"
+        value: bytes hex 0000006e00d048253a2320484158590a0a57656c636f6d6520746f20796f7572204861787920696e7374616e6365210a0a45646974206061646d696e2f41424f55542e6d646020696e20746865207365727665722064697220746f206368616e676520776861742074686973207061676520736179732e format tag "in"
+  entry 7138a51661947b19b5088da5a2bfede2876f49b9:
+    value: bytes "ref: refs/heads/master"
+  entry dfba7aade0868074c2861c98e2a9a92f3178a51b:
+    value: sorted_map of 2
+      [0]:
+        key: short_bytes "core"
+        value: sorted_map of 1
+          [0]:
+            key: short_bytes "bare"
+            value: short_bytes "false"
+      [1]:
+        key: short_bytes "receive"
+        value: sorted_map of 1
+          [0]:
+            key: bytes "denycurrentbranch"
+            value: bytes "updateInstead"
+  entry 4fa2272b2f24a4d036b0db59602a1ba5e93e084d:
+    value: hash_set
+      entry a7ff168c1f91541a3ef00d9200ceff5742934d33:
+        key: bytes hex 6af6379c0269d48b6af6379c0269d48b000000000bd064a6000081a4000001f500000000000000000000006e22db09502baeacfe17230ccb0b16f2ac94120d610008
+moment 3: hash_map
+  entry 5c6fa26f4938297f3faec24b512673f0ba5875d3:
+    value: bytes hex 000000006af6379c636f6d6d6974007b226d657373616765223a22696e6974222c226f6964223a2234336131656130353132316361333638633666623736353034323630376463666365353331646365227d
+  entry c269221ca54147da7738158d7ca7f2b04dcc84a5:
+    value: sorted_map of 1
+      [0]:
+        key: short_bytes "heads"
+        value: sorted_map of 1
+          [0]:
+            key: short_bytes "master"
+            value: bytes "43a1ea05121ca368c6fb765042607dcfce531dce"
+  entry e540cdd1328b2b21e29a95405c301b9313b7c346:
+    value: sorted_map of 1
+      [0]:
+        key: short_bytes "ABOUT.md"
+        value: bytes hex 6af6379c0269d48b6af6379c0269d48b000000000bd064a6000081a4000001f500000000000000000000006e22db09502baeacfe17230ccb0b16f2ac94120d610008
+  entry 94233733c0867d50ac1f63a6ab3f5bcb32e7a286:
+    value: hash_set
+      entry 93f5f81581a6db348447a4cf8dd8f8e05f129d85:
+        key: bytes "43a1ea05121ca368c6fb765042607dcfce531dce"
+      entry 7beb154244f8644b1f14114de8a1acc836d67e88:
+        key: bytes "ref: refs/heads/master"
+  entry a145e6ec47b73768e4421d5c208dac3e3f397be6:
+    value: counted_hash_map of 3
+      entry 22db09502baeacfe17230ccb0b16f2ac94120d61:
+        key: short_bytes "blob"
+        value: bytes hex 0000006e00d048253a2320484158590a0a57656c636f6d6520746f20796f7572204861787920696e7374616e6365210a0a45646974206061646d696e2f41424f55542e6d646020696e20746865207365727665722064697220746f206368616e676520776861742074686973207061676520736179732e format tag "in"
+      entry ba9e2fdfd3007e155015dfccad814bd140b0ba8c:
+        key: short_bytes "tree"
+        value: bytes hex 0000002400bd230b873130303634342041424f55542e6d640022db09502baeacfe17230ccb0b16f2ac94120d61 format tag "in"
+      entry 43a1ea05121ca368c6fb765042607dcfce531dce:
+        key: short_bytes "commit"
+        value: bytes hex 0000009201266c2cc6789c8dcb410a02310c40d17d4f91bd9b646c991644bc4a9aa4b43063618ca0b7576fe05fbcddf7c30c2a175b9a363d23ae462921256d22ac9962558a58b17296c04feff380ceaf375c7edeb629bcf5f9f02bd05a625ab0e40c27fc1664eefb70b7bf8730eec33f266c2cc6 format tag "in"
+  entry 7138a51661947b19b5088da5a2bfede2876f49b9:
+    value: bytes "ref: refs/heads/master"
+  entry dfba7aade0868074c2861c98e2a9a92f3178a51b:
+    value: sorted_map of 2
+      [0]:
+        key: short_bytes "core"
+        value: sorted_map of 1
+          [0]:
+            key: short_bytes "bare"
+            value: short_bytes "false"
+      [1]:
+        key: short_bytes "receive"
+        value: sorted_map of 1
+          [0]:
+            key: bytes "denycurrentbranch"
+            value: bytes "updateInstead"
+  entry 4fa2272b2f24a4d036b0db59602a1ba5e93e084d:
+    value: hash_set
+      entry a7ff168c1f91541a3ef00d9200ceff5742934d33:
+        key: bytes hex 6af6379c0269d48b6af6379c0269d48b000000000bd064a6000081a4000001f500000000000000000000006e22db09502baeacfe17230ccb0b16f2ac94120d610008
+moment 4: hash_map
+  entry 5c6fa26f4938297f3faec24b512673f0ba5875d3:
+    value: bytes hex 000000006af6379c636f6d6d6974007b226d657373616765223a22696e6974222c226f6964223a2234336131656130353132316361333638633666623736353034323630376463666365353331646365227d
+  entry c269221ca54147da7738158d7ca7f2b04dcc84a5:
+    value: sorted_map of 1
+      [0]:
+        key: short_bytes "heads"
+        value: sorted_map of 1
+          [0]:
+            key: short_bytes "master"
+            value: bytes "43a1ea05121ca368c6fb765042607dcfce531dce"
+  entry e540cdd1328b2b21e29a95405c301b9313b7c346:
+    value: sorted_map of 1
+      [0]:
+        key: short_bytes "ABOUT.md"
+        value: bytes hex 6af6379c0269d48b6af6379c0269d48b000000000bd064a6000081a4000001f500000000000000000000006e22db09502baeacfe17230ccb0b16f2ac94120d610008
+  entry 94233733c0867d50ac1f63a6ab3f5bcb32e7a286:
+    value: hash_set
+      entry 93f5f81581a6db348447a4cf8dd8f8e05f129d85:
+        key: bytes "43a1ea05121ca368c6fb765042607dcfce531dce"
+      entry 7beb154244f8644b1f14114de8a1acc836d67e88:
+        key: bytes "ref: refs/heads/master"
+  entry a145e6ec47b73768e4421d5c208dac3e3f397be6:
+    value: counted_hash_map of 3
+      entry 22db09502baeacfe17230ccb0b16f2ac94120d61:
+        key: short_bytes "blob"
+        value: bytes hex 0000006e00d048253a2320484158590a0a57656c636f6d6520746f20796f7572204861787920696e7374616e6365210a0a45646974206061646d696e2f41424f55542e6d646020696e20746865207365727665722064697220746f206368616e676520776861742074686973207061676520736179732e format tag "in"
+      entry ba9e2fdfd3007e155015dfccad814bd140b0ba8c:
+        key: short_bytes "tree"
+        value: bytes hex 0000002400bd230b873130303634342041424f55542e6d640022db09502baeacfe17230ccb0b16f2ac94120d61 format tag "in"
+      entry 43a1ea05121ca368c6fb765042607dcfce531dce:
+        key: short_bytes "commit"
+        value: bytes hex 0000009201266c2cc6789c8dcb410a02310c40d17d4f91bd9b646c991644bc4a9aa4b43063618ca0b7576fe05fbcddf7c30c2a175b9a363d23ae462921256d22ac9962558a58b17296c04feff380ceaf375c7edeb629bcf5f9f02bd05a625ab0e40c27fc1664eefb70b7bf8730eec33f266c2cc6 format tag "in"
+  entry cb01d9f4da2461d999a8c7619d22fc6ba7235788:
+    value: array_list of 1
+      [0]: hash_map
+        entry 43a1ea05121ca368c6fb765042607dcfce531dce:
+          value: hash_map
+            entry 11cb4e3c82507677792d4f1dd5ece5970c2f3059:
+              value: uint 0
+  entry 7138a51661947b19b5088da5a2bfede2876f49b9:
+    value: bytes "ref: refs/heads/master"
+  entry 31fc0e811ecc3fc4455570aac729d63902c6c3d9:
+    value: bytes hex 43a1ea05121ca368c6fb765042607dcfce531dce
+  entry dfba7aade0868074c2861c98e2a9a92f3178a51b:
+    value: sorted_map of 2
+      [0]:
+        key: short_bytes "core"
+        value: sorted_map of 1
+          [0]:
+            key: short_bytes "bare"
+            value: short_bytes "false"
+      [1]:
+        key: short_bytes "receive"
+        value: sorted_map of 1
+          [0]:
+            key: bytes "denycurrentbranch"
+            value: bytes "updateInstead"
+  entry 4fa2272b2f24a4d036b0db59602a1ba5e93e084d:
+    value: hash_set
+      entry a7ff168c1f91541a3ef00d9200ceff5742934d33:
+        key: bytes hex 6af6379c0269d48b6af6379c0269d48b000000000bd064a6000081a4000001f500000000000000000000006e22db09502baeacfe17230ccb0b16f2ac94120d610008
+moment 5: hash_map
+  entry 5c6fa26f4938297f3faec24b512673f0ba5875d3:
+    value: bytes hex 000000006af637a9686178792f6576656e7473007b7d
+  entry c269221ca54147da7738158d7ca7f2b04dcc84a5:
+    value: sorted_map of 1
+      [0]:
+        key: short_bytes "heads"
+        value: sorted_map of 2
+          [0]:
+            key: bytes "haxy/events"
+            value: bytes "7349b2f98c12f1c9f662c1ce5dd0b6180f081b50"
+          [1]:
+            key: short_bytes "master"
+            value: bytes "43a1ea05121ca368c6fb765042607dcfce531dce"
+  entry e540cdd1328b2b21e29a95405c301b9313b7c346:
+    value: sorted_map of 1
+      [0]:
+        key: short_bytes "ABOUT.md"
+        value: bytes hex 6af6379c0269d48b6af6379c0269d48b000000000bd064a6000081a4000001f500000000000000000000006e22db09502baeacfe17230ccb0b16f2ac94120d610008
+  entry 94233733c0867d50ac1f63a6ab3f5bcb32e7a286:
+    value: hash_set
+      entry 989ec313256c364ad0e6a9e693f769f6880c8d25:
+        key: bytes "7349b2f98c12f1c9f662c1ce5dd0b6180f081b50"
+      entry 93f5f81581a6db348447a4cf8dd8f8e05f129d85:
+        key: bytes "43a1ea05121ca368c6fb765042607dcfce531dce"
+      entry 7beb154244f8644b1f14114de8a1acc836d67e88:
+        key: bytes "ref: refs/heads/master"
+  entry a145e6ec47b73768e4421d5c208dac3e3f397be6:
+    value: counted_hash_map of 5
+      entry 7349b2f98c12f1c9f662c1ce5dd0b6180f081b50:
+        key: short_bytes "commit"
+        value: bytes hex 000001650181e86e6f789c958d416b83401085effe0a59bca594dd755dd7d096822585d2d078498e617677ac568de29a3612f2dfbb0d147aed5c86f7cd9bf7a61131145af1c41a29b8d112750654524c842e95951957aad48822a32280e354f563086d6d30bcbbae473c4137b4786bfaee2164692612ce2865e182fa093cedea69c27f3d0567525bb224652a0de52930cb98d5328b2d2fb9920a5388010c921bd2d4871fe7d1e1e8958509c8f24c0ed0a1a7d72e8fb183bafdd57fbbfd6d00e7befad1ee2b7095f744da8cf33045e33da3519ee38e1efaeaa958e71fbb72f559b9ad282297cc2bd73fc745812bb13e6ddeb7996a162d0c6fc5cb6bdff854e7aa7d83b3f381e472f90681e86e6f format tag "in"
+      entry 22db09502baeacfe17230ccb0b16f2ac94120d61:
+        key: short_bytes "blob"
+        value: bytes hex 0000006e00d048253a2320484158590a0a57656c636f6d6520746f20796f7572204861787920696e7374616e6365210a0a45646974206061646d696e2f41424f55542e6d646020696e20746865207365727665722064697220746f206368616e676520776861742074686973207061676520736179732e format tag "in"
+      entry 4b825dc642cb6eb9a060e54bf8d69288fbee4904:
+        key: short_bytes "tree"
+        value: array_list of 1
+          [0]: short_bytes ""
+      entry ba9e2fdfd3007e155015dfccad814bd140b0ba8c:
+        key: short_bytes "tree"
+        value: bytes hex 0000002400bd230b873130303634342041424f55542e6d640022db09502baeacfe17230ccb0b16f2ac94120d61 format tag "in"
+      entry 43a1ea05121ca368c6fb765042607dcfce531dce:
+        key: short_bytes "commit"
+        value: bytes hex 0000009201266c2cc6789c8dcb410a02310c40d17d4f91bd9b646c991644bc4a9aa4b43063618ca0b7576fe05fbcddf7c30c2a175b9a363d23ae462921256d22ac9962558a58b17296c04feff380ceaf375c7edeb629bcf5f9f02bd05a625ab0e40c27fc1664eefb70b7bf8730eec33f266c2cc6 format tag "in"
+  entry cb01d9f4da2461d999a8c7619d22fc6ba7235788:
+    value: array_list of 1
+      [0]: hash_map
+        entry 7349b2f98c12f1c9f662c1ce5dd0b6180f081b50:
+          value: hash_map
+            entry 94d67559a05f5f9688c86633c6cdce6f3cf45070:
+              value: hash_map
+                entry fc2398a73dd54d6237c4fdb58fd7d75347cf5af3:
+                  value: bytes hex f76c027a1d11db693d2f2868e7a3aace
+            entry 6ca0e71256d233f67f37d7b7ed5889135f000851:
+              value: uint 1
+            entry 9226f2c731b671031b326f307c16ac6ce9aae622:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffef76c027a1d11db693d2f2868e7a3aace
+            entry 536127ca763e8e956519092a192cc84ff2c349a2:
+              value: hash_map
+                entry 922cab387e9ee2ce035fefe83e0664629840f1ad:
+                  value: hash_map
+                    entry 69992f1747443a7ccd623ae5b1b7169fdeb09a01:
+                      value: short_bytes "false" format tag "bl"
+                    entry 14ada64430430619a3e54c3ddc67902d16514bc2:
+                      value: uint 1
+                    entry 5006ed0248a019713b762563076292379daf07b4:
+                      value: hash_map
+                        entry 6e4cd801621ce24c3604124403bca62a53969fa5:
+                          value: bytes "$bcrypt$r=10$CCeW0nohDQMCjWfFvhsV4Q$s5yFsoG3QQeF4MxPgV98k+lapOQJLok"
+                        entry 6ae999552a0d2dca14d62e2bc8b764d377b1dd6c:
+                          value: short_bytes "alice"
+                        entry a88b7dcd1a9e3e17770bbaa6d7515b31a2d7e85d:
+                          value: bytes "alice@example.com"
+                        entry 98c08ff9d73b8e8a84a8f4f46af311b79db96a6d:
+                          value: short_bytes ""
+                    entry f172219ea3a15a93af5b1689b159a0f600d1bba6:
+                      value: uint 1
+            entry 3d1374cf0b00eda753373595bc2535defe5c97c2:
+              value: hash_map
+                entry 05fe405753166f125559e7c9ac558654f107c7e9:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef76c027a1d11db693d2f2868e7a3aace
+            entry df7d2eb1fd6d9ad2fd8e151e8a60050597aedc45:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffef76c027a1d11db693d2f2868e7a3aace
+            entry 77d1aa55a098585663d973a28ce4744fdce3fdb7:
+              value: hash_map
+            entry 11cb4e3c82507677792d4f1dd5ece5970c2f3059:
+              value: uint 0
+            entry 86ff27d5d5d21d38528f1c2030615dbef66ac5eb:
+              value: sorted_set of 0
+            entry bc995d4d86ef0264a1cf18b7d62b8eb9ce9da9fb:
+              value: hash_map
+                entry 922cab387e9ee2ce035fefe83e0664629840f1ad:
+                  value: short_bytes "user"
+            entry 1b1fa2d39f46fd875330c7bec6f40ab1aeb869ac:
+              value: sorted_map of 1
+                [0]:
+                  key: short_bytes "alice"
+                  value: bytes hex f76c027a1d11db693d2f2868e7a3aace
+  entry 7138a51661947b19b5088da5a2bfede2876f49b9:
+    value: bytes "ref: refs/heads/master"
+  entry 31fc0e811ecc3fc4455570aac729d63902c6c3d9:
+    value: bytes hex 7349b2f98c12f1c9f662c1ce5dd0b6180f081b50
+  entry c37bd01f6fc0c709c199863265caeab5b94098aa:
+    value: counted_hash_map of 0
+  entry dfba7aade0868074c2861c98e2a9a92f3178a51b:
+    value: sorted_map of 2
+      [0]:
+        key: short_bytes "core"
+        value: sorted_map of 1
+          [0]:
+            key: short_bytes "bare"
+            value: short_bytes "false"
+      [1]:
+        key: short_bytes "receive"
+        value: sorted_map of 1
+          [0]:
+            key: bytes "denycurrentbranch"
+            value: bytes "updateInstead"
+  entry 4fa2272b2f24a4d036b0db59602a1ba5e93e084d:
+    value: hash_set
+      entry a7ff168c1f91541a3ef00d9200ceff5742934d33:
+        key: bytes hex 6af6379c0269d48b6af6379c0269d48b000000000bd064a6000081a4000001f500000000000000000000006e22db09502baeacfe17230ccb0b16f2ac94120d610008

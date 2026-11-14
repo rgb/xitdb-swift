@@ -1,0 +1,42 @@
+{
+  "format": "xitdb-script/1",
+  "description": "A copy doesn't take what's before the source's committed size. In version 2 that's four bytes of padding, which nothing reads or writes, and which a read from 0 gives as the source has them. Since 92a926e a copy from 0 writes a root header of its own, which has zeros there, so with garbage in the source's padding, a read from 0 on the replica differs from what was sent, and in exactly those four bytes: the same source with zeros there reads the same as the replica. An incremental sync leaves them as they are on both sides. replicate-version-1 is the same for version 1, whose copy of the root slot is there instead.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "0000000000000001",
+  "ops": [
+    { "op": "create_database", "name": "replica", "file_id": "0000000000000002" },
+    { "op": "write", "on": "root", "data": { "uint": 1 } },
+    { "op": "close" },
+    { "op": "raw_write", "offset": 20, "bytes": { "hex": "ffffffff" }, "note": "garbage in the padding" },
+    { "op": "reopen" },
+    { "op": "read_committed", "start": 0, "end": 91, "as": "sent", "note": "with the garbage, as it's the source's own bytes" },
+    { "op": "use", "name": "replica" },
+    { "op": "apply_replicated", "start": 0, "bytes": "sent" },
+    { "op": "committed_size", "expect": 91 },
+    { "op": "read_uint", "on": "root", "expect": 1 },
+
+    { "op": "create_database", "name": "without_garbage", "file_id": "0000000000000003" },
+    { "op": "use", "name": "without_garbage" },
+    { "op": "apply_replicated", "start": 0, "bytes": "sent", "note": "another copy, whose source is then given zeros in its padding" },
+    { "op": "use", "name": "main" },
+    { "op": "read_committed", "start": 0, "end": 91, "as": "with_garbage" },
+    { "op": "use", "name": "replica" },
+    { "op": "read_committed", "start": 0, "end": 91, "as": "from_replica" },
+    { "op": "use", "name": "without_garbage" },
+    { "op": "read_committed", "start": 0, "end": 91, "as": "zeros", "expect_same": "from_replica", "note": "a copy reads back with zeros in its padding, as the replica does" },
+
+    { "op": "use", "name": "main" },
+    { "op": "write", "on": "root", "data": { "uint": 2 } },
+    { "op": "committed_size", "as": "end" },
+    { "op": "use", "name": "replica" },
+    { "op": "replica_state", "as": "state" },
+    { "op": "use", "name": "main" },
+    { "op": "replication_start", "state": "state", "as": "start", "expect": 91, "note": "the replica's padding doesn't come into it" },
+    { "op": "read_committed", "start": { "var": "start" }, "end": { "var": "end" }, "as": "rest" },
+    { "op": "use", "name": "replica" },
+    { "op": "apply_replicated", "start": { "var": "start" }, "bytes": "rest" },
+    { "op": "committed_size", "expect": { "var": "end" } },
+    { "op": "read_uint", "on": "root", "expect": 2 }
+  ]
+}

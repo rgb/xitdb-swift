@@ -1,17 +1,17 @@
-xitdb file: 12133 bytes, 12120 committed; hash size 20, hash id "sha1", file id 225ac33c6d679b92; 10 moments
+xitdb file: 12128 bytes, 12115 committed; version 2, hash size 20, hash id "sha1", file id 225ac33c6d679b92; 10 moments
 verify: 11 commits verify; 13 bytes past the last do not
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 669, id 534dcfc8ae73b7b8, root arrayList
-  commit 2: ends at 863, id da9dc16e596923ca, root arrayList
-  commit 3: ends at 1400, id 5c65708f5bdc9891, root arrayList
-  commit 4: ends at 1836, id da343e918334f26e, root arrayList
-  commit 5: ends at 2394, id f5634855ee995aca, root arrayList
-  commit 6: ends at 4682, id b0448a06b47ef63b, root arrayList
-  commit 7: ends at 5984, id d6c98312bf144555, root arrayList
-  commit 8: ends at 9259, id 36d201773274e623, root arrayList
-  commit 9: ends at 9646, id d2a1859f9d54d5f8, root arrayList
-  commit 10: ends at 12120, id 9da1c9e044459a96, root arrayList
-note: 13 bytes after the last good commit, which ends at 12120, do not verify
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 664, id e21ef746f2bacc81, root arrayList
+  commit 2: ends at 858, id 16fe335b81e92a6c, root arrayList
+  commit 3: ends at 1395, id 963fc16b5d913012, root arrayList
+  commit 4: ends at 1831, id 6fc19d62b17afd5a, root arrayList
+  commit 5: ends at 2389, id dfe3e86b34245e74, root arrayList
+  commit 6: ends at 4677, id d7681c01a5a6df1b, root arrayList
+  commit 7: ends at 5979, id 45f84410987ba50b, root arrayList
+  commit 8: ends at 9254, id 8b9d783d3440c848, root arrayList
+  commit 9: ends at 9641, id 32a4c651821822cd, root arrayList
+  commit 10: ends at 12115, id b4abb74941e1e35f, root arrayList
+note: 13 bytes after the last good commit, which ends at 12115, do not verify
 moment 9: map (19 entries)
   0000000000000000: bytes 21 "imomtubdcqnusogptuvjv"
   0000000000000000: int -100

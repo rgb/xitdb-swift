@@ -1,7 +1,7 @@
-xitdb file: 964 bytes; hash size 20, hash id "sha1", file id 0011223344556677; 1 moment
+xitdb file: 959 bytes; version 2, hash size 20, hash id "sha1", file id 0011223344556677; 1 moment
 verify: 2 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 964, id e8b90702e99d4032, root arrayList
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 959, id 99e9679f857d42d8, root arrayList
 moment 0: map (2 entries)
   65c10dc3549fe074: sorted set (2)
     "a set's key that's too long for a slot": empty

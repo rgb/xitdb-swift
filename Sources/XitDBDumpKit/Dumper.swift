@@ -46,7 +46,7 @@ package struct Dumper {
         if options.verify {
             verify(storage, fileSize: fileSize, into: &dump)
         }
-        let database: Database
+        var database: Database
         do {
             database = try Database(opening: storage)
         } catch .untrustedRootHeader(let lastVerified) {
@@ -74,6 +74,27 @@ package struct Dumper {
             dump.exitCode = 2
             return dump
         }
+        // A database without a first commit: a full copy that did not
+        // finish, which opens so that a sync from 0 can replace it, and in
+        // which nothing reads. What recovery would open is the last commit
+        // of the source that arrived whole: shown from a copy in memory, as
+        // for a root header that cannot be trusted.
+        if (try? database.replicaState) == ReplicaState(committedSize: 0, checksum: 0) {
+            dump.exitCode = 1
+            let what = "the file has no first commit, as a full copy that did not finish leaves it"
+            if let copy = Self.copy(storage, upTo: fileSize), let recovered = try? Database.recover(copy),
+                let end = try? recovered.committedSize
+            {
+                dump.notes.append(
+                    "\(what): the last commit that arrived whole ends at byte \(end) of \(fileSize); what follows is what recovery would open"
+                )
+                database = recovered
+            } else {
+                dump.notes.append("\(what), and no commit in it verifies: there is nothing to show")
+                dump.header = header(of: database, fileSize: fileSize, committedSize: 0)
+                return dump
+            }
+        }
         read(database, fileSize: fileSize, into: &dump)
         return dump
     }
@@ -93,6 +114,23 @@ package struct Dumper {
         return MemoryStorage(bytes: bytes)
     }
 
+    /// The dump's first line from a database's header: the format's
+    /// version, the hash size, the hash ID as text when its bytes are
+    /// printable, the file ID; the count of moments is filled in once the
+    /// root has been read.
+    private func header(of database: Database, fileSize: UInt64, committedSize: UInt64) -> Dump.Header {
+        let hashID = database.header.hashID.rawValue
+        let hashIDBytes = [
+            UInt8(hashID >> 24), UInt8(hashID >> 16 & 0xFF), UInt8(hashID >> 8 & 0xFF), UInt8(hashID & 0xFF),
+        ]
+        let hashIDText =
+            hashIDBytes.allSatisfy({ $0 >= 0x20 && $0 < 0x7F }) ? String(decoding: hashIDBytes, as: UTF8.self) : nil
+        return Dump.Header(
+            fileSize: fileSize, committedSize: committedSize, version: Int(database.header.version),
+            hashSize: Int(database.header.hashSize), hashIDText: hashIDText, hashIDHex: Self.hex(hashIDBytes),
+            fileID: Self.hex(bigEndian: database.header.fileID), momentCount: nil)
+    }
+
     private mutating func read(_ database: Database, fileSize: UInt64, into dump: inout Dump) {
         hashSize = Int(database.header.hashSize)
         for name in options.keys {
@@ -100,17 +138,8 @@ package struct Dumper {
             if hash.count >= hashSize { names[Array(hash.prefix(hashSize))] = name }
         }
         let root = database.rootCursor.readOnly
-        let hashID = database.header.hashID.rawValue
-        let hashIDBytes = [
-            UInt8(hashID >> 24), UInt8(hashID >> 16 & 0xFF), UInt8(hashID >> 8 & 0xFF), UInt8(hashID & 0xFF),
-        ]
-        let hashIDText =
-            hashIDBytes.allSatisfy({ $0 >= 0x20 && $0 < 0x7F }) ? String(decoding: hashIDBytes, as: UTF8.self) : nil
-        var header = Dump.Header(
-            fileSize: fileSize, committedSize: (try? database.committedSize) ?? fileSize, hashSize: hashSize,
-            hashIDText: hashIDText, hashIDHex: Self.hex(hashIDBytes),
-            fileID: Self.hex(bigEndian: database.header.fileID),
-            momentCount: nil)
+        var header = header(
+            of: database, fileSize: fileSize, committedSize: (try? database.committedSize) ?? fileSize)
         let history: ArrayList<ReadOnly>?
         do {
             let list = try ArrayList<ReadOnly>(root)
@@ -394,10 +423,10 @@ package struct Dumper {
             let read = try reader.read(into: &span)
             shown = Array(buffer.prefix(read))
         }
-        if length <= 64, let text = String(validating: shown, as: UTF8.self), Self.isPrintable(text) {
+        if length <= 64, let text = String(validating: shown, as: UTF8.self), Self.isText(text) {
             node.text = text
         } else {
-            node.text = "0x" + Self.hex(shown)
+            node.hex = Self.hex(shown)
         }
         if options.offsets, slot.tag == .bytes {
             node.position = slot.value
@@ -512,10 +541,10 @@ package struct Dumper {
         if sorted {
             // A sorted collection's key is the pair's bytes.
             if let key = try? entry.key.readBytes(), let text = String(validating: key, as: UTF8.self),
-                Self.isPrintable(text)
+                Self.isText(text)
             {
                 child.name = text
-                label = text
+                label = Self.escaped(text)
             } else if let key = try? entry.key.readBytes() {
                 child.keyHex = Self.hex(key)
                 label = child.keyHex!
@@ -527,13 +556,13 @@ package struct Dumper {
             label = Self.hex(options.fullHashes ? entry.hash : Array(entry.hash.prefix(8)))
             if let keyTag = try? entry.key.slot.tag, keyTag == .bytes || keyTag == .shortBytes,
                 let key = try? entry.key.readBytes(), let text = String(validating: key, as: UTF8.self),
-                Self.isPrintable(text)
+                Self.isText(text)
             {
                 child.name = text
             } else if let name = names[entry.hash] {
                 child.name = name
             }
-            if let name = child.name { label = name }
+            if let name = child.name { label = Self.escaped(name) }
         }
         return Pending(cursor: entry.value, ready: nil, child: child, path: path + "/" + label)
     }
@@ -576,10 +605,35 @@ package struct Dumper {
         }
     }
 
-    private static func isPrintable(_ text: String) -> Bool {
+    /// Whether bytes that are valid UTF-8 are shown as text: they are
+    /// unless they hold a control character other than a line feed, a
+    /// carriage return and a tab, which ``escaped(_:)`` writes out.
+    private static func isText(_ text: String) -> Bool {
         text.unicodeScalars.allSatisfy { scalar in
-            scalar.value >= 0x20 && scalar.value != 0x7F || scalar == "\t"
+            switch scalar.value {
+            case 0x09, 0x0A, 0x0D: true
+            case 0x00..<0x20, 0x7F..<0xA0: false
+            default: true
+            }
         }
+    }
+
+    /// Text as the dump shows it between double quotes, on one line: a
+    /// line feed, a carriage return and a tab as `\n`, `\r` and `\t`, and
+    /// the backslash and the double quote with a backslash before them.
+    package static func escaped(_ text: String) -> String {
+        var out = ""
+        for scalar in text.unicodeScalars {
+            switch scalar {
+            case "\n": out += "\\n"
+            case "\r": out += "\\r"
+            case "\t": out += "\\t"
+            case "\\": out += "\\\\"
+            case "\"": out += "\\\""
+            default: out.unicodeScalars.append(scalar)
+            }
+        }
+        return out
     }
 
     package static func hex(_ bytes: [UInt8]) -> String {

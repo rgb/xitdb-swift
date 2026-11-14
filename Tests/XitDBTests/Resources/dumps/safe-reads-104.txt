@@ -1,16 +1,16 @@
-xitdb file: 3653 bytes; hash size 20, hash id "sha1", file id 47784b983a872ed6
+xitdb file: 3648 bytes; version 2, hash size 20, hash id "sha1", file id 47784b983a872ed6
 verify: 12 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 256, id 8280109efd2e35eb, root arrayList
-  commit 2: ends at 680, id af5c39ea98802b58, root arrayList
-  commit 3: ends at 966, id 905af0c154c93ffc, root arrayList
-  commit 4: ends at 1225, id 0d2d227333026f06, root arrayList
-  commit 5: ends at 1419, id c70033e59bd5c30d, root arrayList
-  commit 6: ends at 1849, id 03ca98db250444b0, root arrayList
-  commit 7: ends at 2367, id f508b514f5dfa150, root arrayList
-  commit 8: ends at 2561, id f0c73884ed25bb3d, root arrayList
-  commit 9: ends at 2755, id f9cde7362e8abbda, root arrayList
-  commit 10: ends at 3376, id 588d91a1b13c0e9e, root arrayList
-  commit 11: ends at 3653, id aae4ee0fa466492c, root bytes
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 251, id 6608294a516ebc8d, root arrayList
+  commit 2: ends at 675, id 824bf82feeb4c572, root arrayList
+  commit 3: ends at 961, id 20fc478626d7688a, root arrayList
+  commit 4: ends at 1220, id f8c3a4c603dd601d, root arrayList
+  commit 5: ends at 1414, id 9d8ff6d7a8bf037d, root arrayList
+  commit 6: ends at 1844, id 38a30ae25ca5990e, root arrayList
+  commit 7: ends at 2362, id 998a453bf3f08970, root arrayList
+  commit 8: ends at 2556, id 43d1a2e47f4d29fd, root arrayList
+  commit 9: ends at 2750, id 0d85d0a69c6b4f1e, root arrayList
+  commit 10: ends at 3371, id 6e56e497abd4f9c0, root arrayList
+  commit 11: ends at 3648, id 8f87d92863e8e7f6, root bytes
 note: the root is not a list of moments; it is dumped as it is
 moment 0: bytes 25 tag qc "repfstdqsxwauoehedaelrcxi"

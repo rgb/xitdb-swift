@@ -253,7 +253,7 @@
     {"op":"read_path","on":"root","path":[{"array_list_get":1}],"as":"r28","expect_null":false},
     {"op":"slot","on":"r28","expect":{"tag":"hash_map","full":false}},
     {"op":"close"},
-    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffffffffffffff"}},
+    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffff"}},
     {"op":"reopen"},
     {"op":"read_path_slot","on":"root","path":[{"array_list_get":1}],"as":"s29"},
     {"op":"write_path","on":"root","path":["array_list_append",{"write":{"slot":{"var":"s29"}}}]},

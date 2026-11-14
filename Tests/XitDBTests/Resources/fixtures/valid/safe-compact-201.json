@@ -215,7 +215,7 @@
       {"op":"write_path","on":"c30","path":[{"hash_map_init":{}},{"hash_map_remove":{"hex":"0000000000000000000000000000000000000071"}}],"expect_error":"KeyNotFound"},
       {"op":"write","on":"c31","data":{"float":"ff0093e780101be6"}}]}}]},
     {"op":"close"},
-    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffffffffffffff"}},
+    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffff"}},
     {"op":"reopen"},
     {"op":"read_path_slot","on":"root","path":[{"array_list_get":-1}],"as":"s33"},
     {"op":"write_path","on":"root","path":["array_list_init","array_list_append",{"write":{"slot":{"var":"s33"}}},{"hash_map_init":{}},{"ctx":{"as":"c34","ops":[
@@ -300,7 +300,7 @@
     {"op":"read_path","on":"root","path":[{"array_list_get":4}],"as":"r51","expect_null":false},
     {"op":"slot","on":"r51","expect":{"tag":"hash_map","full":false}},
     {"op":"close"},
-    {"op":"raw_write","offset":20,"bytes":{"hex":"020000000000001af10000000000001e6d"}},
+    {"op":"raw_write","offset":24,"bytes":{"hex":"0000000000001e68"}},
     {"op":"reopen"},
     {"op":"read_path_slot","on":"root","path":[{"array_list_get":-1}],"as":"s52"},
     {"op":"write_path","on":"root","path":["array_list_init","array_list_append",{"write":{"slot":{"var":"s52"}}},{"hash_map_init":{}},{"ctx":{"as":"c53","ops":[
@@ -313,7 +313,7 @@
       {"op":"read_path","on":"root","path":[{"array_list_get":-6}],"expect_null":true},
       {"op":"read_path","on":"c56","path":[{"hash_map_get":{"kv_pair":{"sha1":"k11"}}}],"expect_null":true}]}}]},
     {"op":"close"},
-    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffffffffffffff"}},
+    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffff"}},
     {"op":"reopen"},
     {"op":"compact","into":"compacted","file_id":"00000000000000cc","offset_map":"memory"}
   ]

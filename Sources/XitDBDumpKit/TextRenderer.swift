@@ -7,7 +7,8 @@ package enum TextRenderer {
             var line = "xitdb file: \(header.fileSize) bytes"
             if header.committedSize != header.fileSize { line += ", \(header.committedSize) committed" }
             let hashID = header.hashIDText.map { "\"\($0)\"" } ?? "0x" + header.hashIDHex
-            line += "; hash size \(header.hashSize), hash id \(hashID), file id \(header.fileID)"
+            line += "; version \(header.version), hash size \(header.hashSize), hash id \(hashID)"
+            line += ", file id \(header.fileID)"
             if let count = header.momentCount { line += "; \(count) moment\(count == 1 ? "" : "s")" }
             lines.append(line)
         }
@@ -71,13 +72,11 @@ package enum TextRenderer {
             var text = "bytes"
             if let length = node.length { text += " \(length)" }
             if let tag = node.formatTag { text += " tag \(tag)" }
-            if let shown = node.text {
-                if shown.hasPrefix("0x") {
-                    text += " \(shown)"
-                    if let length = node.length, length > 64 { text += "… (64 of \(length))" }
-                } else {
-                    text += " \"\(shown.replacing("\"", with: "\\\""))\""
-                }
+            if let hex = node.hex {
+                text += " 0x\(hex)"
+                if let length = node.length, length > 64 { text += "… (64 of \(length))" }
+            } else if let shown = node.text {
+                text += " \"\(Dumper.escaped(shown))\""
             }
             return text
         case .map, .set, .countedMap, .countedSet, .list, .linked, .sortedMap, .sortedSet:
@@ -99,7 +98,7 @@ package enum TextRenderer {
     private static func childLabel(_ child: Node.Child, options: DumpOptions) -> String {
         if let index = child.index { return "#\(index)" }
         var parts: [String] = []
-        if let name = child.name { parts.append("\"\(name.replacing("\"", with: "\\\""))\"") }
+        if let name = child.name { parts.append("\"\(Dumper.escaped(name))\"") }
         if let hex = child.keyHex { parts.append("0x" + hex) }
         if let hash = child.hash, hash.contains(where: { $0 != 0 }) {
             parts.append(Dumper.hex(options.fullHashes ? hash : Array(hash.prefix(8))))

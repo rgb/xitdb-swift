@@ -1,10 +1,6 @@
-{ "format": "xitdb-script/1", "description": "Finding 9, as Zig does it: streaming a short value needs the slot's position, which a sorted key doesn't always have, so a two-byte key raises ExpectedSlotPosition while a long one works.", "hash_size": 20, "hash_id": "sha1", "file_id": "0011223344556677",
+{ "format": "xitdb-script/1", "description": "Finding 9, as Zig does it: streaming a short value needs the slot's position, which a sorted key reached by sorted_map_get with key doesn't have, so a two-byte key raises ExpectedSlotPosition while a long one works. Since 71ee0cf a key-only entry's key from read_key_value_pair has the entry's position, so that one streams in both (stream-short-set-key).", "hash_size": 20, "hash_id": "sha1", "file_id": "0011223344556677",
   "ops": [
     { "op": "write_path", "on": "root", "path": [{ "sorted_map_init": { "set": true } }, { "sorted_map_get": { "key": "ab" } }] },
     { "op": "read_path", "on": "root", "path": [{ "sorted_map_get": { "key": "ab" } }], "as": "by_path" },
-    { "op": "iterator", "on": "root", "as": "it" },
-    { "op": "next", "on": "it", "as": "entry" },
-    { "op": "read_key_value_pair", "on": "entry", "key_as": "from_pair" },
-    { "op": "read_stream", "on": "by_path", "steps": [], "expect_error": "ExpectedSlotPosition" },
-    { "op": "read_stream", "on": "from_pair", "steps": [], "expect_error": "ExpectedSlotPosition" }
+    { "op": "read_stream", "on": "by_path", "steps": [], "expect_error": "ExpectedSlotPosition" }
   ] }

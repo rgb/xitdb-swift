@@ -1,16 +1,16 @@
-xitdb file: 7816 bytes; hash size 8, hash id 0x00000000, file id 875b9307abf55005
+xitdb file: 7811 bytes; version 2, hash size 8, hash id 0x00000000, file id 875b9307abf55005
 verify: 11 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 266, id 2504f37e0e7ffc5e, root hashMap
-  commit 2: ends at 651, id 71cdf518c5d8c60d, root hashMap
-  commit 3: ends at 2438, id 0868cac4afed3b5f, root hashMap
-  commit 4: ends at 2964, id bad8a69bc1e9498d, root hashMap
-  commit 5: ends at 3561, id 9f1ff0a61b0c0a87, root hashMap
-  commit 6: ends at 3765, id 2dbdf5677f12c10e, root hashMap
-  commit 7: ends at 4124, id 02c4f418c10c0bf4, root hashMap
-  commit 8: ends at 4680, id 5b5d9693406cc6ff, root hashMap
-  commit 9: ends at 7287, id 12c4473c3fe7d129, root hashMap
-  commit 10: ends at 7816, id 703041b0818019eb, root hashMap
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 261, id 090bbacd2a6e62ed, root hashMap
+  commit 2: ends at 646, id c0a5ebab755a7416, root hashMap
+  commit 3: ends at 2433, id 30d01847fa83defa, root hashMap
+  commit 4: ends at 2959, id f2ad230c1f3b4f60, root hashMap
+  commit 5: ends at 3556, id 9d90b4b334dc2fbc, root hashMap
+  commit 6: ends at 3760, id 869e1f33a93b2cf7, root hashMap
+  commit 7: ends at 4119, id 5c08c5b8c66cfed1, root hashMap
+  commit 8: ends at 4675, id 0d3732b2042562cc, root hashMap
+  commit 9: ends at 7282, id 024e9ede2aee42a7, root hashMap
+  commit 10: ends at 7811, id 42e2d0229b842ae5, root hashMap
 note: the root is not a list of moments; it is dumped as it is
 moment 0: map (21 entries)
   f527c79294c5f400: bytes 19 tag tx "yfmsfhqwjbzggzglefh"

@@ -1,15 +1,15 @@
-xitdb file: 11703 bytes; hash size 20, hash id "sha1", file id 088712be8a582fca; 9 moments
+xitdb file: 11698 bytes; version 2, hash size 20, hash id "sha1", file id 088712be8a582fca; 9 moments
 verify: 10 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 438, id c332c2a65982c60f, root arrayList
-  commit 2: ends at 2686, id 9df23c405bb030f7, root arrayList
-  commit 3: ends at 3540, id 980e00205bfc4ba7, root arrayList
-  commit 4: ends at 6125, id f12a94b7a0a4368d, root arrayList
-  commit 5: ends at 6607, id ccde2054fe5e33e3, root arrayList
-  commit 6: ends at 7403, id 07615840cf889f13, root arrayList
-  commit 7: ends at 8287, id 543c9211096f221d, root arrayList
-  commit 8: ends at 9885, id 2bcb4b143d90ce98, root arrayList
-  commit 9: ends at 11703, id a6ff6159e69403d5, root arrayList
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 433, id 5e0b38b7b5ddc866, root arrayList
+  commit 2: ends at 2681, id f378c2296a2bcb77, root arrayList
+  commit 3: ends at 3535, id c3174c7f9ae31c05, root arrayList
+  commit 4: ends at 6120, id 2b46f379dbe20e9c, root arrayList
+  commit 5: ends at 6602, id 95f913104aacfa19, root arrayList
+  commit 6: ends at 7398, id 7d0d7b1d6f541eaa, root arrayList
+  commit 7: ends at 8282, id 5d004d1fd8495016, root arrayList
+  commit 8: ends at 9880, id 8d50a30a3faece45, root arrayList
+  commit 9: ends at 11698, id ea8f534bc8104534, root arrayList
 moment 8: map (18 entries)
   0000000000000000: linked (35)
     #0: bytes 4 "urol"

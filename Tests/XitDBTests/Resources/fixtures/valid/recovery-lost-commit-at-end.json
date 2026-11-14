@@ -9,7 +9,7 @@
     {"op": "read_path_slot", "on": "root", "path": [{"array_list_get": -1}], "as": "last"},
     {"op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", {"write": {"slot": {"var": "last"}}}, {"hash_map_init": {}}, {"hash_map_get": {"value": {"sha1": "b"}}}, {"write": {"uint": 2}}]},
     {"op": "close"},
-    {"op": "raw_write", "offset": 20, "bytes": {"hex": "0200000000000000470000000000000205"}},
+    {"op": "raw_write", "offset": 24, "bytes": {"hex": "0000000000000200"}},
     {"op": "reopen"},
     {"op": "count", "on": "root", "expect": 1},
     {"op": "read_path_slot", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "b"}}}], "expect_null": true}

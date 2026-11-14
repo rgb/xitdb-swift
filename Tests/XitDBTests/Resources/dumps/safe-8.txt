@@ -1,13 +1,13 @@
-xitdb file: 12349 bytes; hash size 20, hash id "sha1", file id 9e5651b0ef953636; 7 moments
+xitdb file: 12344 bytes; version 2, hash size 20, hash id "sha1", file id 9e5651b0ef953636; 7 moments
 verify: 8 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 438, id 2852109527d5fdbc, root arrayList
-  commit 2: ends at 2636, id 8dcda050812dac27, root arrayList
-  commit 3: ends at 3878, id bae95797fd7dfd43, root arrayList
-  commit 4: ends at 4961, id 2b497a4a4dd48cfa, root arrayList
-  commit 5: ends at 7327, id ac4c5086796dd05a, root arrayList
-  commit 6: ends at 11829, id d1b9cc8e7405a270, root arrayList
-  commit 7: ends at 12349, id 751efd52895acdd7, root arrayList
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 433, id 6db3d7b62abb39f6, root arrayList
+  commit 2: ends at 2631, id 5211e5fa0257b080, root arrayList
+  commit 3: ends at 3873, id c33bb1eb1efa09e0, root arrayList
+  commit 4: ends at 4956, id 2d422f32a4858470, root arrayList
+  commit 5: ends at 7322, id 98925aea003d6d62, root arrayList
+  commit 6: ends at 11824, id caf05ab8fe569386, root arrayList
+  commit 7: ends at 12344, id 559284eeefd6bbe2, root arrayList
 moment 6: map (16 entries)
   0000000000000000: float 5.993618039546433e+239
   0000000000000000: bytes 18 tag ap "dofwpvoffvyuxzpbvs"

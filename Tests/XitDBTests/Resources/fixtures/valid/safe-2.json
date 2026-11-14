@@ -92,7 +92,7 @@
       {"op":"slot","on":"r19","expect":{"tag":"short_bytes","full":false}},
       {"op":"read_bytes","on":"r19","expect":"kajyp","expect_format_tag":null}]}}]},
     {"op":"close"},
-    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffffffffffffff"}},
+    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffff"}},
     {"op":"reopen"},
     {"op":"read_path","on":"root","path":[{"array_list_get":2}],"expect_null":true},
     {"op":"read_path_slot","on":"root","path":[{"array_list_get":-1}],"as":"s20"},

@@ -57,6 +57,23 @@ import Testing
         return (storage, database)
     }
 
+    /// A source with three moments of some three thousand bytes each, of
+    /// a version, in memory: about ten thousand bytes, so that its commits
+    /// lie across three of the 4096-byte blocks a sync writes its data in.
+    static func makeLargeSource(_ version: FormatVersion) throws -> (storage: MemoryStorage, database: Database) {
+        let storage = MemoryStorage()
+        let database = try newDatabase(version, in: storage, random: FixedRandom(FormatVersionTests.commitIDs))
+        for n in 1...3 {
+            let history = try ArrayList<ReadWrite>(database.rootCursor)
+            try history.append(.slot(try history.slot(at: -1))) { cursor in
+                let moment = try HashMap<ReadWrite>(cursor)
+                try moment.put(.uint(UInt64(n)), forHash: sha1("n").bytes)
+                try moment.put(.bytes([UInt8](repeating: UInt8(n), count: 3000)), forHash: sha1("large-\(n)").bytes)
+            }
+        }
+        return (storage, database)
+    }
+
     /// A replica with a commit of its own: file ID 77, the last moment
     /// holding 5.
     static func makeReplica(_ storage: any WritableStorage) throws -> Database {
@@ -77,16 +94,20 @@ import Testing
         }
     }
 
-    /// A source that gives one byte per read.
-    private struct OneByteSource: ByteSource {
+    /// A source that gives at most `piece` bytes per read: one, as a slow
+    /// socket might, unless told otherwise.
+    private struct PiecewiseSource: ByteSource {
         let bytes: [UInt8]
+        var piece = 1
         var position = 0
 
         mutating func read(into buffer: inout MutableSpan<UInt8>) -> Int {
-            guard position < bytes.count, buffer.count > 0 else { return 0 }
-            buffer[0] = bytes[position]
-            position += 1
-            return 1
+            let count = min(piece, bytes.count - position, buffer.count)
+            for index in 0..<count {
+                buffer[index] = bytes[position + index]
+            }
+            position += count
+            return count
         }
     }
 
@@ -298,15 +319,16 @@ import Testing
     // MARK: A full copy that did not finish
 
     /// A sync from 0 whose source ends early leaves a database without a
-    /// first commit: the source's header, a committed size of zero and what
-    /// arrived. In the process that made it and opened again, its state is
-    /// zero and zero, to which the source answers 0; everything else is
-    /// `invalidDatabase`; the next sync from 0 replaces it. `recover`, on a
-    /// copy of the same bytes, cuts back to the last commit of the source
-    /// that arrived whole, and the replica goes on from there.
+    /// first commit: the source's header, a committed size of zero and the
+    /// blocks of data that arrived whole. In the process that made it and
+    /// opened again, its state is zero and zero, to which the source
+    /// answers 0; everything else is `invalidDatabase`; the next sync from
+    /// 0 replaces it. `recover`, on a copy of the same bytes, cuts back to
+    /// the last commit of the source that those blocks hold whole, and the
+    /// replica goes on from there.
     @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
     func aFullCopyThatDidNotFinishOpensAndIsReplaced(kind: StorageKind, version: FormatVersion) throws {
-        let (sourceStorage, source) = try Self.makeSource(version)
+        let (sourceStorage, source) = try Self.makeLargeSource(version)
         let committed = try source.committedSize
         let whole = try source.readCommitted(from: 0, to: committed)
         let ends = try Database.verifiedCommits(in: sourceStorage).map(\.end)
@@ -315,19 +337,25 @@ import Testing
 
         let subject = try StorageUnderTest(kind)
         let replica = try Self.makeReplica(subject.storage)
-        // the connection ends seven bytes into the source's last commit
+        // the connection ends seven bytes into the source's last commit,
+        // inside the second block of the data: the first block arrived
+        // whole, and holds the source's commits up to the first moment
         let arrived = Int(ends[3]) + 7
+        let kept = data + 4096
+        try #require(arrived > kept && arrived < kept + 4096)
+        try #require(Int(ends[2]) < kept && Int(ends[3]) > kept)
         var short = ArrayByteSource(Array(whole[..<arrived]))
         #expect(throws: XitDBError.endOfStream) {
             try replica.applyReplicated(at: 0, from: &short, count: committed)
         }
 
-        // what is left: the source's header, zeros up to the data, the data
+        // what is left: the source's header, zeros up to the data, and the
+        // one block of data that arrived whole
         let left = try FormatVersionTests.stored(subject)
-        #expect(left.count == arrived)
+        #expect(left.count == kept)
         #expect(Array(left[..<20]) == Array(whole[..<20]))
         #expect(Array(left[20..<data]) == zeros(data - 20))
-        #expect(Array(left[data...]) == Array(whole[data..<arrived]))
+        #expect(Array(left[data...]) == Array(whole[data..<kept]))
 
         func expectNoFirstCommit(_ database: Database, _ comment: Comment) throws {
             #expect(database.header == source.header, comment)
@@ -367,13 +395,14 @@ import Testing
         try expectNoFirstCommit(
             try Database(storage: subject.storage, hashSize: 20), "opened by the Zig-shaped init")
 
-        // recovering instead: the last commit of the source that arrived whole
+        // recovering instead: the last commit of the source that the block
+        // holds whole
         let copy = MemoryStorage(bytes: left)
         let recovered = try Database.recover(copy)
-        #expect(try recovered.committedSize == ends[3])
-        #expect(try FormatVersionTests.lastN(recovered) == 2)
+        #expect(try recovered.committedSize == ends[2])
+        #expect(try FormatVersionTests.lastN(recovered) == 1)
         let next = try source.replicationStart(for: try recovered.replicaState)
-        #expect(next == ends[3])
+        #expect(next == ends[2])
         try recovered.applyReplicated(at: next, bytes: try source.readCommitted(from: next, to: committed))
         #expect(firstDifference(copy.bytes, sourceStorage.bytes) == nil)
 
@@ -386,24 +415,28 @@ import Testing
         #expect(try FormatVersionTests.lastN(Database(opening: subject.storage)) == 3)
     }
 
-    /// A copy that stops before it is as long as a new database leaves what
-    /// an unfinished creation leaves: the process that made it still has
-    /// its state of zero and zero and can sync again, while opening the
-    /// storage refuses it, and creating creates over it.
-    @Test(arguments: FormatVersion.allCases)
-    func aCopyThatStopsEarlyLeavesWhatAnUnfinishedCreationLeaves(version: FormatVersion) throws {
-        let (sourceStorage, source) = try Self.makeSource(version)
+    /// A copy that stops inside its first block of data leaves the headers
+    /// and nothing of the data, however much of the block had arrived, as
+    /// the original does. That is what an unfinished creation leaves: the
+    /// process that made it still has its state of zero and zero and can
+    /// sync again, while opening the storage refuses it, and creating
+    /// creates over it.
+    @Test(arguments: FormatVersion.allCases, [1, 10, 4095])
+    func aCopyThatStopsInItsFirstBlockLeavesWhatAnUnfinishedCreationLeaves(version: FormatVersion, arriving: Int)
+        throws
+    {
+        let (sourceStorage, source) = try Self.makeLargeSource(version)
         let committed = try source.committedSize
         let whole = try source.readCommitted(from: 0, to: committed)
         let data = Int(source.header.dataStart)
 
         let storage = MemoryStorage()
         let replica = try Self.makeReplica(storage)
-        var short = ArrayByteSource(Array(whole[..<(data + 10)]))
+        var short = ArrayByteSource(Array(whole[..<(data + arriving)]))
         #expect(throws: XitDBError.endOfStream) {
             try replica.applyReplicated(at: 0, from: &short, count: committed)
         }
-        #expect(storage.bytes.count == data + 10)
+        #expect(storage.bytes == Array(whole[..<20]) + zeros(data - 20))
         #expect(replica.header == source.header)
         #expect(try replica.replicaState == Self.noFirstCommit)
         #expect(throws: XitDBError.invalidDatabase) { try replica.committedSize }
@@ -415,6 +448,91 @@ import Testing
 
         try replica.applyReplicated(at: 0, bytes: whole)
         #expect(firstDifference(storage.bytes, sourceStorage.bytes) == nil)
+    }
+
+    /// The data of a copy reaches the storage in blocks of 4096 bytes,
+    /// counted from where the data starts, each once all of it has arrived,
+    /// as the original writes it. So a source that stops leaves the blocks
+    /// before the one it stopped in and nothing of that one, whether it
+    /// gave its bytes whole, one at a time, or in pieces that do not fit
+    /// the blocks; and the last block, which is as long as what remains,
+    /// is written when the last byte comes.
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func aCopyKeepsTheBlocksThatArrivedWhole(kind: StorageKind, version: FormatVersion) throws {
+        let (sourceStorage, source) = try Self.makeLargeSource(version)
+        let committed = try source.committedSize
+        let whole = try source.readCommitted(from: 0, to: committed)
+        let data = Int(source.header.dataStart)
+        // two whole blocks and a third that is shorter
+        try #require(whole.count - data > 2 * 4096 + 1 && whole.count - data < 3 * 4096)
+
+        // how much of the data arrives, and how many blocks of it are kept
+        let stops: [(arriving: Int, blocks: Int)] = [
+            (0, 0), (1, 0), (4095, 0), (4096, 1), (4097, 1), (8191, 1), (8192, 2), (8193, 2),
+            (whole.count - data - 1, 2),
+        ]
+        for (arriving, blocks) in stops {
+            for piece in [Int.max, 1, 1000] {
+                let comment: Comment = "\(arriving) bytes of data, at most \(piece) at a time"
+                let subject = try StorageUnderTest(kind)
+                let replica = try Self.makeReplica(subject.storage)
+                var short = PiecewiseSource(bytes: Array(whole[..<(data + arriving)]), piece: piece)
+                #expect(throws: XitDBError.endOfStream, comment) {
+                    try replica.applyReplicated(at: 0, from: &short, count: committed)
+                }
+                let left = try FormatVersionTests.stored(subject)
+                let kept = data + blocks * 4096
+                #expect(left.count == kept, comment)
+                #expect(left == Array(whole[..<20]) + zeros(data - 20) + Array(whole[data..<kept]), comment)
+                #expect(try replica.replicaState == Self.noFirstCommit, comment)
+
+                var all = PiecewiseSource(bytes: whole, piece: piece)
+                try replica.applyReplicated(at: 0, from: &all, count: committed)
+                #expect(try replica.committedSize == committed, comment)
+                #expect(firstDifference(try FormatVersionTests.stored(subject), sourceStorage.bytes) == nil, comment)
+            }
+        }
+    }
+
+    /// The same at the committed size: the blocks count from where the
+    /// bytes start, the ones that arrived whole stay past the committed
+    /// size, which does not move, and the next sync discards them.
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func anAppendKeepsTheBlocksThatArrivedWhole(kind: StorageKind, version: FormatVersion) throws {
+        let (sourceStorage, source) = try Self.makeLargeSource(version)
+        let committed = try source.committedSize
+        let ends = try Database.verifiedCommits(in: sourceStorage).map(\.end)
+        // the replica has the source up to its empty history
+        let from = ends[1]
+        let tail = try source.readCommitted(from: from, to: committed)
+        try #require(tail.count > 2 * 4096 + 1 && tail.count < 3 * 4096)
+
+        let subject = try StorageUnderTest(kind)
+        let replica = try Self.makeReplica(subject.storage)
+        try replica.applyReplicated(at: 0, bytes: try source.readCommitted(from: 0, to: from))
+        let before = try FormatVersionTests.stored(subject)
+        #expect(before.count == Int(from))
+
+        let stops: [(arriving: Int, blocks: Int)] = [
+            (0, 0), (1, 0), (4095, 0), (4096, 1), (4097, 1), (8191, 1), (8192, 2), (tail.count - 1, 2),
+        ]
+        for (arriving, blocks) in stops {
+            for piece in [Int.max, 1, 1000] {
+                let comment: Comment = "\(arriving) bytes, at most \(piece) at a time"
+                var short = PiecewiseSource(bytes: Array(tail[..<arriving]), piece: piece)
+                #expect(throws: XitDBError.endOfStream, comment) {
+                    try replica.applyReplicated(at: from, from: &short, count: UInt64(tail.count))
+                }
+                #expect(try replica.committedSize == from, comment)
+                let left = try FormatVersionTests.stored(subject)
+                #expect(left == before + Array(tail[..<(blocks * 4096)]), comment)
+            }
+        }
+
+        var all = PiecewiseSource(bytes: tail, piece: 1000)
+        try replica.applyReplicated(at: from, from: &all, count: UInt64(tail.count))
+        #expect(try replica.committedSize == committed)
+        #expect(firstDifference(try FormatVersionTests.stored(subject), sourceStorage.bytes) == nil)
     }
 
     /// The source's header is read and checked before the replica is
@@ -468,7 +586,7 @@ import Testing
                 try replica.applyReplicated(at: 0, from: &all, count: UInt64(bytes.count))
             }
             try expectUntouched("\(what), from a source")
-            var slow = OneByteSource(bytes: bytes)
+            var slow = PiecewiseSource(bytes: bytes)
             #expect(throws: error, "\(what), a byte at a time") {
                 try replica.applyReplicated(at: 0, from: &slow, count: UInt64(bytes.count))
             }
@@ -516,9 +634,9 @@ import Testing
                 }
             ),
             (
-                "a source that ends inside the data", .endOfStream, data + 40,
+                "a source that ends inside the first block of the data", .endOfStream, data,
                 { replica in
-                    var source = OneByteSource(bytes: Array(whole[..<(data + 40)]))
+                    var source = PiecewiseSource(bytes: Array(whole[..<(data + 40)]))
                     try replica.applyReplicated(at: 0, from: &source, count: committed)
                 }
             ),

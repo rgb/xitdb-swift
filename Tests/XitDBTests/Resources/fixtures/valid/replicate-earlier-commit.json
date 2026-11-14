@@ -21,10 +21,10 @@
     { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "write": { "uint": 5 } }] },
     { "op": "committed_size", "as": "fifth" },
 
-    { "op": "read_committed", "start": 0, "end": 62, "as": "bytes" },
+    { "op": "read_committed", "start": 0, "end": 57, "as": "bytes" },
     { "op": "use", "name": "as_of_nothing" },
     { "op": "apply_replicated", "start": 0, "bytes": "bytes" },
-    { "op": "committed_size", "expect": 62 },
+    { "op": "committed_size", "expect": 57 },
     { "op": "slot", "on": "root", "expect": { "tag": "none", "full": false }, "note": "the first commit of all, which has nothing in it" },
 
     { "op": "use", "name": "main" },

@@ -151,7 +151,7 @@
         {"op":"write","on":"c38","data":{"slot":null}},
         {"op":"fail"}]}}]}]}}],"expect_error":"ScriptAbort"},
     {"op":"close"},
-    {"op":"raw_write","offset":20,"bytes":{"hex":"02000000000000123b0000000000001719"}},
+    {"op":"raw_write","offset":24,"bytes":{"hex":"0000000000001714"}},
     {"op":"reopen"},
     {"op":"read_path_slot","on":"root","path":[{"array_list_get":-1}],"as":"s39"},
     {"op":"write_path","on":"root","path":["array_list_init","array_list_append",{"write":{"slot":{"var":"s39"}}},{"hash_map_init":{}},{"ctx":{"as":"c40","ops":[

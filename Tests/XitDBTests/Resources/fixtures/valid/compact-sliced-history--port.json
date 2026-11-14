@@ -1,6 +1,6 @@
 {
   "format": "xitdb-script/1",
-  "description": "Compacting a list at the root that has lost its last moment some other way than in compact-roots, as gen found: sliced to nothing, and then given an element appended in a callback that wrote nothing to it. Zig compacts each to an empty root, and the port refuses each with EmptyLastMoment, before writing anything (finding 28). A last element set to nothing is a moment, so that compacts. What the port writes is what Zig writes with the refused compactions left out.",
+  "description": "Compacting a list at the root that has lost its last moment some other way than in compact-roots, as gen found: sliced to nothing, which Zig compacts to an empty root, and the port refuses with EmptyLastMoment, before writing anything (finding 28). Then it's given an element appended in a callback that wrote nothing to it, which since 89da8e7 is a none slot marked full, a moment set to nothing, so both compact it. A version 1 list whose only element is truly empty, from inputs/v1-one-unwritten, is refused too. What the port writes is what Zig writes with the refused compactions left out.",
   "hash_size": 20,
   "hash_id": "sha1",
   "file_id": "c0f0000000000022",
@@ -17,15 +17,19 @@
       { "op": "read_path", "on": "c", "path": [], "expect_null": true, "note": "the callback writes nothing to the element it's given" }
     ] } }] },
     { "op": "count", "on": "root", "expect": 1 },
-    { "op": "compact", "into": "sliced", "file_id": "00000000000000a0", "offset_map": "memory", "expect_error": "EmptyLastMoment", "note": "an element appended and never written isn't a moment" },
-
-    { "op": "write_path", "on": "root", "path": ["array_list_init", { "array_list_get": -1 }, { "write": { "slot": null } }], "note": "set to nothing, it's a moment" },
-    { "op": "compact", "into": "sliced", "file_id": "00000000000000a0", "offset_map": "disk" },
+    { "op": "compact", "into": "sliced", "file_id": "00000000000000a0", "offset_map": "memory", "note": "an element appended and never written is, since 89da8e7, a none slot marked full, which is a moment set to nothing, and it compacts as one" },
     { "op": "use", "name": "sliced" },
     { "op": "count", "on": "root", "expect": 1 },
     { "op": "read_path_slot", "on": "root", "path": [{ "array_list_get": 0 }], "expect": { "tag": "none", "full": true } },
+    { "op": "create_database", "name": "v1_one", "file_id": "00000000000000a2" },
+    { "op": "use", "name": "v1_one" },
+    { "op": "close" },
+    { "op": "raw_load", "input": "v1-one-unwritten", "note": "a version 1 list at the root whose only element was appended at 6b93af1 and never written, so it's truly empty" },
+    { "op": "reopen" },
+    { "op": "compact", "into": "v1_one_target", "file_id": "00000000000000a3", "offset_map": "memory", "expect_error": "EmptyLastMoment", "note": "which is no last moment" },
+    { "op": "count", "on": "root", "expect": 1 },
     { "op": "use", "name": "empty_target" },
-    { "op": "committed_size", "expect": 62 },
+    { "op": "committed_size", "expect": 57 },
     { "op": "slot", "on": "root", "expect": { "tag": "none", "full": false } }
   ]
 }

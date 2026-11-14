@@ -1,18 +1,18 @@
-xitdb file: 33262 bytes; hash size 20, hash id "sha1", file id 63033b0ca389c35a; 12 moments
+xitdb file: 33257 bytes; version 2, hash size 20, hash id "sha1", file id 63033b0ca389c35a; 12 moments
 verify: 13 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 3266, id 96f5b9dca730316e, root arrayList
-  commit 2: ends at 4084, id 5bb83b99f21f9f04, root arrayList
-  commit 3: ends at 5703, id b3b738d7bf9b4c7b, root arrayList
-  commit 4: ends at 14042, id 737e5b539e884980, root arrayList
-  commit 5: ends at 15945, id f0f648790b7f1fcb, root arrayList
-  commit 6: ends at 16139, id 2d7cbf0a5e6c35dc, root arrayList
-  commit 7: ends at 16739, id 9e7acaab729d8d83, root arrayList
-  commit 8: ends at 21694, id a0a75fb4fdf3832d, root arrayList
-  commit 9: ends at 22176, id 2e91287f4b4ec1d7, root arrayList
-  commit 10: ends at 25866, id 442e00e9ecc29c41, root arrayList
-  commit 11: ends at 28627, id 52c63488c446c2cc, root arrayList
-  commit 12: ends at 33262, id e35a87c4c83f203a, root arrayList
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 3261, id 9e89b8f4d0871b27, root arrayList
+  commit 2: ends at 4079, id 59c2bebde77a48e1, root arrayList
+  commit 3: ends at 5698, id bd6e8f33501c4e65, root arrayList
+  commit 4: ends at 14037, id 6fa11d50e3143b18, root arrayList
+  commit 5: ends at 15940, id 1e23cd1bdf5438eb, root arrayList
+  commit 6: ends at 16134, id 1f169b7c8b4102a6, root arrayList
+  commit 7: ends at 16734, id 95979611d5babbf7, root arrayList
+  commit 8: ends at 21689, id 475e71f30b796ef5, root arrayList
+  commit 9: ends at 22171, id c77ee7be04dd42e2, root arrayList
+  commit 10: ends at 25861, id bbf624e168f7e3d7, root arrayList
+  commit 11: ends at 28622, id 067577b75e5639ca, root arrayList
+  commit 12: ends at 33257, id fe591ff8de2e1437, root arrayList
 moment 11: map (19 entries)
   0000000000000000: bytes 41 "jzyznwyfnfwehmesywjwwqlqtecofyjdvfbtxsncn"
   0000000000000000: sorted map (16)

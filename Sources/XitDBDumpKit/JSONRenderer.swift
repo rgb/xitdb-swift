@@ -12,6 +12,7 @@ package enum JSONRenderer {
                             object(into: &out, indent: indent) { f in
                                 f.append(("bytes", { o, _ in o += "\(header.fileSize)" }))
                                 f.append(("committed", { o, _ in o += "\(header.committedSize)" }))
+                                f.append(("version", { o, _ in o += "\(header.version)" }))
                                 f.append(("hashSize", { o, _ in o += "\(header.hashSize)" }))
                                 if let text = header.hashIDText {
                                     f.append(("hashId", { o, _ in o += string(text) }))
@@ -94,12 +95,10 @@ package enum JSONRenderer {
             case .bytes:
                 if let length = node.length { f.append(("length", { o, _ in o += "\(length)" })) }
                 if let tag = node.formatTag { f.append(("formatTag", { o, _ in o += string(tag) })) }
-                if let text = node.text {
-                    if text.hasPrefix("0x") {
-                        f.append(("hex", { o, _ in o += string(String(text.dropFirst(2))) }))
-                    } else {
-                        f.append(("utf8", { o, _ in o += string(text) }))
-                    }
+                if let hex = node.hex {
+                    f.append(("hex", { o, _ in o += string(hex) }))
+                } else if let text = node.text {
+                    f.append(("utf8", { o, _ in o += string(text) }))
                 }
             case .shared, .cycle, .truncated, .unreadable:
                 if let text = node.text { f.append(("note", { o, _ in o += string(text) })) }

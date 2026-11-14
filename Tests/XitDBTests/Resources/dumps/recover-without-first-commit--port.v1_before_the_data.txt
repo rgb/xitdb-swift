@@ -1,0 +1,3 @@
+verify: 0 commits verify; 37 bytes past the last do not
+note: no commit verifies
+note: not an xitdb file that opens: invalidDatabase

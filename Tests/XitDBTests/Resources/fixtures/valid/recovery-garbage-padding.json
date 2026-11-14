@@ -1,0 +1,23 @@
+{
+  "format": "xitdb-script/1",
+  "description": "In version 2 the root header is the committed size alone, at bytes 24 to 31, and the four bytes before it are padding that nothing reads or writes. Garbage there changes nothing: the file opens, the root comes from the trailer, and a commit leaves the garbage where it is. recovery-torn-root-slot is the same for version 1, whose root slot copy is there instead.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f0000000000016",
+  "ops": [
+    {"op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", {"hash_map_init": {}}, {"ctx": {"as": "m", "ops": [{"op": "write_path", "on": "m", "path": [{"hash_map_get": {"value": {"sha1": "a"}}}, {"write": {"uint": 1}}]}, {"op": "write_path", "on": "m", "path": [{"hash_map_get": {"value": {"sha1": "long"}}}, {"write": {"bytes": "a value too long to fit in a slot"}}]}]}}]},
+    {"op": "close"},
+    {"op": "raw_write", "offset": 20, "bytes": {"hex": "ffffffff"}},
+    {"op": "reopen"},
+    {"op": "count", "on": "root", "expect": 1},
+    {"op": "read_path", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "a"}}}], "as": "c"},
+    {"op": "read_uint", "on": "c", "expect": 1},
+    {"op": "read_path_slot", "on": "root", "path": [{"array_list_get": -1}], "as": "last"},
+    {"op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", {"write": {"slot": {"var": "last"}}}, {"hash_map_init": {}}, {"hash_map_get": {"value": {"sha1": "b"}}}, {"write": {"uint": 2}}], "note": "a commit writes the committed size, and only that"},
+    {"op": "count", "on": "root", "expect": 2},
+    {"op": "close"},
+    {"op": "reopen"},
+    {"op": "read_path", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "b"}}}], "as": "c"},
+    {"op": "read_uint", "on": "c", "expect": 2}
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "format": "xitdb-script/1",
-  "description": "Corners of the path API that SCRIPT-FORMAT.md states and a second runner could get wrong. Each is shown to hold in Zig. This is path-api-edges with what the port does: write_if_empty goes by the slot as it is now (Zig from 185af01 on), nothing can follow a remove, and an op that fails having written something poisons the transaction.",
+  "description": "Corners of the path API that SCRIPT-FORMAT.md states and a second runner could get wrong. Each is shown to hold in Zig. This is path-api-edges with what the port does: write_if_empty goes by the slot as it is now (the fixes branch, by finding 17's rule), nothing can follow a remove, and an op that fails having written something poisons the transaction.",
   "hash_size": 20,
   "hash_id": null,
   "file_id": "0000000000000000",

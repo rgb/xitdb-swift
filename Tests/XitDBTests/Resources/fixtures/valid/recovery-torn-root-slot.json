@@ -1,24 +1,25 @@
 {
   "format": "xitdb-script/1",
-  "description": "Only the committed size in the root header is ever read. The root slot cached next to it can be garbage, as a crash during its rewrite would leave it, and the root comes from the trailer anyway. The next commit rewrites it, or it stays.",
+  "description": "A version 1 file, inputs/v1-history, which has a copy of the root slot at bytes 20 to 28, before the committed size. Since bdaa55e nothing reads or writes the copy, so garbage there, as a crash while the original at 6b93af1 rewrote it could leave, changes nothing: the file opens, the root comes from the trailer, and a commit leaves the garbage where it is and the file version 1. recovery-garbage-padding is the same for version 2.",
   "hash_size": 20,
   "hash_id": "sha1",
-  "file_id": "c0f0000000000016",
+  "file_id": "c0f0000000000001",
   "ops": [
-    {"op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", {"hash_map_init": {}}, {"ctx": {"as": "m", "ops": [{"op": "write_path", "on": "m", "path": [{"hash_map_get": {"value": {"sha1": "a"}}}, {"write": {"uint": 1}}]}, {"op": "write_path", "on": "m", "path": [{"hash_map_get": {"value": {"sha1": "long"}}}, {"write": {"bytes": "a value too long to fit in a slot"}}]}]}}]},
     {"op": "close"},
+    {"op": "raw_load", "input": "v1-history", "note": "two moments, each a hash map"},
     {"op": "raw_write", "offset": 20, "bytes": {"hex": "ffffffffffffffffff"}, "note": "not even a valid tag"},
     {"op": "reopen"},
-    {"op": "count", "on": "root", "expect": 1},
-    {"op": "read_path", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "a"}}}], "as": "c"},
-    {"op": "read_uint", "on": "c", "expect": 1},
-    {"op": "read_path_slot", "on": "root", "path": [{"array_list_get": -1}], "as": "last"},
-    {"op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", {"write": {"slot": {"var": "last"}}}, {"hash_map_init": {}}, {"hash_map_get": {"value": {"sha1": "b"}}}, {"write": {"uint": 2}}]},
     {"op": "count", "on": "root", "expect": 2},
+    {"op": "read_path", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "short"}}}], "as": "c"},
+    {"op": "read_bytes", "on": "c", "expect": "bar"},
+    {"op": "read_path_slot", "on": "root", "path": [{"array_list_get": -1}], "as": "last"},
+    {"op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", {"write": {"slot": {"var": "last"}}}, {"hash_map_init": {}}, {"hash_map_get": {"value": {"sha1": "b"}}}, {"write": {"uint": 2}}], "note": "a commit writes the committed size at 29, and leaves bytes 20 to 28 as they are"},
+    {"op": "count", "on": "root", "expect": 3},
     {"op": "close"},
-    {"op": "raw_write", "offset": 20, "bytes": {"hex": "ffffffffffffffffff"}},
     {"op": "reopen"},
     {"op": "read_path", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "b"}}}], "as": "c"},
-    {"op": "read_uint", "on": "c", "expect": 2}
+    {"op": "read_uint", "on": "c", "expect": 2},
+    {"op": "read_path", "on": "root", "path": [{"array_list_get": 0}, {"hash_map_get": {"value": {"sha1": "short"}}}], "as": "c"},
+    {"op": "read_bytes", "on": "c", "expect": "foo"}
   ]
 }

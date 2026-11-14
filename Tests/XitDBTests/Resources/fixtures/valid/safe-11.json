@@ -71,7 +71,7 @@
       {"op":"write_path","on":"c9","path":[{"hash_map_init":{}},{"hash_map_get":{"value":{"sha1":"k10"}}},{"sorted_map_init":{}},{"sorted_map_get":{"value":"s8"}},{"write":{"int":-832}}],"as":"c10"},
       {"op":"write_path","on":"c9","path":[{"hash_map_init":{}},{"hash_map_get":{"value":{"sha1":"k2"}}},"array_list_init","array_list_append",{"write":{"float":"cfd79e58579e3516"}}]}]}}]},
     {"op":"close"},
-    {"op":"raw_write","offset":20,"bytes":{"hex":"02000000000000004700000000000008c5"}},
+    {"op":"raw_write","offset":24,"bytes":{"hex":"00000000000008c0"}},
     {"op":"reopen"},
     {"op":"read_path","on":"root","path":[{"array_list_get":-1},{"hash_map_get":{"value":{"hex":"0000000000000000000000000000000000000071"}}}],"expect_null":true},
     {"op":"read_path_slot","on":"root","path":[{"array_list_get":-1}],"as":"s11"},

@@ -680,7 +680,7 @@
       {"op":"write_path","on":"c50","path":[{"hash_map_init":{}},{"hash_map_get":{"value":{"hex":"0000000000000000000000000000000000000061"}}},{"sorted_map_init":{"set":true}},{"sorted_map_get":{"key":"s34"}}]},
       {"op":"write_path","on":"c50","path":[{"hash_map_init":{}},{"hash_map_get":{"value":{"sha1":"k3"}}},{"sorted_map_init":{"set":true}},{"sorted_map_remove":"a sorted key that is too long for a slot 28"}]}]}}],"expect_error":"KeyNotFound"},
     {"op":"close"},
-    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffffffffffffff"}},
+    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffff"}},
     {"op":"reopen"},
     {"op":"read_path","on":"root","path":[{"array_list_get":0},{"hash_map_get":{"value":{"sha1":"k10"}}}],"expect_null":true},
     {"op":"read_path","on":"root","path":[{"array_list_get":-5},{"hash_map_get":{"value":{"sha1":"k3"}}},{"sorted_map_get_index":1}],"as":"r51","expect_null":false},

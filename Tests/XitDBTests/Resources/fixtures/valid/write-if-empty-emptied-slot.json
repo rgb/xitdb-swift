@@ -1,6 +1,6 @@
 {
   "format": "xitdb-script/1",
-  "description": "From Zig commit 185af01 on, write_if_empty goes by the slot as it is now, and this is the direction no other script has: the snapshot has something and the slot has since been emptied in place, so it writes. A remove empties the map's own slot for a key, which a kv_pair cursor points at. What goes there can't be the pair again, as run refuses to write one. A written none leaves the map working, and a uint shows that it really writes. Before 185af01, none of these write, so this fails at the first slot it checks. All the write_if_empty ops come before the checks, so that impact.sh counts them on a Zig that fails.",
+  "description": "From the fixes branch on, write_if_empty goes by the slot as it is now (finding 17): it writes when that slot is empty, or when the cursor's own slot is empty and the slot now is a none, and otherwise it holds back. This is the direction no other script has: the snapshot has something and the slot has since been emptied in place, so it writes. A remove empties the map's own slot for a key, which a kv_pair cursor points at. What goes there can't be the pair again, as run refuses to write one. A written none leaves the map working, and a uint shows that it really writes. The other direction is a cursor made on an empty slot, with a none written there since: its own slot is empty and the slot now is a none, so it writes, as the original does too. On the original, the first three don't write, so this fails at the first slot it checks. All the write_if_empty ops come before the checks, so that impact.sh counts them on a Zig that fails.",
   "hash_size": 8,
   "hash_id": null,
   "file_id": "c0f000000000001c",
@@ -27,13 +27,13 @@
       { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "00000000000000a2" } } }], "expect_null": true },
       { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "0000000000000015" } } }], "expect_null": true },
 
-      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "00000000000000a4" } } }], "as": "written_none_since", "note": "the other direction, for what empty means: the snapshot here is empty" },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "00000000000000a4" } } }], "as": "written_none_since", "note": "the other direction, for what empty means: the snapshot here is empty, and a none is written since" },
       { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "00000000000000a4" } } }, { "write": { "slot": null } }] },
 
       { "op": "write_if_empty", "on": "written_none", "data": { "slot": null } },
       { "op": "write_if_empty", "on": "written_uint", "data": { "uint": 9 } },
       { "op": "write_if_empty", "on": "in_its_block", "data": { "slot": null } },
-      { "op": "write_if_empty", "on": "written_none_since", "data": { "uint": 9 }, "note": "a written none has full set, so it isn't empty, and this holds back" },
+      { "op": "write_if_empty", "on": "written_none_since", "data": { "uint": 9 }, "note": "a written none has full set, so it isn't empty, but the cursor's own slot is, and the slot now is a none, so this writes" },
 
       { "op": "slot", "on": "written_none", "expect": { "tag": "none", "full": true } },
       { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "00000000000000a1" } } }], "expect_null": true, "note": "a none in the map's slot is still no key" },
@@ -43,7 +43,7 @@
       { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "0000000000000015" } } }], "expect_null": true },
       { "op": "read_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "0000000000000025" } } }], "as": "beside" },
       { "op": "read_uint", "on": "beside", "expect": 5 },
-      { "op": "read_path_slot", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "00000000000000a4" } } }], "expect": { "tag": "none", "full": true } },
+      { "op": "read_path_slot", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "00000000000000a4" } } }], "expect": { "tag": "uint", "value": 9 } },
 
       { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "hex": "00000000000000a1" } } }, { "write": { "uint": 7 } }], "note": "and a key can still go where a none was written" }
     ] } }] },

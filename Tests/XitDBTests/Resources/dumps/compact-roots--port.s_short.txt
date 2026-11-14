@@ -1,6 +1,6 @@
-xitdb file: 96 bytes; hash size 20, hash id "sha1", file id 000000000000001a
+xitdb file: 91 bytes; version 2, hash size 20, hash id "sha1", file id 000000000000001a
 verify: 2 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 96, id 25fc17513a9be8b8, root shortBytes
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 91, id 4de3eda0deefa3af, root shortBytes
 note: the root is not a list of moments; it is dumped as it is
 moment 0: bytes 2 "hi"

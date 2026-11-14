@@ -12,7 +12,7 @@
     {"op":"read_path","on":"root","path":[{"array_list_get":0}],"as":"r4","expect_null":false},
     {"op":"slot","on":"r4","expect":{"tag":"hash_map","full":false}},
     {"op":"close"},
-    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffffffffffffff"}},
+    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffff"}},
     {"op":"reopen"},
     {"op":"read_path","on":"root","path":[{"array_list_get":-2}],"expect_null":true},
     {"op":"read_path_slot","on":"root","path":[{"array_list_get":-1}],"as":"s5"},

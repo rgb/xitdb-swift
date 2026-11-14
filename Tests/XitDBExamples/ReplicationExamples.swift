@@ -256,15 +256,22 @@ import XitDB
         #expect(try replica.committedSize == end)
     }
 
-    /// The article's sentence on a buffered file: what arrived after the
-    /// synced headers is in the storage's buffer, and the file has it only if
-    /// the storage is flushed before it goes away.
+    /// The article's sentences on what a failed copy leaves: the blocks of
+    /// 4,096 bytes that arrived whole, which on a buffered file are in the
+    /// storage's buffer, so that the file has them only if the storage is
+    /// flushed before it goes away.
     @Test func anInterruptedFullSyncOnABufferedFile() throws {
         let scratch = ScratchDirectory()
         defer { scratch.remove() }
-        let (_, source, _) = try newSource()
+        let (_, source, history) = try newSource()
+        // A source longer than one block, and a copy that stops in the second.
+        try history.append(.slot(try history.slot(at: -1))) { cursor in
+            let notes = [UInt8](repeating: 0x61, count: 5000)
+            try HashMap<ReadWrite>(cursor).put(.bytes(notes), forHash: sha256("notes"))
+        }
         let bytes = try source.readCommitted(from: 0, to: try source.committedSize)
-        let arrived = bytes.count / 2
+        let arrived = 4500
+        #expect(bytes.count > arrived)
 
         func interruptedCopy(to path: String, flushing: Bool) throws {
             let storage = try BufferedFileStorage(path: path, access: .create)
@@ -284,11 +291,12 @@ import XitDB
         #expect(throws: XitDBError.invalidDatabase) { try Database(opening: headers) }
         #expect(try Database(creating: headers, hashSize: 32).committedSize == 57)
 
-        // Flushed: the headers and what arrived, a database without a first
-        // commit, which opens for the next sync to replace.
+        // Flushed: the headers and the first block, all that arrived whole, a
+        // database without a first commit, which opens for the next sync to
+        // replace.
         try interruptedCopy(to: scratch.path("flushed.db"), flushing: true)
         let partial = try BufferedFileStorage(path: scratch.path("flushed.db"), access: .readWrite)
-        #expect(try partial.length == UInt64(arrived))
+        #expect(try partial.length == 32 + 4096)
         #expect(try Database(opening: partial).replicaState == ReplicaState(committedSize: 0, checksum: 0))
     }
 

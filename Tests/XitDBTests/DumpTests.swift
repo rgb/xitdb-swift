@@ -43,7 +43,7 @@ import XitDBDumpKit
     /// `Resources/dumps`, which `scripts/pin-dumps.sh` writes.
     @Test func everyFixtureDumpsAsPinned() throws {
         let fixtures = try Self.files("fixtures/valid", suffix: ".db")
-        #expect(fixtures.count == 248)
+        #expect(fixtures.count == 294)
         let dumps = try Self.resources().appendingPathComponent("dumps")
         for fixture in fixtures {
             let name = fixture.deletingPathExtension().lastPathComponent
@@ -73,7 +73,7 @@ import XitDBDumpKit
             _ = JSONRenderer.render(dump, options: Self.verifying)
             damaged += 1
         }
-        #expect(damaged == 14)
+        #expect(damaged == 15)
         let fixtures = try Self.resources().appendingPathComponent("fixtures/valid")
         for name in ["worked-example", "every-construct-linked--port"] {
             let whole = try Self.bytes(fixtures.appendingPathComponent("\(name).db"))
@@ -162,7 +162,9 @@ import XitDBDumpKit
 
         let truncated = Self.dump(Array(whole.dropLast(10)), Self.verifying)
         #expect(truncated.exitCode == 1)
-        #expect(truncated.verification?.bytesPastLastCommit == UInt64(whole.count - 10 - 62))
+        // cut inside its second commit, it is left with the first: a new
+        // version 2 database, 57 bytes
+        #expect(truncated.verification?.bytesPastLastCommit == UInt64(whole.count - 10 - 57))
         #expect(truncated.notes.contains { $0.contains("what follows is what recovery would open") })
         #expect(truncated.moments.isEmpty || truncated.header?.momentCount == 0)
 
@@ -198,24 +200,46 @@ import XitDBDumpKit
     /// too. Three fixtures end in bytes past their last commit by design,
     /// a rolled-back or interrupted write's leftovers, which the scan shows
     /// as such.
+    ///
+    /// A script whose own database starts from an input, a version 1 file
+    /// the original wrote at `6b93af1`, has that input's commits before its
+    /// own: they were made before the script began, and the scan finds
+    /// them, or as many as the script left. One of those ends on a file of
+    /// one byte, which has no header to scan by.
     @Test func verifiedCommitsMatchTheSidecars() throws {
         let folder = try Self.resources().appendingPathComponent("fixtures/valid")
         var checked = 0
+        var fromInputs: [String] = []
+        var withOneCommit: [String] = []
         for sidecar in try Self.files("fixtures/valid", suffix: ".db.sidecar.json") {
             let name = sidecar.lastPathComponent.replacing(".db.sidecar.json", with: "")
+            let comment = Comment(rawValue: name)
             let document = try #require(
-                try JSONSerialization.jsonObject(with: Data(contentsOf: sidecar)) as? [String: Any],
-                Comment(rawValue: name))
-            let ops = try #require(document["ops"] as? [[String: Any]], Comment(rawValue: name))
+                try JSONSerialization.jsonObject(with: Data(contentsOf: sidecar)) as? [String: Any], comment)
+            let ops = try #require(document["ops"] as? [[String: Any]], comment)
             var recorded = ["\(try #require(document["initial_size"] as? UInt64)):0000000000000000"]
             for op in ops {
                 guard let id = op["commit_id"] as? String, let end = op["committed_size"] as? UInt64 else { continue }
                 recorded.append("\(end):\(id)")
             }
+            // the commits of the inputs the script's own database was loaded with
+            var before: [String] = []
+            for input in try Self.inputsOfTheMainDatabase(folder.appendingPathComponent("\(name).json")) {
+                let bytes = try Self.bytes(try Self.resources().appendingPathComponent("fixtures/inputs/\(input).db"))
+                before += try Database.verifiedCommits(in: MemoryStorage(bytes: bytes)).map(Self.text)
+            }
+            if !before.isEmpty { fromInputs.append(name) }
             let bytes = try Self.bytes(folder.appendingPathComponent("\(name).db"))
+            if name == "recovery-cut-during-creation-read-only" {
+                #expect(bytes.count == 1)
+                #expect(throws: XitDBError.endOfStream) {
+                    try Database.verifiedCommits(in: MemoryStorage(bytes: bytes))
+                }
+                continue
+            }
             let commits = try Database.verifiedCommits(in: MemoryStorage(bytes: bytes))
-            let scanned = commits.map { "\($0.end):\(Dumper.hex(bigEndian: $0.commitID))" }
-            var remaining = recorded[...]
+            let scanned = commits.map(Self.text)
+            var remaining = (before + recorded)[...]
             var inOrder = true
             for commit in scanned {
                 guard let index = remaining.firstIndex(of: commit) else {
@@ -224,12 +248,155 @@ import XitDBDumpKit
                 }
                 remaining = remaining[(index + 1)...]
             }
-            #expect(inOrder, "\(name): scan \(scanned) is not in the sidecar's order \(recorded)")
-            #expect(commits.last.map { $0.end <= UInt64(bytes.count) } == true, Comment(rawValue: name))
-            #expect(commits.count >= 2, Comment(rawValue: name))
+            #expect(inOrder, "\(name): scan \(scanned) is not in the order of \(before) and then \(recorded)")
+            #expect(commits.last.map { $0.end <= UInt64(bytes.count) } == true, comment)
+            #expect(commits.count >= 1, comment)
+            if commits.count == 1 { withOneCommit.append(name) }
             checked += 1
         }
-        #expect(checked == 131, "every fixture with a sidecar")
+        #expect(checked == 145, "every fixture with a sidecar but the one that ends on one byte")
+        #expect(
+            fromInputs.sorted() == [
+                "recovery-cut-during-creation", "recovery-cut-during-creation-read-only",
+                "recovery-lost-commit-version-1", "recovery-open-errors-version-1--port", "recovery-torn-root-slot",
+                "replicate-version-1", "version-1-lists", "version-1-read", "version-1-write",
+            ])
+        // Every other script commits after its database's first commit.
+        // These two end on a database that has only that one: a recovery
+        // that cut back to it, and a version 1 input cut during creation.
+        #expect(withOneCommit.sorted() == ["recover-without-first-commit--port", "recovery-cut-during-creation"])
+
+        // Three of them, as their scripts leave them.
+        func commits(_ name: String) throws -> [VerifiedCommit] {
+            try Database.verifiedCommits(
+                in: MemoryStorage(bytes: try Self.bytes(folder.appendingPathComponent("\(name).db"))))
+        }
+        // the new version 1 database of the input, its committed size
+        // zeroed and a byte added: the input's first trailer still verifies
+        let cut = try commits("recovery-cut-during-creation")
+        #expect(cut.map(\.end) == [62])
+        #expect(cut.map(\.commitID) == [0])
+        // the input's three commits, and the one the script made
+        let torn = try commits("recovery-torn-root-slot")
+        #expect(torn.map(\.end) == [62, 839, 1215, 1591])
+        // the input's three, and the script's, still where version 1 puts them
+        let written = try commits("version-1-write")
+        #expect(Array(written.map(\.end).prefix(3)) == [62, 839, 1215])
+        #expect(written.count > 3)
+    }
+
+    /// A commit as the sidecars have it: where it ends and its ID.
+    private static func text(_ commit: VerifiedCommit) -> String {
+        "\(commit.end):\(Dumper.hex(bigEndian: commit.commitID))"
+    }
+
+    /// The inputs a script loads into its own database, the one called
+    /// `main`, in the order of their first load.
+    private static func inputsOfTheMainDatabase(_ script: URL) throws -> [String] {
+        let document = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: script)) as? [String: Any])
+        var current = "main"
+        var inputs: [String] = []
+        for op in try #require(document["ops"] as? [[String: Any]]) {
+            switch op["op"] as? String {
+            case "use": current = try #require(op["name"] as? String)
+            case "raw_load":
+                let input = try #require(op["input"] as? String)
+                if current == "main", !inputs.contains(input) { inputs.append(input) }
+            default: break
+            }
+        }
+        return inputs
+    }
+
+    /// Bytes of at most 64 that are valid UTF-8 print as text, unless they
+    /// hold a control character other than a line feed, a carriage return
+    /// and a tab. Those three print as `\n`, `\r` and `\t`, and the
+    /// backslash and the double quote with a backslash before them, so
+    /// that a value stays on its line and what is between the quotes says
+    /// exactly which bytes are there. Everything else is hex, and so is
+    /// anything longer than 64 bytes. A key follows the same rule, and the
+    /// JSON has the text itself, escaped as JSON escapes it.
+    @Test func bytesPrintAsTextWithLineBreaksEscaped() throws {
+        let values: [(bytes: [UInt8], shown: String)] = [
+            (utf8("Line one\nLine two"), #"bytes 17 "Line one\nLine two""#),
+            (utf8("a\tb"), #"bytes 3 "a\tb""#),
+            (utf8("cr\r\nlf"), #"bytes 6 "cr\r\nlf""#),
+            (utf8(#"back\slash "quoted""#), #"bytes 19 "back\\slash \"quoted\"""#),
+            // a backslash and an n, which is not a line feed
+            (utf8(#"\n"#), #"bytes 2 "\\n""#),
+            // text that looks like the tool's hex
+            (utf8("0xab"), #"bytes 4 "0xab""#),
+            (utf8("é ✓"), "bytes 6 \"é ✓\""),
+            ([], #"bytes 0 """#),
+            (
+                utf8(String(repeating: "x", count: 63) + "\n"),
+                "bytes 64 \"" + String(repeating: "x", count: 63) + #"\n""#
+            ),
+            // a NUL, an escape sequence, a delete
+            ([0x61, 0x00], "bytes 2 0x6100"),
+            ([0x1B, 0x5B, 0x6D], "bytes 3 0x1b5b6d"),
+            ([0x61, 0x7F], "bytes 2 0x617f"),
+            // U+0085 and U+009B, controls of the second range, and U+00A0,
+            // the first scalar after it
+            ([0xC2, 0x85], "bytes 2 0xc285"),
+            ([0xC2, 0x9B, 0x6D], "bytes 3 0xc29b6d"),
+            ([0xC2, 0xA0], "bytes 2 \"\u{A0}\""),
+            // not UTF-8
+            ([0xFF, 0x61], "bytes 2 0xff61"),
+            // a byte too long to be shown as text
+            (
+                utf8(String(repeating: "x", count: 65)),
+                "bytes 65 0x" + String(repeating: "78", count: 64) + "… (64 of 65)"
+            ),
+        ]
+        let keys: [(bytes: [UInt8], label: String)] = [
+            (utf8("k\n1"), #""k\n1""#), (utf8("tab\tkey"), #""tab\tkey""#), (utf8(#"q"k\"#), #""q\"k\\""#),
+            ([0x00, 0x01], "0x0001"),
+        ]
+
+        let storage = MemoryStorage()
+        let database = try Database(creating: storage, hashSize: 20)
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
+        try history.append(.slot(try history.slot(at: -1))) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            let list = try ArrayList<ReadWrite>(try moment.putCursor(forHash: Self.sha1("values")))
+            for value in values {
+                try list.append(.bytes(value.bytes))
+            }
+            let sorted = try SortedMap<ReadWrite>(try moment.putCursor(forHash: Self.sha1("sorted")))
+            for (index, key) in keys.enumerated() {
+                try sorted.put(.uint(UInt64(index)), forKey: key.bytes)
+            }
+            // a hash map's entry whose stored key is text with a line feed
+            try moment.putKey(.bytes(utf8("named\nkey")), forHash: Self.sha1("named"))
+            try moment.put(.uint(7), forHash: Self.sha1("named"))
+        }
+
+        var options = DumpOptions()
+        options.hash = .sha1
+        let text = Self.text(storage.bytes, options)
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        for (index, value) in values.enumerated() {
+            #expect(lines.contains { $0.hasSuffix("#\(index): \(value.shown)") }, "value \(index): \(value.shown)")
+        }
+        for (index, key) in keys.enumerated() {
+            #expect(lines.contains { $0.hasSuffix("\(key.label): uint \(index)") }, "key \(index): \(key.label)")
+        }
+        #expect(lines.contains { $0.contains(#""named\nkey" "#) && $0.hasSuffix(": uint 7") })
+        // nothing but the line ends is a control character in what is printed
+        #expect(!text.unicodeScalars.contains { $0 != "\n" && ($0.value < 0x20 || (0x7F..<0xA0).contains($0.value)) })
+        // one line for each value, each key and the named entry, and no more
+        // lines than the tree has nodes
+        #expect(lines.filter { $0.contains("#") }.count == values.count)
+
+        // the JSON has the text, and reads back as the same tree
+        let dump = Self.dump(storage.bytes, options)
+        let json = JSONRenderer.render(dump, options: options)
+        #expect(json.contains(#""utf8": "Line one\nLine two""#) || json.contains(#""utf8":"Line one\nLine two""#))
+        #expect(json.contains(#""0xab""#))
+        let parsed = try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+        let moments = try #require(parsed["moments"] as? [[String: Any]])
+        #expect(try #require(JSONTree.node(moments.first?["root"])) == dump.moments.first?.root)
     }
 
     /// Floats print from their bits, the same on every machine: the two
@@ -251,6 +418,86 @@ import XitDBDumpKit
         #expect(Dumper.float(bits: (-3.25).bitPattern) == "-3.25")
         #expect(Dumper.float(bits: (1e300).bitPattern) == "1e+300")
         #expect(Dumper.float(bits: Double.pi.bitPattern) == "3.141592653589793")
+    }
+
+    /// The first line names the file's format version, and `--verify`
+    /// walks the commits of either: a version 1 input, whose first commit
+    /// ends at 62, and a version 2 fixture, whose first ends at 57.
+    @Test func theHeaderNamesTheVersionAndVerifyWalksBoth() throws {
+        let resources = try Self.resources()
+        let one = try Self.bytes(resources.appendingPathComponent("fixtures/inputs/v1-history.db"))
+        let two = try Self.bytes(resources.appendingPathComponent("fixtures/valid/01-list-root-hash-map.db"))
+        for (bytes, version, first) in [(one, 1, UInt64(62)), (two, 2, UInt64(57))] {
+            let dump = Self.dump(bytes, Self.verifying)
+            #expect(dump.exitCode == 0)
+            #expect(dump.header?.version == version)
+            let verification = try #require(dump.verification)
+            #expect(verification.commits.count == 3)
+            #expect(verification.commits.first?.end == first)
+            #expect(verification.commits.last?.end == UInt64(bytes.count))
+            #expect(verification.bytesPastLastCommit == nil)
+
+            let text = TextRenderer.render(dump, options: Self.verifying)
+            let firstLine = try #require(text.split(separator: "\n").first)
+            #expect(firstLine.hasPrefix("xitdb file: \(bytes.count) bytes; version \(version), hash size 20, "))
+            var json = Self.verifying
+            json.json = true
+            let document = try #require(
+                try JSONSerialization.jsonObject(with: Data(JSONRenderer.render(dump, options: json).utf8))
+                    as? [String: Any])
+            let file = try #require(document["file"] as? [String: Any])
+            #expect(file["version"] as? Int == version)
+        }
+        // the same two moments in both, five bytes apart
+        #expect(one.count == two.count + 5)
+    }
+
+    /// A file without a first commit, as a full copy that did not finish
+    /// leaves it, opens but holds nothing that reads. The dump says what it
+    /// is and shows what recovery would open: the last commit that arrived
+    /// whole, from a copy in memory. Where no commit arrived whole it
+    /// shows the header and says so. Either way it exits with 1.
+    @Test func aFileWithoutAFirstCommitIsDumpedAsRecoveryWouldOpenIt() throws {
+        let resources = try Self.resources()
+        let whole = try Self.bytes(resources.appendingPathComponent("fixtures/valid/01-list-root-hash-map.db"))
+        let commits = try Database.verifiedCommits(in: MemoryStorage(bytes: whole))
+        try #require(commits.count == 3)
+
+        // the copy stopped ten bytes into the last commit; its committed
+        // size, at 24, was never written
+        var unfinished = Array(whole[..<(Int(commits[1].end) + 10)])
+        unfinished.replaceSubrange(24..<32, with: [UInt8](repeating: 0, count: 8))
+        let dump = Self.dump(unfinished, Self.verifying)
+        #expect(dump.exitCode == 1)
+        #expect(dump.header?.version == 2)
+        #expect(dump.header?.fileSize == UInt64(unfinished.count))
+        #expect(dump.header?.committedSize == commits[1].end)
+        #expect(dump.header?.momentCount == 1)
+        #expect(dump.moments.count == 1)
+        #expect(dump.verification?.commits.count == 2)
+        #expect(dump.verification?.bytesPastLastCommit == 10)
+        let note = try #require(dump.notes.first { $0.contains("no first commit") })
+        #expect(note.contains("ends at byte \(commits[1].end) of \(unfinished.count)"))
+        #expect(note.contains("what follows is what recovery would open"))
+        // the moment shown is the first moment of the whole file
+        var first = DumpOptions()
+        first.moment = 0
+        #expect(dump.moments.first?.root == Self.dump(whole, first).moments.first?.root)
+        let text = TextRenderer.render(dump, options: Self.verifying)
+        #expect(!text.contains("unreadable"))
+
+        // nothing arrived whole: the headers and bytes that are no commit
+        let nothing = Array(unfinished[..<32]) + [UInt8](repeating: 0xAA, count: 100)
+        let empty = Self.dump(nothing, Self.verifying)
+        #expect(empty.exitCode == 1)
+        #expect(empty.header?.version == 2)
+        #expect(empty.header?.committedSize == 0)
+        #expect(empty.moments.isEmpty)
+        #expect(empty.verification?.commits.isEmpty == true)
+        #expect(empty.notes.contains { $0.contains("no first commit") && $0.contains("nothing to show") })
+        let emptyText = TextRenderer.render(empty, options: Self.verifying)
+        #expect(emptyText.hasPrefix("xitdb file: 132 bytes, 0 committed; version 2, hash size 20, "))
+        _ = JSONRenderer.render(empty, options: Self.verifying)
     }
 
     /// A file that is not xitdb exits with 2 and says why.
@@ -285,7 +532,7 @@ enum JSONTree {
             }
         case .bytes:
             if let utf8 = object["utf8"] as? String { node.text = utf8 }
-            if let hex = object["hex"] as? String { node.text = "0x" + hex }
+            if let hex = object["hex"] as? String { node.hex = hex }
             if let length = object["length"] as? NSNumber { node.length = length.uint64Value }
             node.formatTag = object["formatTag"] as? String
         case .shared, .cycle, .truncated, .unreadable:

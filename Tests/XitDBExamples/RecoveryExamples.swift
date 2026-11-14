@@ -179,8 +179,19 @@ import XitDB
     }
 
     @Test func aReplicaAfterAFailedSyncAtZero() throws {
-        let (good, _) = try threeMoments()
-        let source = try Database(opening: MemoryStorage(bytes: good))
+        // A sync writes its data in blocks of 4,096 bytes, counted from the
+        // end of the root header, each once all of it has arrived. The three
+        // moments end at 1,415, inside the first block; a fourth, with five
+        // thousand bytes, takes the source into the second.
+        let (three, _) = try threeMoments()
+        let sourceStorage = MemoryStorage(bytes: three)
+        let source = try Database(opening: sourceStorage)
+        let history = try ArrayList<ReadWrite>(source.rootCursor)
+        try history.append(.slot(try history.slot(at: -1))) { cursor in
+            let notes = [UInt8](repeating: 0x61, count: 5000)
+            try HashMap<ReadWrite>(cursor).put(.bytes(notes), forHash: sha256("notes"))
+        }
+        let good = sourceStorage.bytes
 
         struct ConnectionLost: Error {}
         struct DroppingSource: ByteSource {
@@ -200,48 +211,46 @@ import XitDB
 
         let replicaStorage = MemoryStorage()
         var replica = try Database(creating: replicaStorage, hashSize: 32)
-        var connection = DroppingSource(bytes: good, dropAt: 1100)
+        var connection = DroppingSource(bytes: good, dropAt: 4500)
         #expect(throws: XitDBError.self) {
             try replica.applyReplicated(at: 0, from: &connection, count: UInt64(good.count))
         }
-        // The replica has no first commit: its state is zero and zero, and
-        // the source answers 0 to it.
+        // The first block arrived whole and nothing of the second: the
+        // headers and 4,096 bytes. The replica has no first commit: its
+        // state is zero and zero, and the source answers 0 to it.
+        #expect(replicaStorage.bytes.count == 4128)
+        #expect(good.count == 6811)
         #expect(try replica.replicaState == ReplicaState(committedSize: 0, checksum: 0))
         #expect(try source.replicationStart(for: try replica.replicaState) == 0)
 
         // What arrived holds the source's earlier commits. Keep the last of them.
         replica = try Database.recover(replicaStorage)
         let start = try source.replicationStart(for: try replica.replicaState)
-        #expect(start == 1027)
+        #expect(start == 1415)
         let end = try source.committedSize
         let bytes = try source.readCommitted(from: start, to: end)
+        #expect(bytes.count == 5396)
         try replica.applyReplicated(at: start, bytes: bytes)
         #expect(replicaStorage.bytes == good)
 
-        // The source's first commit is its first 57 bytes: the new database.
+        // A sync that stops within the first block leaves the two headers
+        // alone, 32 bytes, however much of the block came: nothing to
+        // recover, and no longer than a new database, so opening takes it
+        // for a creation that did not finish and refuses it, and a database
+        // created over it takes the next sync from 0.
         let first = MemoryStorage()
-        var afterFirst = DroppingSource(bytes: good, dropAt: 70)
+        var afterFirst = DroppingSource(bytes: good, dropAt: 1100)
         #expect(throws: XitDBError.self) {
             try Database(creating: first, hashSize: 32)
                 .applyReplicated(at: 0, from: &afterFirst, count: UInt64(good.count))
         }
-        #expect(try Database.recover(first).committedSize == 57)
-        let beforeFirst = MemoryStorage()
-        var early40 = DroppingSource(bytes: good, dropAt: 40)
-        #expect(throws: XitDBError.self) {
-            try Database(creating: beforeFirst, hashSize: 32)
-                .applyReplicated(at: 0, from: &early40, count: UInt64(good.count))
-        }
-        #expect(throws: XitDBError.invalidDatabase) { try Database.recover(beforeFirst) }
-        // What is left is no longer than a new database, so opening takes it
-        // for a creation that did not finish and refuses it, and a database
-        // created over it takes the next sync from 0.
-        #expect(beforeFirst.bytes.count == 40)
-        #expect(throws: XitDBError.invalidDatabase) { try Database(opening: beforeFirst) }
-        let again = try Database(creating: beforeFirst, hashSize: 32)
+        #expect(first.bytes.count == 32)
+        #expect(throws: XitDBError.invalidDatabase) { try Database.recover(first) }
+        #expect(throws: XitDBError.invalidDatabase) { try Database(opening: first) }
+        let again = try Database(creating: first, hashSize: 32)
         #expect(try source.replicationStart(for: try again.replicaState) == 0)
         try again.applyReplicated(at: 0, bytes: good)
-        #expect(beforeFirst.bytes == good)
+        #expect(first.bytes == good)
 
         // A sync that failed inside the source's header changed nothing: the
         // replica is the database it was.

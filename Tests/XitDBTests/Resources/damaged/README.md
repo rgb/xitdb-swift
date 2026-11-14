@@ -27,3 +27,13 @@ and it traps with SIGTRAP (exit status 133) on the library before commit 3675d55
 which fixed the line of `compact` all fourteen trapped at. `scripts/fuzz.sh
 regressions` runs them all through the battery, and so does the gate; a trap or a
 hang on any of them fails it.
+
+## The fifteenth
+
+`v1-untargeted-4811.db` is a version 1 file: the conformance fixtures' input `v1-history`, which is the fuzzer's
+version 1 sample, with the two changes of seed 4811 placed anywhere in the file and not near a harvested position
+(`XitDBFuzz save v1 4811 <path>`). One of them makes the header's hash size 4,116 where it was 20. Opening without a
+stated hash size takes the header's word, and `compact` trapped on the first key-value pair it met: it kept each
+block it copied in room sized for a tree's largest block, 418 bytes, and a pair is its hash and 18 bytes more. A
+damaged header was not needed: compacting any database created with a hash size above 400 trapped the same way, in
+0.2.0 and 0.2.1. The file passes on the library from the commit that added it, and traps on the one before.

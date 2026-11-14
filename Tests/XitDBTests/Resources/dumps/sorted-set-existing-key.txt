@@ -1,12 +1,12 @@
-xitdb file: 6452 bytes; hash size 20, hash id "sha1", file id c0f000000000001b; 6 moments
+xitdb file: 6447 bytes; version 2, hash size 20, hash id "sha1", file id c0f000000000001b; 6 moments
 verify: 7 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 2764, id 1766ad1fcb0b6760, root arrayList
-  commit 2: ends at 3156, id 69dcc39b275d31b9, root arrayList
-  commit 3: ends at 4130, id 37fb0e667dbd22f3, root arrayList
-  commit 4: ends at 5086, id 773ce701b0e3149a, root arrayList
-  commit 5: ends at 6060, id 41f69447b319c228, root arrayList
-  commit 6: ends at 6452, id 5d841cb5c6ac50ab, root arrayList
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 2759, id 5e6ed79116d1325a, root arrayList
+  commit 2: ends at 3151, id bd17b3245644b2de, root arrayList
+  commit 3: ends at 4125, id cd74e9230a51c4b0, root arrayList
+  commit 4: ends at 5081, id 8e60293c4fb34003, root arrayList
+  commit 5: ends at 6055, id 9740018a4740f06a, root arrayList
+  commit 6: ends at 6447, id 87be9c4dfea20aa6, root arrayList
 moment 5: map (2 entries)
   65c10dc3549fe074: sorted set (26)
     "a key that is too long to fit in a slot": empty

@@ -1,14 +1,14 @@
-xitdb file: 4307 bytes; hash size 20, hash id "sha1", file id c0f0000000000003; 7 moments
+xitdb file: 4302 bytes; version 2, hash size 20, hash id "sha1", file id c0f0000000000003; 7 moments
 verify: 9 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 256, id 2e211b6bca39b8da, root arrayList
-  commit 2: ends at 792, id 74137f3e26f71a97, root arrayList
-  commit 3: ends at 1472, id a66f68748b24b7f9, root arrayList
-  commit 4: ends at 2133, id 618b87a87ecef116, root arrayList
-  commit 5: ends at 2327, id b35ff010e9e31493, root arrayList
-  commit 6: ends at 3148, id 94ea6525bf164c19, root arrayList
-  commit 7: ends at 3342, id 5dbd5eecde9e89d3, root arrayList
-  commit 8: ends at 4307, id 044164664c0a8909, root arrayList
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 251, id c841557fdc2bf701, root arrayList
+  commit 2: ends at 787, id 2af20b04376e284c, root arrayList
+  commit 3: ends at 1467, id 6c1f3cc1a0b7575c, root arrayList
+  commit 4: ends at 2128, id 9c25995294408485, root arrayList
+  commit 5: ends at 2322, id 3f598548a91b3785, root arrayList
+  commit 6: ends at 3143, id b26f98047faea512, root arrayList
+  commit 7: ends at 3337, id 607c29751c1c131e, root arrayList
+  commit 8: ends at 4302, id b90f0a6222cf535b, root arrayList
 moment 6: map (4 entries)
   39ccb32d95edfdbc: list (6)
     #0: bytes 5 "apple"

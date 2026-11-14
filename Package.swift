@@ -107,7 +107,7 @@ let package = Package(
             resources: [
                 .copy("Resources/test.db"),
                 .copy("Resources/fixtures"), .copy("Resources/port-differs"), .copy("Resources/zig"),
-                .copy("Resources/dumps"), .copy("Resources/damaged"),
+                .copy("Resources/dumps"), .copy("Resources/damaged"), .copy("Resources/listings"),
             ],
             swiftSettings: languageSettings
         ),

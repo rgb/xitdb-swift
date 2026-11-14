@@ -238,7 +238,7 @@
       {"op":"write_path","on":"c23","path":[{"hash_map_init":{}},{"hash_map_get":{"value":{"sha1":"k11"}}},{"hash_map_init":{"counted":true,"set":true}},{"hash_map_get":{"key":{"hex":"699de12dc3094b06a5098e77fb1cdd72975b76a2"}}},{"write":{"bytes":"eajefrbzi"}}],"as":"c33"},
       {"op":"write_path","on":"c23","path":[{"hash_map_init":{}},{"hash_map_get":{"value":{"sha1":"k15"}}},{"write":{"uint":18446744073709551615}}]}]}}]},
     {"op":"close"},
-    {"op":"raw_write","offset":20,"bytes":{"hex":"02000000000000136000000000000015dd"}},
+    {"op":"raw_write","offset":24,"bytes":{"hex":"00000000000015d8"}},
     {"op":"reopen"},
     {"op":"read_path_slot","on":"root","path":[{"array_list_get":-1}],"as":"s34"},
     {"op":"write_path","on":"root","path":["array_list_init","array_list_append",{"write":{"slot":{"var":"s34"}}},{"hash_map_init":{}},{"ctx":{"as":"c35","ops":[

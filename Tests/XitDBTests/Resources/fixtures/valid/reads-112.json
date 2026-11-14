@@ -212,7 +212,7 @@
     {"op":"slot","on":"r1000000053","expect":{"tag":"hash_map","full":false}},
     {"op":"next","on":"i1000000049","expect_null":true},
     {"op":"close"},
-    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffffffffffffff"}},
+    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffff"}},
     {"op":"reopen"},
     {"op":"read_path","on":"root","path":[{"array_list_get":2}],"as":"r1000000054","expect_null":false},
     {"op":"iterator","on":"r1000000054","as":"i1000000055"},

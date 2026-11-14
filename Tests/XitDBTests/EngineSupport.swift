@@ -84,7 +84,7 @@ let newDatabaseFileID: UInt64 = 0x10
 /// more, in the original or here, so a test that needs a version 1
 /// database starts from these bytes.
 func newVersionOneDatabaseBytes() throws -> [UInt8] {
-    try fixtureFile("valid/compact-roots--port.s_empty.db")
+    try fixtureFile("inputs/v1-new.db")
 }
 
 /// A new, empty database of hash size 20 in an empty storage, of either
@@ -100,6 +100,9 @@ func newDatabase(
     case .one:
         let bytes = try newVersionOneDatabaseBytes()
         try storage.write(bytes.span, at: 0)
+        // The bytes are a file that exists, so they are in the storage and
+        // not in a buffer's window, as after the sync that ends a creation.
+        try storage.flush()
         return try Database(opening: storage, hashSize: 20, random: random)
     case .two:
         return try Database(

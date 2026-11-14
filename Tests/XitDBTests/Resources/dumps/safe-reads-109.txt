@@ -1,12 +1,12 @@
-xitdb file: 750 bytes; hash size 20, hash id "sha1", file id b32f0f46fbfbccde
+xitdb file: 745 bytes; version 2, hash size 20, hash id "sha1", file id b32f0f46fbfbccde
 verify: 8 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 159, id 3b3d877fe2fe433e, root float
-  commit 2: ends at 389, id 54d60fa913c59b31, root bytes
-  commit 3: ends at 423, id a1408be15d942cda, root shortBytes
-  commit 4: ends at 457, id ff619822b5303f12, root shortBytes
-  commit 5: ends at 662, id 7f9f0a03a84763d8, root bytes
-  commit 6: ends at 696, id 8f809b7e49e05a48, root float
-  commit 7: ends at 750, id 1d32560bef5aec48, root bytes
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 154, id 79876abfbbfefeff, root float
+  commit 2: ends at 384, id 9076d4bc03f5d725, root bytes
+  commit 3: ends at 418, id 293b467359eaf60c, root shortBytes
+  commit 4: ends at 452, id 143a6bdd3116fa8f, root shortBytes
+  commit 5: ends at 657, id 6051fc2f74a4e93b, root bytes
+  commit 6: ends at 691, id a84d42ef2888a907, root float
+  commit 7: ends at 745, id b6fb1361e8504391, root bytes
 note: the root is not a list of moments; it is dumped as it is
 moment 0: bytes 12 "dmzhyahjzgxt"

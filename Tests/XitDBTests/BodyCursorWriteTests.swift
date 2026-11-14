@@ -31,7 +31,7 @@ import Testing
         let subject = try StorageUnderTest(kind)
         let database = try Database(
             storage: subject.storage, hashSize: 20, hashID: nil, fileID: 7,
-            random: FixedRandom([0x760d_3def_076c_85fb, 0x4015_e066_356b_3a35]))
+            random: FixedRandom([0x5f2c_a032_972b_eb99, 0x5fb9_b9f4_dffd_666e]))
         _ = try database.rootCursor.writePath([.arrayListInit, .arrayListAppend, .ctx]) { m in
             try database.freeze()
             try m.writeIfEmpty(.uint(5))
@@ -69,7 +69,7 @@ import Testing
         let subject = try StorageUnderTest(kind)
         let database = try Database(
             storage: subject.storage, hashSize: 20, hashID: nil, fileID: 8,
-            random: FixedRandom([0x35ba_c0ac_ecc5_2ce6, 0x5f5c_bb4a_a163_b5ce]))
+            random: FixedRandom([0x91fc_38b1_1688_0017, 0xa854_d4bb_f2ab_821c]))
         func linked(_ key: String) -> [PathPart] {
             [.hashMapInit(), .hashMapGet(.value, sha1(key)), .linkedArrayListInit]
         }
