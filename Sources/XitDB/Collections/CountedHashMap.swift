@@ -881,14 +881,24 @@ extension CountedHashMap where Access == ReadWrite {
     ///   ``WritableData`` throws; and what the value's own writing throws.
     ///   A value that fails once the map has made its entry poisons the
     ///   transaction, as any write that fails after it has written does.
+    @inlinable
     public func put(_ value: some StorableValue, forKey key: some KeyRepresentable) throws(XitDBError) {
-        let hash = try cursor.keyHash(of: key)
-        // One of the library's own values is its data, and takes the put
-        // of data's own path; a value of the caller's writes itself.
+        // One of the library's own values is its data, and its typed write
+        // is the write of that data. Where the caller's code knows the
+        // value's type, the compiler settles which it is, and for the
+        // library's six this call is that write and nothing else.
         if let data = WritableData(ownValue: value) {
-            try put(data, forHash: hash)
+            try put(data, forKey: key)
             return
         }
+        try putWritingItself(value, forKey: key)
+    }
+
+    /// The put of a value of the caller's own, which writes itself in the
+    /// entry the map makes for the key.
+    @usableFromInline
+    func putWritingItself(_ value: some StorableValue, forKey key: some KeyRepresentable) throws(XitDBError) {
+        let hash = try cursor.keyHash(of: key)
         let path: InlineArray<2, PathPart> = [.hashMapGet(.value, hash), .ctx]
         _ = try cursor.writePath(
             path.span,

@@ -390,13 +390,23 @@ extension ArrayList where Access == ReadWrite {
     ///   value's own writing throws. A value that fails once the list has
     ///   grown poisons the transaction, as any write that fails after it
     ///   has written does.
+    @inlinable
     public func append(_ value: some StorableValue) throws(XitDBError) {
-        // One of the library's own values is its data, and takes the
-        // append of data's own path; a value of the caller's writes itself.
+        // One of the library's own values is its data, and its typed write
+        // is the write of that data. Where the caller's code knows the
+        // value's type, the compiler settles which it is, and for the
+        // library's six this call is that write and nothing else.
         if let data = WritableData(ownValue: value) {
             try append(data)
             return
         }
+        try appendWritingItself(value)
+    }
+
+    /// The append of a value of the caller's own, which writes itself in
+    /// the element the list makes for it.
+    @usableFromInline
+    func appendWritingItself(_ value: some StorableValue) throws(XitDBError) {
         let path: InlineArray<2, PathPart> = [.arrayListAppend, .ctx]
         _ = try cursor.writePath(
             path.span,
@@ -417,11 +427,19 @@ extension ArrayList where Access == ReadWrite {
     /// - Throws: What the put of ``WritableData`` throws,
     ///   ``XitDBError/indexOutOfRange`` for an index that names no element
     ///   among them, and what the value's own writing throws.
+    @inlinable
     public func put(_ value: some StorableValue, at index: some BinaryInteger) throws(XitDBError) {
         if let data = WritableData(ownValue: value) {
             try put(data, at: index)
             return
         }
+        try putWritingItself(value, at: index)
+    }
+
+    /// The put of a value of the caller's own, which writes itself in the
+    /// element.
+    @usableFromInline
+    func putWritingItself(_ value: some StorableValue, at index: some BinaryInteger) throws(XitDBError) {
         let index = try listIndex(index)
         let path: InlineArray<2, PathPart> = [.arrayListGet(index), .ctx]
         _ = try cursor.writePath(

@@ -274,7 +274,8 @@ extension Cursor where Access == ReadWrite {
     /// value is one transaction: it is committed when the value has
     /// written itself, and if the value fails nothing of it is. Inside a
     /// transaction the value's writes are writes of the transaction, and
-    /// the root cursor refuses them as it refuses any write then.
+    /// the root cursor refuses the call as it refuses any write then,
+    /// before the value is asked to write.
     ///
     /// Afterwards the cursor is at what was written, as after a write of
     /// ``WritableData``, whatever the value did: a record that makes a
@@ -288,23 +289,35 @@ extension Cursor where Access == ReadWrite {
     ///   collection's typed write does: half a value cannot be committed.
     ///   One that fails before it has written anything leaves the
     ///   transaction as it was.
+    @inlinable
     public mutating func write(_ value: some StorableValue) throws(XitDBError) {
-        // One of the library's own values is its data: one slot, written
-        // as the write of that data writes it.
+        // One of the library's own values is its data, and its typed write
+        // is the write of that data. Where the caller's code knows the
+        // value's type, the compiler settles which it is, and for the
+        // library's six this call is that write and nothing else.
         if let data = WritableData(ownValue: value) {
             try write(data)
             return
         }
-        if isRoot, engine.transactionStart == nil {
-            // One transaction for all the value writes: a path that is the
-            // callback alone, which is what a transaction's body is.
+        try writeItself(value)
+    }
+
+    /// The write of a value of the caller's own, which writes itself.
+    @usableFromInline
+    mutating func writeItself(_ value: some StorableValue) throws(XitDBError) {
+        if isRoot {
+            // One transaction for all the value's writes: a path that is
+            // the callback alone, which is what a transaction's body is.
+            // Inside a transaction the path is refused before the value
+            // runs, as every write through the root cursor is then. The
+            // root cursor reads its slot through the root each time, so
+            // there is nothing of the returned cursor to keep.
             let path: InlineArray<1, PathPart> = [.ctx]
-            let written = try writePath(
+            _ = try writePath(
                 path.span,
                 typed: { (cursor: inout Cursor<ReadWrite>) throws(XitDBError) in
                     try value.write(to: &cursor)
                 })
-            slotPointer = written.slotPointer
             return
         }
         // Inside a transaction the value writes through this cursor as it
@@ -328,7 +341,7 @@ extension Cursor where Access == ReadWrite {
         // The value may have written through a copy of the cursor, as a
         // record does when it makes its map, which leaves this cursor
         // remembering the slot as it was before: read it again.
-        if !isRoot, let position = slotPointer.position {
+        if let position = slotPointer.position {
             slotPointer.slot = try engine.reader.slot(at: position)
         }
     }
@@ -343,19 +356,19 @@ extension WritableData {
     /// own `write(to:)` says. With the data in hand a typed write takes the
     /// path the write of ``WritableData`` takes, in place of a callback
     /// and a second write, and leaves the same file by construction.
-    init?(ownValue value: some StorableValue) {
-        let type = type(of: value)
-        if type == UInt64.self {
+    @inlinable
+    init?<Value: StorableValue>(ownValue value: Value) {
+        if Value.self == UInt64.self {
             self = .uint(value as! UInt64)
-        } else if type == Int64.self {
+        } else if Value.self == Int64.self {
             self = .int(value as! Int64)
-        } else if type == Double.self {
+        } else if Value.self == Double.self {
             self = .double(value as! Double)
-        } else if type == String.self {
+        } else if Value.self == String.self {
             self = .bytes(Array((value as! String).utf8))
-        } else if type == [UInt8].self {
+        } else if Value.self == [UInt8].self {
             self = .bytes(value as! [UInt8])
-        } else if type == Bytes.self {
+        } else if Value.self == Bytes.self {
             let bytes = value as! Bytes
             self = .bytes(bytes.value, formatTag: bytes.formatTag)
         } else {
