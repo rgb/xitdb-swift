@@ -39,7 +39,7 @@ extension Snapshot {
             let root = try cursor.resolved().slot
             self.init(
                 header: engine.header, committedSize: storage.committedSize, root: root,
-                commitRoot: engine.reader.pinnedCommitRoot ?? root, storage: storage)
+                commitRoot: engine.reader.pinnedCommitRoot ?? root, storage: storage, hasher: engine.hasher)
             return
         }
         try cursor.checkReadable()
@@ -56,6 +56,6 @@ extension Snapshot {
         }
         self.init(
             header: whole.header, committedSize: whole.committedSize, root: root, commitRoot: whole.root,
-            storage: whole.storage)
+            storage: whole.storage, hasher: whole.hasher)
     }
 }

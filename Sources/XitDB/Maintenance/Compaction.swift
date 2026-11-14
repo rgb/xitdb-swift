@@ -85,7 +85,8 @@ extension Database {
     /// original's target draws from its source's: its file ID, when none
     /// is given, and then the commit ID of the compaction's transaction,
     /// in that order, so that this database's next commit draws after
-    /// them.
+    /// them. It holds the hasher this database was given, if it was given
+    /// one.
     ///
     /// - Parameters:
     ///   - storage: Where the target lives.
@@ -113,7 +114,7 @@ extension Database {
         try offsetMap.clear()
         let target = try Database(
             storage: storage, hashSize: header.hashSize, hashID: hashID ?? header.hashID, fileID: fileID,
-            random: random)
+            random: random, hasher: hasher)
         try compact(source, into: target, offsetMap: &offsetMap)
         return target
     }

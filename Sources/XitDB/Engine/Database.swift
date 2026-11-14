@@ -99,6 +99,10 @@ public final class Database {
     /// shared with the target a compaction opens.
     let random: RandomSource
 
+    /// The hasher the database was given, or `nil` if it was given none:
+    /// what turns a key into its hash. Its size is the header's hash size.
+    let hasher: KeyHasher?
+
     /// Opens the database in a storage.
     ///
     /// - Parameters:
@@ -164,6 +168,40 @@ public final class Database {
         try self.init(opening: storage, hashSize: hashSize, random: RandomSource(SystemRandomNumberGenerator()))
     }
 
+    /// Opens the database in a storage, with the hasher of its keys.
+    ///
+    /// This is ``init(opening:hashSize:)`` with the hash size the hasher's:
+    /// it opens what that opens and refuses what that refuses, and the
+    /// database holds the hasher from then on, as do its snapshots and the
+    /// target ``compact(into:hashID:fileID:offsetMap:)`` makes.
+    ///
+    /// A hasher chosen while the program runs passes as it is. To choose
+    /// one by the file, read the header first:
+    ///
+    /// ```swift
+    /// let header = try DatabaseHeader(reading: storage)
+    /// let hashing: any KeyHashing.Type = header.hashSize == 20 ? Insecure.SHA1.self : SHA256.self
+    /// let database = try Database(opening: storage, hashing: hashing)
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - storage: Where the database's bytes are. The database becomes
+    ///     the only writer to it.
+    ///   - hashing: The hash function of the database's keys. Its
+    ///     ``KeyHashing/size`` must be the database's hash size. Only the
+    ///     size is checked: the header's hash ID is not, since XitDB never
+    ///     interprets it.
+    /// - Throws: ``XitDBError/hashSizeMismatch`` if the database's hash
+    ///   size is not the hasher's, which is checked once the header has
+    ///   been read and before anything else is, and otherwise what
+    ///   ``init(opening:hashSize:)`` throws for a storage opened without a
+    ///   stated size.
+    public convenience init(opening storage: any WritableStorage, hashing: (some KeyHashing).Type) throws(XitDBError) {
+        try self.init(
+            opening: storage, hashSize: nil, random: RandomSource(SystemRandomNumberGenerator()),
+            hasher: KeyHasher(hashing))
+    }
+
     /// Creates a database in an empty storage, at format version 2.
     ///
     /// A storage that holds what a creation that did not finish left is
@@ -205,6 +243,43 @@ public final class Database {
             random: RandomSource(SystemRandomNumberGenerator()))
     }
 
+    /// Creates a database in an empty storage, with the hasher of its
+    /// keys.
+    ///
+    /// This is ``init(creating:hashSize:hashID:fileID:)`` with the hash
+    /// size the hasher's ``KeyHashing/size``: it writes the same bytes,
+    /// accepts and refuses the same storages, and the database holds the
+    /// hasher from then on, as do its snapshots and the target
+    /// ``compact(into:hashID:fileID:offsetMap:)`` makes. Nothing of the
+    /// hasher is written but its size: say which hash it is in `hashID`,
+    /// for whoever reads the file.
+    ///
+    /// - Parameters:
+    ///   - storage: Where the database's bytes go. It must be empty or
+    ///     hold what an unfinished creation left, and the database becomes
+    ///     the only writer to it.
+    ///   - hashing: The hash function of the database's keys.
+    ///   - hashID: An identifier of the hash algorithm, recorded in the
+    ///     header for whoever reads the file. XitDB never interprets it,
+    ///     and takes none from the hasher.
+    ///   - fileID: The database's file ID. Left out, a random one is chosen,
+    ///     which is what a database should normally have.
+    /// - Throws: What ``init(creating:hashSize:hashID:fileID:)`` throws:
+    ///   ``XitDBError/invalidHashSize`` if the hasher's size is 0 or more
+    ///   than 65535, or if the storage holds an unfinished creation of a
+    ///   database with another hash size.
+    public convenience init(
+        creating storage: any WritableStorage,
+        hashing: (some KeyHashing).Type,
+        hashID: HashID? = nil,
+        fileID: UInt64? = nil
+    ) throws(XitDBError) {
+        let hasher = KeyHasher(hashing)
+        try self.init(
+            creating: storage, hashSize: hasher.size, hashID: hashID, fileID: fileID,
+            random: RandomSource(SystemRandomNumberGenerator()), hasher: hasher)
+    }
+
     /// Opens or creates a database, as Zig's `DB.init` does: a hash size on
     /// an empty storage creates, and so it does on what a creation that
     /// did not finish left. For the ported tests, which follow Zig's
@@ -236,14 +311,19 @@ public final class Database {
     /// instead.
     ///
     /// - Throws: What the two public initialisers throw, except
-    ///   ``XitDBError/storageNotEmpty``.
+    ///   ``XitDBError/storageNotEmpty``; and `hashSizeMismatch` if a hasher
+    ///   is given whose size is not the hash size.
     package convenience init(
         storage: any WritableStorage,
         hashSize: UInt16?,
         hashID: HashID? = nil,
         fileID: UInt64? = nil,
-        random: RandomSource
+        random: RandomSource,
+        hasher: KeyHasher? = nil
     ) throws(XitDBError) {
+        // A hasher of another size than the one asked for is refused before
+        // anything is cut.
+        if let hasher, let hashSize, hasher.size != Int(hashSize) { throw .hashSizeMismatch }
         // Without a hash size nothing can be created, so nothing is cut.
         if let hashSize, try storage.length > 0, let left = try Database.unfinishedCreation(in: storage) {
             if left.hashSize != hashSize { throw .invalidHashSize }
@@ -251,11 +331,14 @@ public final class Database {
         }
         if try storage.length == 0 {
             guard let hashSize else { throw .invalidHashSize }
-            try self.init(creating: storage, hashSize: Int(hashSize), hashID: hashID, fileID: fileID, random: random)
+            try self.init(
+                creating: storage, hashSize: Int(hashSize), hashID: hashID, fileID: fileID, random: random,
+                hasher: hasher)
         } else {
-            let header = try Database.readHeader(of: storage)
+            let header = try DatabaseHeader(reading: storage)
             if let hashSize, header.hashSize != hashSize { throw .invalidHashSize }
-            self.init(header: header, storage: storage, random: random)
+            if let hasher, Int(header.hashSize) != hasher.size { throw .hashSizeMismatch }
+            self.init(header: header, storage: storage, random: random, hasher: hasher)
             // Only a database that has its first commit is checked.
             if try reader.recordedSize() > 0 {
                 try reader.verifyRootHeader()
@@ -272,15 +355,18 @@ public final class Database {
     }
 
     /// Opens a database drawing its commit IDs from a source another
-    /// database draws from.
+    /// database draws from, with the hasher it was given, if any.
     ///
-    /// - Throws: What ``init(opening:hashSize:)`` throws.
-    package convenience init(opening storage: any WritableStorage, hashSize: Int?, random: RandomSource)
-        throws(XitDBError)
-    {
-        let header = try Database.readHeader(of: storage)
+    /// - Throws: What ``init(opening:hashSize:)`` throws, and
+    ///   `hashSizeMismatch` if the database's hash size is not the
+    ///   hasher's.
+    package convenience init(
+        opening storage: any WritableStorage, hashSize: Int?, random: RandomSource, hasher: KeyHasher? = nil
+    ) throws(XitDBError) {
+        let header = try DatabaseHeader(reading: storage)
         if let hashSize, Int(header.hashSize) != hashSize { throw .invalidHashSize }
-        self.init(header: header, storage: storage, random: random)
+        if let hasher, Int(header.hashSize) != hasher.size { throw .hashSizeMismatch }
+        self.init(header: header, storage: storage, random: random, hasher: hasher)
         // A full copy that did not finish opens as it is, with nothing
         // checked, so that the next sync from 0 can replace it. Everything
         // else is checked, a creation that did not finish included, which
@@ -292,13 +378,14 @@ public final class Database {
 
     /// A database over a storage whose header has been read, with nothing
     /// else read or checked.
-    private init(header: DatabaseHeader, storage: any WritableStorage, random: RandomSource) {
+    private init(header: DatabaseHeader, storage: any WritableStorage, random: RandomSource, hasher: KeyHasher?) {
         let storage = BuiltInStorage(storage)
         self.storage = storage
         identity = DatabaseIdentity(header: header)
         self.reader = DatabaseReader(storage: storage, identity: identity)
         self.transactionStart = nil
         self.random = random
+        self.hasher = hasher
     }
 
     /// The header of a creation that did not finish, if that is what a
@@ -310,7 +397,7 @@ public final class Database {
     static func unfinishedCreation(in storage: any ReadableStorage) throws(XitDBError) -> DatabaseHeader? {
         let header: DatabaseHeader
         do throws(XitDBError) {
-            header = try readHeader(of: storage)
+            header = try DatabaseHeader(reading: storage)
         } catch {
             switch error {
             case .invalidDatabase, .invalidVersion, .endOfStream: return nil
@@ -346,16 +433,20 @@ public final class Database {
     /// Creates a database drawing its file ID, when none is given, and its
     /// commit IDs from a source another database draws from, in that
     /// order: the file ID is drawn here, before the first commit, whose ID
-    /// is zero.
+    /// is zero. The database holds the hasher it is given, if any.
     ///
-    /// - Throws: What ``init(creating:hashSize:hashID:fileID:)`` throws.
+    /// - Throws: What ``init(creating:hashSize:hashID:fileID:)`` throws,
+    ///   and `hashSizeMismatch`, before anything is looked at, if a hasher
+    ///   is given whose size is not `hashSize`.
     package init(
         creating storage: any WritableStorage,
         hashSize: Int,
         hashID: HashID?,
         fileID: UInt64?,
-        random: RandomSource
+        random: RandomSource,
+        hasher: KeyHasher? = nil
     ) throws(XitDBError) {
+        if let hasher, hasher.size != hashSize { throw .hashSizeMismatch }
         // An empty storage, or what a creation that did not finish left,
         // which holds nothing and is created over. Anything else is
         // refused before a byte is written.
@@ -381,6 +472,7 @@ public final class Database {
         self.reader = DatabaseReader(storage: storage, identity: identity)
         self.transactionStart = nil
         self.random = random
+        self.hasher = hasher
 
         let headerBytes = InlineArray<20, UInt8> { (output: inout OutputSpan<UInt8>) in
             header.encode(into: &output)
@@ -418,6 +510,15 @@ public final class Database {
         )
         transactionStart = nil
         random = RandomSource(SystemRandomNumberGenerator())
+        hasher = snapshot.hasher
+    }
+
+    /// The hash of a key's bytes, by the hasher the database was given.
+    ///
+    /// - Throws: `noKeyHashing` if the database was given none.
+    func keyHash(of bytes: [UInt8]) throws(XitDBError) -> KeyHash {
+        guard let hasher else { throw .noKeyHashing }
+        return hasher.hash(bytes)
     }
 
     /// The number of bytes that belong to committed transactions.

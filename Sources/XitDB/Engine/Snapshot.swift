@@ -40,6 +40,9 @@
 /// ``XitDBError/subCollectionSnapshot``; from a whole one it compacts the
 /// commit.
 ///
+/// A snapshot carries the hasher its database was given, if it was given
+/// one, and a database made over the snapshot holds it.
+///
 /// A snapshot never refreshes. To see a later commit, take a new one.
 public struct Snapshot: Sendable {
     /// The header of the database the commit belongs to: its file ID, hash
@@ -60,6 +63,10 @@ public struct Snapshot: Sendable {
 
     /// The read half of the storage, bounded at the committed size.
     let storage: SnapshotStorage
+
+    /// The hasher of the database the snapshot was taken from, or `nil` if
+    /// it was given none: a database made over the snapshot holds it.
+    let hasher: KeyHasher?
 }
 
 extension Database {
@@ -79,7 +86,7 @@ extension Database {
         }
         return Snapshot(
             header: header, committedSize: pinned.fileSize, root: pinned.root,
-            commitRoot: reader.pinnedCommitRoot ?? pinned.root, storage: storage)
+            commitRoot: reader.pinnedCommitRoot ?? pinned.root, storage: storage, hasher: hasher)
     }
 
     /// Whether this database reads a snapshot of a sub-collection, whose
@@ -133,8 +140,8 @@ extension Database {
                 bytes: try Self.copyCommittedBytes(of: custom, count: pinned.fileSize), committedSize: pinned.fileSize)
         }
         return Snapshot(
-            header: header, committedSize: pinned.fileSize, root: pinned.root, commitRoot: commitRoot, storage: readHalf
-        )
+            header: header, committedSize: pinned.fileSize, root: pinned.root, commitRoot: commitRoot,
+            storage: readHalf, hasher: hasher)
     }
 
     /// The first `count` bytes of a storage of the caller's own, which has

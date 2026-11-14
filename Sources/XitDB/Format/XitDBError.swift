@@ -222,11 +222,20 @@ public enum XitDBError: Error, Sendable {
     case poisonedTransaction
 
     /// The database's header records a hash size other than the one the
-    /// store's hash produces: `XitDBStore` refuses to open it, before anything
-    /// is read or written through the store. The size a ``KeyHashing`` hash
-    /// produces is its ``KeyHashing/size``; the database's is the one it was
-    /// created with. Only the store layer raises it.
+    /// hasher produces: ``Database/init(opening:hashing:)`` and
+    /// ``Database/recover(_:hashing:)`` refuse the database, once its
+    /// header has been read and before anything else is read or written,
+    /// and so does `XitDBStore`. The size a ``KeyHashing`` hash produces is
+    /// its ``KeyHashing/size``; the database's is the one it was created
+    /// with.
     case hashSizeMismatch
+
+    /// A call that needs a key hashed was made on a database that was
+    /// given no hasher, or on a snapshot of one: the database was made
+    /// with a hash size alone, as ``Database/init(opening:hashSize:)``
+    /// makes it. Open it with ``Database/init(opening:hashing:)``, or hash
+    /// the key and give the hash.
+    case noKeyHashing
 
     /// The root header of a database being opened cannot be trusted: its
     /// size is past the end of the file, smaller than a database can be, or

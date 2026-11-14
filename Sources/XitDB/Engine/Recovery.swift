@@ -90,20 +90,6 @@ extension DatabaseReader {
 }
 
 extension Database {
-    /// Reads the header at the start of a storage, as opening does.
-    ///
-    /// - Throws: `invalidDatabase` if the storage is empty or does not
-    ///   start with the magic bytes, `endOfStream` if it is too short to
-    ///   hold a header, or `invalidVersion` if the version is one this
-    ///   implementation does not read.
-    static func readHeader(of storage: any ReadableStorage) throws(XitDBError) -> DatabaseHeader {
-        var buffer = InlineArray<20, UInt8>(repeating: 0)
-        var span = buffer.mutableSpan
-        let read = try storage.read(into: &span, at: 0)
-        if read == 0 { throw .invalidDatabase }
-        return try DatabaseHeader(decoding: buffer.span.extracting(0..<read))
-    }
-
     /// Recovers a database whose root header cannot be trusted, by cutting
     /// the storage back to the last commit whose trailer verifies, and
     /// opens it.
@@ -163,6 +149,30 @@ extension Database {
         try recover(storage, random: RandomSource(SystemRandomNumberGenerator()))
     }
 
+    /// Recovers a database whose root header cannot be trusted, and opens
+    /// it with the hasher of its keys.
+    ///
+    /// This is ``recover(_:)``, with everything said there, for a database
+    /// that is opened with ``init(opening:hashing:)``: the database it
+    /// returns holds the hasher. The hasher's size is checked against the
+    /// header first, so a hasher of another size is refused before
+    /// anything is cut.
+    ///
+    /// - Parameters:
+    ///   - storage: Where the database's bytes are. It must be writable;
+    ///     the database becomes the only writer to it.
+    ///   - hashing: The hash function of the database's keys. Its
+    ///     ``KeyHashing/size`` must be the database's hash size.
+    /// - Returns: The recovered database, open.
+    /// - Throws: ``XitDBError/hashSizeMismatch`` if the database's hash
+    ///   size is not the hasher's, in which case the storage is left as it
+    ///   was, and what ``recover(_:)`` throws.
+    public static func recover(_ storage: any WritableStorage, hashing: (some KeyHashing).Type)
+        throws(XitDBError) -> Database
+    {
+        try recover(storage, random: RandomSource(SystemRandomNumberGenerator()), hasher: KeyHasher(hashing))
+    }
+
     /// Recovers a database with a given source of randomness for the
     /// recovered database's commit IDs. The recovery itself draws nothing.
     package static func recover(_ storage: any WritableStorage, random: any RandomNumberGenerator)
@@ -172,11 +182,17 @@ extension Database {
     }
 
     /// Recovers a database whose recovered database draws its commit IDs
-    /// from a source another database draws from.
+    /// from a source another database draws from, and holds the hasher
+    /// given, if any.
     ///
-    /// - Throws: What ``recover(_:)`` throws.
-    package static func recover(_ storage: any WritableStorage, random: RandomSource) throws(XitDBError) -> Database {
-        let header = try readHeader(of: storage)
+    /// - Throws: What ``recover(_:)`` throws, and `hashSizeMismatch`,
+    ///   before anything is cut, if the database's hash size is not the
+    ///   hasher's.
+    package static func recover(_ storage: any WritableStorage, random: RandomSource, hasher: KeyHasher? = nil)
+        throws(XitDBError) -> Database
+    {
+        let header = try DatabaseHeader(reading: storage)
+        if let hasher, Int(header.hashSize) != hasher.size { throw .hashSizeMismatch }
         let reader = DatabaseReader(storage: BuiltInStorage(storage), identity: DatabaseIdentity(header: header))
         guard let lastVerified = try reader.lastVerifiedCommitEnd() else { throw .invalidDatabase }
         // The trailer's root slot must be one this implementation reads,
@@ -193,7 +209,7 @@ extension Database {
         // The data was synced by the commit that wrote it. This is the
         // commit's second sync, for the root header.
         try storage.sync(.afterRootHeader)
-        return try Database(opening: storage, hashSize: nil, random: random)
+        return try Database(opening: storage, hashSize: nil, random: random, hasher: hasher)
     }
 }
 
@@ -224,7 +240,7 @@ extension Database {
     ///   length said, or ``XitDBError/storageFailure(errno:)`` if the storage
     ///   fails.
     package static func verifiedCommits(in storage: any ReadableStorage) throws(XitDBError) -> [VerifiedCommit] {
-        let header = try readHeader(of: storage)
+        let header = try DatabaseHeader(reading: storage)
         let length = try storage.length
         let trailerSize = Int(RootTrailer.byteCount)
         guard length >= header.minimumFileSize else { return [] }
