@@ -9,13 +9,23 @@ public enum XitDBError: Error, Sendable {
     /// A slot holds a kind of value that the operation cannot work with.
     ///
     /// For example, a hash map operation was applied to a slot that holds an
-    /// array list.
+    /// array list. A typed read of another kind than the slot holds is one
+    /// too: a `UInt64` from a signed integer, any number from bytes or from
+    /// a slot set to nothing, a `String` from a number or a collection.
     case unexpectedTag
 
     /// The key does not exist.
+    ///
+    /// Reads and removes turn this into `nil` and `false`. From the library
+    /// it gets out only from a write through a collection whose slot was
+    /// cleared after the collection was made.
     case keyNotFound
 
     /// The index is not one of the list's elements.
+    ///
+    /// A write to an index that names no element, an insert at the end, or a
+    /// cut past the end. A lookup gives `nil` instead. An iterator throws it
+    /// only for an index that does not fit in an `Int64`.
     case indexOutOfRange
 
     /// A step that writes was used while reading.
@@ -24,20 +34,24 @@ public enum XitDBError: Error, Sendable {
     case writeNotAllowed
 
     /// The cursor has no position in the file, so nothing can be written
-    /// through it.
+    /// through it: the key cursor of a sorted map's entry, and the root
+    /// cursor for `writeBytes(formatTag:_:)`.
     case cursorNotWritable
 
-    /// A write below the root was attempted outside a transaction.
+    /// A write below the root, or a ``Database/freeze()``, with no
+    /// transaction running.
     case expectedTxStart
 
-    /// A write to the root was started while another one was in progress.
+    /// A write through the root, or a new transaction, while one is running.
     case nestedTopLevelWrite
 
     /// The data is not a valid xitdb database.
     ///
     /// The storage is empty or does not start with the magic bytes, no
-    /// trailer in it verifies, or the bytes given to a sync do not end with
-    /// a trailer that verifies. A file whose root header cannot be trusted
+    /// trailer in it verifies, which a damaged file ID in its header also
+    /// causes, since every trailer's checksum covers it, or the bytes given
+    /// to a sync do not end with a trailer that verifies. A file whose root
+    /// header cannot be trusted
     /// while some trailer verifies is ``untrustedRootHeader(lastVerified:)``
     /// instead.
     ///
@@ -85,13 +99,19 @@ public enum XitDBError: Error, Sendable {
     /// A tree node is neither a leaf nor a branch.
     case invalidBTreeNodeKind
 
-    /// A range of committed bytes is not one that can be read or applied.
+    /// A range of committed bytes is not one that can be read or applied: it
+    /// is past the committed size, starts inside the root header, is a
+    /// replica's start that is neither 0 nor its size, or is a sync from 0 of
+    /// fewer bytes than the headers.
     case invalidRange
 
-    /// A length is larger than the data it applies to.
+    /// A length is larger than the data it applies to: cutting a storage to
+    /// more than its length.
     case invalidLength
 
-    /// The target of a compaction already contains data.
+    /// The target of a compaction already contains data: its root holds
+    /// something. It is also what stops a database being compacted into
+    /// itself.
     case targetNotEmpty
 
     /// The root of the database being compacted is an array list with no
@@ -127,11 +147,18 @@ public enum XitDBError: Error, Sendable {
     /// it.
     case streamTooLong
 
-    /// Data ended before a complete value could be read.
+    /// Data ended before a complete value could be read, or the storage is
+    /// too short to hold its headers: 32 bytes, or 37 in a version 1 file.
+    ///
+    /// It is also a ``ByteSource`` that runs out, and a read of a whole
+    /// buffer from a `ByteReader` with fewer bytes left than the buffer
+    /// holds.
     case endOfStream
 
     /// A byte array being written is no longer at the end of the file, so it
-    /// cannot be finished.
+    /// cannot be finished: it grew, or took a format tag, after something
+    /// else was written behind it. Also a seek beyond any position a storage
+    /// can have.
     case unexpectedWriterPosition
 
     /// A step that must be the last one in a path is followed by another.
@@ -144,14 +171,18 @@ public enum XitDBError: Error, Sendable {
     /// Only the package-level path API raises it; nothing public does.
     case notImplemented
 
-    /// The storage underneath the database reported a failure.
+    /// The storage underneath the database reported a failure: `ENOENT` for
+    /// a missing file, `EWOULDBLOCK` for a lock that is held, `EBADF` for a
+    /// write to a read-only file, `ENOSPC` for a full disk, `EINVAL` for a
+    /// path with a NUL byte in it.
     ///
     /// - Parameter errno: The error number reported by the operating system.
     case storageFailure(errno: Int32)
 
     /// A type of the caller's threw: a ``ByteSink``, a ``ByteSource`` or an
     /// ``OffsetMap`` that XitDB was calling. The error is carried as it was
-    /// thrown.
+    /// thrown. An error from a closure of the caller's is not carried: it
+    /// comes out of the call as itself.
     case callerError(any Error)
 
     /// A count recorded in the file disagrees with its tree: a counted hash
@@ -225,7 +256,8 @@ public enum XitDBError: Error, Sendable {
 
     /// A slot whose tag is `index`, `kvPair` or `sortedKvPair` was given to
     /// write as a value. Those tags are the trees' own; such a slot in a
-    /// value builds a tree the engine cannot read.
+    /// value builds a tree the engine cannot read. The slot of a cursor from
+    /// a map's iterator is one: write the slot of the entry's value instead.
     case structuralSlot
 
     /// A write in a transaction that an earlier operation poisoned: that
@@ -239,8 +271,9 @@ public enum XitDBError: Error, Sendable {
     /// one: the database was made with a hash size alone, as
     /// ``Database/init(opening:hashSize:)`` makes it. Open it with
     /// ``Database/init(opening:hashing:)``, or hash the key and give the
-    /// hash to the call's `forHash:` form. It is thrown before anything
-    /// else about the call is looked at.
+    /// hash to the untyped call's `forHash:` form; the typed calls,
+    /// `put(_:forKey:)` of a value and `value(forKey:as:)`, have no form by
+    /// hash. It is thrown before anything else about the call is looked at.
     case noKeyHashing
 
     /// Bytes read as a `String` are not valid UTF-8. A typed read repairs
@@ -252,6 +285,9 @@ public enum XitDBError: Error, Sendable {
     /// does not end at a trailer whose checksum verifies. `lastVerified` is
     /// the position after the last trailer that does verify, scanning back
     /// from the end; ``Database/recover(_:)`` cuts the file there.
+    ///
+    /// A committed size of zero in a file longer than a new database is not
+    /// refused: it is a full copy that did not finish, which opens.
     case untrustedRootHeader(lastVerified: UInt64)
 }
 

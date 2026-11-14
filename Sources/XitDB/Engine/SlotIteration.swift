@@ -72,7 +72,7 @@ struct SlotIterator {
         ///
         /// Zig counts the elements it gives out instead, so after passing
         /// over an empty slot it gives out one past the end of a cut-down
-        /// list (finding 26). Here the walk visits the positions from its
+        /// list. Here the walk visits the positions from its
         /// start to the list's size and no further, as reading by index
         /// does. Since the original's `89da8e7` an append leaves a slot set
         /// to nothing, which both walks give out, so the two agree on files

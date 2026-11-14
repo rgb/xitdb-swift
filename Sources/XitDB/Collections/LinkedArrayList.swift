@@ -30,6 +30,22 @@
 /// ``Database/withTransaction(_:)`` or a history append hands its body, through
 /// which an init is allowed after a freeze. The article on cloning, freeze and
 /// stale handles says why.
+///
+/// **What the calls throw.** A call that reads throws
+/// ``XitDBError/unexpectedTag`` if the slot holds something other than a list,
+/// ``XitDBError/invalidBTreeNode`` if the list's tree does not hold what its
+/// header says, ``XitDBError/staleCursor`` if the list is not at the root and
+/// its cursor is from a transaction that did not commit, or an error of the
+/// storage or of a damaged file. A call that writes throws
+/// ``XitDBError/expectedTxStart`` if the list's cursor is not the root cursor
+/// and no transaction is in progress, ``XitDBError/nestedTopLevelWrite`` if it
+/// is the root cursor and one is, ``XitDBError/staleCursor`` if it is from
+/// before the last freeze of this transaction or from an earlier transaction,
+/// ``XitDBError/poisonedTransaction`` if an earlier operation of the
+/// transaction failed after writing, ``XitDBError/unexpectedTag`` if the slot
+/// no longer holds a list, ``XitDBError/invalidBTreeNode`` if the list's tree
+/// does not hold what its header says, or an error of the storage or of a
+/// damaged file. A call's own comment says what it throws beyond these.
 public struct LinkedArrayList<Access: CursorAccess> {
     /// The cursor the list is a view of.
     public let cursor: Cursor<Access>
@@ -89,11 +105,7 @@ public struct LinkedArrayList<Access: CursorAccess> {
     ///
     /// - Parameter index: The element's index. A negative index counts from
     ///   the end: `-1` is the last element.
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something other
-    ///   than a list, ``XitDBError/invalidBTreeNode`` if the list's tree does
-    ///   not hold what its header says, ``XitDBError/staleCursor`` if the list
-    ///   is not at the root and its cursor is from a transaction that did not
-    ///   commit, or an error of the storage or of a damaged file.
+    /// - Throws: What a read throws: see ``LinkedArrayList``.
     public func cursor(at index: some BinaryInteger) throws(XitDBError) -> Cursor<ReadOnly>? {
         guard let index = Int64(exactly: index) else { return nil }
         let path: InlineArray<1, PathPart> = [.linkedArrayListGet(index)]
@@ -105,11 +117,7 @@ public struct LinkedArrayList<Access: CursorAccess> {
     ///
     /// - Parameter index: The element's index. A negative index counts from
     ///   the end: `-1` is the last element.
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something other
-    ///   than a list, ``XitDBError/invalidBTreeNode`` if the list's tree does
-    ///   not hold what its header says, ``XitDBError/staleCursor`` if the list
-    ///   is not at the root and its cursor is from a transaction that did not
-    ///   commit, or an error of the storage or of a damaged file.
+    /// - Throws: What a read throws: see ``LinkedArrayList``.
     public func slot(at index: some BinaryInteger) throws(XitDBError) -> Slot? {
         guard let index = Int64(exactly: index) else { return nil }
         let path: InlineArray<1, PathPart> = [.linkedArrayListGet(index)]
@@ -192,16 +200,7 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   - index: The element's index. A negative index counts from the end:
     ///     `-1` is the last element.
     /// - Throws: ``XitDBError/indexOutOfRange`` if there is no element at
-    ///   `index`, ``XitDBError/expectedTxStart`` if the list's cursor is not
-    ///   the root cursor and no transaction is in progress,
-    ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
-    ///   this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a list, ``XitDBError/invalidBTreeNode`` if the
-    ///   list's tree does not hold what its header says, or an error of the
-    ///   storage or of a damaged file.
+    ///   `index`, and what a write throws: see ``LinkedArrayList``.
     public func put(_ value: WritableData, at index: some BinaryInteger) throws(XitDBError) {
         let index = try listIndex(index)
         let path: InlineArray<2, PathPart> = [.linkedArrayListGet(index), .write(value)]
@@ -219,16 +218,7 @@ extension LinkedArrayList where Access == ReadWrite {
     /// - Parameter index: The element's index. A negative index counts from
     ///   the end: `-1` is the last element.
     /// - Throws: ``XitDBError/indexOutOfRange`` if there is no element at
-    ///   `index`, ``XitDBError/expectedTxStart`` if the list's cursor is not
-    ///   the root cursor and no transaction is in progress,
-    ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
-    ///   this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a list, ``XitDBError/invalidBTreeNode`` if the
-    ///   list's tree does not hold what its header says, or an error of the
-    ///   storage or of a damaged file.
+    ///   `index`, and what a write throws: see ``LinkedArrayList``.
     public func putCursor(at index: some BinaryInteger) throws(XitDBError) -> Cursor<ReadWrite> {
         let index = try listIndex(index)
         let path: InlineArray<1, PathPart> = [.linkedArrayListGet(index)]
@@ -238,16 +228,7 @@ extension LinkedArrayList where Access == ReadWrite {
     /// Appends an element.
     ///
     /// - Parameter value: The value.
-    /// - Throws: ``XitDBError/expectedTxStart`` if the list's cursor is not the
-    ///   root cursor and no transaction is in progress,
-    ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
-    ///   this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a list, ``XitDBError/invalidBTreeNode`` if the
-    ///   list's tree does not hold what its header says, or an error of the
-    ///   storage or of a damaged file.
+    /// - Throws: What a write throws: see ``LinkedArrayList``.
     public func append(_ value: WritableData) throws(XitDBError) {
         let path: InlineArray<2, PathPart> = [.linkedArrayListAppend, .write(value)]
         _ = try cursor.writePath(path.span)
@@ -262,16 +243,7 @@ extension LinkedArrayList where Access == ReadWrite {
     /// element holds nothing and a write through the cursor throws
     /// ``XitDBError/expectedTxStart``.
     ///
-    /// - Throws: ``XitDBError/expectedTxStart`` if the list's cursor is not the
-    ///   root cursor and no transaction is in progress,
-    ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
-    ///   this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a list, ``XitDBError/invalidBTreeNode`` if the
-    ///   list's tree does not hold what its header says, or an error of the
-    ///   storage or of a damaged file.
+    /// - Throws: What a write throws: see ``LinkedArrayList``.
     public func appendCursor() throws(XitDBError) -> Cursor<ReadWrite> {
         let path: InlineArray<1, PathPart> = [.linkedArrayListAppend]
         return try cursor.writePath(path.span)
@@ -291,16 +263,8 @@ extension LinkedArrayList where Access == ReadWrite {
     /// - Parameters:
     ///   - value: The value to write before `body` runs.
     ///   - body: Given a cursor at the new element.
-    /// - Throws: What `body` throws, or ``XitDBError/expectedTxStart`` if the
-    ///   list's cursor is not the root cursor and no transaction is in
-    ///   progress, ``XitDBError/nestedTopLevelWrite`` if it is the root cursor
-    ///   and one is, ``XitDBError/staleCursor`` if it is from before the last
-    ///   freeze of this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a list, ``XitDBError/invalidBTreeNode`` if the
-    ///   list's tree does not hold what its header says, or an error of the
-    ///   storage or of a damaged file.
+    /// - Throws: What `body` throws, and what a write throws: see
+    ///   ``LinkedArrayList``.
     @discardableResult
     public func append<Result>(_ value: WritableData, _ body: (inout Cursor<ReadWrite>) throws -> Result) throws
         -> Result
@@ -321,17 +285,8 @@ extension LinkedArrayList where Access == ReadWrite {
     ///     number of elements the list has.
     ///   - count: The number of elements to keep.
     /// - Throws: ``XitDBError/indexOutOfRange`` if the offset is beyond the
-    ///   list or fewer than `count` elements follow it,
-    ///   ``XitDBError/expectedTxStart`` if the list's cursor is not the root
-    ///   cursor and no transaction is in progress,
-    ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
-    ///   this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a list, ``XitDBError/invalidBTreeNode`` if the
-    ///   list's tree does not hold what its header says, or an error of the
-    ///   storage or of a damaged file.
+    ///   list or fewer than `count` elements follow it, and what a write
+    ///   throws: see ``LinkedArrayList``.
     public func formSlice(offset: UInt64, count: UInt64) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.linkedArrayListSlice(offset: offset, size: count)]
         _ = try cursor.writePath(path.span)
@@ -392,7 +347,7 @@ extension LinkedArrayList where Access == ReadWrite {
     public func append(contentsOf list: Slot) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.linkedArrayListConcat(list)]
         // The join freezes the transaction, which makes this list's own
-        // cursor stale with every other (D24): the caller goes on from the
+        // cursor stale with every other: the caller goes on from the
         // transaction's cursor, not from this list.
         _ = try cursor.writePath(path.span)
     }
@@ -405,16 +360,7 @@ extension LinkedArrayList where Access == ReadWrite {
     ///     name an element: to add at the end, use ``append(_:)-(WritableData)``. A
     ///     negative index counts from the end: `-1` is the last element.
     /// - Throws: ``XitDBError/indexOutOfRange`` if there is no element at
-    ///   `index`, ``XitDBError/expectedTxStart`` if the list's cursor is not
-    ///   the root cursor and no transaction is in progress,
-    ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
-    ///   this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a list, ``XitDBError/invalidBTreeNode`` if the
-    ///   list's tree does not hold what its header says, or an error of the
-    ///   storage or of a damaged file.
+    ///   `index`, and what a write throws: see ``LinkedArrayList``.
     public func insert(_ value: WritableData, at index: some BinaryInteger) throws(XitDBError) {
         let index = try listIndex(index)
         let path: InlineArray<2, PathPart> = [.linkedArrayListInsert(index), .write(value)]
@@ -434,16 +380,7 @@ extension LinkedArrayList where Access == ReadWrite {
     ///   must name an element. A negative index counts from the end: `-1`
     ///   is the last element.
     /// - Throws: ``XitDBError/indexOutOfRange`` if there is no element at
-    ///   `index`, ``XitDBError/expectedTxStart`` if the list's cursor is not
-    ///   the root cursor and no transaction is in progress,
-    ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
-    ///   this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a list, ``XitDBError/invalidBTreeNode`` if the
-    ///   list's tree does not hold what its header says, or an error of the
-    ///   storage or of a damaged file.
+    ///   `index`, and what a write throws: see ``LinkedArrayList``.
     public func insertCursor(at index: some BinaryInteger) throws(XitDBError) -> Cursor<ReadWrite> {
         let index = try listIndex(index)
         let path: InlineArray<1, PathPart> = [.linkedArrayListInsert(index)]
@@ -455,16 +392,7 @@ extension LinkedArrayList where Access == ReadWrite {
     /// - Parameter index: The element's index. A negative index counts from
     ///   the end: `-1` is the last element.
     /// - Throws: ``XitDBError/indexOutOfRange`` if there is no element at
-    ///   `index`, ``XitDBError/expectedTxStart`` if the list's cursor is not
-    ///   the root cursor and no transaction is in progress,
-    ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
-    ///   this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a list, ``XitDBError/invalidBTreeNode`` if the
-    ///   list's tree does not hold what its header says, or an error of the
-    ///   storage or of a damaged file.
+    ///   `index`, and what a write throws: see ``LinkedArrayList``.
     public func remove(at index: some BinaryInteger) throws(XitDBError) {
         let index = try listIndex(index)
         let path: InlineArray<1, PathPart> = [.linkedArrayListRemove(index)]

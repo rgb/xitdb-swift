@@ -75,7 +75,7 @@ extension Database {
         // of nothing is right for an empty map, so only finding the key
         // proves it wrong: the check follows the rewrite, as in Zig, and
         // what a callback that catches the error leaves behind is for the
-        // transaction's poisoning (finding 16).
+        // transaction's poisoning.
         guard header.size > 0 else { throw .invalidBTreeNode }
         try write(BTreeHeader(size: header.size - 1, rootPtr: result.rootPtr), at: pointer.slot.value)
     }

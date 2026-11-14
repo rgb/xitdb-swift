@@ -47,10 +47,10 @@
 /// A type of your own conforms by saying how it is written, and then goes
 /// wherever a value goes. A record is usually a map of its fields. The
 /// conformance is in an extension, which leaves the struct the initialiser
-/// Swift gives it. This one clears its slot first, so that it takes the place of whatever was
-/// there, a value of another kind included; without that line it would
-/// write into a map that is there already and keep the fields it does not
-/// write, and be refused by a slot that holds a number:
+/// Swift gives it. This one clears its slot first, so that it takes the
+/// place of whatever was there, a value of another kind included; without
+/// that line it would write into a map that is there already and keep the
+/// fields it does not write, and be refused by a slot that holds a number:
 ///
 /// ```swift
 /// struct Person {
@@ -74,7 +74,11 @@
 ///         try fields.put(age, forKey: "age")
 ///     }
 /// }
+/// ```
 ///
+/// It then goes wherever a value goes, here into a list and out of it:
+///
+/// ```swift
 /// try people.append(Person(name: "Alice", age: 25))
 /// let first = try people.value(at: 0, as: Person.self)
 /// ```
@@ -86,10 +90,12 @@
 public protocol StorableValue {
     /// Reads the value from the slot a cursor is at.
     ///
-    /// - Parameter cursor: A cursor at the slot. The typed calls give
-    ///   `nil` themselves where a key or an index has no entry, so the
-    ///   slot is one that was written, though it may have been set to
-    ///   nothing.
+    /// - Parameter cursor: A cursor at the slot. The collections' typed
+    ///   reads give `nil` themselves where a key or an index has no entry,
+    ///   so from them the slot is one that was written, though it may have
+    ///   been set to nothing. ``Cursor/read(_:)`` hands over the slot its
+    ///   cursor is at, one never written included, which reads as one set
+    ///   to nothing.
     /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds another
     ///   kind than the type is written as, and for a conformer of your own
     ///   whatever error says the slot does not hold one.

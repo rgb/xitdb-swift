@@ -1,5 +1,5 @@
 // The reading side of a database, shared by the live `Database` and a
-// `SnapshotDatabase` (decision D26). It lives in this layer because it names
+// `SnapshotDatabase`. It lives in this layer because it names
 // the replication's `ReplicaState` and the compaction's `OffsetMap`, which
 // are this layer's; the extension that types a read-only cursor's database
 // with it is here for the same reason.

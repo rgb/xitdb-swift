@@ -30,6 +30,23 @@
 /// Writing needs a transaction: see ``Database/withTransaction(_:)``. A map at
 /// the root of the database is the exception: there, every write is a
 /// transaction of its own.
+///
+/// **What the calls throw.** A call that reads throws
+/// ``XitDBError/unexpectedTag`` if the slot holds something other than a sorted
+/// map or set, ``XitDBError/invalidBTreeNode`` if the tree does not hold what
+/// its header or its branches say, ``XitDBError/staleCursor`` if the map is not
+/// at the root and its cursor is from a transaction that did not commit, or an
+/// error of the storage or of a damaged file. A call that writes throws
+/// ``XitDBError/expectedTxStart`` if the map's cursor is not the root cursor
+/// and no transaction is in progress, ``XitDBError/nestedTopLevelWrite`` if it
+/// is the root cursor and one is, ``XitDBError/staleCursor`` if it is from
+/// before the last freeze of this transaction or from an earlier transaction,
+/// ``XitDBError/poisonedTransaction`` if an earlier operation of the
+/// transaction failed after writing, ``XitDBError/unexpectedTag`` if the slot
+/// no longer holds a sorted map or set, ``XitDBError/invalidBTreeNode`` if the
+/// tree does not hold what its header or its branches say, or an error of the
+/// storage or of a damaged file. A call's own comment says what it throws
+/// beyond these.
 public struct SortedMap<Access: CursorAccess> {
     /// The cursor at the slot that holds the map.
     public let cursor: Cursor<Access>
@@ -75,12 +92,7 @@ public struct SortedMap<Access: CursorAccess> {
     ///   negative index counts from the end: `-1` is the last entry. An
     ///   index that names no entry gives an iterator of nothing.
     /// - Throws: ``XitDBError/indexOutOfRange`` if `index` does not fit in an
-    ///   `Int64`, ``XitDBError/unexpectedTag`` if the slot holds something
-    ///   other than a sorted map or set, ``XitDBError/invalidBTreeNode`` if the
-    ///   tree does not hold what its header or its branches say,
-    ///   ``XitDBError/staleCursor`` if the map is not at the root and its
-    ///   cursor is from a transaction that did not commit, or an error of the
-    ///   storage or of a damaged file.
+    ///   `Int64`, and what a read throws: see ``SortedMap``.
     public func iterator(fromIndex index: some BinaryInteger) throws(XitDBError) -> CollectionIterator {
         let index = try listIndex(index)
         return try cursor.iterator(fromSortedMapIndex: index)
@@ -91,12 +103,7 @@ public struct SortedMap<Access: CursorAccess> {
     /// beyond every entry gives an iterator of nothing.
     ///
     /// - Parameter key: The key's bytes.
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something other
-    ///   than a sorted map or set, ``XitDBError/invalidBTreeNode`` if the tree
-    ///   does not hold what its header or its branches say,
-    ///   ``XitDBError/staleCursor`` if the map is not at the root and its
-    ///   cursor is from a transaction that did not commit, or an error of the
-    ///   storage or of a damaged file.
+    /// - Throws: What a read throws: see ``SortedMap``.
     public func iterator(fromKey key: Span<UInt8>) throws(XitDBError) -> CollectionIterator {
         try cursor.iterator(fromSortedMapKey: SortedKey(key))
     }
@@ -121,12 +128,7 @@ public struct SortedMap<Access: CursorAccess> {
     /// not be there: the position it has, or would have.
     ///
     /// - Parameter key: The key's bytes.
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something other
-    ///   than a sorted map or set, ``XitDBError/invalidBTreeNode`` if the tree
-    ///   does not hold what its header or its branches say,
-    ///   ``XitDBError/staleCursor`` if the map is not at the root and its
-    ///   cursor is from a transaction that did not commit, or an error of the
-    ///   storage or of a damaged file.
+    /// - Throws: What a read throws: see ``SortedMap``.
     public func rank(of key: Span<UInt8>) throws(XitDBError) -> UInt64 {
         try cursor.checkReadable()
         let slot = try cursor.resolved().slot
@@ -159,12 +161,7 @@ public struct SortedMap<Access: CursorAccess> {
     ///
     /// - Parameter index: The entry's position in key order. A negative
     ///   index counts from the end: `-1` is the last entry.
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something other
-    ///   than a sorted map or set, ``XitDBError/invalidBTreeNode`` if the tree
-    ///   does not hold what its header or its branches say,
-    ///   ``XitDBError/staleCursor`` if the map is not at the root and its
-    ///   cursor is from a transaction that did not commit, or an error of the
-    ///   storage or of a damaged file.
+    /// - Throws: What a read throws: see ``SortedMap``.
     public func entry(at index: some BinaryInteger) throws(XitDBError) -> Entry? {
         guard let index = Int64(exactly: index) else { return nil }
         let path: InlineArray<1, PathPart> = [.sortedMapGetIndex(index)]
@@ -175,12 +172,7 @@ public struct SortedMap<Access: CursorAccess> {
     /// entry for it or the entry's value was never written.
     ///
     /// - Parameter key: The key's bytes.
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something other
-    ///   than a sorted map or set, ``XitDBError/invalidBTreeNode`` if the tree
-    ///   does not hold what its header or its branches say,
-    ///   ``XitDBError/staleCursor`` if the map is not at the root and its
-    ///   cursor is from a transaction that did not commit, or an error of the
-    ///   storage or of a damaged file.
+    /// - Throws: What a read throws: see ``SortedMap``.
     public func cursor(forKey key: Span<UInt8>) throws(XitDBError) -> Cursor<ReadOnly>? {
         let path: InlineArray<1, PathPart> = [.sortedMapGet(.value, SortedKey(key))]
         return try cursor.readPath(path.span)
@@ -206,12 +198,7 @@ public struct SortedMap<Access: CursorAccess> {
     /// entry for it or the entry's value was never written.
     ///
     /// - Parameter key: The key's bytes.
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something other
-    ///   than a sorted map or set, ``XitDBError/invalidBTreeNode`` if the tree
-    ///   does not hold what its header or its branches say,
-    ///   ``XitDBError/staleCursor`` if the map is not at the root and its
-    ///   cursor is from a transaction that did not commit, or an error of the
-    ///   storage or of a damaged file.
+    /// - Throws: What a read throws: see ``SortedMap``.
     public func slot(forKey key: Span<UInt8>) throws(XitDBError) -> Slot? {
         let path: InlineArray<1, PathPart> = [.sortedMapGet(.value, SortedKey(key))]
         return try cursor.readPathSlot(path.span)
@@ -237,12 +224,7 @@ public struct SortedMap<Access: CursorAccess> {
     /// its value, or `nil` if the map has no entry for it.
     ///
     /// - Parameter key: The key's bytes.
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something other
-    ///   than a sorted map or set, ``XitDBError/invalidBTreeNode`` if the tree
-    ///   does not hold what its header or its branches say,
-    ///   ``XitDBError/staleCursor`` if the map is not at the root and its
-    ///   cursor is from a transaction that did not commit, or an error of the
-    ///   storage or of a damaged file.
+    /// - Throws: What a read throws: see ``SortedMap``.
     public func entry(forKey key: Span<UInt8>) throws(XitDBError) -> Entry? {
         let path: InlineArray<1, PathPart> = [.sortedMapGet(.kvPair, SortedKey(key))]
         return try cursor.readPath(path.span)?.readEntry()
@@ -342,17 +324,7 @@ extension SortedMap where Access == ReadWrite {
     /// - Parameters:
     ///   - value: The value.
     ///   - key: The key's bytes.
-    /// - Throws: ``XitDBError/expectedTxStart`` if the map's cursor is not the
-    ///   root cursor and no transaction is in progress,
-    ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
-    ///   this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a sorted map or set,
-    ///   ``XitDBError/invalidBTreeNode`` if the tree does not hold what its
-    ///   header or its branches say, or an error of the storage or of a damaged
-    ///   file.
+    /// - Throws: What a write throws: see ``SortedMap``.
     public func put(_ value: WritableData, forKey key: Span<UInt8>) throws(XitDBError) {
         let path: InlineArray<2, PathPart> = [.sortedMapGet(.value, SortedKey(key)), .write(value)]
         _ = try cursor.writePath(path.span)
@@ -386,17 +358,7 @@ extension SortedMap where Access == ReadWrite {
     /// ``XitDBError/expectedTxStart``.
     ///
     /// - Parameter key: The key's bytes.
-    /// - Throws: ``XitDBError/expectedTxStart`` if the map's cursor is not the
-    ///   root cursor and no transaction is in progress,
-    ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
-    ///   this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a sorted map or set,
-    ///   ``XitDBError/invalidBTreeNode`` if the tree does not hold what its
-    ///   header or its branches say, or an error of the storage or of a damaged
-    ///   file.
+    /// - Throws: What a write throws: see ``SortedMap``.
     public func putCursor(forKey key: Span<UInt8>) throws(XitDBError) -> Cursor<ReadWrite> {
         let path: InlineArray<1, PathPart> = [.sortedMapGet(.value, SortedKey(key))]
         return try cursor.writePath(path.span)
@@ -423,17 +385,7 @@ extension SortedMap where Access == ReadWrite {
     ///
     /// - Parameter key: The key's bytes.
     /// - Returns: Whether there was an entry to remove.
-    /// - Throws: ``XitDBError/expectedTxStart`` if the map's cursor is not the
-    ///   root cursor and no transaction is in progress,
-    ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
-    ///   this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a sorted map or set,
-    ///   ``XitDBError/invalidBTreeNode`` if the tree does not hold what its
-    ///   header or its branches say, or an error of the storage or of a damaged
-    ///   file.
+    /// - Throws: What a write throws: see ``SortedMap``.
     @discardableResult
     public func remove(forKey key: Span<UInt8>) throws(XitDBError) -> Bool {
         let path: InlineArray<1, PathPart> = [.sortedMapRemove(SortedKey(key))]

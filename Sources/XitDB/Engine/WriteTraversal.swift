@@ -43,8 +43,8 @@ extension Database {
                 pointer = try hashMapGet(pointer, kind: kind, hash: hash, frozenAt: frozenAt)
             case .hashMapRemove(let hash):
                 // A remove ends the path: anything after it is an error,
-                // reported before anything is removed (finding 12; Zig
-                // ignores what follows).
+                // reported before anything is removed (Zig ignores what
+                // follows).
                 if index != path.count - 1 { throw .pathPartMustBeAtEnd }
                 try hashMapRemove(pointer, hash: hash, frozenAt: frozenAt)
                 return (pointer, false)
@@ -94,7 +94,7 @@ extension Database {
         switch data {
         case .slot(let given):
             // The trees' own tags: a value with one of them builds a tree
-            // the engine cannot read (finding 3).
+            // the engine cannot read.
             if let given, given.tag == .index || given.tag == .kvPair || given.tag == .sortedKvPair {
                 throw .structuralSlot
             }
@@ -436,8 +436,7 @@ extension Database {
             // file. A count of nothing is right for an empty map, so only
             // finding the key proves it wrong: the check follows the
             // rewrite, as in Zig, and what a callback that catches the
-            // error leaves behind is for the transaction's poisoning
-            // (finding 16).
+            // error leaves behind is for the transaction's poisoning.
             if count == 0 { throw .invalidCount }
             try write(count - 1, at: pointer.slot.value)
         }

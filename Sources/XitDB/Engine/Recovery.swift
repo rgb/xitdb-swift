@@ -1,5 +1,5 @@
 // Opening a database whose root header cannot be trusted, and recovering
-// one (decision D19, as D22 item 4 settled it): opening refuses and names
+// one: opening refuses and names
 // the last commit that verifies; a separate call cuts the storage back to
 // it. Nothing is dropped except by that call.
 

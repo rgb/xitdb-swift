@@ -14,6 +14,20 @@
 /// transaction of its own. That is how a database's history is kept: a
 /// list at the root, with one element per transaction, each appended with
 /// ``append(_:_:)``.
+///
+/// **What the calls throw.** A call that reads throws
+/// ``XitDBError/unexpectedTag`` if the slot holds something other than a list,
+/// ``XitDBError/staleCursor`` if the list is not at the root and its cursor is
+/// from a transaction that did not commit, or an error of the storage or of a
+/// damaged file. A call that writes throws ``XitDBError/expectedTxStart`` if
+/// the list's cursor is not the root cursor and no transaction is in progress,
+/// ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one is,
+/// ``XitDBError/staleCursor`` if it is from before the last freeze of this
+/// transaction or from an earlier transaction,
+/// ``XitDBError/poisonedTransaction`` if an earlier operation of the
+/// transaction failed after writing, ``XitDBError/unexpectedTag`` if the slot
+/// no longer holds a list, or an error of the storage or of a damaged file. A
+/// call's own comment says what it throws beyond these.
 public struct ArrayList<Access: CursorAccess> {
     /// The cursor at the slot that holds the list.
     public let cursor: Cursor<Access>
@@ -61,10 +75,7 @@ public struct ArrayList<Access: CursorAccess> {
     ///   index counts from the end: `-1` is the last element. An index that
     ///   names no element gives an iterator of nothing.
     /// - Throws: ``XitDBError/indexOutOfRange`` if `index` does not fit in an
-    ///   `Int64`, ``XitDBError/unexpectedTag`` if the slot holds something
-    ///   other than a list, ``XitDBError/staleCursor`` if the list is not at
-    ///   the root and its cursor is from a transaction that did not commit, or
-    ///   an error of the storage or of a damaged file.
+    ///   `Int64`, and what a read throws: see ``ArrayList``.
     public func iterator(fromIndex index: some BinaryInteger) throws(XitDBError) -> CollectionIterator {
         let index = try listIndex(index)
         return try cursor.iterator(fromArrayListIndex: index)
@@ -79,10 +90,7 @@ public struct ArrayList<Access: CursorAccess> {
     ///
     /// - Parameter index: The element's index. A negative index counts from
     ///   the end: `-1` is the last element.
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something other
-    ///   than a list, ``XitDBError/staleCursor`` if the list is not at the root
-    ///   and its cursor is from a transaction that did not commit, or an error
-    ///   of the storage or of a damaged file.
+    /// - Throws: What a read throws: see ``ArrayList``.
     public func cursor(at index: some BinaryInteger) throws(XitDBError) -> Cursor<ReadOnly>? {
         guard let index = Int64(exactly: index) else { return nil }
         let path: InlineArray<1, PathPart> = [.arrayListGet(index)]
@@ -98,10 +106,7 @@ public struct ArrayList<Access: CursorAccess> {
     ///
     /// - Parameter index: The element's index. A negative index counts from
     ///   the end: `-1` is the last element.
-    /// - Throws: ``XitDBError/unexpectedTag`` if the slot holds something other
-    ///   than a list, ``XitDBError/staleCursor`` if the list is not at the root
-    ///   and its cursor is from a transaction that did not commit, or an error
-    ///   of the storage or of a damaged file.
+    /// - Throws: What a read throws: see ``ArrayList``.
     public func slot(at index: some BinaryInteger) throws(XitDBError) -> Slot? {
         guard let index = Int64(exactly: index) else { return nil }
         let path: InlineArray<1, PathPart> = [.arrayListGet(index)]
@@ -184,15 +189,7 @@ extension ArrayList where Access == ReadWrite {
     ///   - index: The element's index. A negative index counts from the end:
     ///     `-1` is the last element.
     /// - Throws: ``XitDBError/indexOutOfRange`` if there is no element at
-    ///   `index`, ``XitDBError/expectedTxStart`` if the list's cursor is not
-    ///   the root cursor and no transaction is in progress,
-    ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
-    ///   this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a list, or an error of the storage or of a
-    ///   damaged file.
+    ///   `index`, and what a write throws: see ``ArrayList``.
     public func put(_ value: WritableData, at index: some BinaryInteger) throws(XitDBError) {
         let index = try listIndex(index)
         let path: InlineArray<2, PathPart> = [.arrayListGet(index), .write(value)]
@@ -210,15 +207,7 @@ extension ArrayList where Access == ReadWrite {
     /// - Parameter index: The element's index. A negative index counts from
     ///   the end: `-1` is the last element.
     /// - Throws: ``XitDBError/indexOutOfRange`` if there is no element at
-    ///   `index`, ``XitDBError/expectedTxStart`` if the list's cursor is not
-    ///   the root cursor and no transaction is in progress,
-    ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
-    ///   this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a list, or an error of the storage or of a
-    ///   damaged file.
+    ///   `index`, and what a write throws: see ``ArrayList``.
     public func putCursor(at index: some BinaryInteger) throws(XitDBError) -> Cursor<ReadWrite> {
         let index = try listIndex(index)
         let path: InlineArray<1, PathPart> = [.arrayListGet(index)]
@@ -228,16 +217,8 @@ extension ArrayList where Access == ReadWrite {
     /// Appends an element.
     ///
     /// - Parameter value: The value.
-    /// - Throws: ``XitDBError/expectedTxStart`` if the list's cursor is not the
-    ///   root cursor and no transaction is in progress,
-    ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
-    ///   this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a list, ``XitDBError/invalidDatabase`` if the
-    ///   list is as long as a list can be, or an error of the storage or of a
-    ///   damaged file.
+    /// - Throws: ``XitDBError/invalidDatabase`` if the list is as long as a
+    ///   list can be, and what a write throws: see ``ArrayList``.
     public func append(_ value: WritableData) throws(XitDBError) {
         let path: InlineArray<2, PathPart> = [.arrayListAppend, .write(value)]
         _ = try cursor.writePath(path.span)
@@ -252,16 +233,8 @@ extension ArrayList where Access == ReadWrite {
     /// element holds nothing and a write through the cursor throws
     /// ``XitDBError/expectedTxStart``.
     ///
-    /// - Throws: ``XitDBError/expectedTxStart`` if the list's cursor is not the
-    ///   root cursor and no transaction is in progress,
-    ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
-    ///   this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a list, ``XitDBError/invalidDatabase`` if the
-    ///   list is as long as a list can be, or an error of the storage or of a
-    ///   damaged file.
+    /// - Throws: ``XitDBError/invalidDatabase`` if the list is as long as a
+    ///   list can be, and what a write throws: see ``ArrayList``.
     public func appendCursor() throws(XitDBError) -> Cursor<ReadWrite> {
         let path: InlineArray<1, PathPart> = [.arrayListAppend]
         return try cursor.writePath(path.span)
@@ -286,16 +259,9 @@ extension ArrayList where Access == ReadWrite {
     /// - Parameters:
     ///   - value: The value to write before `body` runs.
     ///   - body: Given a cursor at the new element.
-    /// - Throws: What `body` throws, or ``XitDBError/expectedTxStart`` if the
-    ///   list's cursor is not the root cursor and no transaction is in
-    ///   progress, ``XitDBError/nestedTopLevelWrite`` if it is the root cursor
-    ///   and one is, ``XitDBError/staleCursor`` if it is from before the last
-    ///   freeze of this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a list, ``XitDBError/invalidDatabase`` if the
-    ///   list is as long as a list can be, or an error of the storage or of a
-    ///   damaged file.
+    /// - Throws: What `body` throws, ``XitDBError/invalidDatabase`` if the list
+    ///   is as long as a list can be, and what a write throws: see
+    ///   ``ArrayList``.
     @discardableResult
     public func append<Result>(_ value: WritableData, _ body: (inout Cursor<ReadWrite>) throws -> Result) throws
         -> Result
@@ -313,15 +279,7 @@ extension ArrayList where Access == ReadWrite {
     /// - Parameter count: The number of elements to keep, at most the number
     ///   the list has.
     /// - Throws: ``XitDBError/indexOutOfRange`` if `count` is larger than the
-    ///   list, ``XitDBError/expectedTxStart`` if the list's cursor is not the
-    ///   root cursor and no transaction is in progress,
-    ///   ``XitDBError/nestedTopLevelWrite`` if it is the root cursor and one
-    ///   is, ``XitDBError/staleCursor`` if it is from before the last freeze of
-    ///   this transaction or from an earlier transaction,
-    ///   ``XitDBError/poisonedTransaction`` if an earlier operation of the
-    ///   transaction failed after writing, ``XitDBError/unexpectedTag`` if the
-    ///   slot no longer holds a list, or an error of the storage or of a
-    ///   damaged file.
+    ///   list, and what a write throws: see ``ArrayList``.
     public func truncate(to count: UInt64) throws(XitDBError) {
         let path: InlineArray<1, PathPart> = [.arrayListSlice(size: count)]
         _ = try cursor.writePath(path.span)
@@ -355,12 +313,14 @@ extension ArrayList {
     /// `try list.value(at: 0, as: String.self)`, or `let first: String? =
     /// try list.value(at: 0)`.
     ///
-    /// `nil` means the index names no element. An element that is there is
-    /// read strictly, as ``StorableValue`` says: one of another kind than
-    /// the type is written as is an error and not `nil`. An element that
-    /// was set to nothing, or appended and never written, is there: read
-    /// as a number it is that error, and read as a `String`, a `[UInt8]`
-    /// or ``Bytes`` it is empty.
+    /// `nil` means the index names no element, or one whose slot is empty:
+    /// an element appended and never written before 0.3.0, or by the
+    /// original before `89da8e7`, as ``cursor(at:)`` says. An element that
+    /// is there is read strictly, as ``StorableValue`` says: one of another
+    /// kind than the type is written as is an error and not `nil`. An
+    /// element that was set to nothing, or appended and never written since
+    /// 0.3.0, is there: read as a number it is that error, and read as a
+    /// `String`, a `[UInt8]` or ``Bytes`` it is empty.
     ///
     /// - Parameters:
     ///   - index: The element's index. A negative index counts from the
