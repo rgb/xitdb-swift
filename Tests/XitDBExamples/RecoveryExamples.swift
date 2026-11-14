@@ -168,8 +168,19 @@ import XitDB
     }
 
     @Test func aReplicaAfterAFailedSyncAtZero() throws {
-        let (good, _) = try threeMoments()
-        let source = try Database(opening: MemoryStorage(bytes: good))
+        // A sync writes its data in blocks of 4096 bytes, each once it has
+        // all arrived. The three moments end at 1,415, inside the first
+        // block; a fourth with five thousand bytes takes the source into
+        // the second.
+        let (three, _) = try threeMoments()
+        let sourceStorage = MemoryStorage(bytes: three)
+        let source = try Database(opening: sourceStorage)
+        let history = try ArrayList<ReadWrite>(source.rootCursor)
+        try history.append(.slot(try history.slot(at: -1))) { cursor in
+            let notes = [UInt8](repeating: 0x61, count: 5000)
+            try HashMap<ReadWrite>(cursor).put(.bytes(notes), forHash: sha256("notes"))
+        }
+        let good = sourceStorage.bytes
 
         struct ConnectionLost: Error {}
         struct DroppingSource: ByteSource {
@@ -189,7 +200,7 @@ import XitDB
 
         let replicaStorage = MemoryStorage()
         var replica = try Database(creating: replicaStorage, hashSize: 32)
-        var connection = DroppingSource(bytes: good, dropAt: 1100)
+        var connection = DroppingSource(bytes: good, dropAt: 4500)
         #expect(throws: XitDBError.self) {
             try replica.applyReplicated(at: 0, from: &connection, count: UInt64(good.count))
         }
@@ -201,20 +212,22 @@ import XitDB
         // What arrived holds the source's earlier commits. Keep the last of them.
         replica = try Database.recover(replicaStorage)
         let start = try source.replicationStart(for: try replica.replicaState)
-        #expect(start == 1027)
+        #expect(start == 1415)
         let end = try source.committedSize
         let bytes = try source.readCommitted(from: start, to: end)
         try replica.applyReplicated(at: start, bytes: bytes)
         #expect(replicaStorage.bytes == good)
 
-        // The source's first commit is its first 57 bytes: the new database.
+        // A sync that stops inside its first block leaves the two headers,
+        // 32 bytes, and nothing to recover, however much of the block came.
         let first = MemoryStorage()
-        var afterFirst = DroppingSource(bytes: good, dropAt: 70)
+        var afterFirst = DroppingSource(bytes: good, dropAt: 1100)
         #expect(throws: XitDBError.self) {
             try Database(creating: first, hashSize: 32)
                 .applyReplicated(at: 0, from: &afterFirst, count: UInt64(good.count))
         }
-        #expect(try Database.recover(first).committedSize == 57)
+        #expect(first.bytes.count == 32)
+        #expect(throws: XitDBError.invalidDatabase) { try Database.recover(first) }
         let beforeFirst = MemoryStorage()
         var early40 = DroppingSource(bytes: good, dropAt: 40)
         #expect(throws: XitDBError.self) {
