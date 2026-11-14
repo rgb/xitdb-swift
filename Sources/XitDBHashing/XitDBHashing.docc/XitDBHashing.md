@@ -45,11 +45,12 @@ does not compile where nothing tells them apart, as in a type annotation or `let
 
 ### Where the hashes are computed
 
-The module computes both hashes with its own code, which needs only the standard library: on every platform for input a
-few blocks long, as most keys are, and on Linux for input of any length. On Apple's platforms longer input goes to
-CryptoKit, which is faster there. The hash is the same either way, and the package takes no dependency for it. The code
-is tested against the published test vectors and the lengths where the padding changes shape on every platform, and
-against CryptoKit where CryptoKit exists.
+The module computes both hashes with its own code, at every length, and calls no routine of the system's: it imports
+XitDB alone and allocates nothing for a hash. On Apple silicon (a Mac, an iPhone or an iPad, and the simulator on such a
+Mac) the code uses the processor's SHA instructions. Everywhere else, Linux on any processor or an Intel Mac, it is
+portable code that needs only the standard library. The hash is the same either way, and the package takes no dependency
+for it. The code is tested on every platform against the published test vectors and a table of digests made by Python's
+hashlib, and against CryptoKit where CryptoKit exists.
 
 ### A hasher of your own
 
