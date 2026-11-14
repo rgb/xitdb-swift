@@ -85,6 +85,7 @@ let package = Package(
         .testTarget(
             name: "XitDBHashingTests",
             dependencies: ["XitDBHashing"],
+            resources: [.copy("Resources/digests.txt")],
             swiftSettings: languageSettings
         ),
         .testTarget(

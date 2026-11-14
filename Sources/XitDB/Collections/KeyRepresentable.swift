@@ -61,6 +61,35 @@ extension KeyRepresentable where Self: RawRepresentable, RawValue: KeyRepresenta
     public var keyBytes: [UInt8] { rawValue.keyBytes }
 }
 
+extension KeyHashing {
+    /// The hash of a key, as an array of ``size`` bytes: what a database
+    /// that was given this hasher computes for the key.
+    ///
+    /// A call that takes a key is its call by hash with this hash, so it is
+    /// what to give a `forHash:` call in order to reach the entry a keyed
+    /// call wrote, on a database opened without the hasher or where the
+    /// hash is kept and used again:
+    ///
+    /// ```swift
+    /// let hash = SHA256.keyHash(of: "alice")
+    /// try ages.put(.uint(25), forHash: hash)
+    /// let age = try ages.value(forKey: "alice", as: UInt64.self)
+    /// ```
+    ///
+    /// The key's bytes are its ``KeyRepresentable/keyBytes``: for text its
+    /// UTF-8, for an array of bytes the array.
+    ///
+    /// - Parameter key: The key.
+    /// - Returns: The hash. A conformer that appends fewer bytes than its
+    ///   ``size`` gives fewer here, which a call by hash refuses.
+    public static func keyHash(of key: some KeyRepresentable) -> [UInt8] {
+        let bytes = key.keyBytes
+        return [UInt8](capacity: size) { (output: inout OutputSpan<UInt8>) in
+            hash(bytes.span, into: &output)
+        }
+    }
+}
+
 extension KeyRepresentable {
     /// The key as the data that is stored where a key is stored: its bytes
     /// as a byte array, with the format tag of a ``Bytes`` key that has

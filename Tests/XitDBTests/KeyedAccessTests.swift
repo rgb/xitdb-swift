@@ -134,7 +134,7 @@ private struct Twins<Hashing: KeyHashing> {
     /// The hash of a key, as the test computes it: the hash function over
     /// the key's bytes.
     func hash(_ key: some KeyRepresentable) -> [UInt8] {
-        Array(Hashing.hash(key.keyBytes))
+        Hashing.keyHash(of: key)
     }
 
     /// The slot the collection under test lives in: the value under a fixed
@@ -941,7 +941,7 @@ private struct Twins<Hashing: KeyHashing> {
             try hashed.put(UInt64(4), forKey: Bytes(utf8("name")))
             try hashed.put(UInt64(5), forKey: tagged)
             try hashed.put(UInt64(6), forKey: Field.name)
-            try hashed.put(.uint(7), forHash: SHA256.hash(data: utf8("name")))
+            try hashed.put(.uint(7), forHash: SHA256.keyHash(of: "name"))
 
             try sortedSet.insert(tagged)
             try sortedSet.insert("name")

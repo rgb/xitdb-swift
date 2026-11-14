@@ -306,9 +306,15 @@ import XitDBHashing
     /// and names the same entry as the array of its bytes. A digest of
     /// another size is refused as any hash of the wrong size is.
     @Test func aDigestGoesStraightIn() throws {
+        /// A digest type of a caller's own, as a hash library hands one
+        /// out: a sequence of its bytes that is no array.
+        struct Digest: Sequence {
+            var bytes: [UInt8]
+            func makeIterator() -> IndexingIterator<[UInt8]> { bytes.makeIterator() }
+        }
         let database = try makeDatabase()
-        let digest = Insecure.SHA1.hash(data: Data("k".utf8))
-        let bytes = Array(digest)
+        let bytes = Insecure.SHA1.keyHash(of: "k")
+        let digest = Digest(bytes: bytes)
         #expect(bytes.count == 20)
         try database.withTransaction { cursor in
             let map = try HashMap(cursor)
@@ -318,12 +324,13 @@ import XitDBHashing
                 try map.cursor(forHash: bytes)?.readUInt64() == 1, "the array of the digest's bytes finds the entry")
             try map.put(.uint(2), forHash: bytes)
             #expect(try map.cursor(forHash: digest)?.readUInt64() == 2, "and the digest finds what the array wrote")
-            #expect(try map.cursor(forHash: Insecure.SHA1.hash(data: Data("other".utf8))) == nil)
+            #expect(try map.cursor(forHash: bytes[...])?.readUInt64() == 2, "and so does a slice")
+            #expect(try map.cursor(forHash: Digest(bytes: Insecure.SHA1.keyHash(of: "other"))) == nil)
             #expect(throws: XitDBError.invalidHashSize) {
-                try map.put(.uint(3), forHash: SHA256.hash(data: Data("k".utf8)))
+                try map.put(.uint(3), forHash: Digest(bytes: SHA256.keyHash(of: "k")))
             }
             #expect(throws: XitDBError.invalidHashSize) {
-                try map.cursor(forHash: SHA256.hash(data: Data("k".utf8)))
+                try map.cursor(forHash: Digest(bytes: SHA256.keyHash(of: "k")))
             }
         }
     }

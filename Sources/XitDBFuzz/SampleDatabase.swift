@@ -12,7 +12,7 @@ import XitDBHashing
 /// text, repeated and cut to `size` bytes, for whatever hash size the
 /// database has.
 func hash(_ text: String, _ size: Int) -> [UInt8] {
-    let digest = Array(SHA256.hash(data: Array(text.utf8)))
+    let digest = SHA256.keyHash(of: text)
     return Array((digest + digest + digest).prefix(size))
 }
 

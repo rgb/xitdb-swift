@@ -50,7 +50,7 @@ import XitDBHashing
 
     static func sha256(_ text: String) -> String {
         var hex = ""
-        for byte in Array(SHA256.hash(data: Array(text.utf8))) {
+        for byte in SHA256.keyHash(of: text) {
             let digits = String(byte, radix: 16)
             hex += digits.count == 1 ? "0" + digits : digits
         }

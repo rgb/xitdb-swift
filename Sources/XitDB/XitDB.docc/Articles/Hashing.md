@@ -33,7 +33,7 @@ same text. A `[UInt8]` is itself, and a ``Bytes`` its value without its format t
 is a ``KeyRepresentable``.
 
 The package's `XitDBHashing` module has `SHA256` and `Insecure.SHA1`, under CryptoKit's names on every platform. A
-hasher of your own gives a ``KeyHashing/size``, the number of bytes in every digest, and a ``KeyHashing/hash(_:)``: the
+hasher of your own gives a ``KeyHashing/size``, the number of bytes in every digest, and a ``KeyHashing/hash(_:into:)``: the
 last section has one.
 
 ### Which hash
@@ -127,7 +127,11 @@ replaces the first without an error. A hasher of your own, of one byte, shows it
 // A hash of one byte, the sum of the key's: "ab" and "ba" collide.
 enum ByteSum: KeyHashing {
     static var size: Int { 1 }
-    static func hash(_ bytes: some Collection<UInt8>) -> [UInt8] { [bytes.reduce(0, &+)] }
+    static func hash(_ bytes: Span<UInt8>, into output: inout OutputSpan<UInt8>) {
+        var sum: UInt8 = 0
+        for index in bytes.indices { sum &+= bytes[index] }
+        output.append(sum)
+    }
 }
 
 let database = try Database(creating: MemoryStorage(), hashing: ByteSum.self)

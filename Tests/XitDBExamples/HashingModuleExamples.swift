@@ -10,11 +10,11 @@ import XitDBHashing
         #expect(database.header.hashSize == 32)
         #expect(database.header.hashID == "sha2")
         #expect(Insecure.SHA1.size == 20)
-        #expect(Array(Insecure.SHA1.hash(data: Array("foo".utf8))).count == 20)
+        #expect(Insecure.SHA1.keyHash(of: "foo").count == 20)
     }
 
     @Test func aDigestIsItsBytes() throws {
-        let digest = SHA256.hash(data: Array("alice".utf8))
+        let digest = SHA256.keyHash(of: "alice")
         let bytes = Array(digest)  // 32 of them
         #expect(bytes.count == 32)
         let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)

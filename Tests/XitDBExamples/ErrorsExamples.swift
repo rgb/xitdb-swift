@@ -192,7 +192,9 @@ import XitDBHashing
         // A hasher whose digest is not its size, once there is a map.
         enum Short: KeyHashing {
             static var size: Int { 20 }
-            static func hash(_ bytes: some Collection<UInt8>) -> [UInt8] { [1, 2, 3] }
+            static func hash(_ bytes: Span<UInt8>, into output: inout OutputSpan<UInt8>) {
+                for byte in [1, 2, 3] as [UInt8] { output.append(byte) }
+            }
         }
         let database = try Database(creating: MemoryStorage(), hashing: Short.self)
         let short = try HashMap<ReadWrite>(database.rootCursor)

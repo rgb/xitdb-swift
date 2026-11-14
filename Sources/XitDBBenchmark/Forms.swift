@@ -1,5 +1,5 @@
 // The workloads that compare the forms a call comes in: a hash given as a
-// `Span`, as an array or as a digest; a sorted map's key given as a `Span`,
+// `Span` or as an array; a sorted map's key given as a `Span`,
 // as an array or as text; a value given as a type or as `WritableData`.
 // Each set writes the same file, so what differs between its members is the
 // form alone. They are the port's own: the original has one form of each.
@@ -28,32 +28,6 @@ func mapByHashSpan(_ size: Int, kinds: [StorageKind]) -> Workload {
             let hash = hashes[index]
             guard try map.cursor(forHash: hash.span)?.readUInt64() == UInt64(index) else {
                 throw BenchmarkFailure(description: "key-\(index) does not read back by its hash as a span")
-            }
-        }
-    } iterate: { reading, keys in
-        try iterateMap(try lastMoment(reading), keys)
-    }
-}
-
-/// The map of `map_by_hash`, by the form that takes any sequence of bytes,
-/// given the digest as the hash function returned it: the form copies it
-/// into an array.
-func mapByHashDigest(_ size: Int, kinds: [StorageKind]) -> Workload {
-    Workload(name: "map_by_hash_digest", size: size, kinds: kinds, keyKind: .keys, keyCount: size) { database, keys in
-        let digests = keys.digests
-        let history = try ArrayList<ReadWrite>(database.rootCursor)
-        try history.append(.slot(nil)) { cursor in
-            let map = try HashMap<ReadWrite>(cursor)
-            for index in digests.indices {
-                try map.put(.uint(UInt64(index)), forHash: digests[index])
-            }
-        }
-    } read: { reading, keys in
-        let digests = keys.digests
-        let map = try HashMap<ReadOnly>(try lastMoment(reading))
-        for index in digests.indices {
-            guard try map.cursor(forHash: digests[index])?.readUInt64() == UInt64(index) else {
-                throw BenchmarkFailure(description: "key-\(index) does not read back by its digest")
             }
         }
     } iterate: { reading, keys in

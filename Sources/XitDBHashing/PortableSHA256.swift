@@ -1,20 +1,19 @@
 // SHA-256 as FIPS 180-4 defines it, in Swift that needs only the standard
-// library. Where CryptoKit exists, ``SHA256`` is CryptoKit's and this stands
-// behind it only in the tests; elsewhere it is what ``SHA256`` computes.
+// library: what ``SHA256`` computes.
 
-/// The portable SHA-256: the algorithm behind ``SHA256`` where CryptoKit is
-/// absent, compiled everywhere so that the tests can hold it against
-/// CryptoKit where it exists.
+/// The module's own SHA-256, which needs nothing of the platform: the
+/// algorithm behind ``SHA256``, held against CryptoKit by the tests where
+/// CryptoKit exists.
 package enum PortableSHA256: Sendable {
     /// The number of bytes in a digest: 32.
     package static let byteCount = 32
 
-    /// The digest of `message`, read once and in full before the hashing
-    /// starts.
-    package static func hash(_ message: some Sequence<UInt8>) -> DigestStorage<32> {
+    /// Appends the digest of `message` to `output`: 32 bytes. Nothing is
+    /// allocated.
+    package static func hash(_ message: Span<UInt8>, into output: inout OutputSpan<UInt8>) {
         var state = SHA256State()
-        state.absorb(Array(message))
-        return DigestStorage { stateByte($0, of: state.words) }
+        state.absorb(message)
+        appendDigest(of: state.words, to: &output)
     }
 }
 
@@ -40,19 +39,17 @@ struct SHA256State: BlockHash {
     ]
 
     /// One block through the 64 rounds of section 6.2.2.
-    mutating func compress(_ block: BlockWords) {
-        var schedule = InlineArray<64, UInt32>(repeating: 0)
+    ///
+    /// The message schedule is kept as its last sixteen words, each index
+    /// taken modulo 16, which is all a round reads: word `t` is made from
+    /// words `t - 2`, `t - 7`, `t - 15` and `t - 16` and takes the place of
+    /// the last of them.
+    mutating func compress(_ block: Span<UInt8>) {
+        var schedule = InlineArray<16, UInt32>(repeating: 0)
         for t in 0..<16 {
-            schedule[t] = block[t]
+            schedule[t] = bigEndianWord(block, at: 4 &* t)
         }
-        for t in 16..<64 {
-            let w15 = schedule[t - 15]
-            let w2 = schedule[t - 2]
-            let sigma0 = w15.rotatedRight(by: 7) ^ w15.rotatedRight(by: 18) ^ (w15 >> 3)
-            let sigma1 = w2.rotatedRight(by: 17) ^ w2.rotatedRight(by: 19) ^ (w2 >> 10)
-            schedule[t] = sigma1 &+ schedule[t - 7] &+ sigma0 &+ schedule[t - 16]
-        }
-
+        let constants = Self.roundConstants
         var a = words[0]
         var b = words[1]
         var c = words[2]
@@ -62,9 +59,20 @@ struct SHA256State: BlockHash {
         var g = words[6]
         var h = words[7]
         for t in 0..<64 {
+            let word: UInt32
+            if t < 16 {
+                word = schedule[t]
+            } else {
+                let w15 = schedule[(t &+ 1) & 15]
+                let w2 = schedule[(t &+ 14) & 15]
+                let sigma0 = w15.rotatedRight(by: 7) ^ w15.rotatedRight(by: 18) ^ (w15 &>> 3)
+                let sigma1 = w2.rotatedRight(by: 17) ^ w2.rotatedRight(by: 19) ^ (w2 &>> 10)
+                word = sigma1 &+ schedule[(t &+ 9) & 15] &+ sigma0 &+ schedule[t & 15]
+                schedule[t & 15] = word
+            }
             let bigSigma1 = e.rotatedRight(by: 6) ^ e.rotatedRight(by: 11) ^ e.rotatedRight(by: 25)
             let choice = (e & f) ^ (~e & g)
-            let temp1 = h &+ bigSigma1 &+ choice &+ Self.roundConstants[t] &+ schedule[t]
+            let temp1 = h &+ bigSigma1 &+ choice &+ constants[t] &+ word
             let bigSigma0 = a.rotatedRight(by: 2) ^ a.rotatedRight(by: 13) ^ a.rotatedRight(by: 22)
             let majority = (a & b) ^ (a & c) ^ (b & c)
             let temp2 = bigSigma0 &+ majority
