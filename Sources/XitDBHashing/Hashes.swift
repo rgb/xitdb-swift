@@ -29,7 +29,8 @@ public enum SHA256: KeyHashing {
     public static var size: Int { 32 }
 
     /// The longest input, in bytes, that the module's own code hashes
-    /// where the system has a routine: two blocks. See ``SystemHashes``.
+    /// where the system has a routine: the longest message of two blocks.
+    /// ``SystemHashes`` has the measurement it was set by.
     package static let ownCodeLimit = 119
 
     /// Appends the SHA-256 of `bytes` to `output`: 32 bytes.
@@ -67,8 +68,8 @@ public enum Insecure {
         public static var size: Int { 20 }
 
         /// The longest input, in bytes, that the module's own code hashes
-        /// where the system has a routine: five blocks. See
-        /// ``SystemHashes``.
+        /// where the system has a routine: the longest message of five
+        /// blocks. ``SystemHashes`` has the measurement it was set by.
         package static let ownCodeLimit = 311
 
         /// Appends the SHA-1 of `bytes` to `output`: 20 bytes.
@@ -96,18 +97,41 @@ public enum Insecure {
     /// span gives a pointer only through an unsafe call, of which this
     /// module has none. So the bytes are copied into an array first, which
     /// the compiler makes a block copy of, and the digest is appended byte
-    /// by byte.
+    /// by byte. Against handing CryptoKit the bytes where they are and
+    /// reading its digest where it is, that costs 111 ns at a kilobyte (698
+    /// against 587 for SHA-256, 19%), 10% at 64 KB and 6% at a megabyte,
+    /// which was weighed and found too little to buy the module its first
+    /// unsafe expression. With the pointer the system's routine would be
+    /// worth taking sooner: SHA-256's limit would fall to one block, and a
+    /// key of 56 to 119 bytes would hash up to 100 ns faster; SHA-1's would
+    /// fall to three or four. If the standard library one day gives
+    /// CryptoKit a span's bytes without a copy and without unsafe code,
+    /// this is what changes, and the two limits with it.
     ///
-    /// The system's routine costs more to call than the module's own code,
-    /// the copy included, and less for each block, since it uses the
-    /// processor's instructions for SHA where there are any. The module's
-    /// own code is therefore taken up to a limit and the system's routine
-    /// above it: ``SHA256/ownCodeLimit`` and ``Insecure/SHA1/ownCodeLimit``.
-    /// PROVISIONAL, from a rough look on an Apple M-series machine and
-    /// before the measurement: for a message of n blocks SHA-256 takes about
-    /// 27 + 136 n ns by the module's code and 282 + 22 n by the system's
-    /// routine, which cross between two and three blocks; SHA-1 takes about
-    /// 27 + 66 n against 282 + 22 n, which cross between five and six.
+    /// **The limits.** The system's routine costs more to call than the
+    /// module's own code, the copy included, and less for each block, since
+    /// it uses the processor's instructions for SHA. So the module's code is
+    /// taken up to a limit and the system's routine above it:
+    /// ``SHA256/ownCodeLimit`` and ``Insecure/SHA1/ownCodeLimit``.
+    ///
+    /// They were measured on an Apple M-series machine on 2026-11-14, in
+    /// nanoseconds a hash, the system's routine as it is reached here. For
+    /// the longest message of one, two, three, four, five, six and eight
+    /// blocks, SHA-256 takes 162, 294, 429, 565, 703, 837 and 1,108 by the
+    /// module's code and 253, 276, 297, 324, 352, 373 and 419 by the
+    /// system's routine; SHA-1 takes 95, 159, 223, 293, 359, 422 and 550
+    /// against 250, 270, 295, 322, 348, 366 and 415.
+    ///
+    /// The module's code costs the same anywhere in a block. The system's
+    /// routine costs less the nearer its input is to the end of its block,
+    /// about 1.7 ns for each byte of padding it has to write, so those
+    /// figures are its best: at a block's beginning it costs up to 95 more,
+    /// 337 for 9 bytes of SHA-256 and 371 for 64. Read with that, SHA-256
+    /// is the module's code through two blocks, where the system's routine
+    /// wins only in the last eleven lengths and by 18 ns at most, and the
+    /// system's routine from three, where it wins at every length. SHA-1 is
+    /// the module's code through five blocks; in the sixth the two are level
+    /// on average, and from the seventh the system's routine wins.
     package enum SystemHashes {
         /// Appends CryptoKit's SHA-256 of `bytes` to `output`: 32 bytes.
         package static func sha256(_ bytes: Span<UInt8>, into output: inout OutputSpan<UInt8>) {
