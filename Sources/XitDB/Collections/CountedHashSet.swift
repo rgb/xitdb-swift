@@ -2,7 +2,7 @@
 ///
 /// A set holds keys, each under its hash. Every call comes in two kinds.
 /// The calls that take a key, a string or bytes or anything
-/// ``KeyRepresentable``, hash it with the hasher the database was given,
+/// `KeyRepresentable`, hash it with the hasher the database was given,
 /// and ``insert(_:)`` stores the key's bytes as the member. The calls with
 /// a hash take one the caller made, with any function whose result has as
 /// many bytes as the database's hash size, and the key to store beside it:
