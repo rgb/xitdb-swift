@@ -94,8 +94,8 @@ while creating a database leaves its header and nothing committed. Opening refus
 ``XitDBError/untrustedRootHeader(lastVerified:)``, so the pattern above gets one of those errors. Creating accepts it, for
 the same hash size, and creates over it; where the trailer is whole, ``Database/recover(_:)`` finishes the creation instead.
 A sync from 0 that did not finish leaves a database without a first commit. If that is longer than a new database, it opens,
-for the next sync to replace, as <doc:Replication> says; if not, as when the copy stopped within the first 4,096 bytes
-after the headers, it is taken for a creation that did not finish.
+for the next sync to replace, as <doc:Replication> says; if not, as when a copy from a ``ByteSource`` stopped within its
+first 4,096 bytes of data, which leaves the headers alone, it is taken for a creation that did not finish.
 
 A ``Durability`` says how far a commit goes to reach the disk, ``Durability/full`` by default: see <doc:Transactions>.
 

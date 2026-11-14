@@ -45,9 +45,10 @@ moment 1: map (10 entries)
   5af11e72f4daad4a: bytes 7 tag lt "seven b"
 ```
 
-The first line is the header. It gives the file's size, and its committed size where the two differ, the format
-version, the hash size, the hash ID, the file ID, and how many moments the history holds. The hash ID is the four bytes the file's creator
-wrote, in quotes when they are printable text and as hex otherwise, such as `hash id 0x00000000`. The tool never names
+The first line is the header. It gives the file's size, with its committed size where the two differ; then the format
+version, the hash size, the hash ID, the file ID, and how many moments the history holds. The hash ID is the four bytes
+the file's creator wrote, in quotes, as they are, when all four are printable ASCII (0x20 to 0x7E), and as hex
+otherwise, such as `hash id 0x00000000`. The tool never names
 an algorithm from it, since the format does not interpret it: see <doc:BringYourOwnHashes>.
 
 `--verify` walks the file's commits by their trailers and checksums, and lists each one that verifies, with where it
@@ -66,12 +67,14 @@ The values are the format's own:
 - `uint`, `int` and `float` are the scalars, the largest unsigned and the smallest signed integer among them here. A
   float that is not a number shows its bits, `snan` for a signalling one and the rest of its mantissa in hex, so that the
   text is the same on every machine.
-- `bytes 3 "bar"` is a byte array of three bytes, shown as text. A byte array of at most 64 bytes is shown as text,
-  between double quotes, when it is valid UTF-8 and holds no control character (U+0000 to U+001F, U+007F to U+009F)
-  other than a line feed, a carriage return or a tab. Those three are written `\n`, `\r` and `\t`, and a backslash or a
-  double quote has a backslash put before it, so that a value stays on its line. Any other byte array is shown as hex,
-  without quotes: `bytes 3 0x610062`, whose middle byte is zero. Of one longer than 64 bytes the dump shows the first
-  64 and its length. A key's name follows the same rule, at any length.
+- `bytes 3 "bar"` is a byte array of three bytes. A byte array of at most 64 bytes is shown as text, between double
+  quotes, when it is valid UTF-8 and holds no control character (U+0000 to U+001F, U+007F to U+009F) other than a line
+  feed, a carriage return or a tab. Those three are written `\n`, `\r` and `\t`, so that a value stays on its line, and
+  a backslash or a double quote has a backslash put before it, so that what is between the quotes is exactly the value.
+  Any other byte array is shown as hex, without quotes: `bytes 3 0x610062`, whose middle byte is zero. One longer than 64
+  bytes is shown as hex too: its first 64 bytes, then `… (64 of N)`. A key's name is shown as text by the same rule, at
+  any length. A key that is not text is shown whole, as hex, in a sorted map or set, and not at all in a hash map or
+  set, where the hash labels the entry.
 - `tag st` is a byte array's format tag.
 - `nothing` is a slot that something wrote nothing to, as `cursor.write(.slot(nil))` does when it clears an entry.
 
@@ -152,11 +155,13 @@ dump goes on with the rest. When the root header cannot be trusted, as when a fi
 committed size beside the file's, `--verify` says how many bytes past the last good commit do not verify, and a note
 says that what follows is what recovery would open.
 
-A file without a first commit, as a full copy that did not finish leaves it, opens, though nothing in it can be read
-(see <doc:Recovery>). The dump shows it the same way: a note says what the file is and where the last commit that arrived
-whole ends, the header line gives that end as the committed size, and the dump is of what recovery would open. Where no
-commit in the file verifies, the dump is the header line, with a committed size of 0, and a note that there is nothing
-to show.
+A file without a first commit that is longer than a new database, as a full copy that did not finish leaves it, opens,
+though nothing in it can be read (see <doc:Recovery>). The dump shows it the same way: a note says what the file is and
+where the last commit that arrived whole ends, the header line gives that end as the committed size where it is short of
+the file's end, and the dump is of what recovery would open. Where no commit in the file verifies, the dump is the header
+line, with a committed size of 0, and a note that there is nothing to show. A file no longer than a new database, such as
+the headers alone that a copy which stopped in its first block leaves, does not open: the dump says
+`not an xitdb file that opens: invalidDatabase`.
 
 The exit code says what the tool found:
 
@@ -164,7 +169,7 @@ The exit code says what the tool found:
 |---|---|
 | 0 | The file is sound. |
 | 1 | The file is damaged or has no first commit, and what could be read was dumped. |
-| 2 | The file is not xitdb, or the arguments are not understood. |
+| 2 | The file is not xitdb or does not open, or the arguments are not understood. |
 
 ## See Also
 

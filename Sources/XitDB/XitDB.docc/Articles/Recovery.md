@@ -26,7 +26,7 @@ and 639, 1,027 and 1,415 (one moment each).
   as nothing else is wrong.
 - **Zero.** A committed size of zero is not taken for damage. A file longer than a new database whose size is zero opens,
   whatever left it so, as a database without a first commit, in which nothing can be read: that is what a full copy that did
-  not finish leaves (see the last section). If it happens to a database that had commits, ``Database/recover(_:)`` takes it
+  not finish can leave (see the last section). If it happens to a database that had commits, ``Database/recover(_:)`` takes it
   back to the last one that verifies, and `xitdb-dump` says where that is: see <doc:ReadingAFileWithXitdbDump>. A file no
   longer than a new database whose size is zero is a creation that did not finish, which opening refuses: see <doc:Storage>.
 - **Pointing at a damaged trailer**, or past the end of a file that was cut short. Opening throws the same error, and
@@ -95,7 +95,7 @@ A sync at 0 reads and checks the source's database header before it touches the 
 replica as it was. After that it empties the replica and writes the source's file from its start, so one that fails partway
 leaves the start of the source's file: a database without a first commit, whose committed size is zero. A sync from a
 ``ByteSource`` writes the data after the headers in blocks of 4,096 bytes, each once all of it has arrived, so what is left
-ends where the last whole block does (see <doc:Replication>). If that is longer than a new database, it opens, and there are
+ends where the last whole block does; one from an array leaves all it was given (see <doc:Replication>). If that is longer than a new database, it opens, and there are
 two ways on. Its ``Database/replicaState`` is a size of zero and a checksum of zero, to which the source answers 0, so the
 next sync replaces it whole. Or, if what is left reaches past the end of one of the source's commits, it holds that commit
 whole, and recovering keeps the last such commit. The source can then send only the rest:
@@ -109,10 +109,10 @@ let bytes = try source.readCommitted(from: start, to: end)
 try replica.applyReplicated(at: start, bytes: bytes)
 ```
 
-Take as the source the history above with a fourth moment that adds 5,000 bytes, 6,811 bytes in all. A connection that drops
-after 4,500 bytes leaves the headers and the first block, 4,128 bytes. Recovering keeps the three moments, to 1,415, and the
-sync sends the last 5,396. A sync that stops within the first block leaves the headers alone, 32 bytes, and there is nothing
-to recover: recovering throws, and opening refuses what is left, as it refuses a creation that did not finish. The database
+Take as the source the history above with a fourth moment that stores a byte array of 5,000 bytes, which takes the file to
+6,811 bytes. A sync from a ``ByteSource`` whose connection drops after 4,500 bytes leaves the headers and the first block,
+4,128 bytes. Recovering keeps the three moments, to 1,415, and the sync sends the last 5,396. One that stops within the first
+block leaves the headers alone, 32 bytes, and there is nothing to recover: recovering throws, and opening refuses what is left, as it refuses a creation that did not finish. The database
 that ran the sync can still take the next one from 0, and after a restart so can a database created over what is left. See
 <doc:Replication>.
 

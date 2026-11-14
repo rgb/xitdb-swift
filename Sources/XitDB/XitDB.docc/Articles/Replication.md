@@ -141,12 +141,13 @@ A sync at 0 is the exception. It reads and checks the incoming database header b
 small for the headers, bytes that do not start with a database header, a format version this package does not read, another
 hash size, and a source that ends or throws within those first 20 bytes leave the replica as it was. After that the replica
 is emptied, so a copy that fails then leaves a database without a first commit: the incoming header, a committed size of
-zero, and the data that arrived in whole blocks. A copy from a ``ByteSource`` writes the data in blocks of 4,096 bytes,
-counted from the end of the root header, each once all of it has arrived, as the original does, so one that stops within
-the first 4,096 bytes after the headers leaves the headers alone. The replica's ``Database/replicaState`` is a size of zero
-and a checksum of zero, to which the source answers 0, so the next sync replaces it; everything else on it throws
-``XitDBError/invalidDatabase`` until then. The blocks that did arrive may still hold the source's earlier commits whole, and
-``Database/recover(_:)`` keeps the last of them, after which the source sends only the rest: see <doc:Recovery>. Opened
+zero, and what of the data was written. A copy from an array writes all of its bytes before it checks the trailer, so bytes
+cut short are all there. A copy from a ``ByteSource`` writes the data in blocks of 4,096 bytes, counted from the end of the
+root header, each once all of it has arrived, as the original does, so it leaves the blocks that arrived whole, and one
+that stops within the first 4,096 bytes after the headers leaves the headers alone. The replica's
+``Database/replicaState`` is a size of zero and a checksum of zero, to which the source answers 0, so the next sync replaces
+it; everything else on it throws ``XitDBError/invalidDatabase`` until then. What was written may still hold the source's
+earlier commits whole, and ``Database/recover(_:)`` keeps the last of them, after which the source sends only the rest: see <doc:Recovery>. Opened
 again, the file opens if it is longer than a new database; one no longer than that, such as the headers alone, is taken for
 a creation that did not finish, which opening refuses and creating builds over (see <doc:Storage>). On a
 ``BufferedFileStorage``, the blocks written after the headers wait in the storage's buffer, so unless the storage is flushed
