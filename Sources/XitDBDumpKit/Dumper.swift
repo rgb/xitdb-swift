@@ -46,7 +46,7 @@ package struct Dumper {
         if options.verify {
             verify(storage, fileSize: fileSize, into: &dump)
         }
-        let database: Database
+        var database: Database
         do {
             database = try Database(opening: storage)
         } catch .untrustedRootHeader(let lastVerified) {
@@ -74,6 +74,27 @@ package struct Dumper {
             dump.exitCode = 2
             return dump
         }
+        // A database without a first commit: a full copy that did not
+        // finish, which opens so that a sync from 0 can replace it, and in
+        // which nothing reads. What recovery would open is the last commit
+        // of the source that arrived whole: shown from a copy in memory, as
+        // for a root header that cannot be trusted.
+        if (try? database.replicaState) == ReplicaState(committedSize: 0, checksum: 0) {
+            dump.exitCode = 1
+            let what = "the file has no first commit, as a full copy that did not finish leaves it"
+            if let copy = Self.copy(storage, upTo: fileSize), let recovered = try? Database.recover(copy),
+                let end = try? recovered.committedSize
+            {
+                dump.notes.append(
+                    "\(what): the last commit that arrived whole ends at byte \(end) of \(fileSize); what follows is what recovery would open"
+                )
+                database = recovered
+            } else {
+                dump.notes.append("\(what), and no commit in it verifies: there is nothing to show")
+                dump.header = header(of: database, fileSize: fileSize, committedSize: 0)
+                return dump
+            }
+        }
         read(database, fileSize: fileSize, into: &dump)
         return dump
     }
@@ -93,6 +114,23 @@ package struct Dumper {
         return MemoryStorage(bytes: bytes)
     }
 
+    /// The dump's first line from a database's header: the format's
+    /// version, the hash size, the hash ID as text when its bytes are
+    /// printable, the file ID; the count of moments is filled in once the
+    /// root has been read.
+    private func header(of database: Database, fileSize: UInt64, committedSize: UInt64) -> Dump.Header {
+        let hashID = database.header.hashID.rawValue
+        let hashIDBytes = [
+            UInt8(hashID >> 24), UInt8(hashID >> 16 & 0xFF), UInt8(hashID >> 8 & 0xFF), UInt8(hashID & 0xFF),
+        ]
+        let hashIDText =
+            hashIDBytes.allSatisfy({ $0 >= 0x20 && $0 < 0x7F }) ? String(decoding: hashIDBytes, as: UTF8.self) : nil
+        return Dump.Header(
+            fileSize: fileSize, committedSize: committedSize, version: Int(database.header.version),
+            hashSize: Int(database.header.hashSize), hashIDText: hashIDText, hashIDHex: Self.hex(hashIDBytes),
+            fileID: Self.hex(bigEndian: database.header.fileID), momentCount: nil)
+    }
+
     private mutating func read(_ database: Database, fileSize: UInt64, into dump: inout Dump) {
         hashSize = Int(database.header.hashSize)
         for name in options.keys {
@@ -100,17 +138,8 @@ package struct Dumper {
             if hash.count >= hashSize { names[Array(hash.prefix(hashSize))] = name }
         }
         let root = database.rootCursor.readOnly
-        let hashID = database.header.hashID.rawValue
-        let hashIDBytes = [
-            UInt8(hashID >> 24), UInt8(hashID >> 16 & 0xFF), UInt8(hashID >> 8 & 0xFF), UInt8(hashID & 0xFF),
-        ]
-        let hashIDText =
-            hashIDBytes.allSatisfy({ $0 >= 0x20 && $0 < 0x7F }) ? String(decoding: hashIDBytes, as: UTF8.self) : nil
-        var header = Dump.Header(
-            fileSize: fileSize, committedSize: (try? database.committedSize) ?? fileSize, hashSize: hashSize,
-            hashIDText: hashIDText, hashIDHex: Self.hex(hashIDBytes),
-            fileID: Self.hex(bigEndian: database.header.fileID),
-            momentCount: nil)
+        var header = header(
+            of: database, fileSize: fileSize, committedSize: (try? database.committedSize) ?? fileSize)
         let history: ArrayList<ReadOnly>?
         do {
             let list = try ArrayList<ReadOnly>(root)

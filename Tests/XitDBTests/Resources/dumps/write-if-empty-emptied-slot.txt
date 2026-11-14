@@ -1,4 +1,4 @@
-xitdb file: 747 bytes; hash size 8, hash id 0x00000000, file id c0f000000000001c; 1 moment
+xitdb file: 747 bytes; version 2, hash size 8, hash id 0x00000000, file id c0f000000000001c; 1 moment
 verify: 2 commits verify, the last ending at the file's end
   commit 0: ends at 57, id 0000000000000000, root none
   commit 1: ends at 747, id 86b54d3959bd0e7e, root arrayList

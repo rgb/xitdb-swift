@@ -329,6 +329,86 @@ import XitDBDumpKit
         #expect(Dumper.float(bits: Double.pi.bitPattern) == "3.141592653589793")
     }
 
+    /// The first line names the file's format version, and `--verify`
+    /// walks the commits of either: a version 1 input, whose first commit
+    /// ends at 62, and a version 2 fixture, whose first ends at 57.
+    @Test func theHeaderNamesTheVersionAndVerifyWalksBoth() throws {
+        let resources = try Self.resources()
+        let one = try Self.bytes(resources.appendingPathComponent("fixtures/inputs/v1-history.db"))
+        let two = try Self.bytes(resources.appendingPathComponent("fixtures/valid/01-list-root-hash-map.db"))
+        for (bytes, version, first) in [(one, 1, UInt64(62)), (two, 2, UInt64(57))] {
+            let dump = Self.dump(bytes, Self.verifying)
+            #expect(dump.exitCode == 0)
+            #expect(dump.header?.version == version)
+            let verification = try #require(dump.verification)
+            #expect(verification.commits.count == 3)
+            #expect(verification.commits.first?.end == first)
+            #expect(verification.commits.last?.end == UInt64(bytes.count))
+            #expect(verification.bytesPastLastCommit == nil)
+
+            let text = TextRenderer.render(dump, options: Self.verifying)
+            let firstLine = try #require(text.split(separator: "\n").first)
+            #expect(firstLine.hasPrefix("xitdb file: \(bytes.count) bytes; version \(version), hash size 20, "))
+            var json = Self.verifying
+            json.json = true
+            let document = try #require(
+                try JSONSerialization.jsonObject(with: Data(JSONRenderer.render(dump, options: json).utf8))
+                    as? [String: Any])
+            let file = try #require(document["file"] as? [String: Any])
+            #expect(file["version"] as? Int == version)
+        }
+        // the same two moments in both, five bytes apart
+        #expect(one.count == two.count + 5)
+    }
+
+    /// A file without a first commit, as a full copy that did not finish
+    /// leaves it, opens but holds nothing that reads. The dump says what it
+    /// is and shows what recovery would open: the last commit that arrived
+    /// whole, from a copy in memory. Where no commit arrived whole it
+    /// shows the header and says so. Either way it exits with 1.
+    @Test func aFileWithoutAFirstCommitIsDumpedAsRecoveryWouldOpenIt() throws {
+        let resources = try Self.resources()
+        let whole = try Self.bytes(resources.appendingPathComponent("fixtures/valid/01-list-root-hash-map.db"))
+        let commits = try Database.verifiedCommits(in: MemoryStorage(bytes: whole))
+        try #require(commits.count == 3)
+
+        // the copy stopped ten bytes into the last commit; its committed
+        // size, at 24, was never written
+        var unfinished = Array(whole[..<(Int(commits[1].end) + 10)])
+        unfinished.replaceSubrange(24..<32, with: [UInt8](repeating: 0, count: 8))
+        let dump = Self.dump(unfinished, Self.verifying)
+        #expect(dump.exitCode == 1)
+        #expect(dump.header?.version == 2)
+        #expect(dump.header?.fileSize == UInt64(unfinished.count))
+        #expect(dump.header?.committedSize == commits[1].end)
+        #expect(dump.header?.momentCount == 1)
+        #expect(dump.moments.count == 1)
+        #expect(dump.verification?.commits.count == 2)
+        #expect(dump.verification?.bytesPastLastCommit == 10)
+        let note = try #require(dump.notes.first { $0.contains("no first commit") })
+        #expect(note.contains("ends at byte \(commits[1].end) of \(unfinished.count)"))
+        #expect(note.contains("what follows is what recovery would open"))
+        // the moment shown is the first moment of the whole file
+        var first = DumpOptions()
+        first.moment = 0
+        #expect(dump.moments.first?.root == Self.dump(whole, first).moments.first?.root)
+        let text = TextRenderer.render(dump, options: Self.verifying)
+        #expect(!text.contains("unreadable"))
+
+        // nothing arrived whole: the headers and bytes that are no commit
+        let nothing = Array(unfinished[..<32]) + [UInt8](repeating: 0xAA, count: 100)
+        let empty = Self.dump(nothing, Self.verifying)
+        #expect(empty.exitCode == 1)
+        #expect(empty.header?.version == 2)
+        #expect(empty.header?.committedSize == 0)
+        #expect(empty.moments.isEmpty)
+        #expect(empty.verification?.commits.isEmpty == true)
+        #expect(empty.notes.contains { $0.contains("no first commit") && $0.contains("nothing to show") })
+        let emptyText = TextRenderer.render(empty, options: Self.verifying)
+        #expect(emptyText.hasPrefix("xitdb file: 132 bytes, 0 committed; version 2, hash size 20, "))
+        _ = JSONRenderer.render(empty, options: Self.verifying)
+    }
+
     /// A file that is not xitdb exits with 2 and says why.
     @Test func filesThatAreNotXitdb() throws {
         for bytes in [[UInt8](), Array("hello, not a database".utf8), [UInt8](repeating: 0, count: 100)] {

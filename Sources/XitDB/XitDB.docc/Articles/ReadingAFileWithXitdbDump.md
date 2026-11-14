@@ -27,7 +27,7 @@ swift run xitdb-dump --verify \
 <!-- Pinned: every line of the block below is in Tests/XitDBTests/Resources/dumps/01-list-root-hash-map.txt, as DocumentedCodeTests checks. -->
 
 ```
-xitdb file: 1210 bytes; hash size 20, hash id "sha1", file id c0f0000000000001; 2 moments
+xitdb file: 1210 bytes; version 2, hash size 20, hash id "sha1", file id c0f0000000000001; 2 moments
 verify: 3 commits verify, the last ending at the file's end
   commit 0: ends at 57, id 0000000000000000, root none
   commit 1: ends at 834, id c457234f2286c2c3, root arrayList

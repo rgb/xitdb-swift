@@ -1,6 +1,5 @@
-xitdb file: 63 bytes; hash size 20, hash id "sha1", file id 0000000000000010
+xitdb file: 63 bytes, 62 committed; version 1, hash size 20, hash id "sha1", file id 0000000000000010; 0 moments
 verify: 1 commit verifies; 1 bytes past the last do not
   commit 0: ends at 62, id 0000000000000000, root none
 note: 1 bytes after the last good commit, which ends at 62, do not verify
-note: the root is not a list of moments; it is dumped as it is
-moment 0: unreadable: the slot could not be read: invalidDatabase
+note: the file has no first commit, as a full copy that did not finish leaves it: the last commit that arrived whole ends at byte 62 of 63; what follows is what recovery would open

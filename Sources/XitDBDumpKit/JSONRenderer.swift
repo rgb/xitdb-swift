@@ -12,6 +12,7 @@ package enum JSONRenderer {
                             object(into: &out, indent: indent) { f in
                                 f.append(("bytes", { o, _ in o += "\(header.fileSize)" }))
                                 f.append(("committed", { o, _ in o += "\(header.committedSize)" }))
+                                f.append(("version", { o, _ in o += "\(header.version)" }))
                                 f.append(("hashSize", { o, _ in o += "\(header.hashSize)" }))
                                 if let text = header.hashIDText {
                                     f.append(("hashId", { o, _ in o += string(text) }))

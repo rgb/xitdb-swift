@@ -7,7 +7,8 @@ package enum TextRenderer {
             var line = "xitdb file: \(header.fileSize) bytes"
             if header.committedSize != header.fileSize { line += ", \(header.committedSize) committed" }
             let hashID = header.hashIDText.map { "\"\($0)\"" } ?? "0x" + header.hashIDHex
-            line += "; hash size \(header.hashSize), hash id \(hashID), file id \(header.fileID)"
+            line += "; version \(header.version), hash size \(header.hashSize), hash id \(hashID)"
+            line += ", file id \(header.fileID)"
             if let count = header.momentCount { line += "; \(count) moment\(count == 1 ? "" : "s")" }
             lines.append(line)
         }

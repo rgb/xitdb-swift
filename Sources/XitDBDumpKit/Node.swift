@@ -78,6 +78,8 @@ package struct Dump: Equatable, Sendable {
     package struct Header: Equatable, Sendable {
         package var fileSize: UInt64
         package var committedSize: UInt64
+        /// The version of the file format the header names: 1 or 2.
+        package var version: Int
         package var hashSize: Int
         /// The header's four-byte hash ID, a label its creator chose, which
         /// the format does not interpret: as text when its bytes are
