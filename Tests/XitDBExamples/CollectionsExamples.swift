@@ -20,7 +20,7 @@ import XitDBHashing
         let alice = try HashMap<ReadOnly>(people.cursor(at: 0)!)
         let scores = try SortedSet<ReadOnly>(alice.cursor(forKey: "scores")!)
         #expect(try scores.contains("high"))
-        #expect(try scores.contains("high".utf8))
+        #expect(try scores.contains("high"))
     }
 
     @Test func aCollectionIsAViewOfASlot() throws {
@@ -83,7 +83,7 @@ import XitDBHashing
         #expect(try map.keyCursor(forHash: sha256("a")) != nil)
 
         let sorted = try Database(creating: MemoryStorage(), hashSize: 32)
-        try SortedSet<ReadWrite>(sorted.rootCursor).insert("a".utf8)
+        try SortedSet<ReadWrite>(sorted.rootCursor).insert("a")
         _ = try SortedMap<ReadWrite>(sorted.rootCursor)
         #expect(try sorted.rootCursor.slot.tag == .sortedMap)
 
@@ -150,7 +150,7 @@ import XitDBHashing
     @Test func aSortedSetHoldsOnlyKeys() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         let keys = try SortedSet<ReadWrite>(database.rootCursor)
-        try keys.insert("a".utf8)
+        try keys.insert("a")
         var iterator = try keys.iterator()
         #expect(try iterator.next()!.slot.tag == .shortBytes)
     }
@@ -158,7 +158,7 @@ import XitDBHashing
     @Test func aSortedMapsEntryPointsAtAPairHoldingTheKey() throws {
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         let map = try SortedMap<ReadWrite>(database.rootCursor)
-        try map.put(.uint(1), forKey: "a".utf8)
+        try map.put(.uint(1), forKey: "a")
 
         var iterator = try map.iterator()
         let cursor = try iterator.next()!

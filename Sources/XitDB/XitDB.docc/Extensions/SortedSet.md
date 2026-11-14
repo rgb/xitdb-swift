@@ -17,18 +17,18 @@ See <doc:SortingAndPaginating>.
 
 - ``count``
 - ``contains(_:)-(Span<UInt8>)``
-- ``contains(_:)-(Sequence<UInt8>)``
+- ``contains(_:)-(KeyRepresentable)``
 - ``iterator()``
 - ``iterator(fromIndex:)``
 - ``iterator(fromKey:)-(Span<UInt8>)``
-- ``iterator(fromKey:)-(Sequence<UInt8>)``
+- ``iterator(fromKey:)-(KeyRepresentable)``
 - ``entry(at:)``
 - ``rank(of:)-(Span<UInt8>)``
-- ``rank(of:)-(Sequence<UInt8>)``
+- ``rank(of:)-(KeyRepresentable)``
 
 ### Writing
 
 - ``insert(_:)-(Span<UInt8>)``
-- ``insert(_:)-(Sequence<UInt8>)``
+- ``insert(_:)-(KeyRepresentable)``
 - ``remove(forKey:)-(Span<UInt8>)``
-- ``remove(forKey:)-(Sequence<UInt8>)``
+- ``remove(forKey:)-(KeyRepresentable)``

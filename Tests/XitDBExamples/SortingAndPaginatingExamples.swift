@@ -206,9 +206,9 @@ import XitDBHashing
         try usernames.insert("alice")
 
         #expect(try usernames.count == 2)
-        #expect(try usernames.contains("bob".utf8))
-        #expect(try usernames.rank(of: "bob".utf8) == 1)
-        #expect(try usernames.remove(forKey: "alice".utf8))
+        #expect(try usernames.contains("bob"))
+        #expect(try usernames.rank(of: "bob") == 1)
+        #expect(try usernames.remove(forKey: "alice"))
         #expect(try usernames.count == 1)
     }
 
@@ -230,8 +230,8 @@ import XitDBHashing
 
         let moment = try HashMap<ReadOnly>(history.cursor(at: -1)!)
         let usernameToID = try SortedMap<ReadOnly>(moment.cursor(forKey: "username->id")!)
-        #expect(try usernameToID.cursor(forKey: "carol".utf8) == nil)
-        #expect(try usernameToID.cursor(forKey: "caroline".utf8) != nil)
+        #expect(try usernameToID.cursor(forKey: "carol") == nil)
+        #expect(try usernameToID.cursor(forKey: "caroline") != nil)
         #expect(try usernameToID.count == 6)
     }
 
@@ -239,7 +239,7 @@ import XitDBHashing
         let (_, history) = try newDirectory()
         let moment = try HashMap<ReadOnly>(history.cursor(at: -1)!)
         let usernameToID = try SortedMap<ReadOnly>(moment.cursor(forKey: "username->id")!)
-        let entry = try usernameToID.entry(forKey: "alice".utf8)!
+        let entry = try usernameToID.entry(forKey: "alice")!
         #expect(entry.hash == [UInt8](repeating: 0, count: 32))
     }
 }
