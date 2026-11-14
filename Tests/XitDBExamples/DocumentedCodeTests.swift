@@ -20,6 +20,11 @@ import Testing
 /// and in the sources `#expect` lines and the scratch directory around a file's
 /// name. A block may therefore run across the checks between its lines, but it
 /// cannot skip code.
+///
+/// Known and left as it is: the sources are compared as text, their comments
+/// included, so a shown line that this target has only inside a comment, or
+/// under `#if false`, passes. Nothing does that today; the code a block shows
+/// belongs in code that runs.
 
 @Suite("Documented code") struct DocumentedCodeTests {
     private static let packageRoot = URL(fileURLWithPath: #filePath)
