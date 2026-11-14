@@ -3,8 +3,9 @@ import XitDB
 import XitDBHashing
 
 /// The module's SHA-256 and SHA-1 against the published vectors, on every
-/// platform, through each way in: the module's own entry, the requirement
-/// a database calls, and `keyHash(of:)`, which a caller uses by hand.
+/// platform, through each way in: the portable code's entry, the
+/// requirement a database calls, and `keyHash(of:)`, which a caller uses by
+/// hand. On Apple silicon the last two are the processor's instructions.
 @Suite("SHA-256")
 struct SHA256Tests {
     /// The vectors of FIPS 180-4's examples and of the NIST test suite, as
@@ -33,7 +34,7 @@ struct SHA256Tests {
         #expect(SHA256.keyHash(of: message) == appendedSHA256(message))
     }
 
-    /// The requirement and `keyHash(of:)` are the module's own code: the
+    /// The requirement and `keyHash(of:)` against the portable code: the
     /// same bytes at every length to 300, which is past four blocks.
     @Test("every way in, at every length to 300")
     func everyWayIn() {

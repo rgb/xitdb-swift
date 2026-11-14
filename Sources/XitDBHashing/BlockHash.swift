@@ -1,7 +1,8 @@
 // What the module's SHA-1 and SHA-256 share: the block loop with its
-// padding, and the words of a block and of a digest. The two are what the
-// public names compute, on every platform, and are tested against CryptoKit
-// where it exists.
+// padding, which the portable code and the code of the processor's
+// instructions both run under, and the portable code's words of a block and
+// of a digest. Every way of computing the two is tested on every platform
+// that has it, and against CryptoKit where that exists.
 //
 // They are written for the hash of a key, which is short: nothing here
 // makes an array or calls a closure. The message's full blocks are read

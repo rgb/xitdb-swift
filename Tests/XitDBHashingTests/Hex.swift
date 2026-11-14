@@ -65,14 +65,26 @@ let seededMessages: [(length: Int, seed: UInt64)] = {
     }
 }()
 
-/// The module's own SHA-256 of `message`, as bytes.
+/// The portable code's SHA-256 of `message`, as bytes.
 func appendedSHA256(_ message: [UInt8]) -> [UInt8] {
     Array(capacity: PortableSHA256.byteCount) { output in PortableSHA256.hash(message.span, into: &output) }
 }
 
-/// The module's own SHA-1 of `message`, as bytes.
+/// The portable code's SHA-1 of `message`, as bytes.
 func appendedSHA1(_ message: [UInt8]) -> [UInt8] {
     Array(capacity: PortableSHA1.byteCount) { output in PortableSHA1.hash(message.span, into: &output) }
+}
+
+/// The SHA-256 of `message` by one of the module's ways of computing it,
+/// as bytes.
+func sha256(_ message: [UInt8], by path: HashPath) -> [UInt8] {
+    Array(capacity: 32) { output in path.sha256(message.span, &output) }
+}
+
+/// The SHA-1 of `message` by one of the module's ways of computing it, as
+/// bytes.
+func sha1(_ message: [UInt8], by path: HashPath) -> [UInt8] {
+    Array(capacity: 20) { output in path.sha1(message.span, &output) }
 }
 
 /// The hash of `message` by a hasher's requirement, the call a database

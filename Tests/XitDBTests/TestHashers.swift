@@ -78,3 +78,12 @@ enum GreedyWideHash: KeyHashing {
         appendMixed(bytes, count: 66, to: &output)
     }
 }
+
+/// A hasher of a hash longer than the engine keeps inline that does not
+/// keep its word: sixty-five bytes promised, three given.
+enum ShortWideHash: KeyHashing {
+    static let size = 65
+    static func hash(_ bytes: Span<UInt8>, into output: inout OutputSpan<UInt8>) {
+        appendMixed(bytes, count: 3, to: &output)
+    }
+}
