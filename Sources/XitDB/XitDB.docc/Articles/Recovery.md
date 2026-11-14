@@ -57,7 +57,9 @@ func openOrRecover(_ storage: any WritableStorage) throws(XitDBError) -> Databas
 ```
 
 On the file cut short by one byte, that gives a database of two moments and 1,027 bytes. The third commit is gone, because its
-trailer was. From there the database goes on as any other.
+trailer was. From there the database goes on as any other. ``Database/recover(_:hashing:)`` does the same and opens the
+database with a hasher, as ``Database/init(opening:hashing:)`` does; it checks the hasher's size first, and refuses
+another with ``XitDBError/invalidHashSize`` before it cuts anything.
 
 What to know before calling it:
 

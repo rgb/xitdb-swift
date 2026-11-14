@@ -22,9 +22,10 @@ try users.put("Alice", forKey: "alice")
 
 A keyed call is its call by hash with the hash computed for it, and writes nothing more: that put writes what
 `users.put(.bytes(Array("Alice".utf8)), forHash: SHA256.hash(data: Array("alice".utf8)))` writes, which is what a Zig
-program writes with `hashInt` and `put`. Neither stores the key, and ``HashMap/putKey(_:)`` is the call that does (see
-<doc:TheCollections>). A keyed call costs its call by hash and the hash, and in memory the hash can cost more than the
-call: a loop that uses one key many times hashes it once and goes by `forHash:`.
+program writes with `put` and a `hashInt` that is SHA-256 (the original's README makes its `hashInt` SHA-1). Neither
+stores the key, and ``HashMap/putKey(_:)`` is the call that does (see <doc:TheCollections>). A keyed call costs its call
+by hash and the hash, and in memory the hash can cost more than the call: a loop that uses one key many times hashes it
+once and goes by `forHash:`.
 
 What is hashed is the key's bytes. A `String` is its UTF-8, with nothing added and nothing normalised, so the hash is
 the one a program in any language computes over the same text, and a file is shared with a Zig program that hashes the
@@ -66,10 +67,11 @@ throws ``XitDBError/noKeyHashing``, before anything else about the call is looke
 ### Choosing the hasher by the file
 
 The header has four bytes to say which function made the hashes, a ``HashID``, since every reader of a file has to use
-the one its writer used. The creator of the database writes it, XitDB never looks at it, and only a sync at 0, which
-takes its source's header whole, changes it. The original's advice is `"sha1"` for SHA-1 and `"sha2"` for the SHA-2
-family, with the size telling SHA-256 from SHA-512. A program that opens files it did not make reads the header first,
-with ``DatabaseHeader/init(reading:)``, and chooses the hasher by it:
+the one its writer used. The creator of the database writes it and XitDB never interprets it. A compaction copies it
+into a new target unless given another, and a sync at 0, which takes its source's header whole, replaces it. The
+original's advice is `"sha1"` for SHA-1 and `"sha2"` for the SHA-2 family, with the size telling SHA-256 from SHA-512. A
+program that opens files it did not make reads the header first, with ``DatabaseHeader/init(reading:)``, and chooses the
+hasher by it:
 
 ```swift
 let header = try DatabaseHeader(reading: storage)
@@ -110,9 +112,9 @@ try users.put(.bytes(Array("Bob".utf8)), forHash: hash(2))
 let bob = try users.cursor(forHash: hash(2))?.read(String.self)
 ```
 
-The order matters because the map's trie takes four bits per level from the *last* byte of the hash. With 1,000
-sequential IDs, changing one value appended 492 bytes in big-endian, three blocks on the way down, and 2,364 in
-little-endian, sixteen blocks, which a lookup reads too. For keys of any length that you want in order, use a
+The order matters because the map's trie takes four bits per level, starting from the low bits of the *last* byte of the
+hash. With 1,000 sequential IDs, changing one value appended 492 bytes in big-endian, three blocks on the way down, and
+2,364 in little-endian, sixteen blocks, which a lookup reads too. For keys of any length that you want in order, use a
 ``SortedMap``, which takes the bytes themselves and no hash: see <doc:SortingAndPaginating>.
 
 ### Two keys, one hash

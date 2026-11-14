@@ -14,22 +14,22 @@ it. It leaves what is already committed as it is, so every earlier state of the 
 in a list at the root, one element per transaction:
 
 ```swift
-let database = try Database(creating: MemoryStorage(), hashSize: 32)
+let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
 
 let history = try ArrayList<ReadWrite>(database.rootCursor)
 
 for price: UInt64 in [10, 12, 15] {
     try history.append(.slot(try history.slot(at: -1))) { cursor in
         let moment = try HashMap<ReadWrite>(cursor)
-        try moment.put(.uint(price), forHash: sha256("price"))
+        try moment.put(price, forKey: "price")
     }
 }
 ```
 
-Three things in that code are not what you might assume. You hash your own keys, here with a helper
-`sha256(_:)`: see <doc:Hashing>. A collection is a view of a slot, made from a cursor, and it comes
-in a read-only and a read-write form: see <doc:TheCollections>. And the file only grows until you compact it:
-see <doc:MomentsAndHistory> for what that costs.
+Three things in that code are not what you might assume. The database is given the hash of its keys, and a put stores
+its value under the key's hash and not the key, as in the original: see <doc:Hashing>. A collection is a view of a
+slot, made from a cursor, and it comes in a read-only and a read-write form: see <doc:TheCollections>. And the file only
+grows until you compact it: see <doc:MomentsAndHistory> for what that costs.
 
 A database whose root header or last trailer is damaged does not open. Opening names the last commit that
 verifies, and one explicit call cuts the file back to it, which can lose the commits after it: see <doc:Recovery>.

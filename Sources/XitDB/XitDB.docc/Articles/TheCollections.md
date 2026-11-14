@@ -198,7 +198,7 @@ not fit in an `Int64` names no element: a lookup gives `nil`, and a write or an 
 A key of a hash map or set is any ``KeyRepresentable``: a `String` or a `Substring`, as its UTF-8; a `[UInt8]`; a
 ``Bytes``, without its format tag; or a type of your own that gives its bytes. Two keys with the same bytes are one key,
 whatever their types. A type whose raw value is a string is a key once it says so, which keeps the names of a record's
-fields in one place:
+fields in one place, here in `person`, a map of one person's fields:
 
 ```swift
 enum Field: String, KeyRepresentable {

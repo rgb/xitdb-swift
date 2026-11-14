@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import XitDB
+import XitDBHashing
 
 @Suite("Recovery") struct RecoveryExamples {
     /// A history of three moments, with the bytes after each commit.
@@ -137,6 +138,21 @@ import XitDB
         // And the database goes on from there.
         try ArrayList<ReadWrite>(database.rootCursor).append(.uint(1))
         #expect(try moments(Database(opening: storage)) == 3)
+    }
+
+    /// The article's sentence on recovering with a hasher: its size is
+    /// checked before anything is cut, and the database it opens reads by key.
+    @Test func recoveringWithAHasher() throws {
+        let (good, _) = try threeMoments()
+        let storage = MemoryStorage(bytes: Array(good.dropLast()))
+
+        #expect(throws: XitDBError.invalidHashSize) { try Database.recover(storage, hashing: Insecure.SHA1.self) }
+        #expect(storage.bytes == Array(good.dropLast()))
+
+        let database = try Database.recover(storage, hashing: SHA256.self)
+        #expect(storage.bytes.count == 1027)
+        let moment = try HashMap<ReadOnly>(ArrayList<ReadOnly>(database.rootCursor).cursor(at: -1)!)
+        #expect(try moment.value(forKey: "price", as: UInt64.self) == 12)
     }
 
     @Test func recoveringWhatCannotBeRecovered() throws {

@@ -16,8 +16,8 @@ that means it is not there.
 
 ### Values
 
-A value is one of six Swift types, each written as a slot the format has, so that a program in any language reads it
-back:
+The library's values are six Swift types, each written as a slot the format has, so that a program in any language reads
+it back:
 
 | Type | Written as | The slot's tag |
 |---|---|---|
@@ -58,10 +58,9 @@ from bytes, or a `String` from a number or a collection throws ``XitDBError/unex
 `[UInt8]` read a byte array whatever its format tag. A `String` reads the bytes as UTF-8, and bytes that are not valid
 UTF-8 throw ``XitDBError/invalidUTF8``: nothing is repaired, and `[UInt8]` reads them.
 
-Numbers and short byte arrays cost nothing beyond their slot. A byte array of at most eight bytes with no zero
-byte in it, or six with a format tag, is stored in the slot; ``Bytes/isShort`` says whether one would be. A longer
-one gets a record of its own, with an eight-byte length in front, and so does one written a part at a time
-(<doc:LargeByteArrays>).
+Numbers and short byte arrays cost nothing beyond their slot: a byte array of at most eight bytes with no zero byte in
+it, or six with a format tag, is stored in the slot, as ``Bytes/isShort`` says. Any other has a record of its own, with
+an eight-byte length in front, as does one written a part at a time (<doc:LargeByteArrays>).
 
 A value that could be of several kinds is read by looking at the tag first:
 
@@ -91,8 +90,9 @@ Where there is no value to give, the typed reads of a collection say which of tw
 
 A cursor's own ``Cursor/read(_:)`` has no `nil` to give: at a slot never written it reads as at one set to nothing.
 
-So an empty string and nothing read alike, as they do in the original, whose read of a slot set to nothing gives no
-bytes. A reader who must tell them apart looks at the slot:
+So an empty string and nothing read alike, as they do through the original's `readBytesAlloc`, which gives no bytes for
+a slot set to nothing (its read into a buffer refuses one: see <doc:DifferencesFromTheOriginal>). A reader who must tell
+them apart looks at the slot:
 
 ```swift
 try moment.put("", forKey: "empty")
@@ -119,8 +119,9 @@ _ = try list.appendCursor()
 
 That list has a ``ArrayList/count`` of 3, its iterator gives all three, and the last two read as `""` and throw as a
 number. A ``LinkedArrayList`` does the same with an element it appends and nobody writes. In a file written before
-0.3.0, or by the original before `89da8e7`, such an element is a slot never written, and reads as no value. Setting a
-map's value to nothing is not removing the entry either: the entry stays, and a counted map goes on counting it.
+0.3.0, or by the original before `89da8e7`, an array list's element appended and never written is a slot never written,
+and reads as no value. Setting a map's value to nothing is not removing the entry either: the entry stays, and a counted
+map goes on counting it.
 
 ### Format tags
 
@@ -170,10 +171,13 @@ extension Person: StorableValue {
 }
 ```
 
-The line that clears the slot matters. A map made from a cursor writes into the map that is already there, so without
-it the record would keep the fields of an earlier one that it does not write, and a slot that holds a number would
-refuse it with ``XitDBError/unexpectedTag``. Cleared, the slot takes the record in place of whatever it held. The record
-then goes wherever a value goes:
+The line that clears the slot matters. A map made from a cursor writes into the map that is already there, so without it
+the record would keep the fields of an earlier one that it does not write, and a slot that holds a number would refuse
+it with ``XitDBError/unexpectedTag``. Cleared, the slot takes the record in place of whatever it held. The record then
+goes wherever a value goes. Through the cursor at the root of the database, though, every write is a transaction of its
+own, so a record written there commits its cleared slot and each field one by one, and one that fails partway leaves
+what it had written. Write a record in a transaction's body, or through a collection's typed call, which is one
+transaction even at the root:
 
 ```swift
 let people = try ArrayList<ReadWrite>(moment.putCursor(forKey: "people"))
@@ -230,21 +234,11 @@ let element = try list.cursor(at: 0)!
 try list.put(UInt64(2), at: 0)
 ```
 
-Here `element` still reads 1, and a new lookup reads 2. The exception is a cursor at the root of the database,
-from ``Database/rootCursor``, which reads the last commit every time, so it does see later transactions. That is
-why a collection made from it can be kept from one transaction to the next:
-
-```swift
-// A cursor at the root reads the last commit every time.
-let root = database.rootCursor
-let countBefore = try root.count
-try list.append(UInt64(3))
-```
-
-After that, `countBefore` is 1 and `root.count` is 2.
-
-Only the slot is copied. What it points at is read when you ask for it, so a cursor held on a list changed in place
-in the same transaction reports the list's new count.
+Here `element` still reads 1, and a new lookup reads 2. The exception is a cursor at the root of the database, from
+``Database/rootCursor``, which reads the last commit every time, so it does see later transactions: its `count` read
+before and after another append gives 1 and then 2. That is why a collection made from it can be kept from one
+transaction to the next. Only the slot is copied. What it points at is read when you ask for it, so a cursor held on a
+list changed in place in the same transaction reports the list's new count.
 
 ### Iterating
 
@@ -275,12 +269,12 @@ while let cursor = try iterator.next() {
 }
 ```
 
-That prints `name Alice` and `a value stored under its hash alone: 25`, in the order of the hashes. Where no key was
-stored, the entry's key is a slot never written, and a cursor reads one as empty bytes, so check ``Slot/isEmpty`` before
-taking it for a name. A set is the other case: its member is its key, so ``HashSet/insert(_:)`` stores it, and an
-entry's key is the member. An ``Entry`` is read-only whatever the collection was, since a key is what the collection is
-ordered or indexed by. ``Entry/hash`` gives the entry's hash as a new array, and ``Entry/withHash(_:)`` lets you look
-at it without one.
+That prints `name Alice` and `a value stored under its hash alone: 25`, in the order the map keeps, which follows the
+hashes and not the order of the puts. Where no key was stored, the entry's key is a slot never written, and a cursor
+reads one as empty bytes, so check ``Slot/isEmpty`` before taking it for a name. A set is the other case: its member is
+its key, so ``HashSet/insert(_:)`` stores it, and an entry's key is the member. An ``Entry`` is read-only whatever the
+collection was, since a key is what the collection is ordered or indexed by. ``Entry/hash`` gives the entry's hash as a
+new array, and ``Entry/withHash(_:)`` lets you look at it without one.
 
 Iterate over a collection that is not being changed. An iterator goes through the collection as it was when the
 iterator was made, unless the collection is changed in place during the same transaction. Then it can give a mix of old

@@ -26,11 +26,13 @@ database does; other tasks read it through a snapshot.
 
 ### Snapshots
 
-``Database/snapshot()`` takes a ``Snapshot`` of the last commit: its committed size and its root, read and verified once. A
-snapshot is `Sendable`, so it can go to any task, and it never refreshes: it reads that commit, whatever the writer does
-afterwards. Where it is used, ``Snapshot/rootCursor`` gives a read-only cursor at its root, and ``SnapshotDatabase`` makes a
-database of it, for compacting or replicating the commit. Neither reads anything. A ``SnapshotDatabase``, and everything made
-from a snapshot, belongs to the task that made it, as a ``Database`` does. Two tasks reading one snapshot share nothing but the snapshot.
+``Database/snapshot()`` takes a ``Snapshot`` of the last commit: its committed size and its root, read and verified
+once. A snapshot is `Sendable`, so it can go to any task, and it never refreshes: it reads that commit, whatever the
+writer does afterwards. Where it is used, ``Snapshot/rootCursor`` gives a read-only cursor at its root, and
+``SnapshotDatabase`` makes a database of it, for compacting or replicating the commit. Neither reads anything. A
+snapshot carries the hasher of its database, so what is made from it reads by key as the database does. A
+``SnapshotDatabase``, and everything made from a snapshot, belongs to the task that made it, as a ``Database`` does. Two
+tasks reading one snapshot share nothing but the snapshot.
 
 Here a database in memory is written on the main actor, and a task reads the commit it was handed:
 
@@ -40,12 +42,12 @@ let snapshot = try database.snapshot()
 let reader = Task.detached {
     let history = try ArrayList<ReadOnly>(snapshot.rootCursor)
     let moment = try HashMap<ReadOnly>(history.cursor(at: -1)!)
-    return try moment.cursor(forHash: sha256("count"))!.readUInt64()
+    return try moment.value(forKey: "count", as: UInt64.self)
 }
 
 // The writer goes on, and the reader reads the commit it was given.
 try history.append(.slot(try history.slot(at: -1))) { cursor in
-    try HashMap<ReadWrite>(cursor).put(.uint(2), forHash: sha256("count"))
+    try HashMap<ReadWrite>(cursor).put(UInt64(2), forKey: "count")
 }
 let count = try await reader.value
 ```
