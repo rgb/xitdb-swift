@@ -17,6 +17,9 @@
 // phases only read run through a snapshot of the database, on a fresh
 // read-only database over it, instead of the database itself: the cost of
 // reading through a snapshot (D25).
+//
+// `--hash-cost` measures no database: what hashing a key costs, by each way
+// of computing it, for keys of three lengths (HashCost.swift).
 
 import Foundation
 import XitDB
@@ -78,8 +81,15 @@ struct Keys {
     var texts: [[UInt8]] = []
     var sortedKeys: [SortedKey] = []
     /// The keys themselves, `key-<i>`, for the workloads that give a
-    /// collection its keys and leave the hashing to the database.
+    /// collection its keys and leave the hashing to the database, or that
+    /// give a sorted map its keys as text.
     var strings: [String] = []
+    /// The same hashes as the digests the hash function returned, for a
+    /// caller that passes a digest as it is.
+    var digests: [Insecure.SHA1Digest] = []
+    /// A text for each key, `value-<i>`, for the workloads that store
+    /// strings.
+    var values: [String] = []
 
     enum Kind {
         case none
@@ -97,12 +107,15 @@ struct Keys {
             hashBytes = (0..<count).map { index in Array(Insecure.SHA1.hash(data: Data("key-\(index)".utf8))) }
             hashes = hashBytes.map { KeyHash($0) }
         case .texts:
-            texts = (0..<count).map { index in Array("key-\(index)".utf8) }
+            strings = (0..<count).map { index in "key-\(index)" }
+            texts = strings.map { key in Array(key.utf8) }
             sortedKeys = texts.map { SortedKey($0) }
         case .keys:
             strings = (0..<count).map { index in "key-\(index)" }
-            hashBytes = strings.map { key in Array(Insecure.SHA1.hash(data: Data(key.utf8))) }
+            digests = strings.map { key in Insecure.SHA1.hash(data: Array(key.utf8)) }
+            hashBytes = digests.map { digest in Array(digest) }
             hashes = hashBytes.map { KeyHash($0) }
+            values = (0..<count).map { index in "value-\(index)" }
         }
     }
 }
@@ -769,6 +782,15 @@ let workloads: [Workload] = [
     mapByHash(sized(100_000), kinds: [.memory, .bufferedFile]),
     mapByKey(sized(100_000), kinds: [.memory, .bufferedFile]),
     keyHashing(sized(100_000)),
+    mapByHashSpan(sized(100_000), kinds: [.memory, .bufferedFile]),
+    mapByHashDigest(sized(100_000), kinds: [.memory, .bufferedFile]),
+    sortedByForm(.span, sized(100_000), kinds: [.memory, .bufferedFile]),
+    sortedByForm(.bytes, sized(100_000), kinds: [.memory, .bufferedFile]),
+    sortedByForm(.text, sized(100_000), kinds: [.memory, .bufferedFile]),
+    mapValues(typed: false, sized(100_000), kinds: [.memory, .bufferedFile]),
+    mapValues(typed: true, sized(100_000), kinds: [.memory, .bufferedFile]),
+    listValues(typed: false, sized(100_000), kinds: [.memory, .bufferedFile]),
+    listValues(typed: true, sized(100_000), kinds: [.memory, .bufferedFile]),
     listAppend(sized(1_000_000), kinds: [.memory, .bufferedFile]),
     mapTransactions(sized(2_000), kinds: [.memory, .bufferedFile]),
     linkedAppend(sized(100_000), kinds: [.memory, .bufferedFile]),
@@ -951,6 +973,10 @@ let arguments: [String] = {
     arguments.removeAll { $0 == "--snapshot" }
     return arguments
 }()
+if arguments.first == "--hash-cost" {
+    runHashCost()
+    exit(0)
+}
 if arguments.first == "--count" {
     guard arguments.count == 3, let workload = workloads.first(where: { $0.name == arguments[1] }),
         let kind = StorageKind(rawValue: arguments[2])
