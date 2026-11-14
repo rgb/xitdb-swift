@@ -252,3 +252,50 @@ func listValues(typed: Bool, _ size: Int, kinds: [StorageKind]) -> Workload {
         }
     }
 }
+
+/// One slot written over and over through one cursor, and read back as
+/// often: a number as a type, through `Cursor.write(_:)` and
+/// `Cursor.read(_:)`, or as `WritableData` and through `readUInt64()`.
+/// There is no collection's work beside it, so what the typed forms of a
+/// cursor cost over the untyped ones is all that differs.
+func cursorValues(typed: Bool, _ size: Int, kinds: [StorageKind]) -> Workload {
+    Workload(
+        name: typed ? "cursor_typed" : "cursor_untyped", size: size, kinds: kinds, keyKind: .none, keyCount: 0
+    ) { database, _ in
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
+        try history.append(.slot(nil)) { cursor in
+            let moment = try ArrayList<ReadWrite>(cursor)
+            var slot = try moment.appendCursor()
+            if typed {
+                for index in 0..<size {
+                    try slot.write(UInt64(index))
+                }
+            } else {
+                for index in 0..<size {
+                    try slot.write(.uint(UInt64(index)))
+                }
+            }
+        }
+    } read: { reading, _ in
+        let moment = try ArrayList<ReadOnly>(try lastMoment(reading))
+        guard let slot = try moment.cursor(at: 0) else { throw BenchmarkFailure(description: "the moment has no slot") }
+        var sum: UInt64 = 0
+        if typed {
+            for _ in 0..<size {
+                sum &+= try slot.read(UInt64.self)
+            }
+        } else {
+            for _ in 0..<size {
+                sum &+= try slot.readUInt64()
+            }
+        }
+        guard sum == UInt64(size) &* UInt64(size - 1) else {
+            throw BenchmarkFailure(description: "the slot read back as a sum of \(sum)")
+        }
+    } iterate: { reading, _ in
+        let moment = try ArrayList<ReadOnly>(try lastMoment(reading))
+        guard try moment.count == 1 else {
+            throw BenchmarkFailure(description: "the moment has \(try moment.count) slots")
+        }
+    }
+}
