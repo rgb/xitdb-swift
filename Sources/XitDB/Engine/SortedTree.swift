@@ -115,8 +115,8 @@ extension DatabaseReader {
         case .bytes:
             // The length and the start of the key in one small read, which
             // decides most comparisons: zeroing and filling a chunk of 256
-            // bytes for every one cost a twentieth of a sorted write (brief
-            // package-21). A key that would have fitted the chunk is still
+            // bytes for every one cost a twentieth of a sorted write. A
+            // key that would have fitted the chunk is still
             // read whole before it is compared, so that a file ending inside
             // it is reported first, as it was; a longer key goes on in
             // chunks of 256, read as the comparison needs them.

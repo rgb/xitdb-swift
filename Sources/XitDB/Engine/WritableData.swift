@@ -130,7 +130,7 @@ public enum WritableData: Sendable {
 
     /// Whether this is a slot with one of the trees' own tags, `index`,
     /// `kvPair` or `sortedKvPair`, which a value may not carry: such a slot
-    /// in a value builds a tree the engine cannot read (finding 3). A write
+    /// in a value builds a tree the engine cannot read. A write
     /// checks it before anything else runs.
     var isStructuralSlot: Bool {
         if case .slot(let given?) = self {

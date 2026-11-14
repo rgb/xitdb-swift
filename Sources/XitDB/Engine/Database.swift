@@ -44,7 +44,7 @@ public final class Database {
     /// The position of the slot the transaction's own cursor is at: the
     /// root-slot copy for a transaction run on the root, the appended
     /// element's slot for a history append's callback. It is the one
-    /// position a write may go on at after a freeze (decision D24): the
+    /// position a write may go on at after a freeze: the
     /// slot lives in the engine's own record, which no path started inside
     /// the transaction can copy, and every write re-reads it first. Set
     /// when the transaction's callback cursor is made, cleared when the
@@ -645,7 +645,7 @@ public final class Database {
     }
 
     /// Refuses a write below the transaction's frozen point before it is
-    /// made (decision D24): every byte there is committed or frozen, and a
+    /// made: every byte there is committed or frozen, and a
     /// write into it in place would change what another handle, a clone or
     /// an earlier moment refers to. The transaction's own slot is the
     /// exception, the engine's own record that nothing else reaches; a

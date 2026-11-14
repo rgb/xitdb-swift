@@ -13,7 +13,7 @@
 // frames' blocks one after another, each with a node's size or with a
 // key-value pair's where the hashes make a pair longer; a frame holds only
 // where its block is and how far its walk has got, so that pushing and
-// popping frames copies nothing but a few words (brief package-21).
+// popping frames copies nothing but a few words.
 
 extension Database {
     /// Compacts this database into `target`.
@@ -131,7 +131,7 @@ extension Database {
     }
 
     /// Reads what a compaction copies, and refuses a list at the root whose
-    /// last element is empty (finding 28): Zig compacts such a list to an
+    /// last element is empty: Zig compacts such a list to an
     /// empty database, losing the list and every element before the empty
     /// one. It runs before anything is done to the target or the offset
     /// map, so that the refusal writes nothing.

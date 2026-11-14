@@ -42,13 +42,13 @@ public struct Cursor<Access: CursorAccess> {
 
     /// The transaction the cursor was made in, by number, or zero outside
     /// any. A write through the cursor during another transaction is
-    /// refused (finding 1), and so is a read if that transaction did not
-    /// commit (its bytes are gone).
+    /// refused, and so is a read if that transaction did not commit (its
+    /// bytes are gone).
     var transaction: UInt64
 
     /// How many times the database had frozen when the cursor was made. A
-    /// write through the cursor after a later freeze is refused (D18),
-    /// unless its path begins with an init part.
+    /// write through the cursor after a later freeze is refused, unless
+    /// its path begins with an init part.
     var freezeCount: UInt64
 
     /// A cursor made now: it records the transaction in progress and the
@@ -109,7 +109,7 @@ public struct Cursor<Access: CursorAccess> {
         if freezeCount < engine.freezeNumber {
             // After a freeze the one way on through a cursor from before it
             // is the transaction's own cursor, with a path that begins with
-            // an init part or a write (D24, item 3 as refined): its slot is
+            // an init part or a write: its slot is
             // the engine's own record, which nothing inside the transaction
             // can copy. The init copies the collection's header into the
             // transaction and gives a fresh cursor; the write rewrites that
@@ -125,7 +125,7 @@ public struct Cursor<Access: CursorAccess> {
 
     /// Refuses a path that would write a slot with one of the trees' own
     /// tags, before any part of it runs, so that nothing is written and
-    /// nothing poisoned (finding 3). It comes after ``checkWritable(_:)``,
+    /// nothing poisoned. It comes after ``checkWritable(_:)``,
     /// so that a write with no transaction open is `expectedTxStart` first.
     func checkData(_ path: Span<PathPart>) throws(XitDBError) {
         for index in 0..<path.count where path[index].writesStructuralSlot {
@@ -332,7 +332,7 @@ public struct Cursor<Access: CursorAccess> {
         let found = try engine.reader.keyValuePair(entry)
         let hashSize = engine.header.hashSize
         // A sorted map's key is never writable, since the map is ordered by
-        // it (finding 2): its cursor has no position, as in the original's
+        // it: its cursor has no position, as in the original's
         // fix branch, so the package-level path API cannot write it either.
         let keyPosition = entry.tag == .sortedKvPair ? nil : KeyValuePair.keyPosition(of: entry, hashSize: hashSize)
         return Entry(
@@ -515,9 +515,9 @@ extension Cursor where Access == ReadWrite {
         let commitsBefore = engine.commitCount
         let writesBefore = engine.writesIssued
         // A cursor this operation gives back, the callback's or the result,
-        // is stamped with the freezes as they were when the operation began
-        // (D24 item 6): a freeze the operation itself makes, a concat's or
-        // a callback's, must not make its result look fresh.
+        // is stamped with the freezes as they were when the operation
+        // began: a freeze the operation itself makes, a concat's or a
+        // callback's, must not make its result look fresh.
         let freezesBefore = engine.freezeNumber
         let result: SlotPointer
         do throws(Failure) {
@@ -537,8 +537,7 @@ extension Cursor where Access == ReadWrite {
             // Only discard when the error leaves the outermost write. The
             // caller of a nested one may still commit its work, unless this
             // write had already written something: what it left cannot be
-            // undone short of the whole transaction, which is poisoned
-            // (finding 16).
+            // undone short of the whole transaction, which is poisoned.
             if engine.transactionStart == nil {
                 try? engine.truncate()
             } else if engine.writesIssued != writesBefore {
@@ -699,7 +698,7 @@ extension Cursor where Access == ReadWrite {
             slotPointer.slot = try writer.record.finish(slotPosition: slotPointer.position)
         } catch {
             // A writer that failed after appending bytes has left them
-            // behind, which poisons the transaction (finding 16).
+            // behind, which poisons the transaction.
             if engine.transactionStart != nil && engine.writesIssued != writesBefore {
                 engine.poison()
             }

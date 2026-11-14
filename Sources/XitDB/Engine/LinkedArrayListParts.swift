@@ -159,8 +159,8 @@ extension Database {
         // list stays in use, so everything written so far is frozen, the
         // joined nodes included: an init copies a frozen header, and the
         // copy shares its nodes, so nothing may change them in place. Zig
-        // at 6b93af1 froze before the join; its fix branch freezes after it
-        // (finding 22), and so does this.
+        // at 6b93af1 froze before the join; its fix branch freezes after
+        // it, and so does this.
         transactionStart = try storage.length
         noteFreeze()
     }

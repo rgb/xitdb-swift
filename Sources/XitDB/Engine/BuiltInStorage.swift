@@ -1,4 +1,4 @@
-// The storage as the engine holds it (decision D23). A database is opened
+// The storage as the engine holds it. A database is opened
 // over `any WritableStorage`, and the M3 profile put the calls through that
 // existential at six to seven percent of an insert in memory. The engine
 // therefore keeps its storage in this enum, which names each of the three
