@@ -1,4 +1,5 @@
 import Testing
+import XitDB
 import XitDBHashing
 
 /// The pattern's digests at the lengths where the padding changes shape,
@@ -53,13 +54,13 @@ struct BoundaryVectorTests {
 
     @Test("SHA-256 at the boundaries", arguments: vectors)
     func sha256(vector: (length: Int, sha256: String, sha1: String)) {
-        #expect(PortableSHA256.hash(pattern(count: vector.length)).hex == vector.sha256)
-        #expect(appendedSHA256(pattern(count: vector.length)) == bytes(fromHex: vector.sha256))
+        #expect(hex(appendedSHA256(pattern(count: vector.length))) == vector.sha256)
+        #expect(SHA256.keyHash(of: pattern(count: vector.length)) == bytes(fromHex: vector.sha256))
     }
 
     @Test("SHA-1 at the boundaries", arguments: vectors)
     func sha1(vector: (length: Int, sha256: String, sha1: String)) {
-        #expect(PortableSHA1.hash(pattern(count: vector.length)).hex == vector.sha1)
-        #expect(appendedSHA1(pattern(count: vector.length)) == bytes(fromHex: vector.sha1))
+        #expect(hex(appendedSHA1(pattern(count: vector.length))) == vector.sha1)
+        #expect(Insecure.SHA1.keyHash(of: pattern(count: vector.length)) == bytes(fromHex: vector.sha1))
     }
 }

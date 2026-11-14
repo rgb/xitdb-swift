@@ -1,59 +1,12 @@
-// What the portable SHA-1 and SHA-256 share: the block loop with its
-// padding, the bytes a digest is made of and the hex they print as. The
-// portable implementations are compiled on every platform and tested
-// against CryptoKit where it exists. Where it does not they are what the
-// public names compute.
+// What the module's SHA-1 and SHA-256 share: the block loop with its
+// padding, and the words of a block and of a digest. The two are what the
+// public names compute, on every platform, and are tested against CryptoKit
+// where it exists.
 //
 // They are written for the hash of a key, which is short: nothing here
 // makes an array or calls a closure. The message's full blocks are read
 // where they are, the rest is padded into one block on the stack, and the
 // digest is appended where the caller holds it.
-
-/// The bytes of a digest, with everything a digest type does with them:
-/// comparison, hashing, copying out and printing.
-package struct DigestStorage<let byteCount: Int>: Equatable, Hashable, Sendable {
-    let storage: InlineArray<byteCount, UInt8>
-
-    /// The bytes that `append` appends, which are `byteCount` of them.
-    init(appending append: (inout OutputSpan<UInt8>) -> Void) {
-        storage = InlineArray(initializingWith: append)
-    }
-
-    /// The bytes, copied into a new array.
-    package var bytes: [UInt8] {
-        var bytes = [UInt8](repeating: 0, count: byteCount)
-        for index in storage.indices {
-            bytes[index] = storage[index]
-        }
-        return bytes
-    }
-
-    /// The bytes as lowercase hex, two characters a byte.
-    package var hex: String {
-        let digits = Array("0123456789abcdef".utf8)
-        var characters: [UInt8] = []
-        characters.reserveCapacity(2 * byteCount)
-        for index in storage.indices {
-            let byte = storage[index]
-            characters.append(digits[Int(byte >> 4)])
-            characters.append(digits[Int(byte & 0x0F)])
-        }
-        return String(decoding: characters, as: UTF8.self)
-    }
-
-    package static func == (lhs: Self, rhs: Self) -> Bool {
-        for index in lhs.storage.indices where lhs.storage[index] != rhs.storage[index] {
-            return false
-        }
-        return true
-    }
-
-    package func hash(into hasher: inout Hasher) {
-        for index in storage.indices {
-            hasher.combine(storage[index])
-        }
-    }
-}
 
 /// A hash that works through 64-byte blocks, as SHA-1 and SHA-256 do.
 ///
@@ -103,6 +56,12 @@ extension BlockHash {
 }
 
 /// The big-endian 32-bit word that starts at `offset` in `bytes`.
+///
+/// It is put together byte by byte, each read with its bounds checked. The
+/// standard library reads a whole word with one check, by `RawSpan`'s
+/// `load(fromByteOffset:as:_:)`, but that needs macOS 27 and iOS 27, above
+/// the systems the package asks for: when the package's floor rises, that
+/// call can take this function's place.
 @inline(__always)
 func bigEndianWord(_ bytes: Span<UInt8>, at offset: Int) -> UInt32 {
     UInt32(bytes[offset]) &<< 24

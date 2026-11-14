@@ -40,6 +40,38 @@ package struct KeyHash: Sendable {
         self.init(bytes.span)
     }
 
+    /// Creates a hash from the bytes that `append` appends, which are at
+    /// most `maximumCount`: how a hasher writes a key's hash where the
+    /// engine keeps it.
+    ///
+    /// A hash of up to sixty-four bytes is written in place: `append` is
+    /// handed the inline bytes themselves, and nothing is allocated. Its
+    /// output has room for sixty-four bytes whatever `maximumCount` is, so
+    /// what it wrote is counted when it returns. A longer hash is written
+    /// into an array of exactly `maximumCount` bytes.
+    ///
+    /// - Precondition: `append` appends no more than `maximumCount` bytes.
+    ///   One that appends more stops the program: at the append that does
+    ///   not fit, or here when it returns.
+    package init(maximumCount: Int, appending append: (inout OutputSpan<UInt8>) -> Void) {
+        if maximumCount <= Self.inlineCapacity {
+            var written = 0
+            inline = InlineArray { (output: inout OutputSpan<UInt8>) in
+                append(&output)
+                written = output.count
+                precondition(written <= maximumCount, "a hasher appended more bytes than its size")
+                output.append(repeating: 0, count: Self.inlineCapacity - written)
+            }
+            overflow = nil
+            count = written
+        } else {
+            let bytes = [UInt8](capacity: maximumCount, initializingWith: append)
+            inline = InlineArray(repeating: 0)
+            overflow = bytes
+            count = bytes.count
+        }
+    }
+
     /// A hash of `count` zero bytes, which allocates nothing: what a pair
     /// that has no hash, a sorted map's or a key-only entry, reports.
     init(zeros count: Int) {

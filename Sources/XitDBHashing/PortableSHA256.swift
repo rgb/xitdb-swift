@@ -1,10 +1,9 @@
 // SHA-256 as FIPS 180-4 defines it, in Swift that needs only the standard
-// library. Where CryptoKit exists, ``SHA256`` is CryptoKit's and this stands
-// behind it only in the tests; elsewhere it is what ``SHA256`` computes.
+// library: what ``SHA256`` computes.
 
-/// The portable SHA-256: the algorithm behind ``SHA256`` where CryptoKit is
-/// absent, compiled everywhere so that the tests can hold it against
-/// CryptoKit where it exists.
+/// The module's own SHA-256, which needs nothing of the platform: the
+/// algorithm behind ``SHA256``, held against CryptoKit by the tests where
+/// CryptoKit exists.
 package enum PortableSHA256: Sendable {
     /// The number of bytes in a digest: 32.
     package static let byteCount = 32
@@ -15,13 +14,6 @@ package enum PortableSHA256: Sendable {
         var state = SHA256State()
         state.absorb(message)
         appendDigest(of: state.words, to: &output)
-    }
-
-    /// The digest of `message`, read once and in full before the hashing
-    /// starts.
-    package static func hash(_ message: some Sequence<UInt8>) -> DigestStorage<32> {
-        let bytes = Array(message)
-        return DigestStorage { output in hash(bytes.span, into: &output) }
     }
 }
 

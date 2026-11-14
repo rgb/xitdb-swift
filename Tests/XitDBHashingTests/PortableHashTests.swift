@@ -1,11 +1,12 @@
 import Testing
+import XitDB
 import XitDBHashing
 
-/// The portable SHA-256 and SHA-1 against the published vectors, on every
-/// platform: where CryptoKit exists they stand behind nothing public, but
-/// they are what Linux computes, so they are checked here as well.
-@Suite("portable SHA-256")
-struct PortableSHA256Tests {
+/// The module's SHA-256 and SHA-1 against the published vectors, on every
+/// platform, through each way in: the module's own entry, the requirement
+/// a database calls, and `keyHash(of:)`, which a caller uses by hand.
+@Suite("SHA-256")
+struct SHA256Tests {
     /// The vectors of FIPS 180-4's examples and of the NIST test suite, as
     /// `(message, digest)`.
     static let vectors: [(message: String, digest: String)] = [
@@ -19,44 +20,47 @@ struct PortableSHA256Tests {
 
     @Test("published vectors", arguments: vectors)
     func publishedVectors(vector: (message: String, digest: String)) {
-        let digest = PortableSHA256.hash(vector.message.utf8)
-        #expect(digest.hex == vector.digest)
-        #expect(digest.bytes == bytes(fromHex: vector.digest))
-        #expect(appendedSHA256(Array(vector.message.utf8)) == bytes(fromHex: vector.digest))
+        let message = Array(vector.message.utf8)
+        #expect(hex(appendedSHA256(message)) == vector.digest)
+        #expect(required(SHA256.self, message) == bytes(fromHex: vector.digest))
+        #expect(SHA256.keyHash(of: vector.message) == bytes(fromHex: vector.digest))
     }
 
     @Test("one million a")
     func oneMillionA() {
         let message = [UInt8](repeating: UInt8(ascii: "a"), count: 1_000_000)
-        let digest = PortableSHA256.hash(message)
-        #expect(digest.hex == "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0")
-        #expect(appendedSHA256(message) == digest.bytes)
+        #expect(hex(appendedSHA256(message)) == "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0")
+        #expect(SHA256.keyHash(of: message) == appendedSHA256(message))
     }
 
-    /// The entry that appends the digest where the caller holds it and the
-    /// entry that returns it are one computation: the same bytes at every
-    /// length to 300, which is past four blocks.
-    @Test("both entries, at every length to 300")
-    func bothEntries() {
+    /// The requirement and `keyHash(of:)` are the module's own code: the
+    /// same bytes at every length to 300, which is past four blocks.
+    @Test("every way in, at every length to 300")
+    func everyWayIn() {
         for length in 0...300 {
             let message = pattern(count: length)
-            #expect(appendedSHA256(message) == PortableSHA256.hash(message).bytes, "\(length)")
+            let own = appendedSHA256(message)
+            #expect(required(SHA256.self, message) == own, "\(length)")
+            #expect(SHA256.keyHash(of: message) == own, "\(length)")
         }
     }
 
-    @Test("the same bytes from an array, a slice and a lazy sequence")
-    func anyInput() {
-        let array = Array("the quick brown fox".utf8)
-        let fromArray = PortableSHA256.hash(array)
-        #expect(PortableSHA256.hash(array[...]) == fromArray)
-        #expect(PortableSHA256.hash(array.lazy.map { $0 }) == fromArray)
-        #expect(PortableSHA256.hash(Array("the quick brown fix".utf8)) != fromArray)
-        #expect(fromArray.bytes.count == PortableSHA256.byteCount)
+    /// A key is hashed as its bytes, whatever form it comes in.
+    @Test("a key in any form is its bytes")
+    func anyKey() {
+        let text = "the quick brown fox"
+        let fromText = SHA256.keyHash(of: text)
+        #expect(SHA256.keyHash(of: Array(text.utf8)) == fromText)
+        #expect(SHA256.keyHash(of: "a " + text).count == fromText.count)
+        #expect(SHA256.keyHash(of: ("a " + text).dropFirst(2)) == fromText)
+        #expect(SHA256.keyHash(of: Bytes(Array(text.utf8), formatTag: "tg")) == fromText)
+        #expect(SHA256.keyHash(of: "the quick brown fix") != fromText)
+        #expect(fromText.count == SHA256.size)
     }
 }
 
-@Suite("portable SHA-1")
-struct PortableSHA1Tests {
+@Suite("SHA-1")
+struct SHA1Tests {
     static let vectors: [(message: String, digest: String)] = [
         ("", "da39a3ee5e6b4b0d3255bfef95601890afd80709"),
         ("abc", "a9993e364706816aba3e25717850c26c9cd0d89d"),
@@ -65,26 +69,27 @@ struct PortableSHA1Tests {
 
     @Test("published vectors", arguments: vectors)
     func publishedVectors(vector: (message: String, digest: String)) {
-        let digest = PortableSHA1.hash(vector.message.utf8)
-        #expect(digest.hex == vector.digest)
-        #expect(digest.bytes == bytes(fromHex: vector.digest))
-        #expect(appendedSHA1(Array(vector.message.utf8)) == bytes(fromHex: vector.digest))
+        let message = Array(vector.message.utf8)
+        #expect(hex(appendedSHA1(message)) == vector.digest)
+        #expect(required(Insecure.SHA1.self, message) == bytes(fromHex: vector.digest))
+        #expect(Insecure.SHA1.keyHash(of: vector.message) == bytes(fromHex: vector.digest))
     }
 
     @Test("one million a")
     func oneMillionA() {
         let message = [UInt8](repeating: UInt8(ascii: "a"), count: 1_000_000)
-        let digest = PortableSHA1.hash(message)
-        #expect(digest.hex == "34aa973cd4c4daa4f61eeb2bdbad27316534016f")
-        #expect(appendedSHA1(message) == digest.bytes)
+        #expect(hex(appendedSHA1(message)) == "34aa973cd4c4daa4f61eeb2bdbad27316534016f")
+        #expect(Insecure.SHA1.keyHash(of: message) == appendedSHA1(message))
     }
 
-    /// As for SHA-256: the two entries are one computation.
-    @Test("both entries, at every length to 300")
-    func bothEntries() {
+    /// As for SHA-256.
+    @Test("every way in, at every length to 300")
+    func everyWayIn() {
         for length in 0...300 {
             let message = pattern(count: length)
-            #expect(appendedSHA1(message) == PortableSHA1.hash(message).bytes, "\(length)")
+            let own = appendedSHA1(message)
+            #expect(required(Insecure.SHA1.self, message) == own, "\(length)")
+            #expect(Insecure.SHA1.keyHash(of: message) == own, "\(length)")
         }
     }
 }

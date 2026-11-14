@@ -39,6 +39,17 @@ extension Person: StorableValue {
     }
 }
 
+// KeyHashing's comment: a hasher of your own.
+private enum ByteSum: KeyHashing {
+    static let size = 1
+
+    static func hash(_ bytes: Span<UInt8>, into output: inout OutputSpan<UInt8>) {
+        var sum: UInt8 = 0
+        for index in bytes.indices { sum &+= bytes[index] }
+        output.append(sum)
+    }
+}
+
 @Suite("The libraries' comments") struct CommentExamples {
     /// `StorableValue`: the record goes into a list and comes back, as a map
     /// of its two fields, and takes the place of what was in its slot.
@@ -92,6 +103,34 @@ extension Person: StorableValue {
             let database = try Database(opening: storage, hashing: hashing)
             #expect(header.hashSize == size)
             #expect(try HashMap<ReadOnly>(database.rootCursor).value(forKey: "alice", as: String.self) == "Alice")
+        }
+    }
+
+    /// `KeyHashing`: the hasher that adds the bytes up is a hasher. A
+    /// database made with it has its size, and two keys with one sum are
+    /// one key to a map.
+    @Test func aHasherOfYourOwn() throws {
+        let database = try Database(creating: MemoryStorage(), hashing: ByteSum.self)
+        #expect(database.header.hashSize == 1)
+        #expect(ByteSum.keyHash(of: "ab") == [195])
+        let map = try HashMap<ReadWrite>(database.rootCursor)
+        try map.put(UInt64(1), forKey: "ab")
+        #expect(try map.value(forKey: "ba", as: UInt64.self) == 1)
+        #expect(try map.value(forKey: "bb", as: UInt64.self) == nil)
+    }
+
+    /// `KeyHashing.keyHash(of:)`: the hash of a key by hand names the entry
+    /// that the keyed call reads.
+    @Test func theHashOfAKeyByHand() throws {
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
+        try database.withTransaction { cursor in
+            let ages = try HashMap<ReadWrite>(cursor)
+
+            let hash = SHA256.keyHash(of: "alice")
+            try ages.put(.uint(25), forHash: hash)
+            let age = try ages.value(forKey: "alice", as: UInt64.self)
+            #expect(age == 25)
+            #expect(hash.count == 32)
         }
     }
 }

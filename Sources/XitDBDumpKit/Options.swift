@@ -1,6 +1,7 @@
 // What a dump shows: the options of xitdb-dump, as the tool parses them and
 // the tests set them.
 
+import XitDB
 import XitDBHashing
 
 /// The options of a dump.
@@ -13,8 +14,8 @@ package struct DumpOptions: Sendable {
         /// The hash of a key's bytes, the database's hash size long.
         package func hash(_ bytes: [UInt8]) -> [UInt8] {
             switch self {
-            case .sha256: Array(SHA256.hash(bytes))
-            case .sha1: Array(Insecure.SHA1.hash(bytes))
+            case .sha256: SHA256.keyHash(of: bytes)
+            case .sha1: Insecure.SHA1.keyHash(of: bytes)
             }
         }
     }

@@ -33,8 +33,8 @@ Its collections take keys and typed values as well as the hashes and the format'
 take. A keyed call hashes the key with the database's hasher and writes what the same value written by hash writes, so
 the files are the same either way.
 
-The package declares three products. `XitDB` is the library. `XitDBHashing` has SHA-256 and SHA-1 under CryptoKit's
-names on every platform, CryptoKit's own where it exists, to give a database as the hash of its keys. `xitdb-dump` is a
+The package declares three products. `XitDB` is the library. `XitDBHashing` has SHA-256 and SHA-1, the same on
+every platform, to give a database as the hash of its keys. `xitdb-dump` is a
 tool that prints a file as it is on disk.
 
 It builds for macOS 26, iOS 26 and Linux, and is tested on macOS, on Linux and on an iOS simulator.

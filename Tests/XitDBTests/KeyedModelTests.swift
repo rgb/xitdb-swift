@@ -357,7 +357,7 @@ struct KeyedModelTests {
                     guard try !entry.key.slot.isEmpty else { continue }
                     let name = try entry.key.read(String.self)
                     named.insert(name)
-                    if entry.hash != Array(SHA256.hash(data: Array(name.utf8))) {
+                    if entry.hash != SHA256.keyHash(of: name) {
                         fail("the name \(name) is stored under another hash than its own")
                     }
                 }

@@ -84,9 +84,6 @@ struct Keys {
     /// collection its keys and leave the hashing to the database, or that
     /// give a sorted map its keys as text.
     var strings: [String] = []
-    /// The same hashes as the digests the hash function returned, for a
-    /// caller that passes a digest as it is.
-    var digests: [Insecure.SHA1Digest] = []
     /// A text for each key, `value-<i>`, for the workloads that store
     /// strings.
     var values: [String] = []
@@ -104,7 +101,7 @@ struct Keys {
         case .none:
             break
         case .hashes:
-            hashBytes = (0..<count).map { index in Array(Insecure.SHA1.hash(data: Data("key-\(index)".utf8))) }
+            hashBytes = (0..<count).map { index in Insecure.SHA1.keyHash(of: "key-\(index)") }
             hashes = hashBytes.map { KeyHash($0) }
         case .texts:
             strings = (0..<count).map { index in "key-\(index)" }
@@ -112,8 +109,7 @@ struct Keys {
             sortedKeys = texts.map { SortedKey($0) }
         case .keys:
             strings = (0..<count).map { index in "key-\(index)" }
-            digests = strings.map { key in Insecure.SHA1.hash(data: Array(key.utf8)) }
-            hashBytes = digests.map { digest in Array(digest) }
+            hashBytes = strings.map { key in Insecure.SHA1.keyHash(of: key) }
             hashes = hashBytes.map { KeyHash($0) }
             values = (0..<count).map { index in "value-\(index)" }
         }
@@ -379,7 +375,7 @@ func keyHashing(_ size: Int) -> Workload {
         let strings = keys.strings
         var matching = 0
         for index in strings.indices {
-            let digest = Array(Insecure.SHA1.hash(data: Array(strings[index].utf8)))
+            let digest = Insecure.SHA1.keyHash(of: strings[index])
             if digest == keys.hashBytes[index] { matching += 1 }
         }
         guard matching == strings.count else {
@@ -783,7 +779,6 @@ let workloads: [Workload] = [
     mapByKey(sized(100_000), kinds: [.memory, .bufferedFile]),
     keyHashing(sized(100_000)),
     mapByHashSpan(sized(100_000), kinds: [.memory, .bufferedFile]),
-    mapByHashDigest(sized(100_000), kinds: [.memory, .bufferedFile]),
     sortedByForm(.span, sized(100_000), kinds: [.memory, .bufferedFile]),
     sortedByForm(.bytes, sized(100_000), kinds: [.memory, .bufferedFile]),
     sortedByForm(.text, sized(100_000), kinds: [.memory, .bufferedFile]),

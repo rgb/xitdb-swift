@@ -1,10 +1,9 @@
 // SHA-1 as FIPS 180-4 defines it, in Swift that needs only the standard
-// library. Where CryptoKit exists, ``Insecure/SHA1`` is CryptoKit's and this
-// stands behind it only in the tests; elsewhere it is what it computes.
+// library: what ``Insecure/SHA1`` computes.
 
-/// The portable SHA-1: the algorithm behind ``Insecure/SHA1`` where
-/// CryptoKit is absent, compiled everywhere so that the tests can hold it
-/// against CryptoKit where it exists.
+/// The module's own SHA-1, which needs nothing of the platform: the
+/// algorithm behind ``Insecure/SHA1``, held against CryptoKit by the tests
+/// where CryptoKit exists.
 package enum PortableSHA1: Sendable {
     /// The number of bytes in a digest: 20.
     package static let byteCount = 20
@@ -15,13 +14,6 @@ package enum PortableSHA1: Sendable {
         var state = SHA1State()
         state.absorb(message)
         appendDigest(of: state.words, to: &output)
-    }
-
-    /// The digest of `message`, read once and in full before the hashing
-    /// starts.
-    package static func hash(_ message: some Sequence<UInt8>) -> DigestStorage<20> {
-        let bytes = Array(message)
-        return DigestStorage { output in hash(bytes.span, into: &output) }
     }
 }
 

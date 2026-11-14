@@ -31,7 +31,8 @@ private func unfinishedCreation(of database: [UInt8]) -> [UInt8] {
     ) throws {
         for key in keys {
             let hash = try database.keyHash(of: key)
-            #expect(hash.bytes == Array(Hashing.hash(key)), comment)
+            #expect(hash.bytes == Hashing.keyHash(of: key), comment)
+            #expect(hash.bytes == [UInt8](capacity: Hashing.size) { Hashing.hash(key.span, into: &$0) }, comment)
             #expect(hash.count == Hashing.size, comment)
         }
     }
@@ -230,6 +231,33 @@ private func unfinishedCreation(of database: [UInt8]) -> [UInt8] {
         Self.expectNoHasher(try created.compact(into: MemoryStorage(), offsetMap: &offsets), "a compaction's target")
     }
 
+    #if os(macOS) || os(Linux)
+        /// A hasher that appends more bytes than its size has a mistake no
+        /// file can cause, and stops the program: in the database when the
+        /// hasher returns, or at the append that does not fit where the hash
+        /// is longer than the engine keeps inline, and by hand at the append.
+        /// Each runs in a process of its own, which is not there on iOS.
+        @Test func aHasherThatAppendsTooMuchStopsTheProgram() async {
+            await #expect(processExitsWith: .failure) {
+                let database = try Database(creating: MemoryStorage(), hashing: GreedyHash.self)
+                _ = try database.keyHash(of: utf8("name"))
+            }
+            await #expect(processExitsWith: .failure) {
+                let database = try Database(creating: MemoryStorage(), hashing: GreedyWideHash.self)
+                _ = try database.keyHash(of: utf8("name"))
+            }
+            await #expect(processExitsWith: .failure) {
+                _ = GreedyHash.keyHash(of: "name")
+            }
+            // The same calls with a hasher that keeps its word come back.
+            await #expect(processExitsWith: .success) {
+                let database = try Database(creating: MemoryStorage(), hashing: TinyHash.self)
+                _ = try database.keyHash(of: utf8("name"))
+                _ = TinyHash.keyHash(of: "name")
+            }
+        }
+    #endif
+
     /// A hasher that gives fewer bytes than its size is not caught when it
     /// is given: the hash is what it gave, which the collection it goes to
     /// refuses as it refuses any hash of the wrong size.
@@ -237,7 +265,8 @@ private func unfinishedCreation(of database: [UInt8]) -> [UInt8] {
         let database = try Database(creating: MemoryStorage(), hashing: ShortDigestHash.self)
         #expect(database.header.hashSize == 20)
         let hash = try database.keyHash(of: utf8("name"))
-        #expect(hash.bytes == Array(ShortDigestHash.hash(utf8("name"))))
+        #expect(hash.bytes == ShortDigestHash.keyHash(of: utf8("name")))
+        #expect(hash.bytes == mixedDigest(utf8("name"), count: 3))
         #expect(hash.count == 3)
     }
 
@@ -285,7 +314,7 @@ private func unfinishedCreation(of database: [UInt8]) -> [UInt8] {
             let reading = SnapshotDatabase(snapshot)
             return try Self.keys.map { try reading.engine.keyHash(of: $0).bytes }
         }.value
-        #expect(hashes == Self.keys.map { Array(Insecure.SHA1.hash(data: $0)) })
+        #expect(hashes == Self.keys.map { Insecure.SHA1.keyHash(of: $0) })
     }
 
     /// The target a compaction makes holds its source's hasher, whether
@@ -489,9 +518,9 @@ private func unfinishedCreation(of database: [UInt8]) -> [UInt8] {
             let database = try Database(opening: storage, hashing: hashing)
             let hash = try database.keyHash(of: utf8("name")).bytes
             if size == 20 {
-                #expect(hash == Array(Insecure.SHA1.hash(data: utf8("name"))))
+                #expect(hash == Insecure.SHA1.keyHash(of: "name"))
             } else {
-                #expect(hash == Array(SHA256.hash(data: utf8("name"))))
+                #expect(hash == SHA256.keyHash(of: "name"))
             }
             let recovered = try Database.recover(storage, hashing: hashing)
             #expect(try recovered.keyHash(of: utf8("name")).bytes == hash)

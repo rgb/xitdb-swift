@@ -1,139 +1,54 @@
-// The hashes a database can be given, with CryptoKit's spelling and one set
-// of names on every platform: where CryptoKit exists the types forward to it
-// and hand out its digests, so nothing of this package is on the path;
-// where it does not, the portable implementations compute them. Each type
-// conforms to XitDB's `KeyHashing`.
+// The hashes a database can be given: SHA-256 and SHA-1, each a conformer of
+// XitDB's `KeyHashing` and nothing more. Both are computed by this module's
+// own code, which needs only the standard library, so they are the same on
+// every platform.
 
 public import XitDB
-
-#if canImport(CryptoKit)
-    public import CryptoKit
-#endif
 
 /// SHA-256 (FIPS 180-4): the hash to choose for a database when you have
 /// no reason to choose another.
 ///
-/// 32 bytes, so the database's hash size is 32. Where CryptoKit exists the
-/// digest is CryptoKit's own, computed by it; elsewhere it is computed here.
-/// One shot only: there is no incremental update. A `String` is hashed
-/// through its `utf8`; an array passes as it is, any other sequence is
-/// copied into one first.
-public enum SHA256: Sendable, KeyHashing {
-    /// The number of bytes in a digest: 32.
-    public static let byteCount = 32
+/// 32 bytes, so the database's hash size is 32. A database is given the
+/// type, as in `Database(creating: storage, hashing: SHA256.self)`, and its
+/// calls that take a key hash with it; `SHA256.keyHash(of:)` gives a key's
+/// hash for a call that takes the hash.
+///
+/// CryptoKit has a type of this name too. In a file that imports both
+/// modules a bare `SHA256` is neither, and does not compile: this one is
+/// `XitDBHashing.SHA256` there, and CryptoKit's is `CryptoKit.SHA256`.
+public enum SHA256: KeyHashing {
+    /// 32: the number of bytes in a hash.
+    public static var size: Int { 32 }
 
-    /// 32.
-    public static var size: Int { byteCount }
-
-    /// The digest of `data`.
-    ///
-    /// The sequence is read once, in full, before the hashing starts, so a
-    /// sequence that can be read only once is fine, and a large one costs
-    /// its size in memory while it is hashed.
-    public static func hash(data: some Sequence<UInt8>) -> SHA256Digest {
-        #if canImport(CryptoKit)
-            if let array = data as? [UInt8] { return CryptoKit.SHA256.hash(data: array) }
-            return CryptoKit.SHA256.hash(data: Array(data))
-        #else
-            return SHA256Digest(storage: PortableSHA256.hash(data))
-        #endif
-    }
-
-    /// The digest of `bytes`: ``hash(data:)`` under the name `KeyHashing`
-    /// asks for.
-    public static func hash(_ bytes: some Collection<UInt8>) -> SHA256Digest {
-        hash(data: bytes)
+    /// Appends the SHA-256 of `bytes` to `output`: 32 bytes. Nothing is
+    /// allocated.
+    public static func hash(_ bytes: Span<UInt8>, into output: inout OutputSpan<UInt8>) {
+        PortableSHA256.hash(bytes, into: &output)
     }
 }
-
-#if canImport(CryptoKit)
-    /// The 32 bytes of a SHA-256 digest: CryptoKit's type, a sequence of its
-    /// bytes that prints as "SHA256 digest: " and the hex. Its members
-    /// beyond the sequence, `byteCount` among them, are CryptoKit's: a file
-    /// that uses them imports CryptoKit, as member import visibility asks.
-    public typealias SHA256Digest = CryptoKit.SHA256Digest
-#else
-    /// The 32 bytes of a SHA-256 digest.
-    ///
-    /// It iterates over its bytes in order, so `Array(digest)` is the bytes,
-    /// and `description` is "SHA256 digest: " followed by the digest as
-    /// lowercase hex, as CryptoKit's prints where that is the type.
-    public struct SHA256Digest: Sequence, Equatable, Hashable, Sendable, CustomStringConvertible {
-        /// The number of bytes in a digest: 32.
-        public static let byteCount = 32
-
-        let storage: DigestStorage<32>
-
-        /// "SHA256 digest: " and 64 lowercase hex characters.
-        public var description: String { "SHA256 digest: " + storage.hex }
-
-        /// An iterator over the bytes in order, over a copy of them.
-        public func makeIterator() -> IndexingIterator<[UInt8]> { storage.bytes.makeIterator() }
-    }
-#endif
 
 /// Algorithms that are not secure against collisions. They are kept for
 /// files whose keys are hashed with SHA-1, as they are in the original's
 /// tests and by default in a xit repository; anything new should use
 /// ``SHA256``.
+///
+/// CryptoKit has a namespace of this name too: in a file that imports both
+/// modules this one is `XitDBHashing.Insecure`.
 public enum Insecure {
     /// SHA-1 (FIPS 180-4).
     ///
-    /// Collisions have been published, so a digest is a fingerprint of data
-    /// that is trusted already, not a defence against data made to match.
-    /// 20 bytes, so the database's hash size is 20. Where CryptoKit exists
-    /// the digest is CryptoKit's own, computed by it; elsewhere it is
-    /// computed here. One shot only: there is no incremental update.
-    public enum SHA1: Sendable, KeyHashing {
-        /// The number of bytes in a digest: 20.
-        public static let byteCount = 20
+    /// Collisions have been published, so a hash is a fingerprint of keys
+    /// that are trusted already, not a defence against keys made to match.
+    /// 20 bytes, so the database's hash size is 20. A database is given the
+    /// type, as in `Database(opening: storage, hashing: Insecure.SHA1.self)`.
+    public enum SHA1: KeyHashing {
+        /// 20: the number of bytes in a hash.
+        public static var size: Int { 20 }
 
-        /// 20.
-        public static var size: Int { byteCount }
-
-        /// The digest of `data`.
-        ///
-        /// The sequence is read once, in full, before the hashing starts, so
-        /// a sequence that can be read only once is fine, and a large one
-        /// costs its size in memory while it is hashed.
-        public static func hash(data: some Sequence<UInt8>) -> Insecure.SHA1Digest {
-            #if canImport(CryptoKit)
-                if let array = data as? [UInt8] { return CryptoKit.Insecure.SHA1.hash(data: array) }
-                return CryptoKit.Insecure.SHA1.hash(data: Array(data))
-            #else
-                return SHA1Digest(storage: PortableSHA1.hash(data))
-            #endif
-        }
-
-        /// The digest of `bytes`: ``hash(data:)`` under the name
-        /// `KeyHashing` asks for.
-        public static func hash(_ bytes: some Collection<UInt8>) -> Insecure.SHA1Digest {
-            hash(data: bytes)
+        /// Appends the SHA-1 of `bytes` to `output`: 20 bytes. Nothing is
+        /// allocated.
+        public static func hash(_ bytes: Span<UInt8>, into output: inout OutputSpan<UInt8>) {
+            PortableSHA1.hash(bytes, into: &output)
         }
     }
-
-    #if canImport(CryptoKit)
-        /// The 20 bytes of a SHA-1 digest: CryptoKit's type, a sequence of
-        /// its bytes that prints as "SHA1 digest: " and the hex; its members
-        /// beyond the sequence are CryptoKit's, reached by importing it.
-        public typealias SHA1Digest = CryptoKit.Insecure.SHA1Digest
-    #else
-        /// The 20 bytes of a SHA-1 digest.
-        ///
-        /// It iterates over its bytes in order, so `Array(digest)` is the
-        /// bytes, and `description` is "SHA1 digest: " followed by the digest
-        /// as lowercase hex, as CryptoKit's prints where that is the type.
-        public struct SHA1Digest: Sequence, Equatable, Hashable, Sendable, CustomStringConvertible {
-            /// The number of bytes in a digest: 20.
-            public static let byteCount = 20
-
-            let storage: DigestStorage<20>
-
-            /// "SHA1 digest: " and 40 lowercase hex characters.
-            public var description: String { "SHA1 digest: " + storage.hex }
-
-            /// An iterator over the bytes in order, over a copy of them.
-            public func makeIterator() -> IndexingIterator<[UInt8]> { storage.bytes.makeIterator() }
-        }
-    #endif
 }

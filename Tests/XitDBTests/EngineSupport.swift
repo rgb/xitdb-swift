@@ -33,7 +33,7 @@ final class FixedRandom: RandomNumberGenerator {
 
 /// The SHA-1 of a string's UTF-8 bytes, as a key hash.
 func sha1(_ text: String) -> KeyHash {
-    KeyHash(Array(Insecure.SHA1.hash(data: Data(text.utf8))))
+    KeyHash(Insecure.SHA1.keyHash(of: text))
 }
 
 /// The UTF-8 bytes of a string: Zig's `"text"` literal as the bytes the

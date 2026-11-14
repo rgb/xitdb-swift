@@ -1,6 +1,6 @@
 # ``XitDBHashing``
 
-SHA-256 and SHA-1 under CryptoKit's names on every platform, as hashers a database can be given.
+SHA-256 and SHA-1 on every platform, as hashers a database can be given.
 
 ## Overview
 
@@ -37,7 +37,7 @@ published test vectors, and against CryptoKit where both exist. The names are Cr
 A digest is a sequence of its bytes, so `Array(digest)` gives them, and a call that takes a hash takes a digest as it is:
 
 ```swift
-let digest = SHA256.hash(data: Array("alice".utf8))
+let digest = SHA256.keyHash(of: "alice")
 let bytes = Array(digest)  // 32 of them
 ```
 
@@ -57,6 +57,3 @@ which returns the digest of a key's bytes. A SHA-512, or a hash of your keys' ow
 - ``SHA256``
 - ``Insecure``
 
-### Their digests
-
-- ``SHA256Digest``

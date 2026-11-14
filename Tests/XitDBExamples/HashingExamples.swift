@@ -7,8 +7,8 @@ import XitDBHashing
 // checked.
 private enum TwentyZeros: KeyHashing {
     static let size = 20
-    static func hash(_ bytes: some Collection<UInt8>) -> [UInt8] {
-        [UInt8](repeating: 0, count: 20)
+    static func hash(_ bytes: Span<UInt8>, into output: inout OutputSpan<UInt8>) {
+        output.append(repeating: 0, count: 20)
     }
 }
 
@@ -21,7 +21,7 @@ private enum TwentyZeros: KeyHashing {
         let keyed = try database.readCommitted(from: 0, to: database.committedSize)
 
         // The same entry by its hash: the keyed put is this put.
-        let hash = SHA256.hash(data: Array("alice".utf8))
+        let hash = SHA256.keyHash(of: "alice")
         try users.put(.bytes(Array("Alice".utf8)), forHash: hash)
         #expect(try users.cursor(forHash: hash)!.read(String.self) == "Alice")
         #expect(try users.value(forKey: "alice", as: String.self) == "Alice")
@@ -38,7 +38,7 @@ private enum TwentyZeros: KeyHashing {
             creating: byHash, hashSize: 32, hashID: "sha2", fileID: 7, random: RandomSource(Counting()))
         try HashMap<ReadWrite>(keyedDatabase.rootCursor).put("Alice", forKey: "alice")
         try HashMap<ReadWrite>(hashedDatabase.rootCursor)
-            .put(.bytes(Array("Alice".utf8)), forHash: SHA256.hash(data: Array("alice".utf8)))
+            .put(.bytes(Array("Alice".utf8)), forHash: SHA256.keyHash(of: "alice"))
         #expect(byKey.bytes == byHash.bytes)
         #expect(byKey.bytes.count == keyed.count)
     }
@@ -111,7 +111,7 @@ private enum TwentyZeros: KeyHashing {
         let storage = MemoryStorage()
         let created = try Database(creating: storage, hashing: SHA256.self)
         try HashMap<ReadWrite>(created.rootCursor).put("Alice", forKey: "alice")
-        let hash = SHA256.hash(data: Array("alice".utf8))
+        let hash = SHA256.keyHash(of: "alice")
 
         let plain = try Database(opening: storage)
         let map = try HashMap<ReadOnly>(plain.rootCursor)
@@ -180,11 +180,11 @@ private enum TwentyZeros: KeyHashing {
     @Test func aHashHasTheSizeOfTheDatabase() throws {
         let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         let map = try HashMap<ReadWrite>(database.rootCursor)
-        try map.put(.uint(1), forHash: SHA256.hash(data: Array("alice".utf8)))
+        try map.put(.uint(1), forHash: SHA256.keyHash(of: "alice"))
 
         #expect(throws: XitDBError.invalidHashSize) {
             // 20 bytes, in a database of 32.
-            try map.put(.uint(1), forHash: Insecure.SHA1.hash(data: Array("alice".utf8)))
+            try map.put(.uint(1), forHash: Insecure.SHA1.keyHash(of: "alice"))
         }
     }
 
@@ -232,7 +232,7 @@ private enum TwentyZeros: KeyHashing {
         // A digest as it is.
         let database = try Database(creating: MemoryStorage(), hashSize: 32)
         let map = try HashMap<ReadWrite>(database.rootCursor)
-        try map.put(.uint(1), forHash: SHA256.hash(data: Array("alice".utf8)))
+        try map.put(.uint(1), forHash: SHA256.keyHash(of: "alice"))
         #expect(try map.cursor(forHash: Array(sha256("alice")))!.readUInt64() == 1)
 
         // An array, a slice, `Data`, a span, and a string's `utf8` that has
@@ -252,7 +252,11 @@ private enum TwentyZeros: KeyHashing {
         // A hash of one byte, the sum of the key's: "ab" and "ba" collide.
         enum ByteSum: KeyHashing {
             static var size: Int { 1 }
-            static func hash(_ bytes: some Collection<UInt8>) -> [UInt8] { [bytes.reduce(0, &+)] }
+            static func hash(_ bytes: Span<UInt8>, into output: inout OutputSpan<UInt8>) {
+                var sum: UInt8 = 0
+                for index in bytes.indices { sum &+= bytes[index] }
+                output.append(sum)
+            }
         }
 
         let database = try Database(creating: MemoryStorage(), hashing: ByteSum.self)

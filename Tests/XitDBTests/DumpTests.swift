@@ -160,8 +160,8 @@ import XitDBHashing
         #expect(DumpOptions.Hash(rawValue: "SHA256") == nil)
         #expect(DumpOptions.Hash(rawValue: "") == nil)
         let name = utf8("name")
-        #expect(DumpOptions.Hash.sha256.hash(name) == Array(SHA256.hash(data: name)))
-        #expect(DumpOptions.Hash.sha1.hash(name) == Array(Insecure.SHA1.hash(data: name)))
+        #expect(DumpOptions.Hash.sha256.hash(name) == SHA256.keyHash(of: name))
+        #expect(DumpOptions.Hash.sha1.hash(name) == Insecure.SHA1.keyHash(of: name))
     }
 
     /// `--verify` lists the commits; a truncated file shows what recovery

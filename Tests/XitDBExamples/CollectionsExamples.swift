@@ -421,7 +421,7 @@ import XitDBHashing
         let hashed = try HashMap<ReadWrite>(hashes.rootCursor)
 
         let bytes = [UInt8](repeating: 7, count: 32)
-        try hashed.put(.uint(1), forHash: SHA256.hash(data: Array("anything".utf8)))
+        try hashed.put(.uint(1), forHash: SHA256.keyHash(of: "anything"))
         try hashed.put(.uint(2), forHash: bytes)
         try hashed.put(.uint(3), forHash: bytes[...])
         try hashed.put(.uint(4), forHash: bytes.span)

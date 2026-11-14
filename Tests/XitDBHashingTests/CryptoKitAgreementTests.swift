@@ -14,7 +14,7 @@
         func sha256Lengths() {
             for length in 0...300 {
                 let message = pattern(count: length)
-                #expect(PortableSHA256.hash(message).bytes == Array(CryptoKit.SHA256.hash(data: message)), "\(length)")
+                #expect(appendedSHA256(message) == Array(CryptoKit.SHA256.hash(data: message)), "\(length)")
             }
         }
 
@@ -23,7 +23,7 @@
             for length in 0...300 {
                 let message = pattern(count: length)
                 #expect(
-                    PortableSHA1.hash(message).bytes == Array(CryptoKit.Insecure.SHA1.hash(data: message)), "\(length)")
+                    appendedSHA1(message) == Array(CryptoKit.Insecure.SHA1.hash(data: message)), "\(length)")
             }
         }
 
@@ -42,8 +42,8 @@
         @Test("the boundary lengths", arguments: boundaryLengths)
         func boundaries(length: Int) {
             let message = pattern(count: length)
-            #expect(PortableSHA256.hash(message).bytes == Array(CryptoKit.SHA256.hash(data: message)))
-            #expect(PortableSHA1.hash(message).bytes == Array(CryptoKit.Insecure.SHA1.hash(data: message)))
+            #expect(appendedSHA256(message) == Array(CryptoKit.SHA256.hash(data: message)))
+            #expect(appendedSHA1(message) == Array(CryptoKit.Insecure.SHA1.hash(data: message)))
         }
     }
 #endif

@@ -5,8 +5,8 @@
 // SHA-256 and keys of 9, 64 and 1024 bytes, by each way of computing it:
 //
 //   loop          the loop over the keys with no hashing, to take off the rest
-//   by_hand       the digest copied into an array, as the caller of a call
-//                 by hash holds it: `Array(SHA256.hash(data: key))`
+//   by_hand       the hash as an array, as the caller of a call by hash
+//                 holds it: `SHA256.keyHash(of: key)`
 //   hasher        through the hasher a database holds, to the engine's hash:
 //                 what a keyed call does
 //   portable      the package's own implementation, which stands behind the
@@ -42,8 +42,8 @@ private enum MeasuredHash: String, CaseIterable {
     /// The hash through `XitDBHashing`, as an array.
     func byHand(_ key: [UInt8]) -> [UInt8] {
         switch self {
-        case .sha1: Array(XitDBHashing.Insecure.SHA1.hash(data: key))
-        case .sha256: Array(XitDBHashing.SHA256.hash(data: key))
+        case .sha1: XitDBHashing.Insecure.SHA1.keyHash(of: key)
+        case .sha256: XitDBHashing.SHA256.keyHash(of: key)
         }
     }
 

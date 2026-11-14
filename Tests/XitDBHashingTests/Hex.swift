@@ -1,6 +1,7 @@
 // The hex the vectors are written in, as bytes, and the messages the tests
 // hash.
 
+import XitDB
 import XitDBHashing
 
 /// The bytes that `hex` spells, two lowercase or uppercase characters each.
@@ -64,13 +65,29 @@ let seededMessages: [(length: Int, seed: UInt64)] = {
     }
 }()
 
-/// The portable SHA-256 of `message` through the entry that appends the
-/// digest where the caller holds it, which is the one a key is hashed by.
+/// The module's own SHA-256 of `message`, as bytes.
 func appendedSHA256(_ message: [UInt8]) -> [UInt8] {
     Array(capacity: PortableSHA256.byteCount) { output in PortableSHA256.hash(message.span, into: &output) }
 }
 
-/// The portable SHA-1 of `message` through the entry that appends.
+/// The module's own SHA-1 of `message`, as bytes.
 func appendedSHA1(_ message: [UInt8]) -> [UInt8] {
     Array(capacity: PortableSHA1.byteCount) { output in PortableSHA1.hash(message.span, into: &output) }
+}
+
+/// The hash of `message` by a hasher's requirement, the call a database
+/// makes, as bytes.
+func required<Hashing: KeyHashing>(_ hashing: Hashing.Type, _ message: [UInt8]) -> [UInt8] {
+    Array(capacity: Hashing.size) { output in Hashing.hash(message.span, into: &output) }
+}
+
+/// Bytes as lowercase hex, two characters each: how the vectors are written.
+func hex(_ bytes: [UInt8]) -> String {
+    let digits = Array("0123456789abcdef".utf8)
+    var characters: [UInt8] = []
+    for byte in bytes {
+        characters.append(digits[Int(byte >> 4)])
+        characters.append(digits[Int(byte & 0x0F)])
+    }
+    return String(decoding: characters, as: UTF8.self)
 }

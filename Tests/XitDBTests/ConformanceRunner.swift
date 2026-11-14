@@ -429,7 +429,7 @@ final class ScriptRunner {
             return KeyHash(try hexBytes(try object.string("hex"), what))
         }
         let input = try bytes(object.fields["sha1"], what)
-        return KeyHash(Array(Insecure.SHA1.hash(data: Data(input))))
+        return KeyHash(Insecure.SHA1.keyHash(of: input))
     }
 
     private static let tagNames: [String: Slot.Tag] = [
