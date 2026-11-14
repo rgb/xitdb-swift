@@ -6,8 +6,8 @@ What the Swift port of xitdb has to do, byte for byte, as Zig shows it. This is 
 
 It was produced from:
 
-- conformance repository: commit `3ea9c72806e1646f9297288da370aee7e3c6f505`
-- xitdb, the Zig original: commit `6b93af1af3a260399fa0a0b1b268ded2cbf5eec5`, or the one the manifest gives for that fixture as its `zig_commit`
+- conformance repository: commit `98c1d45168c8140326ec5d6697c713e838c65012`
+- xitdb, the Zig original: commit `89da8e76f0dd82baefeadb656f0f734bf920be05`, or the one the manifest gives for that fixture as its `zig_commit`
 - Zig 0.17.1, with the runner `run` built in debug mode and using the `buffered_file` storage kind
 
 `SCRIPT-FORMAT.md` in the conformance repository describes the scripts, and how to run them.
@@ -18,8 +18,8 @@ It was produced from:
   `array_list`, `hash_map`, `linked_array_list` and `sorted_map` its path parts use, whether or not they're
   reached. `features` says which of these it uses: `reopen` (closing and reopening), `raw_file` (writing to the
   file directly while it's closed), `read_only` (opening it read-only, which the memory storage kind can't do),
-  `iterators` (`iterator` and `next`), `rank`, `byte_stream` (`read_stream`) and `byte_buffers`
-  (`read_bytes_into`, and `max_size` on `read_bytes`).
+  `iterators` (`iterator` and `next`), `rank`, `byte_stream` (`read_stream`), `byte_buffers`
+  (`read_bytes_into`, and `max_size` on `read_bytes`) and `inputs` (`raw_load`).
 - `valid/<name>.json`: a script that passes, with `<name>.db`, the file Zig wrote, and `<name>.db.sidecar.json`, its
   committed sizes and commit IDs. Those called `<name>--port` are the port's versions of scripts that pin what it
   refuses. Those called `safe-*` come from the generator with `--port-safe`. Those called `gen-<seed>`, `reads-<seed>`, `compact-<seed>` and `replica-<seed>` come from the generator `gen`, and
@@ -27,7 +27,17 @@ It was produced from:
   hundreds of writes, and they're what tells copying from rewriting in place. These and `iterator-tiers*` come from
   `longscripts`, because they're too long to write by hand.
 - `valid/<name>.<database>.db`: for a script with several databases, each one's file. `other_databases` in the
-  manifest lists them.
+  manifest lists them, and they're the ones the run left, which the sidecar's `databases` lists too, with `main`. A
+  compaction that fails before it makes its target leaves no file for it, and nothing is listed.
+- `inputs/<name>.db`: files that scripts start from, which `raw_load` puts in place of a database's file, and
+  `inputs` in the manifest lists for each script. They aren't expected files, and they stay as they are when the
+  fixtures follow another Zig commit. Those called `v1-*` are version 1 databases written by the original at
+  `6b93af1af3a260399fa0a0b1b268ded2cbf5eec5`, as nothing writes a new one any more. `tests/inputs/README.md` in
+  the conformance repository says where each came from and what's in it.
+- `samples/<program>/<name>.db`: databases a program wrote through the original, with `<name>.txt`, what `dump` prints
+  for each, which doesn't depend on where things are in the file, and the SHA-256 of each in `SHA256SUMS`. They're
+  samples of real use, for a port's reading to be compared with the original's, and not byte-identity fixtures. Their
+  `README.md` says what they are.
 - `failing/<name>.json`: a well-formed script that must fail in every runner. The text after `expected failure:` in
   its description is why it fails in Zig, and it has no expected file, as there's nothing to compare.
 

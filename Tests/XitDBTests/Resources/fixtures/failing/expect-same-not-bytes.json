@@ -1,5 +1,5 @@
 { "format": "xitdb-script/1", "description": "expected failure: doesn't hold committed bytes", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
   "ops": [
     { "op": "committed_size", "as": "n" },
-    { "op": "read_committed", "start": 37, "end": 62, "as": "b", "expect_same": "n" }
+    { "op": "read_committed", "start": 32, "end": 57, "as": "b", "expect_same": "n" }
   ] }

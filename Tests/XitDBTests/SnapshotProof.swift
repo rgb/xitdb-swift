@@ -17,8 +17,9 @@ import Testing
 ///
 /// Three kinds of op change a file in ways the guarantee does not cover, and
 /// the snapshots of that database are checked before them and dropped on
-/// the file kinds: a raw write while the database is closed, a recovery,
-/// and a reopening, which is a second storage object on the same path. A
+/// the file kinds: a raw write, load or cut while the database is closed, a
+/// recovery, and a reopening, which is a second storage object on the same
+/// path and may create the file again where its creation did not finish. A
 /// sync from zero is covered: in memory the snapshots read on, and on the
 /// file kinds every read of theirs refuses with `snapshotOverwritten`.
 final class SnapshotProof {
@@ -51,7 +52,7 @@ final class SnapshotProof {
     /// on the file kinds, dropped.
     func before(op name: String, on database: String) throws {
         switch name {
-        case "raw_write", "raw_append", "recover", "reopen":
+        case "raw_write", "raw_append", "raw_load", "raw_truncate", "recover", "reopen":
             for index in kept.indices where kept[index].database == database {
                 if name != "reopen" { kept[index].fileChangedOutsideTheEngine = true }
             }

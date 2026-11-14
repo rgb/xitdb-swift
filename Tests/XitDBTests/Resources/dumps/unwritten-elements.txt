@@ -1,0 +1,17 @@
+xitdb file: 1583 bytes; hash size 20, hash id "sha1", file id 0011223344556677
+verify: 4 commits verify, the last ending at the file's end
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 831, id c0e7e205b6120ee0, root hashMap
+  commit 2: ends at 1207, id f91f34a975983f80, root hashMap
+  commit 3: ends at 1583, id b53eb536a0faa1bc, root hashMap
+note: the root is not a list of moments; it is dumped as it is
+moment 0: map (3 entries)
+  80bd99b3af1c4982: list (1)
+    #0: nothing
+  ff539c96a2ed9f72: linked (2)
+    #0: nothing
+    #1: uint 1
+  38b62be4bddaa566: list (3)
+    #0: nothing
+    #1: uint 1
+    #2: nothing

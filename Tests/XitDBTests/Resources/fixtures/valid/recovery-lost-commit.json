@@ -12,7 +12,7 @@
     {"op": "read_path", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "b"}}}], "as": "c"},
     {"op": "read_uint", "on": "c", "expect": 2},
     {"op": "close"},
-    {"op": "raw_write", "offset": 20, "bytes": {"hex": "0200000000000000470000000000000205"}, "note": "the root header as it was after the first commit"},
+    {"op": "raw_write", "offset": 24, "bytes": {"hex": "0000000000000200"}, "note": "the root header as it was after the first commit"},
     {"op": "reopen", "note": "the committed size in the sidecar goes back, without a commit"},
     {"op": "count", "on": "root", "expect": 1},
     {"op": "read_path_slot", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "b"}}}], "expect_null": true},

@@ -1,7 +1,7 @@
-xitdb file: 11050 bytes; hash size 20, hash id "sha1", file id 0011223344556677; 1 moment
+xitdb file: 11045 bytes; hash size 20, hash id "sha1", file id 0011223344556677; 1 moment
 verify: 2 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 11050, id caa67b396aa60a69, root arrayList
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 11045, id 37b5893db863f607, root arrayList
 moment 0: map (1 entry)
   247774573f4bb987: sorted map (300)
     "k0000": uint 0

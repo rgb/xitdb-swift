@@ -504,10 +504,10 @@
       {"op":"write_path","on":"c59","path":[{"hash_map_init":{}},{"hash_map_get":{"value":{"sha1":"k14"}}},{"hash_map_init":{}},{"hash_map_get":{"value":{"sha1":"k14"}}},{"write":{"bytes_object":{"value":"x","format_tag":"ny"}}}]}]}}]},
     {"op":"read_path","on":"root","path":[{"array_list_get":0},{"hash_map_get":{"value":{"sha1":"k1"}}}],"expect_null":true},
     {"op":"close"},
-    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffffffffffffff"}},
+    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffff"}},
     {"op":"reopen"},
     {"op":"close"},
-    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffffffffffffff"}},
+    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffff"}},
     {"op":"reopen"},
     {"op":"read_path_slot","on":"root","path":[{"array_list_get":-1}],"as":"s60"},
     {"op":"write_path","on":"root","path":["array_list_init","array_list_append",{"write":{"slot":{"var":"s60"}}},{"hash_map_init":{}},{"ctx":{"as":"c61","ops":[

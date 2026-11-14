@@ -16,8 +16,8 @@ import Testing
             fileID: 0x0011_2233_4455_6677,
             random: random
         )
-        #expect(storage.bytes.count == 62)
-        #expect(try database.committedSize == 62)
+        #expect(storage.bytes.count == 57)
+        #expect(try database.committedSize == 57)
 
         _ = try database.rootCursor.writePath([
             .arrayListInit,
@@ -27,7 +27,7 @@ import Testing
             .write(.uint(42)),
         ])
 
-        #expect(try database.committedSize == 438)
+        #expect(try database.committedSize == 433)
         #expect(random.remaining == 0)
         #expect(!random.exhausted)
         return (storage.bytes, database)
@@ -36,22 +36,25 @@ import Testing
     /// With the commit ID Zig drew when the fixture was made, the file is
     /// the fixture, byte for byte.
     @Test func producesTheFileZigWrote() throws {
-        let (bytes, _) = try run(commitID: 0xEF69_2113_3A4E_92A8)
+        let (bytes, _) = try run(commitID: 0x6A06_410C_5A28_7D4A)
         #expect(firstDifference(bytes, try fixtureFile("valid/worked-example.db")) == nil)
     }
 
-    /// With the commit ID the document uses, the trailer is the one in the
-    /// document's table, whose checksum was computed there with a separate
-    /// implementation of the CRC. Everything before the trailer does not
-    /// depend on the commit ID.
+    /// With the commit ID the document uses, the trailer has a checksum
+    /// computed with a separate implementation of the CRC: CRC-64/XZ over
+    /// the file ID, the trailer's position 408, the root slot and the
+    /// commit ID, worked out bit by bit outside this package, by the same
+    /// few lines that give the document's version 1 checksum,
+    /// `3eddda5bf08686bc`, for its version 1 trailer at 413. Everything
+    /// before the trailer does not depend on the commit ID.
     @Test func producesTheTrailerInTheDocument() throws {
         let (bytes, _) = try run(commitID: 0x3035_85F7_ED65_083C)
         let fixture = try fixtureFile("valid/worked-example.db")
-        // the root header at 20 and everything from 37 to the trailer
-        #expect(Array(bytes[..<413]) == Array(fixture[..<413]))
+        // the root header at 20 and everything from 32 to the trailer
+        #expect(Array(bytes[..<408]) == Array(fixture[..<408]))
         #expect(
-            Array(bytes[413...])
-                == hex("020000000000000047") + hex("303585f7ed65083c") + hex("3eddda5bf08686bc")
+            Array(bytes[408...])
+                == hex("020000000000000042") + hex("303585f7ed65083c") + hex("1a176fd7f219b5fc")
         )
     }
 
@@ -62,6 +65,6 @@ import Testing
         #expect(try value.readUInt64() == 42)
         #expect(try moment.readPath([.hashMapGet(.value, sha1("bar"))]) == nil)
         #expect(try database.rootCursor.count == 1)
-        #expect(try database.rootCursor.slot == Slot(value: 71, tag: .arrayList))
+        #expect(try database.rootCursor.slot == Slot(value: 66, tag: .arrayList))
     }
 }

@@ -1,12 +1,12 @@
 {
   "format": "xitdb-sidecar/1",
   "file_id": "c0f000000000000c",
-  "initial_size": 62,
-  "file_size": 600,
+  "initial_size": 57,
+  "file_size": 595,
   "ops": [
-    {"committed_size": 600, "commit_id": "de5c0a9065d9b2fb"},
-    {"committed_size": 600, "commit_id": null},
-    {"committed_size": 600, "commit_id": null},
-    {"committed_size": 600, "commit_id": null}
+    {"committed_size": 595, "commit_id": "75123a7065b3c9b6"},
+    {"committed_size": 595, "commit_id": null},
+    {"committed_size": 595, "commit_id": null},
+    {"committed_size": 595, "commit_id": null}
   ]
 }

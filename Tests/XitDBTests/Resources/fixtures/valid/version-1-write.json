@@ -1,0 +1,50 @@
+{
+  "format": "xitdb-script/1",
+  "description": "Writing to a version 1 file written at 6b93af1 (inputs/v1-history). It stays version 1: a commit appends its data and trailer as in version 2 and writes the committed size at 29, and the copy of the root slot at 20 to 28 is left as the last commit at 6b93af1 wrote it. A transaction that fails is rolled back by truncating the file to the committed size, and changes nothing else, and so does one that truncates leftovers past the committed size. A compaction into a new target makes a version 2 database, as every new database is, and one into an empty version 1 target writes it as version 1.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f0000000000001",
+  "ops": [
+    { "op": "close" },
+    { "op": "raw_load", "input": "v1-history" },
+    { "op": "reopen" },
+    { "op": "read_path_slot", "on": "root", "path": [{ "array_list_get": -1 }], "as": "last" },
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "write": { "slot": { "var": "last" } } }, { "hash_map_init": {} }, { "ctx": { "as": "m", "ops": [
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "short" } } }, { "write": { "bytes": "baz" } }] },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "added" } } }, { "write": { "bytes": "a value too long for a slot, written at 89da8e7" } }] }
+    ] } }], "note": "a commit" },
+    { "op": "count", "on": "root", "expect": 3 },
+
+    { "op": "read_path_slot", "on": "root", "path": [{ "array_list_get": -1 }], "as": "last" },
+    { "op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", { "write": { "slot": { "var": "last" } } }, { "hash_map_init": {} }, { "ctx": { "as": "m", "ops": [
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "short" } } }, { "write": { "bytes": "not kept" } }] },
+      { "op": "fail" }
+    ] } }], "expect_error": "ScriptAbort", "note": "a transaction that fails, which is rolled back" },
+    { "op": "count", "on": "root", "expect": 3 },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": -1 }, { "hash_map_get": { "value": { "sha1": "short" } } }], "as": "c" },
+    { "op": "read_bytes", "on": "c", "expect": "baz" },
+
+    { "op": "close" },
+    { "op": "raw_append", "bytes": "what a crash left past the committed size" },
+    { "op": "reopen" },
+    { "op": "write_path", "on": "root", "path": ["array_list_init", { "array_list_get": 99 }, { "write": { "uint": 3 } }], "expect_error": "KeyNotFound", "note": "a transaction that fails truncates the leftovers too" },
+    { "op": "committed_size", "as": "size" },
+
+    { "op": "compact", "into": "new_target", "file_id": "00000000000000aa", "offset_map": "memory", "note": "a new target is version 2" },
+    { "op": "create_database", "name": "v1_target", "file_id": "00000000000000ab" },
+    { "op": "use", "name": "v1_target" },
+    { "op": "close" },
+    { "op": "raw_load", "input": "v1-new", "note": "an empty version 1 database" },
+    { "op": "reopen" },
+    { "op": "use", "name": "main" },
+    { "op": "compact", "into": "v1_target", "offset_map": "memory", "note": "and an empty version 1 target stays version 1" },
+    { "op": "use", "name": "new_target" },
+    { "op": "count", "on": "root", "expect": 1 },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": 0 }, { "hash_map_get": { "value": { "sha1": "added" } } }], "as": "c" },
+    { "op": "read_bytes", "on": "c", "expect": "a value too long for a slot, written at 89da8e7" },
+    { "op": "use", "name": "v1_target" },
+    { "op": "count", "on": "root", "expect": 1 },
+    { "op": "read_path", "on": "root", "path": [{ "array_list_get": 0 }, { "hash_map_get": { "value": { "sha1": "short" } } }], "as": "c" },
+    { "op": "read_bytes", "on": "c", "expect": "baz" }
+  ]
+}

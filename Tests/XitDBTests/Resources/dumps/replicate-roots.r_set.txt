@@ -1,7 +1,7 @@
-xitdb file: 278 bytes; hash size 20, hash id "sha1", file id 0000000000000031
+xitdb file: 273 bytes; hash size 20, hash id "sha1", file id 0000000000000031
 verify: 2 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 278, id b8a3ff9d6424cca1, root hashSet
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 273, id 696ba4168e79bd8b, root hashSet
 note: the root is not a list of moments; it is dumped as it is
 moment 0: set (1 entry)
   "a" 86f7e437faa5a7fc: empty

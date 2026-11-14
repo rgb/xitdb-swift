@@ -36,8 +36,8 @@ import Testing
     /// this test.
     @Test func everyScriptRuns() {
         let all = ConformanceFixture.all
-        #expect(all.count == 229)
-        #expect(all.filter { $0.mustPass }.count == 131)
+        #expect(all.count == 244)
+        #expect(all.filter { $0.mustPass }.count == 146)
         #expect(all.filter { !$0.mustPass }.count == 98)
 
         // the failing scripts whose description pins the engine error that
@@ -74,8 +74,9 @@ import Testing
         let readOnly = all.filter { $0.features.contains("read_only") }.map(\.name).sorted()
         #expect(
             readOnly == [
-                "read-only", "read-only-at-end", "read-only-leftovers", "replica-306", "safe-8", "safe-replica-302",
-                "safe-replica-303", "safe-replica-306", "write-on-read-only-not-handled",
+                "read-only", "read-only-at-end", "read-only-leftovers", "recovery-cut-during-creation-read-only",
+                "replica-306", "safe-8", "safe-replica-302", "safe-replica-303", "safe-replica-306",
+                "version-1-read", "write-on-read-only-not-handled",
             ]
         )
     }

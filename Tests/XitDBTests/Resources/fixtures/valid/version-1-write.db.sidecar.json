@@ -1,0 +1,51 @@
+{
+  "format": "xitdb-sidecar/1",
+  "file_id": "c0f0000000000001",
+  "initial_size": 57,
+  "file_size": 1684,
+  "databases": {
+    "main": {"file_id": "c0f0000000000001", "file_size": 1684, "trailers": [
+      {"position": 1659, "commit_id": "8da9a7af90de0400", "file_id": "c0f0000000000001"}
+    ]},
+    "new_target": {"file_id": "00000000000000aa", "file_size": 927, "trailers": [
+      {"position": 902, "commit_id": "af367b65df653bf9", "file_id": "00000000000000aa"}
+    ]},
+    "v1_target": {"file_id": "0000000000000010", "file_size": 932, "trailers": [
+      {"position": 907, "commit_id": "b37642fa8dca81b0", "file_id": "0000000000000010"}
+    ]}
+  },
+  "ops": [
+    {"committed_size": null, "commit_id": null},
+    {"committed_size": null, "commit_id": null},
+    {"committed_size": 1215, "commit_id": null},
+    {"committed_size": 1215, "commit_id": null},
+    {"committed_size": 1684, "commit_id": "8da9a7af90de0400"},
+    {"committed_size": 1684, "commit_id": null},
+    {"committed_size": 1684, "commit_id": null},
+    {"committed_size": 1684, "commit_id": null},
+    {"committed_size": 1684, "commit_id": null},
+    {"committed_size": 1684, "commit_id": null},
+    {"committed_size": 1684, "commit_id": null},
+    {"committed_size": null, "commit_id": null},
+    {"committed_size": null, "commit_id": null},
+    {"committed_size": 1684, "commit_id": null},
+    {"committed_size": 1684, "commit_id": null},
+    {"committed_size": 1684, "commit_id": null},
+    {"db": "new_target", "committed_size": 927, "commit_id": "af367b65df653bf9"},
+    {"committed_size": 1684, "commit_id": null},
+    {"db": "v1_target", "committed_size": 57, "commit_id": null},
+    {"db": "v1_target", "committed_size": null, "commit_id": null},
+    {"db": "v1_target", "committed_size": null, "commit_id": null},
+    {"db": "v1_target", "committed_size": 62, "commit_id": null},
+    {"committed_size": 1684, "commit_id": null},
+    {"db": "v1_target", "committed_size": 932, "commit_id": "b37642fa8dca81b0"},
+    {"db": "new_target", "committed_size": 927, "commit_id": null},
+    {"db": "new_target", "committed_size": 927, "commit_id": null},
+    {"db": "new_target", "committed_size": 927, "commit_id": null},
+    {"db": "new_target", "committed_size": 927, "commit_id": null},
+    {"db": "v1_target", "committed_size": 932, "commit_id": null},
+    {"db": "v1_target", "committed_size": 932, "commit_id": null},
+    {"db": "v1_target", "committed_size": 932, "commit_id": null},
+    {"db": "v1_target", "committed_size": 932, "commit_id": null}
+  ]
+}

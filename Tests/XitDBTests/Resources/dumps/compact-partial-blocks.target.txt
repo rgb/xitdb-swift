@@ -1,29 +1,29 @@
-xitdb file: 23400 bytes; hash size 20, hash id "sha1", file id 00000000000000bb; 2 moments
+xitdb file: 23395 bytes; hash size 20, hash id "sha1", file id 00000000000000bb; 2 moments
 verify: 3 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 18148, id ff4f34c5272c2144, root arrayList
-  commit 2: ends at 23400, id e8f57432ccb41f63, root arrayList
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 18143, id b9e2c1a13acced93, root arrayList
+  commit 2: ends at 23395, id 8580cc69aa8da7d9, root arrayList
 moment 1: map (22 entries)
   c31ed3594b082d5d: list (20)
-    #0: empty
+    #0: nothing
     #1: uint 1
     #2: uint 2
-    #3: empty
+    #3: nothing
     #4: uint 4
     #5: uint 5
-    #6: empty
+    #6: nothing
     #7: uint 7
     #8: uint 8
-    #9: empty
+    #9: nothing
     #10: uint 10
     #11: uint 11
-    #12: empty
+    #12: nothing
     #13: uint 13
     #14: uint 14
-    #15: empty
+    #15: nothing
     #16: uint 16
     #17: uint 17
-    #18: empty
+    #18: nothing
     #19: uint 19
   a120fd2b953950ec: list (258)
     #0: uint 0
@@ -543,46 +543,46 @@ moment 1: map (22 entries)
     #255: uint 255
     #256: uint 1256
   4f4b9405ffa63445: list (40)
-    #0: empty
+    #0: nothing
     #1: uint 1
     #2: uint 2
-    #3: empty
+    #3: nothing
     #4: uint 4
     #5: uint 5
-    #6: empty
+    #6: nothing
     #7: uint 7
     #8: uint 8
-    #9: empty
+    #9: nothing
     #10: uint 10
     #11: uint 11
-    #12: empty
+    #12: nothing
     #13: uint 13
     #14: uint 14
-    #15: empty
+    #15: nothing
     #16: uint 16
     #17: uint 17
-    #18: empty
+    #18: nothing
     #19: uint 19
     #20: uint 20
-    #21: empty
+    #21: nothing
     #22: uint 22
     #23: uint 23
-    #24: empty
+    #24: nothing
     #25: uint 25
     #26: uint 26
-    #27: empty
+    #27: nothing
     #28: uint 28
     #29: uint 29
-    #30: empty
+    #30: nothing
     #31: uint 31
     #32: uint 32
-    #33: empty
+    #33: nothing
     #34: uint 34
     #35: uint 35
-    #36: empty
+    #36: nothing
     #37: uint 37
     #38: uint 38
-    #39: empty
+    #39: nothing
   671820762e229d84: list (16)
     #0: uint 0
     #1: uint 1

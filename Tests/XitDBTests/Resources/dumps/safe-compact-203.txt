@@ -1,19 +1,19 @@
-xitdb file: 21963 bytes; hash size 20, hash id "sha1", file id b5145f14d921c666; 13 moments
+xitdb file: 21958 bytes; hash size 20, hash id "sha1", file id b5145f14d921c666; 13 moments
 verify: 14 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 893, id 9b5f536ae003bf1c, root arrayList
-  commit 2: ends at 2396, id be0a3434b8b7a2c7, root arrayList
-  commit 3: ends at 4828, id 123c0f1673454a06, root arrayList
-  commit 4: ends at 7219, id 2fc56b29f18ccbbf, root arrayList
-  commit 5: ends at 10642, id 464a616aebb29f88, root arrayList
-  commit 6: ends at 11162, id 8ebd0c8e46456184, root arrayList
-  commit 7: ends at 11500, id c69fed0070e262a1, root arrayList
-  commit 8: ends at 11838, id e8ecad7441d637a9, root arrayList
-  commit 9: ends at 16023, id 50abd4f89308169a, root arrayList
-  commit 10: ends at 17260, id 8cc29570899181ca, root arrayList
-  commit 11: ends at 17940, id fa58a635fcf2f82a, root arrayList
-  commit 12: ends at 18134, id e313001027364a25, root arrayList
-  commit 13: ends at 21963, id b212c9baf7402634, root arrayList
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 888, id 746b418b4afd06bf, root arrayList
+  commit 2: ends at 2391, id b351c24aec1aa400, root arrayList
+  commit 3: ends at 4823, id b561409f74cf799a, root arrayList
+  commit 4: ends at 7214, id f00f958227c4ea08, root arrayList
+  commit 5: ends at 10637, id ecc7894bf4229c72, root arrayList
+  commit 6: ends at 11157, id f00b4c6425270df9, root arrayList
+  commit 7: ends at 11495, id 56624b68b6e22ecd, root arrayList
+  commit 8: ends at 11833, id 288d4eaea793ad6a, root arrayList
+  commit 9: ends at 16018, id 1eff217aa8b8c649, root arrayList
+  commit 10: ends at 17255, id 94152240d415a20f, root arrayList
+  commit 11: ends at 17935, id 42e09623b89a19cc, root arrayList
+  commit 12: ends at 18129, id 0f4afd050e368d15, root arrayList
+  commit 13: ends at 21958, id e537aef9703d3eb8, root arrayList
 moment 12: map (7 entries)
   0000000000000000: linked (1)
     #0: nothing

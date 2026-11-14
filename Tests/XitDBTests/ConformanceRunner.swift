@@ -87,8 +87,12 @@ final class ScriptStorage {
         return storage
     }
 
-    /// Ends the use of the storage. Commits are already in it.
-    func close() {
+    /// Ends the use of the storage, flushing it first as the Zig runner's
+    /// `close` does: commits are already in it, but what a sync from 0
+    /// that did not finish wrote is not committed, and whether the file is
+    /// then longer than a new database decides what opening it does.
+    func close() throws {
+        try open?.flush()
         if let memory {
             memoryBytes = memory.bytes
         }
@@ -115,6 +119,35 @@ final class ScriptStorage {
     /// Writes bytes at the end while the database is closed.
     func rawAppend(_ bytes: [UInt8]) throws {
         try rawWrite(bytes, at: UInt64(try contents().count))
+    }
+
+    /// Puts `bytes` in place of everything in the storage while the
+    /// database is closed: a file that scripts start from, such as a
+    /// version 1 database, which nothing creates any more.
+    func rawLoad(_ bytes: [UInt8]) throws {
+        switch kind {
+        case .memory:
+            memoryBytes = bytes
+        case .file, .bufferedFile, .bufferedFileSmallWindow:
+            let file = try FileStorage(path: try #require(directory).path(), access: .truncate, durability: .none)
+            try file.write(bytes.span, at: 0)
+        }
+    }
+
+    /// Cuts the storage to `length` bytes while the database is closed, as
+    /// a crash partway through writing a file leaves it.
+    func rawTruncate(to length: UInt64) throws {
+        switch kind {
+        case .memory:
+            guard length <= UInt64(memoryBytes.count) else {
+                throw UnknownInScript("raw_truncate to more than the file has")
+            }
+            memoryBytes.removeLast(memoryBytes.count - Int(length))
+        case .file, .bufferedFile, .bufferedFileSmallWindow:
+            let file = try FileStorage(path: try #require(directory).path(), access: .create, durability: .none)
+            guard length <= (try file.length) else { throw UnknownInScript("raw_truncate to more than the file has") }
+            try file.truncate(to: length)
+        }
     }
 
     /// Everything in the storage as it is now.
@@ -625,7 +658,7 @@ final class ScriptRunner {
 
     // MARK: Errors
 
-    private static func name(of error: XitDBError) -> String {
+    static func name(of error: XitDBError) -> String {
         switch error {
         case .unexpectedTag: "UnexpectedTag"
         case .keyNotFound: "KeyNotFound"
@@ -739,15 +772,17 @@ final class ScriptRunner {
 
     private func perform(_ name: String, _ op: ScriptObject, topLevel: Bool) throws {
         let topLevelOps = [
-            "close", "reopen", "recover", "raw_append", "raw_write", "create_database", "use", "compact",
-            "replica_state", "replication_start", "committed_size", "read_committed", "apply_replicated",
+            "close", "reopen", "recover", "raw_append", "raw_write", "raw_load", "raw_truncate", "create_database",
+            "use", "compact", "replica_state", "replication_start", "committed_size", "read_committed",
+            "apply_replicated",
         ]
         if topLevelOps.contains(name) && !topLevel {
             throw UnknownInScript("'\(name)' inside a callback")
         }
-        if database == nil
-            && !["reopen", "recover", "raw_append", "raw_write", "create_database", "use"].contains(name)
-        {
+        let closedOps = [
+            "reopen", "recover", "raw_append", "raw_write", "raw_load", "raw_truncate", "create_database", "use",
+        ]
+        if database == nil && !closedOps.contains(name) {
             throw ScriptFailure("the op '\(name)' while the database is closed")
         }
 
@@ -1200,7 +1235,7 @@ final class ScriptRunner {
             try bind(try op.string("as"), .committedBytes(read))
 
         case "apply_replicated":
-            try op.allow("op", "note", "expect_error", "start", "bytes", "short_by")
+            try op.allow("op", "note", "expect_error", "start", "bytes", "short_by", "stream_short_by")
             let start = try number(op.fields["start"], "start")
             if start == 0 { zeroSyncTarget = current }
             let bytesName = try op.string("bytes")
@@ -1213,26 +1248,53 @@ final class ScriptRunner {
             let shortBy = op.has("short_by") ? Int(clamping: try op.unsigned("short_by")) : 0
             guard shortBy <= bytes.count else { throw UnknownInScript("short_by is more than the bytes") }
             let sent = Array(bytes[0..<(bytes.count - shortBy)])
-            try openDatabase("apply_replicated").applyReplicated(at: start, bytes: sent)
+            guard op.has("stream_short_by") else {
+                try openDatabase("apply_replicated").applyReplicated(at: start, bytes: sent)
+                break
+            }
+            // `stream_short_by` is the sync whose stream stops part way:
+            // the length asked for stays what `short_by` left, and the
+            // source gives that many fewer, so the call reads past the end
+            // of what it is given
+            let streamShortBy = Int(clamping: try op.unsigned("stream_short_by"))
+            guard streamShortBy <= sent.count else {
+                throw UnknownInScript("stream_short_by is more than the bytes short_by leaves")
+            }
+            var source = ArrayByteSource(Array(sent[0..<(sent.count - streamShortBy)]))
+            try openDatabase("apply_replicated").applyReplicated(at: start, from: &source, count: UInt64(sent.count))
 
         case "close":
             try op.allow("op", "note")
             database = nil
             names = [:]
-            storage.close()
+            try storage.close()
 
         case "reopen":
-            try op.allow("op", "note", "expect_error", "read_only", "hash_size")
+            try op.allow("op", "note", "expect_error", "read_only", "hash_size", "file_id", "hash_id")
             if database != nil { throw ScriptFailure("reopen while the database is open") }
             // The hash size is always stated, the script's or the op's, and
             // never taken from the file.
             let size = op.has("hash_size") ? UInt16(try op.unsigned("hash_size")) : hashSize
+            // `reopen` is the original's `Database.init` on the file as it
+            // is, which creates again what a creation that did not finish
+            // left: with the file ID and hash ID given here, a hash ID of
+            // zeros when none is, and a file ID drawn when none is.
+            let hashID: HashID?
+            if !op.has("hash_id") || op.isNull("hash_id") {
+                hashID = nil
+            } else {
+                let bytes = try self.bytes(op.fields["hash_id"], "hash_id")
+                guard bytes.count == 4 else { throw UnknownInScript("hash_id is not four bytes") }
+                hashID = HashID(bytes: [bytes[0], bytes[1], bytes[2], bytes[3]])
+            }
+            let givenFileID: UInt64? = op.has("file_id") ? try fileID(op.fields["file_id"]) : nil
             let opened = try storage.openStorage(readOnly: try op.bool("read_only", default: false))
             do {
-                database = try Database(opening: opened, hashSize: Int(size), random: random)
+                database = try Database(
+                    storage: opened, hashSize: size, hashID: hashID, fileID: givenFileID, random: random)
             } catch {
                 // A failed reopen leaves the database closed.
-                storage.close()
+                try? storage.close()
                 throw error
             }
 
@@ -1247,7 +1309,7 @@ final class ScriptRunner {
             } catch {
                 // A failed recovery leaves the database closed, as a failed
                 // reopen does.
-                storage.close()
+                try? storage.close()
                 throw error
             }
 
@@ -1260,6 +1322,22 @@ final class ScriptRunner {
             try op.allow("op", "note", "offset", "bytes")
             if database != nil { throw ScriptFailure("raw_write while the database is open") }
             try storage.rawWrite(try bytes(op.fields["bytes"], "bytes"), at: try op.unsigned("offset"))
+
+        case "raw_load":
+            // An input from the fixtures' `inputs` folder takes the place
+            // of the file: a version 1 database, which nothing creates.
+            try op.allow("op", "note", "input")
+            if database != nil { throw ScriptFailure("raw_load while the database is open") }
+            let input = try op.string("input")
+            guard input.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) else {
+                throw UnknownInScript("the input '\(input)' is not a name")
+            }
+            try storage.rawLoad(try fixtureFile("inputs/\(input).db"))
+
+        case "raw_truncate":
+            try op.allow("op", "note", "length")
+            if database != nil { throw ScriptFailure("raw_truncate while the database is open") }
+            try storage.rawTruncate(to: try op.unsigned("length"))
 
         default:
             throw UnknownInScript("unknown op '\(name)'")
@@ -1529,7 +1607,12 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
                 expectedFiles[name] = try fixtureFile(expectedFile)
             }
             try proof.finish(expectedFiles: expectedFiles)
-            guard proof.checked > 0 else { throw ScriptFailure("the snapshot proof checked nothing") }
+            // A script in which no database has a committed size after any
+            // op, by the sidecar's word and not the proof's, has no commit to
+            // take a snapshot of: one that only opens files without a first
+            // commit. Every other script must have had one checked.
+            let hadACommit = steps.contains { !$0.isNull("committed_size") }
+            guard proof.checked > 0 || !hadACommit else { throw ScriptFailure("the snapshot proof checked nothing") }
         }
     }
 }

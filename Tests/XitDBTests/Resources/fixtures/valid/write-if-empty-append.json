@@ -1,0 +1,31 @@
+{
+  "format": "xitdb-script/1",
+  "description": "write_if_empty through the cursor an append or an insert gives back, in both kinds of list. The cursor holds an empty slot, and the slot in the file is a none marked full, which is what makes an element that's never written count: an array list's since 89da8e7, and a linked array list's always. The original writes, as it goes by the cursor's own slot, and the port's rule for finding 17 writes too, as the cursor's slot is empty and the one in the file is a none.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "0011223344556677",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "ctx": { "as": "m", "ops": [
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "list" } } }, "array_list_init", "array_list_append"], "as": "appended" },
+      { "op": "slot", "on": "appended", "expect": { "tag": "none", "full": false }, "note": "the cursor's own slot" },
+      { "op": "read_path_slot", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "list" } } }, { "array_list_get": 0 }], "expect": { "tag": "none", "full": true }, "note": "and the one in the file" },
+      { "op": "write_if_empty", "on": "appended", "data": { "uint": 1 } },
+      { "op": "read_uint", "on": "appended", "expect": 1 },
+
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "linked" } } }, "linked_array_list_init", "linked_array_list_append"], "as": "appended" },
+      { "op": "read_path_slot", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "linked" } } }, { "linked_array_list_get": 0 }], "expect": { "tag": "none", "full": true } },
+      { "op": "write_if_empty", "on": "appended", "data": { "uint": 2 } },
+      { "op": "read_uint", "on": "appended", "expect": 2 },
+      { "op": "write_path", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "linked" } } }, "linked_array_list_init", { "linked_array_list_insert": 0 }], "as": "inserted" },
+      { "op": "read_path_slot", "on": "m", "path": [{ "hash_map_get": { "value": { "sha1": "linked" } } }, { "linked_array_list_get": 0 }], "expect": { "tag": "none", "full": true } },
+      { "op": "write_if_empty", "on": "inserted", "data": { "uint": 3 } },
+      { "op": "read_uint", "on": "inserted", "expect": 3 }
+    ] } }] },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "list" } } }, { "array_list_get": 0 }], "as": "v" },
+    { "op": "read_uint", "on": "v", "expect": 1 },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "linked" } } }, { "linked_array_list_get": 0 }], "as": "v" },
+    { "op": "read_uint", "on": "v", "expect": 3 },
+    { "op": "read_path", "on": "root", "path": [{ "hash_map_get": { "value": { "sha1": "linked" } } }, { "linked_array_list_get": 1 }], "as": "v" },
+    { "op": "read_uint", "on": "v", "expect": 2 }
+  ]
+}

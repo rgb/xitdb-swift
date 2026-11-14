@@ -1,0 +1,30 @@
+{
+  "format": "xitdb-script/1",
+  "description": "Streaming a sorted set's key reached through its entry. A key-only entry is its own key slot, and since 71ee0cf the key cursor that read_key_value_pair gives for it has the entry's position, so a short key streams like a long one, and like a key in a pair with a value. The key reached by sorted_map_get with key still has no position, which is in tests/port-differs/stream-short-no-position.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "0011223344556677",
+  "ops": [
+    { "op": "write_path", "on": "root", "path": [{ "sorted_map_init": { "set": true } }, { "sorted_map_get": { "key": "ab" } }] },
+    { "op": "write_path", "on": "root", "path": [{ "sorted_map_init": { "set": true } }, { "sorted_map_get": { "key": "a key too long for a slot" } }] },
+    { "op": "iterator", "on": "root", "as": "it" },
+    { "op": "next", "on": "it", "as": "entry", "note": "a space comes before b, so the long key is first" },
+    { "op": "read_key_value_pair", "on": "entry", "key_as": "long_key" },
+    { "op": "slot", "on": "long_key", "expect": { "tag": "bytes" } },
+    { "op": "read_stream", "on": "long_key", "steps": [{ "read": 5, "expect": "a key" }] },
+    { "op": "next", "on": "it", "as": "entry" },
+    { "op": "slot", "on": "entry", "expect": { "tag": "short_bytes" } },
+    { "op": "read_key_value_pair", "on": "entry", "key_as": "short_key", "value_as": "short_value" },
+    { "op": "slot", "on": "short_key", "expect": { "tag": "short_bytes" } },
+    { "op": "read_stream", "on": "short_key", "steps": [{ "read": 1, "expect": "a" }, { "position": 1 }, { "read": 10, "expect": "b" }, { "read": 10, "expect": "" }] },
+    { "op": "read_stream", "on": "short_key", "buffer_size": 4, "steps": [{ "seek": 1 }, { "read_all": 1, "expect": "b" }] },
+    { "op": "read_bytes", "on": "short_key", "expect": "ab" },
+    { "op": "slot", "on": "short_value", "expect": { "tag": "none", "full": false } },
+    { "op": "next", "on": "it", "expect_null": true },
+
+    { "op": "write_path", "on": "root", "path": [{ "sorted_map_init": { "set": true } }, { "sorted_map_get": { "kv_pair": "cd" } }], "note": "asking for a pair moves a key-only entry into a sorted_kv_pair, even in a set, and its key has a position of its own" },
+    { "op": "read_path", "on": "root", "path": [{ "sorted_map_get": { "kv_pair": "cd" } }], "as": "pair" },
+    { "op": "read_key_value_pair", "on": "pair", "key_as": "pair_key" },
+    { "op": "read_stream", "on": "pair_key", "steps": [{ "read": 10, "expect": "cd" }] }
+  ]
+}

@@ -13,7 +13,7 @@
 
     { "op": "create_database", "name": "empty_target", "file_id": "00000000000000c1", "hash_id": "wxyz" },
     { "op": "use", "name": "empty_target" },
-    { "op": "committed_size", "expect": 62 },
+    { "op": "committed_size", "expect": 57 },
     { "op": "use", "name": "main" },
     { "op": "compact", "into": "empty_target", "offset_map": "memory", "note": "a database that has never been written to" },
     { "op": "use", "name": "empty_target" },
@@ -38,11 +38,11 @@
     { "op": "use", "name": "empty_source" },
     { "op": "compact", "into": "empty_copy", "file_id": "00000000000000d2", "offset_map": "memory", "note": "an empty root makes a new database, with no commit" },
     { "op": "use", "name": "empty_copy" },
-    { "op": "committed_size", "expect": 62 },
+    { "op": "committed_size", "expect": 57 },
     { "op": "slot", "on": "root", "expect": { "tag": "none", "full": false } },
     { "op": "use", "name": "empty_source" },
     { "op": "compact", "into": "empty_source", "offset_map": "memory", "note": "and since its own root is empty, it can even be its own target, for which there's nothing to do" },
-    { "op": "committed_size", "expect": 62 },
+    { "op": "committed_size", "expect": 57 },
 
     { "op": "use", "name": "main" },
     { "op": "write_path", "on": "root", "path": [{ "hash_map_init": {} }, { "hash_map_get": { "value": { "sha1": "b" } } }, { "write": { "uint": 2 } }] },

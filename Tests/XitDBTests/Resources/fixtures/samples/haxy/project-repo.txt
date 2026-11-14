@@ -1,0 +1,1500 @@
+version: 2
+hash size: 20
+hash id: sha1
+file id: 3ea2d5fa53071e69
+moments: 4
+moment 0: hash_map
+  entry 5c6fa26f4938297f3faec24b512673f0ba5875d3:
+    value: bytes hex 000000006af637b572657365745f616464007b22746172676574223a7b22726566223a7b226b696e64223a7b2268656164223a7b7d7d2c226e616d65223a226d6173746572227d7d7d
+  entry 94233733c0867d50ac1f63a6ab3f5bcb32e7a286:
+    value: hash_set
+      entry 7beb154244f8644b1f14114de8a1acc836d67e88:
+        key: bytes "ref: refs/heads/master"
+  entry 7138a51661947b19b5088da5a2bfede2876f49b9:
+    value: bytes "ref: refs/heads/master"
+  entry dfba7aade0868074c2861c98e2a9a92f3178a51b:
+    value: sorted_map of 1
+      [0]:
+        key: short_bytes "core"
+        value: sorted_map of 1
+          [0]:
+            key: short_bytes "bare"
+            value: short_bytes "true"
+moment 1: hash_map
+  entry 5c6fa26f4938297f3faec24b512673f0ba5875d3:
+    value: bytes hex 000000006af637b5686178792f6576656e7473007b7d
+  entry c269221ca54147da7738158d7ca7f2b04dcc84a5:
+    value: sorted_map of 1
+      [0]:
+        key: short_bytes "heads"
+        value: sorted_map of 1
+          [0]:
+            key: bytes "haxy/events"
+            value: bytes "8e7eb2a07d6fea71f5414380d87c77926eddb841"
+  entry 94233733c0867d50ac1f63a6ab3f5bcb32e7a286:
+    value: hash_set
+      entry 7beb154244f8644b1f14114de8a1acc836d67e88:
+        key: bytes "ref: refs/heads/master"
+      entry fdc3721f5f4dacda19de88602837e8fd12d44829:
+        key: bytes "8e7eb2a07d6fea71f5414380d87c77926eddb841"
+  entry a145e6ec47b73768e4421d5c208dac3e3f397be6:
+    value: counted_hash_map of 2
+      entry 8e7eb2a07d6fea71f5414380d87c77926eddb841:
+        key: short_bytes "commit"
+        value: bytes hex 0000012f0116765d18789c958bb16ec42010447b7f05a24d14610c369ca22855aa7c421ac0e31c0a06cbac9548a7fbf77057a4cf36bb6fde2ced0053de483d8751c9e04778ebc428a0955fcc3c5a69cce2016585eadc41e7b2339762007bbeaf57fcb8754b780a657d61fd649596bde807f620da742d5d2311fef5d45d789cf9892f93c1a28d5dccd4cb0118f4e431042f8d1fa5b2863ff2af986fcd58eb8186b323c74f174e91125afe16f74aeccfa2863d6e144b6eee3d66b092f191ef177d975649ce23d566fdf1d9b092a3e3866543e6d7eb2f16765d18 format tag "in"
+      entry 4b825dc642cb6eb9a060e54bf8d69288fbee4904:
+        key: short_bytes "tree"
+        value: array_list of 1
+          [0]: short_bytes ""
+  entry cb01d9f4da2461d999a8c7619d22fc6ba7235788:
+    value: array_list of 1
+      [0]: hash_map
+        entry 8e7eb2a07d6fea71f5414380d87c77926eddb841:
+          value: hash_map
+            entry 6ca0e71256d233f67f37d7b7ed5889135f000851:
+              value: uint 1
+            entry 9226f2c731b671031b326f307c16ac6ce9aae622:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry b11d563b628b124b220a465f6672da9ed7d36962:
+              value: sorted_map of 6
+                [0]:
+                  key: short_bytes "bug"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [1]:
+                  key: short_bytes "first"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [2]:
+                  key: short_bytes "issue"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [3]:
+                  key: short_bytes "line"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [4]:
+                  key: short_bytes "one"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [5]:
+                  key: short_bytes "two"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 3d1374cf0b00eda753373595bc2535defe5c97c2:
+              value: hash_map
+                entry 05fe405753166f125559e7c9ac558654f107c7e9:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 8d5b750527760cdac4698ff35f0442c475cf3276:
+              value: sorted_map of 1
+                [0]:
+                  key: short_bytes "open"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 5fef0c3b9b4db4b4b8fca3c33b3a1083371286b7:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: sorted_map of 4
+                    [0]:
+                      key: bytes "description"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [1]:
+                      key: short_bytes "labels"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [2]:
+                      key: short_bytes "status"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [3]:
+                      key: short_bytes "title"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+            entry 11cb4e3c82507677792d4f1dd5ece5970c2f3059:
+              value: uint 0
+            entry 0ce99a5978432553a06d92bc1f32949b1c002fab:
+              value: sorted_map of 1
+                [0]:
+                  key: short_bytes "bug open"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 86ff27d5d5d21d38528f1c2030615dbef66ac5eb:
+              value: sorted_set of 0
+            entry 45dc6d868243b841ee75cda5d66233610e9986fb:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry bc995d4d86ef0264a1cf18b7d62b8eb9ce9da9fb:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: short_bytes "issue"
+            entry fa3e2cf6f2a7121114d93147c8ef9dc59428738c:
+              value: sorted_map of 0
+            entry b997512737ec730c665d9d8d6baa6819750a153f:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: hash_map
+                    entry 69992f1747443a7ccd623ae5b1b7169fdeb09a01:
+                      value: short_bytes "false" format tag "bl"
+                    entry 14ada64430430619a3e54c3ddc67902d16514bc2:
+                      value: uint 1
+                    entry 5006ed0248a019713b762563076292379daf07b4:
+                      value: hash_map
+                        entry 3c6de1b7dd91465d437ef415f94f36afc1fbc8a8:
+                          value: bytes "First issue"
+                        entry cb329146a0dd0d566b0628744d67936558741ffa:
+                          value: bytes hex 4c696e65206f6e650a4c696e652074776f
+                        entry 48a3661d846478fa991a825ebd10b78671444b5b:
+                          value: short_bytes "open"
+                        entry c7775e9214ae79db6716acbac8529400a4aff25c:
+                          value: short_bytes "bug"
+                    entry f172219ea3a15a93af5b1689b159a0f600d1bba6:
+                      value: uint 1
+                    entry c0a92b123de0134067dd7eeddd2bb74bc79fef3a:
+                      value: uint 1794521013
+                    entry 384deada87eb62ab31c5d5afae561f2399616e1e:
+                      value: bytes "alice@example.com"
+  entry 7138a51661947b19b5088da5a2bfede2876f49b9:
+    value: bytes "ref: refs/heads/master"
+  entry 31fc0e811ecc3fc4455570aac729d63902c6c3d9:
+    value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+  entry c37bd01f6fc0c709c199863265caeab5b94098aa:
+    value: counted_hash_map of 0
+  entry dfba7aade0868074c2861c98e2a9a92f3178a51b:
+    value: sorted_map of 1
+      [0]:
+        key: short_bytes "core"
+        value: sorted_map of 1
+          [0]:
+            key: short_bytes "bare"
+            value: short_bytes "true"
+moment 2: hash_map
+  entry 5c6fa26f4938297f3faec24b512673f0ba5875d3:
+    value: bytes hex 000000006af637c2686178792f6576656e7473007b7d
+  entry c269221ca54147da7738158d7ca7f2b04dcc84a5:
+    value: sorted_map of 1
+      [0]:
+        key: short_bytes "heads"
+        value: sorted_map of 1
+          [0]:
+            key: bytes "haxy/events"
+            value: bytes "583da47b00e84d01c65f6d785784fe542e22c2f7"
+  entry 94233733c0867d50ac1f63a6ab3f5bcb32e7a286:
+    value: hash_set
+      entry 115d9e2e995f0079587c0a3ed6c3989bff607125:
+        key: bytes "583da47b00e84d01c65f6d785784fe542e22c2f7"
+      entry 7beb154244f8644b1f14114de8a1acc836d67e88:
+        key: bytes "ref: refs/heads/master"
+      entry fdc3721f5f4dacda19de88602837e8fd12d44829:
+        key: bytes "8e7eb2a07d6fea71f5414380d87c77926eddb841"
+  entry a145e6ec47b73768e4421d5c208dac3e3f397be6:
+    value: counted_hash_map of 3
+      entry 8e7eb2a07d6fea71f5414380d87c77926eddb841:
+        key: short_bytes "commit"
+        value: bytes hex 0000012f0116765d18789c958bb16ec42010447b7f05a24d14610c369ca22855aa7c421ac0e31c0a06cbac9548a7fbf77057a4cf36bb6fde2ced0053de483d8751c9e04778ebc428a0955fcc3c5a69cce2016585eadc41e7b2339762007bbeaf57fcb8754b780a657d61fd649596bde807f620da742d5d2311fef5d45d789cf9892f93c1a28d5dccd4cb0118f4e431042f8d1fa5b2863ff2af986fcd58eb8186b323c74f174e91125afe16f74aeccfa2863d6e144b6eee3d66b092f191ef177d975649ce23d566fdf1d9b092a3e3866543e6d7eb2f16765d18 format tag "in"
+      entry 4b825dc642cb6eb9a060e54bf8d69288fbee4904:
+        key: short_bytes "tree"
+        value: array_list of 1
+          [0]: short_bytes ""
+      entry 583da47b00e84d01c65f6d785784fe542e22c2f7:
+        key: short_bytes "commit"
+        value: bytes hex 000001800119fb7138789c9590d14a04310c45dfe72b4a5f15693b69932e22fa25d234293bb8bbb38c159465ffdd9915df352f81cbb9f792f445d5005388521384ca493917979c46e0469272206aac0ad9c1702e8b9eba2145e5501c4a6a5ad0b7081e467242581173482ac2047e281f7d3f2fa61ca6aae6f1b69ef5b31ccf077da8f3f1c978cc10837721993bb7ceb0aac7a977fd9769b8d849ecce66aca38f9a5b95c2213bce884d6b2c11481c90bdb76fd36923b79af5925590d28bdd5d6cdf2f5ae4f596d390b445ca8dd08751758cc83a560ec42940de727e3ef1679c67f95ac917d3a6e5bd9bdffaebf51b19fb7138 format tag "in"
+  entry cb01d9f4da2461d999a8c7619d22fc6ba7235788:
+    value: array_list of 2
+      [0]: hash_map
+        entry 8e7eb2a07d6fea71f5414380d87c77926eddb841:
+          value: hash_map
+            entry 6ca0e71256d233f67f37d7b7ed5889135f000851:
+              value: uint 1
+            entry 9226f2c731b671031b326f307c16ac6ce9aae622:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry b11d563b628b124b220a465f6672da9ed7d36962:
+              value: sorted_map of 6
+                [0]:
+                  key: short_bytes "bug"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [1]:
+                  key: short_bytes "first"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [2]:
+                  key: short_bytes "issue"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [3]:
+                  key: short_bytes "line"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [4]:
+                  key: short_bytes "one"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [5]:
+                  key: short_bytes "two"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 3d1374cf0b00eda753373595bc2535defe5c97c2:
+              value: hash_map
+                entry 05fe405753166f125559e7c9ac558654f107c7e9:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 8d5b750527760cdac4698ff35f0442c475cf3276:
+              value: sorted_map of 1
+                [0]:
+                  key: short_bytes "open"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 5fef0c3b9b4db4b4b8fca3c33b3a1083371286b7:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: sorted_map of 4
+                    [0]:
+                      key: bytes "description"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [1]:
+                      key: short_bytes "labels"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [2]:
+                      key: short_bytes "status"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [3]:
+                      key: short_bytes "title"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+            entry 11cb4e3c82507677792d4f1dd5ece5970c2f3059:
+              value: uint 0
+            entry 0ce99a5978432553a06d92bc1f32949b1c002fab:
+              value: sorted_map of 1
+                [0]:
+                  key: short_bytes "bug open"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 86ff27d5d5d21d38528f1c2030615dbef66ac5eb:
+              value: sorted_set of 0
+            entry 45dc6d868243b841ee75cda5d66233610e9986fb:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry bc995d4d86ef0264a1cf18b7d62b8eb9ce9da9fb:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: short_bytes "issue"
+            entry fa3e2cf6f2a7121114d93147c8ef9dc59428738c:
+              value: sorted_map of 0
+            entry b997512737ec730c665d9d8d6baa6819750a153f:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: hash_map
+                    entry 69992f1747443a7ccd623ae5b1b7169fdeb09a01:
+                      value: short_bytes "false" format tag "bl"
+                    entry 14ada64430430619a3e54c3ddc67902d16514bc2:
+                      value: uint 1
+                    entry 5006ed0248a019713b762563076292379daf07b4:
+                      value: hash_map
+                        entry 3c6de1b7dd91465d437ef415f94f36afc1fbc8a8:
+                          value: bytes "First issue"
+                        entry cb329146a0dd0d566b0628744d67936558741ffa:
+                          value: bytes hex 4c696e65206f6e650a4c696e652074776f
+                        entry 48a3661d846478fa991a825ebd10b78671444b5b:
+                          value: short_bytes "open"
+                        entry c7775e9214ae79db6716acbac8529400a4aff25c:
+                          value: short_bytes "bug"
+                    entry f172219ea3a15a93af5b1689b159a0f600d1bba6:
+                      value: uint 1
+                    entry c0a92b123de0134067dd7eeddd2bb74bc79fef3a:
+                      value: uint 1794521013
+                    entry 384deada87eb62ab31c5d5afae561f2399616e1e:
+                      value: bytes "alice@example.com"
+      [1]: hash_map
+        entry 8e7eb2a07d6fea71f5414380d87c77926eddb841:
+          value: hash_map
+            entry 6ca0e71256d233f67f37d7b7ed5889135f000851:
+              value: uint 1
+            entry 9226f2c731b671031b326f307c16ac6ce9aae622:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry b11d563b628b124b220a465f6672da9ed7d36962:
+              value: sorted_map of 6
+                [0]:
+                  key: short_bytes "bug"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [1]:
+                  key: short_bytes "first"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [2]:
+                  key: short_bytes "issue"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [3]:
+                  key: short_bytes "line"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [4]:
+                  key: short_bytes "one"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [5]:
+                  key: short_bytes "two"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 3d1374cf0b00eda753373595bc2535defe5c97c2:
+              value: hash_map
+                entry 05fe405753166f125559e7c9ac558654f107c7e9:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 8d5b750527760cdac4698ff35f0442c475cf3276:
+              value: sorted_map of 1
+                [0]:
+                  key: short_bytes "open"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 5fef0c3b9b4db4b4b8fca3c33b3a1083371286b7:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: sorted_map of 4
+                    [0]:
+                      key: bytes "description"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [1]:
+                      key: short_bytes "labels"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [2]:
+                      key: short_bytes "status"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [3]:
+                      key: short_bytes "title"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+            entry 11cb4e3c82507677792d4f1dd5ece5970c2f3059:
+              value: uint 0
+            entry 0ce99a5978432553a06d92bc1f32949b1c002fab:
+              value: sorted_map of 1
+                [0]:
+                  key: short_bytes "bug open"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 86ff27d5d5d21d38528f1c2030615dbef66ac5eb:
+              value: sorted_set of 0
+            entry 45dc6d868243b841ee75cda5d66233610e9986fb:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry bc995d4d86ef0264a1cf18b7d62b8eb9ce9da9fb:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: short_bytes "issue"
+            entry fa3e2cf6f2a7121114d93147c8ef9dc59428738c:
+              value: sorted_map of 0
+            entry b997512737ec730c665d9d8d6baa6819750a153f:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: hash_map
+                    entry 69992f1747443a7ccd623ae5b1b7169fdeb09a01:
+                      value: short_bytes "false" format tag "bl"
+                    entry 14ada64430430619a3e54c3ddc67902d16514bc2:
+                      value: uint 1
+                    entry 5006ed0248a019713b762563076292379daf07b4:
+                      value: hash_map
+                        entry 3c6de1b7dd91465d437ef415f94f36afc1fbc8a8:
+                          value: bytes "First issue"
+                        entry cb329146a0dd0d566b0628744d67936558741ffa:
+                          value: bytes hex 4c696e65206f6e650a4c696e652074776f
+                        entry 48a3661d846478fa991a825ebd10b78671444b5b:
+                          value: short_bytes "open"
+                        entry c7775e9214ae79db6716acbac8529400a4aff25c:
+                          value: short_bytes "bug"
+                    entry f172219ea3a15a93af5b1689b159a0f600d1bba6:
+                      value: uint 1
+                    entry c0a92b123de0134067dd7eeddd2bb74bc79fef3a:
+                      value: uint 1794521013
+                    entry 384deada87eb62ab31c5d5afae561f2399616e1e:
+                      value: bytes "alice@example.com"
+        entry 583da47b00e84d01c65f6d785784fe542e22c2f7:
+          value: hash_map
+            entry 6ca0e71256d233f67f37d7b7ed5889135f000851:
+              value: uint 2
+            entry 9226f2c731b671031b326f307c16ac6ce9aae622:
+              value: sorted_set of 2
+                [0]:
+                  key: bytes hex fffffffffffffffd97c315e9fcdab290b977fec5a548d048
+                [1]:
+                  key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry b11d563b628b124b220a465f6672da9ed7d36962:
+              value: sorted_map of 6
+                [0]:
+                  key: short_bytes "bug"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [1]:
+                  key: short_bytes "first"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [2]:
+                  key: short_bytes "issue"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [3]:
+                  key: short_bytes "line"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [4]:
+                  key: short_bytes "one"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [5]:
+                  key: short_bytes "two"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 3d1374cf0b00eda753373595bc2535defe5c97c2:
+              value: hash_map
+                entry 05fe405753166f125559e7c9ac558654f107c7e9:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                entry cb473678976f425d6ec1339838f11011007ad27d:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffd97c315e9fcdab290b977fec5a548d048
+            entry 775fc97ff7a48bdab348b72b426c0703457f29d4:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex 000000000000000297c315e9fcdab290b977fec5a548d048
+            entry 8d5b750527760cdac4698ff35f0442c475cf3276:
+              value: sorted_map of 1
+                [0]:
+                  key: short_bytes "open"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 5fef0c3b9b4db4b4b8fca3c33b3a1083371286b7:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: sorted_map of 4
+                    [0]:
+                      key: bytes "description"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [1]:
+                      key: short_bytes "labels"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [2]:
+                      key: short_bytes "status"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [3]:
+                      key: short_bytes "title"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+            entry 29a5500b714ce89e32cae265a01d36a2c18eb878:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex 000000000000000297c315e9fcdab290b977fec5a548d048
+            entry 11cb4e3c82507677792d4f1dd5ece5970c2f3059:
+              value: uint 1
+            entry 0ce99a5978432553a06d92bc1f32949b1c002fab:
+              value: sorted_map of 1
+                [0]:
+                  key: short_bytes "bug open"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 86ff27d5d5d21d38528f1c2030615dbef66ac5eb:
+              value: sorted_set of 0
+            entry 45dc6d868243b841ee75cda5d66233610e9986fb:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry bc995d4d86ef0264a1cf18b7d62b8eb9ce9da9fb:
+              value: hash_map
+                entry 06fcd4b39f2fb7e2773fa97193c8d4df93038a51:
+                  value: short_bytes "comment"
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: short_bytes "issue"
+            entry fa3e2cf6f2a7121114d93147c8ef9dc59428738c:
+              value: sorted_map of 0
+            entry 8f98948b0b812069ae9dc0ae6a167e2cda4bc09c:
+              value: hash_map
+                entry 06fcd4b39f2fb7e2773fa97193c8d4df93038a51:
+                  value: hash_map
+                    entry 69992f1747443a7ccd623ae5b1b7169fdeb09a01:
+                      value: short_bytes "false" format tag "bl"
+                    entry 14ada64430430619a3e54c3ddc67902d16514bc2:
+                      value: uint 2
+                    entry 5006ed0248a019713b762563076292379daf07b4:
+                      value: hash_map
+                        entry bf93c41ee1ae1649869ebd05617f377de02eb591:
+                          value: bytes "f78ef589f87123ee357be3cb28b62498"
+                        entry cabc0f3f27d7b1c70cf64623e029621799f5b5f1:
+                          value: bytes "f78ef589f87123ee357be3cb28b62498"
+                        entry 02083f4579e08a612425c0c1a17ee47add783b94:
+                          value: bytes "A first comment"
+                    entry f172219ea3a15a93af5b1689b159a0f600d1bba6:
+                      value: uint 2
+                    entry c0a92b123de0134067dd7eeddd2bb74bc79fef3a:
+                      value: uint 1794521026
+                    entry 384deada87eb62ab31c5d5afae561f2399616e1e:
+                      value: bytes "alice@example.com"
+            entry 4301d9b3162d8d51c9dae61fb1644ad6c736a75e:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffd97c315e9fcdab290b977fec5a548d048
+            entry b997512737ec730c665d9d8d6baa6819750a153f:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: hash_map
+                    entry 69992f1747443a7ccd623ae5b1b7169fdeb09a01:
+                      value: short_bytes "false" format tag "bl"
+                    entry 14ada64430430619a3e54c3ddc67902d16514bc2:
+                      value: uint 1
+                    entry 5006ed0248a019713b762563076292379daf07b4:
+                      value: hash_map
+                        entry 3c6de1b7dd91465d437ef415f94f36afc1fbc8a8:
+                          value: bytes "First issue"
+                        entry cb329146a0dd0d566b0628744d67936558741ffa:
+                          value: bytes hex 4c696e65206f6e650a4c696e652074776f
+                        entry 48a3661d846478fa991a825ebd10b78671444b5b:
+                          value: short_bytes "open"
+                        entry c7775e9214ae79db6716acbac8529400a4aff25c:
+                          value: short_bytes "bug"
+                    entry f172219ea3a15a93af5b1689b159a0f600d1bba6:
+                      value: uint 1
+                    entry c0a92b123de0134067dd7eeddd2bb74bc79fef3a:
+                      value: uint 1794521013
+                    entry 384deada87eb62ab31c5d5afae561f2399616e1e:
+                      value: bytes "alice@example.com"
+  entry 7138a51661947b19b5088da5a2bfede2876f49b9:
+    value: bytes "ref: refs/heads/master"
+  entry 31fc0e811ecc3fc4455570aac729d63902c6c3d9:
+    value: bytes hex 583da47b00e84d01c65f6d785784fe542e22c2f7
+  entry c37bd01f6fc0c709c199863265caeab5b94098aa:
+    value: counted_hash_map of 0
+  entry dfba7aade0868074c2861c98e2a9a92f3178a51b:
+    value: sorted_map of 1
+      [0]:
+        key: short_bytes "core"
+        value: sorted_map of 1
+          [0]:
+            key: short_bytes "bare"
+            value: short_bytes "true"
+moment 3: hash_map
+  entry 5c6fa26f4938297f3faec24b512673f0ba5875d3:
+    value: bytes hex 000000006af637c3686178792f6576656e7473007b7d
+  entry c269221ca54147da7738158d7ca7f2b04dcc84a5:
+    value: sorted_map of 1
+      [0]:
+        key: short_bytes "heads"
+        value: sorted_map of 1
+          [0]:
+            key: bytes "haxy/events"
+            value: bytes "2c57a4dbfbfcd62798edb32ad224256f973d734d"
+  entry 94233733c0867d50ac1f63a6ab3f5bcb32e7a286:
+    value: hash_set
+      entry 115d9e2e995f0079587c0a3ed6c3989bff607125:
+        key: bytes "583da47b00e84d01c65f6d785784fe542e22c2f7"
+      entry 7beb154244f8644b1f14114de8a1acc836d67e88:
+        key: bytes "ref: refs/heads/master"
+      entry fdc3721f5f4dacda19de88602837e8fd12d44829:
+        key: bytes "8e7eb2a07d6fea71f5414380d87c77926eddb841"
+      entry a5176c3af1f6a2f1678c1018ed7e483f14ea173b:
+        key: bytes "2c57a4dbfbfcd62798edb32ad224256f973d734d"
+  entry a145e6ec47b73768e4421d5c208dac3e3f397be6:
+    value: counted_hash_map of 4
+      entry 8e7eb2a07d6fea71f5414380d87c77926eddb841:
+        key: short_bytes "commit"
+        value: bytes hex 0000012f0116765d18789c958bb16ec42010447b7f05a24d14610c369ca22855aa7c421ac0e31c0a06cbac9548a7fbf77057a4cf36bb6fde2ced0053de483d8751c9e04778ebc428a0955fcc3c5a69cce2016585eadc41e7b2339762007bbeaf57fcb8754b780a657d61fd649596bde807f620da742d5d2311fef5d45d789cf9892f93c1a28d5dccd4cb0118f4e431042f8d1fa5b2863ff2af986fcd58eb8186b323c74f174e91125afe16f74aeccfa2863d6e144b6eee3d66b092f191ef177d975649ce23d566fdf1d9b092a3e3866543e6d7eb2f16765d18 format tag "in"
+      entry 4b825dc642cb6eb9a060e54bf8d69288fbee4904:
+        key: short_bytes "tree"
+        value: array_list of 1
+          [0]: short_bytes ""
+      entry 583da47b00e84d01c65f6d785784fe542e22c2f7:
+        key: short_bytes "commit"
+        value: bytes hex 000001800119fb7138789c9590d14a04310c45dfe72b4a5f15693b69932e22fa25d234293bb8bbb38c159465ffdd9915df352f81cbb9f792f445d5005388521384ca493917979c46e0469272206aac0ad9c1702e8b9eba2145e5501c4a6a5ad0b7081e467242581173482ac2047e281f7d3f2fa61ca6aae6f1b69ef5b31ccf077da8f3f1c978cc10837721993bb7ceb0aac7a977fd9769b8d849ecce66aca38f9a5b95c2213bce884d6b2c11481c90bdb76fd36923b79af5925590d28bdd5d6cdf2f5ae4f596d390b445ca8dd08751758cc83a560ec42940de727e3ef1679c67f95ac917d3a6e5bd9bdffaebf51b19fb7138 format tag "in"
+      entry 2c57a4dbfbfcd62798edb32ad224256f973d734d:
+        key: short_bytes "commit"
+        value: bytes hex 0000016101223f6b3c789c958b3b4e04311044f33985e514843c1e7fda2b8488883802893f6dd6c2f3d1b84720adf6ee783720a793aeaa57453b225301a44ed1281983c1e0bc3002b50a19927112200744e5841a36bfe3424cc394bcb241080495c4188dce2659d01654ee4389524699ede00f3aaf3bf3b54464cff7f78a3f7ede2a3ec5757e61a3754acb5148cb1e44bfa1a77321c27f8d860b2f899f78b6805983cb604739214eda069c6290108c540ef823ff2acbad595a3bb0dbe4c9f3d38553a18a3d7f2b7b23f647b1c5bd6c54d6a5b3f7b2205b17fc58ee8abed75ea93e606d9d86e3b3db469e8e9b8d756d98f8f5fa0b223f6b3c format tag "in"
+  entry cb01d9f4da2461d999a8c7619d22fc6ba7235788:
+    value: array_list of 3
+      [0]: hash_map
+        entry 8e7eb2a07d6fea71f5414380d87c77926eddb841:
+          value: hash_map
+            entry 6ca0e71256d233f67f37d7b7ed5889135f000851:
+              value: uint 1
+            entry 9226f2c731b671031b326f307c16ac6ce9aae622:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry b11d563b628b124b220a465f6672da9ed7d36962:
+              value: sorted_map of 6
+                [0]:
+                  key: short_bytes "bug"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [1]:
+                  key: short_bytes "first"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [2]:
+                  key: short_bytes "issue"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [3]:
+                  key: short_bytes "line"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [4]:
+                  key: short_bytes "one"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [5]:
+                  key: short_bytes "two"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 3d1374cf0b00eda753373595bc2535defe5c97c2:
+              value: hash_map
+                entry 05fe405753166f125559e7c9ac558654f107c7e9:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 8d5b750527760cdac4698ff35f0442c475cf3276:
+              value: sorted_map of 1
+                [0]:
+                  key: short_bytes "open"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 5fef0c3b9b4db4b4b8fca3c33b3a1083371286b7:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: sorted_map of 4
+                    [0]:
+                      key: bytes "description"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [1]:
+                      key: short_bytes "labels"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [2]:
+                      key: short_bytes "status"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [3]:
+                      key: short_bytes "title"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+            entry 11cb4e3c82507677792d4f1dd5ece5970c2f3059:
+              value: uint 0
+            entry 0ce99a5978432553a06d92bc1f32949b1c002fab:
+              value: sorted_map of 1
+                [0]:
+                  key: short_bytes "bug open"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 86ff27d5d5d21d38528f1c2030615dbef66ac5eb:
+              value: sorted_set of 0
+            entry 45dc6d868243b841ee75cda5d66233610e9986fb:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry bc995d4d86ef0264a1cf18b7d62b8eb9ce9da9fb:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: short_bytes "issue"
+            entry fa3e2cf6f2a7121114d93147c8ef9dc59428738c:
+              value: sorted_map of 0
+            entry b997512737ec730c665d9d8d6baa6819750a153f:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: hash_map
+                    entry 69992f1747443a7ccd623ae5b1b7169fdeb09a01:
+                      value: short_bytes "false" format tag "bl"
+                    entry 14ada64430430619a3e54c3ddc67902d16514bc2:
+                      value: uint 1
+                    entry 5006ed0248a019713b762563076292379daf07b4:
+                      value: hash_map
+                        entry 3c6de1b7dd91465d437ef415f94f36afc1fbc8a8:
+                          value: bytes "First issue"
+                        entry cb329146a0dd0d566b0628744d67936558741ffa:
+                          value: bytes hex 4c696e65206f6e650a4c696e652074776f
+                        entry 48a3661d846478fa991a825ebd10b78671444b5b:
+                          value: short_bytes "open"
+                        entry c7775e9214ae79db6716acbac8529400a4aff25c:
+                          value: short_bytes "bug"
+                    entry f172219ea3a15a93af5b1689b159a0f600d1bba6:
+                      value: uint 1
+                    entry c0a92b123de0134067dd7eeddd2bb74bc79fef3a:
+                      value: uint 1794521013
+                    entry 384deada87eb62ab31c5d5afae561f2399616e1e:
+                      value: bytes "alice@example.com"
+      [1]: hash_map
+        entry 8e7eb2a07d6fea71f5414380d87c77926eddb841:
+          value: hash_map
+            entry 6ca0e71256d233f67f37d7b7ed5889135f000851:
+              value: uint 1
+            entry 9226f2c731b671031b326f307c16ac6ce9aae622:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry b11d563b628b124b220a465f6672da9ed7d36962:
+              value: sorted_map of 6
+                [0]:
+                  key: short_bytes "bug"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [1]:
+                  key: short_bytes "first"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [2]:
+                  key: short_bytes "issue"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [3]:
+                  key: short_bytes "line"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [4]:
+                  key: short_bytes "one"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [5]:
+                  key: short_bytes "two"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 3d1374cf0b00eda753373595bc2535defe5c97c2:
+              value: hash_map
+                entry 05fe405753166f125559e7c9ac558654f107c7e9:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 8d5b750527760cdac4698ff35f0442c475cf3276:
+              value: sorted_map of 1
+                [0]:
+                  key: short_bytes "open"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 5fef0c3b9b4db4b4b8fca3c33b3a1083371286b7:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: sorted_map of 4
+                    [0]:
+                      key: bytes "description"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [1]:
+                      key: short_bytes "labels"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [2]:
+                      key: short_bytes "status"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [3]:
+                      key: short_bytes "title"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+            entry 11cb4e3c82507677792d4f1dd5ece5970c2f3059:
+              value: uint 0
+            entry 0ce99a5978432553a06d92bc1f32949b1c002fab:
+              value: sorted_map of 1
+                [0]:
+                  key: short_bytes "bug open"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 86ff27d5d5d21d38528f1c2030615dbef66ac5eb:
+              value: sorted_set of 0
+            entry 45dc6d868243b841ee75cda5d66233610e9986fb:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry bc995d4d86ef0264a1cf18b7d62b8eb9ce9da9fb:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: short_bytes "issue"
+            entry fa3e2cf6f2a7121114d93147c8ef9dc59428738c:
+              value: sorted_map of 0
+            entry b997512737ec730c665d9d8d6baa6819750a153f:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: hash_map
+                    entry 69992f1747443a7ccd623ae5b1b7169fdeb09a01:
+                      value: short_bytes "false" format tag "bl"
+                    entry 14ada64430430619a3e54c3ddc67902d16514bc2:
+                      value: uint 1
+                    entry 5006ed0248a019713b762563076292379daf07b4:
+                      value: hash_map
+                        entry 3c6de1b7dd91465d437ef415f94f36afc1fbc8a8:
+                          value: bytes "First issue"
+                        entry cb329146a0dd0d566b0628744d67936558741ffa:
+                          value: bytes hex 4c696e65206f6e650a4c696e652074776f
+                        entry 48a3661d846478fa991a825ebd10b78671444b5b:
+                          value: short_bytes "open"
+                        entry c7775e9214ae79db6716acbac8529400a4aff25c:
+                          value: short_bytes "bug"
+                    entry f172219ea3a15a93af5b1689b159a0f600d1bba6:
+                      value: uint 1
+                    entry c0a92b123de0134067dd7eeddd2bb74bc79fef3a:
+                      value: uint 1794521013
+                    entry 384deada87eb62ab31c5d5afae561f2399616e1e:
+                      value: bytes "alice@example.com"
+        entry 583da47b00e84d01c65f6d785784fe542e22c2f7:
+          value: hash_map
+            entry 6ca0e71256d233f67f37d7b7ed5889135f000851:
+              value: uint 2
+            entry 9226f2c731b671031b326f307c16ac6ce9aae622:
+              value: sorted_set of 2
+                [0]:
+                  key: bytes hex fffffffffffffffd97c315e9fcdab290b977fec5a548d048
+                [1]:
+                  key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry b11d563b628b124b220a465f6672da9ed7d36962:
+              value: sorted_map of 6
+                [0]:
+                  key: short_bytes "bug"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [1]:
+                  key: short_bytes "first"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [2]:
+                  key: short_bytes "issue"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [3]:
+                  key: short_bytes "line"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [4]:
+                  key: short_bytes "one"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [5]:
+                  key: short_bytes "two"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 3d1374cf0b00eda753373595bc2535defe5c97c2:
+              value: hash_map
+                entry 05fe405753166f125559e7c9ac558654f107c7e9:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                entry cb473678976f425d6ec1339838f11011007ad27d:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffd97c315e9fcdab290b977fec5a548d048
+            entry 775fc97ff7a48bdab348b72b426c0703457f29d4:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex 000000000000000297c315e9fcdab290b977fec5a548d048
+            entry 8d5b750527760cdac4698ff35f0442c475cf3276:
+              value: sorted_map of 1
+                [0]:
+                  key: short_bytes "open"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 5fef0c3b9b4db4b4b8fca3c33b3a1083371286b7:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: sorted_map of 4
+                    [0]:
+                      key: bytes "description"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [1]:
+                      key: short_bytes "labels"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [2]:
+                      key: short_bytes "status"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [3]:
+                      key: short_bytes "title"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+            entry 29a5500b714ce89e32cae265a01d36a2c18eb878:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex 000000000000000297c315e9fcdab290b977fec5a548d048
+            entry 11cb4e3c82507677792d4f1dd5ece5970c2f3059:
+              value: uint 1
+            entry 0ce99a5978432553a06d92bc1f32949b1c002fab:
+              value: sorted_map of 1
+                [0]:
+                  key: short_bytes "bug open"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 86ff27d5d5d21d38528f1c2030615dbef66ac5eb:
+              value: sorted_set of 0
+            entry 45dc6d868243b841ee75cda5d66233610e9986fb:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry bc995d4d86ef0264a1cf18b7d62b8eb9ce9da9fb:
+              value: hash_map
+                entry 06fcd4b39f2fb7e2773fa97193c8d4df93038a51:
+                  value: short_bytes "comment"
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: short_bytes "issue"
+            entry fa3e2cf6f2a7121114d93147c8ef9dc59428738c:
+              value: sorted_map of 0
+            entry 8f98948b0b812069ae9dc0ae6a167e2cda4bc09c:
+              value: hash_map
+                entry 06fcd4b39f2fb7e2773fa97193c8d4df93038a51:
+                  value: hash_map
+                    entry 69992f1747443a7ccd623ae5b1b7169fdeb09a01:
+                      value: short_bytes "false" format tag "bl"
+                    entry 14ada64430430619a3e54c3ddc67902d16514bc2:
+                      value: uint 2
+                    entry 5006ed0248a019713b762563076292379daf07b4:
+                      value: hash_map
+                        entry bf93c41ee1ae1649869ebd05617f377de02eb591:
+                          value: bytes "f78ef589f87123ee357be3cb28b62498"
+                        entry cabc0f3f27d7b1c70cf64623e029621799f5b5f1:
+                          value: bytes "f78ef589f87123ee357be3cb28b62498"
+                        entry 02083f4579e08a612425c0c1a17ee47add783b94:
+                          value: bytes "A first comment"
+                    entry f172219ea3a15a93af5b1689b159a0f600d1bba6:
+                      value: uint 2
+                    entry c0a92b123de0134067dd7eeddd2bb74bc79fef3a:
+                      value: uint 1794521026
+                    entry 384deada87eb62ab31c5d5afae561f2399616e1e:
+                      value: bytes "alice@example.com"
+            entry 4301d9b3162d8d51c9dae61fb1644ad6c736a75e:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffd97c315e9fcdab290b977fec5a548d048
+            entry b997512737ec730c665d9d8d6baa6819750a153f:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: hash_map
+                    entry 69992f1747443a7ccd623ae5b1b7169fdeb09a01:
+                      value: short_bytes "false" format tag "bl"
+                    entry 14ada64430430619a3e54c3ddc67902d16514bc2:
+                      value: uint 1
+                    entry 5006ed0248a019713b762563076292379daf07b4:
+                      value: hash_map
+                        entry 3c6de1b7dd91465d437ef415f94f36afc1fbc8a8:
+                          value: bytes "First issue"
+                        entry cb329146a0dd0d566b0628744d67936558741ffa:
+                          value: bytes hex 4c696e65206f6e650a4c696e652074776f
+                        entry 48a3661d846478fa991a825ebd10b78671444b5b:
+                          value: short_bytes "open"
+                        entry c7775e9214ae79db6716acbac8529400a4aff25c:
+                          value: short_bytes "bug"
+                    entry f172219ea3a15a93af5b1689b159a0f600d1bba6:
+                      value: uint 1
+                    entry c0a92b123de0134067dd7eeddd2bb74bc79fef3a:
+                      value: uint 1794521013
+                    entry 384deada87eb62ab31c5d5afae561f2399616e1e:
+                      value: bytes "alice@example.com"
+      [2]: hash_map
+        entry 8e7eb2a07d6fea71f5414380d87c77926eddb841:
+          value: hash_map
+            entry 6ca0e71256d233f67f37d7b7ed5889135f000851:
+              value: uint 1
+            entry 9226f2c731b671031b326f307c16ac6ce9aae622:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry b11d563b628b124b220a465f6672da9ed7d36962:
+              value: sorted_map of 6
+                [0]:
+                  key: short_bytes "bug"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [1]:
+                  key: short_bytes "first"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [2]:
+                  key: short_bytes "issue"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [3]:
+                  key: short_bytes "line"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [4]:
+                  key: short_bytes "one"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [5]:
+                  key: short_bytes "two"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 3d1374cf0b00eda753373595bc2535defe5c97c2:
+              value: hash_map
+                entry 05fe405753166f125559e7c9ac558654f107c7e9:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 8d5b750527760cdac4698ff35f0442c475cf3276:
+              value: sorted_map of 1
+                [0]:
+                  key: short_bytes "open"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 5fef0c3b9b4db4b4b8fca3c33b3a1083371286b7:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: sorted_map of 4
+                    [0]:
+                      key: bytes "description"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [1]:
+                      key: short_bytes "labels"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [2]:
+                      key: short_bytes "status"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [3]:
+                      key: short_bytes "title"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+            entry 11cb4e3c82507677792d4f1dd5ece5970c2f3059:
+              value: uint 0
+            entry 0ce99a5978432553a06d92bc1f32949b1c002fab:
+              value: sorted_map of 1
+                [0]:
+                  key: short_bytes "bug open"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 86ff27d5d5d21d38528f1c2030615dbef66ac5eb:
+              value: sorted_set of 0
+            entry 45dc6d868243b841ee75cda5d66233610e9986fb:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry bc995d4d86ef0264a1cf18b7d62b8eb9ce9da9fb:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: short_bytes "issue"
+            entry fa3e2cf6f2a7121114d93147c8ef9dc59428738c:
+              value: sorted_map of 0
+            entry b997512737ec730c665d9d8d6baa6819750a153f:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: hash_map
+                    entry 69992f1747443a7ccd623ae5b1b7169fdeb09a01:
+                      value: short_bytes "false" format tag "bl"
+                    entry 14ada64430430619a3e54c3ddc67902d16514bc2:
+                      value: uint 1
+                    entry 5006ed0248a019713b762563076292379daf07b4:
+                      value: hash_map
+                        entry 3c6de1b7dd91465d437ef415f94f36afc1fbc8a8:
+                          value: bytes "First issue"
+                        entry cb329146a0dd0d566b0628744d67936558741ffa:
+                          value: bytes hex 4c696e65206f6e650a4c696e652074776f
+                        entry 48a3661d846478fa991a825ebd10b78671444b5b:
+                          value: short_bytes "open"
+                        entry c7775e9214ae79db6716acbac8529400a4aff25c:
+                          value: short_bytes "bug"
+                    entry f172219ea3a15a93af5b1689b159a0f600d1bba6:
+                      value: uint 1
+                    entry c0a92b123de0134067dd7eeddd2bb74bc79fef3a:
+                      value: uint 1794521013
+                    entry 384deada87eb62ab31c5d5afae561f2399616e1e:
+                      value: bytes "alice@example.com"
+        entry 583da47b00e84d01c65f6d785784fe542e22c2f7:
+          value: hash_map
+            entry 6ca0e71256d233f67f37d7b7ed5889135f000851:
+              value: uint 2
+            entry 9226f2c731b671031b326f307c16ac6ce9aae622:
+              value: sorted_set of 2
+                [0]:
+                  key: bytes hex fffffffffffffffd97c315e9fcdab290b977fec5a548d048
+                [1]:
+                  key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry b11d563b628b124b220a465f6672da9ed7d36962:
+              value: sorted_map of 6
+                [0]:
+                  key: short_bytes "bug"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [1]:
+                  key: short_bytes "first"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [2]:
+                  key: short_bytes "issue"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [3]:
+                  key: short_bytes "line"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [4]:
+                  key: short_bytes "one"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [5]:
+                  key: short_bytes "two"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 3d1374cf0b00eda753373595bc2535defe5c97c2:
+              value: hash_map
+                entry 05fe405753166f125559e7c9ac558654f107c7e9:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                entry cb473678976f425d6ec1339838f11011007ad27d:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffd97c315e9fcdab290b977fec5a548d048
+            entry 775fc97ff7a48bdab348b72b426c0703457f29d4:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex 000000000000000297c315e9fcdab290b977fec5a548d048
+            entry 8d5b750527760cdac4698ff35f0442c475cf3276:
+              value: sorted_map of 1
+                [0]:
+                  key: short_bytes "open"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 5fef0c3b9b4db4b4b8fca3c33b3a1083371286b7:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: sorted_map of 4
+                    [0]:
+                      key: bytes "description"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [1]:
+                      key: short_bytes "labels"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [2]:
+                      key: short_bytes "status"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [3]:
+                      key: short_bytes "title"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+            entry 29a5500b714ce89e32cae265a01d36a2c18eb878:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex 000000000000000297c315e9fcdab290b977fec5a548d048
+            entry 11cb4e3c82507677792d4f1dd5ece5970c2f3059:
+              value: uint 1
+            entry 0ce99a5978432553a06d92bc1f32949b1c002fab:
+              value: sorted_map of 1
+                [0]:
+                  key: short_bytes "bug open"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 86ff27d5d5d21d38528f1c2030615dbef66ac5eb:
+              value: sorted_set of 0
+            entry 45dc6d868243b841ee75cda5d66233610e9986fb:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry bc995d4d86ef0264a1cf18b7d62b8eb9ce9da9fb:
+              value: hash_map
+                entry 06fcd4b39f2fb7e2773fa97193c8d4df93038a51:
+                  value: short_bytes "comment"
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: short_bytes "issue"
+            entry fa3e2cf6f2a7121114d93147c8ef9dc59428738c:
+              value: sorted_map of 0
+            entry 8f98948b0b812069ae9dc0ae6a167e2cda4bc09c:
+              value: hash_map
+                entry 06fcd4b39f2fb7e2773fa97193c8d4df93038a51:
+                  value: hash_map
+                    entry 69992f1747443a7ccd623ae5b1b7169fdeb09a01:
+                      value: short_bytes "false" format tag "bl"
+                    entry 14ada64430430619a3e54c3ddc67902d16514bc2:
+                      value: uint 2
+                    entry 5006ed0248a019713b762563076292379daf07b4:
+                      value: hash_map
+                        entry bf93c41ee1ae1649869ebd05617f377de02eb591:
+                          value: bytes "f78ef589f87123ee357be3cb28b62498"
+                        entry cabc0f3f27d7b1c70cf64623e029621799f5b5f1:
+                          value: bytes "f78ef589f87123ee357be3cb28b62498"
+                        entry 02083f4579e08a612425c0c1a17ee47add783b94:
+                          value: bytes "A first comment"
+                    entry f172219ea3a15a93af5b1689b159a0f600d1bba6:
+                      value: uint 2
+                    entry c0a92b123de0134067dd7eeddd2bb74bc79fef3a:
+                      value: uint 1794521026
+                    entry 384deada87eb62ab31c5d5afae561f2399616e1e:
+                      value: bytes "alice@example.com"
+            entry 4301d9b3162d8d51c9dae61fb1644ad6c736a75e:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffd97c315e9fcdab290b977fec5a548d048
+            entry b997512737ec730c665d9d8d6baa6819750a153f:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: hash_map
+                    entry 69992f1747443a7ccd623ae5b1b7169fdeb09a01:
+                      value: short_bytes "false" format tag "bl"
+                    entry 14ada64430430619a3e54c3ddc67902d16514bc2:
+                      value: uint 1
+                    entry 5006ed0248a019713b762563076292379daf07b4:
+                      value: hash_map
+                        entry 3c6de1b7dd91465d437ef415f94f36afc1fbc8a8:
+                          value: bytes "First issue"
+                        entry cb329146a0dd0d566b0628744d67936558741ffa:
+                          value: bytes hex 4c696e65206f6e650a4c696e652074776f
+                        entry 48a3661d846478fa991a825ebd10b78671444b5b:
+                          value: short_bytes "open"
+                        entry c7775e9214ae79db6716acbac8529400a4aff25c:
+                          value: short_bytes "bug"
+                    entry f172219ea3a15a93af5b1689b159a0f600d1bba6:
+                      value: uint 1
+                    entry c0a92b123de0134067dd7eeddd2bb74bc79fef3a:
+                      value: uint 1794521013
+                    entry 384deada87eb62ab31c5d5afae561f2399616e1e:
+                      value: bytes "alice@example.com"
+        entry 2c57a4dbfbfcd62798edb32ad224256f973d734d:
+          value: hash_map
+            entry 6ca0e71256d233f67f37d7b7ed5889135f000851:
+              value: uint 3
+            entry 9226f2c731b671031b326f307c16ac6ce9aae622:
+              value: sorted_set of 2
+                [0]:
+                  key: bytes hex fffffffffffffffcf78ef589f87123ee357be3cb28b62498
+                [1]:
+                  key: bytes hex fffffffffffffffd97c315e9fcdab290b977fec5a548d048
+            entry b11d563b628b124b220a465f6672da9ed7d36962:
+              value: sorted_map of 6
+                [0]:
+                  key: short_bytes "bug"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [1]:
+                  key: short_bytes "first"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [2]:
+                  key: short_bytes "issue"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [3]:
+                  key: short_bytes "line"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [4]:
+                  key: short_bytes "one"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [5]:
+                  key: short_bytes "two"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 3d1374cf0b00eda753373595bc2535defe5c97c2:
+              value: hash_map
+                entry 07aae1b618f604c684ee3189fa1723bef8656fe4:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffcf78ef589f87123ee357be3cb28b62498
+                entry 05fe405753166f125559e7c9ac558654f107c7e9:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                entry cb473678976f425d6ec1339838f11011007ad27d:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffd97c315e9fcdab290b977fec5a548d048
+            entry 775fc97ff7a48bdab348b72b426c0703457f29d4:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex 000000000000000297c315e9fcdab290b977fec5a548d048
+            entry 8d5b750527760cdac4698ff35f0442c475cf3276:
+              value: sorted_map of 2
+                [0]:
+                  key: short_bytes "closed"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+                [1]:
+                  key: short_bytes "open"
+                  value: sorted_set of 0
+            entry 5fef0c3b9b4db4b4b8fca3c33b3a1083371286b7:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: sorted_map of 4
+                    [0]:
+                      key: bytes "description"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [1]:
+                      key: short_bytes "labels"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+                    [2]:
+                      key: short_bytes "status"
+                      value: bytes hex 2c57a4dbfbfcd62798edb32ad224256f973d734d
+                    [3]:
+                      key: short_bytes "title"
+                      value: bytes hex 8e7eb2a07d6fea71f5414380d87c77926eddb841
+            entry 29a5500b714ce89e32cae265a01d36a2c18eb878:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex 000000000000000297c315e9fcdab290b977fec5a548d048
+            entry 11cb4e3c82507677792d4f1dd5ece5970c2f3059:
+              value: uint 2
+            entry 0ce99a5978432553a06d92bc1f32949b1c002fab:
+              value: sorted_map of 1
+                [0]:
+                  key: bytes "bug closed"
+                  value: sorted_set of 1
+                    [0]:
+                      key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry 86ff27d5d5d21d38528f1c2030615dbef66ac5eb:
+              value: sorted_set of 0
+            entry 45dc6d868243b841ee75cda5d66233610e9986fb:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffef78ef589f87123ee357be3cb28b62498
+            entry bc995d4d86ef0264a1cf18b7d62b8eb9ce9da9fb:
+              value: hash_map
+                entry 06fcd4b39f2fb7e2773fa97193c8d4df93038a51:
+                  value: short_bytes "comment"
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: short_bytes "issue"
+            entry fa3e2cf6f2a7121114d93147c8ef9dc59428738c:
+              value: sorted_map of 0
+            entry 8f98948b0b812069ae9dc0ae6a167e2cda4bc09c:
+              value: hash_map
+                entry 06fcd4b39f2fb7e2773fa97193c8d4df93038a51:
+                  value: hash_map
+                    entry 69992f1747443a7ccd623ae5b1b7169fdeb09a01:
+                      value: short_bytes "false" format tag "bl"
+                    entry 14ada64430430619a3e54c3ddc67902d16514bc2:
+                      value: uint 2
+                    entry 5006ed0248a019713b762563076292379daf07b4:
+                      value: hash_map
+                        entry bf93c41ee1ae1649869ebd05617f377de02eb591:
+                          value: bytes "f78ef589f87123ee357be3cb28b62498"
+                        entry cabc0f3f27d7b1c70cf64623e029621799f5b5f1:
+                          value: bytes "f78ef589f87123ee357be3cb28b62498"
+                        entry 02083f4579e08a612425c0c1a17ee47add783b94:
+                          value: bytes "A first comment"
+                    entry f172219ea3a15a93af5b1689b159a0f600d1bba6:
+                      value: uint 2
+                    entry c0a92b123de0134067dd7eeddd2bb74bc79fef3a:
+                      value: uint 1794521026
+                    entry 384deada87eb62ab31c5d5afae561f2399616e1e:
+                      value: bytes "alice@example.com"
+            entry 4301d9b3162d8d51c9dae61fb1644ad6c736a75e:
+              value: sorted_set of 1
+                [0]:
+                  key: bytes hex fffffffffffffffd97c315e9fcdab290b977fec5a548d048
+            entry b997512737ec730c665d9d8d6baa6819750a153f:
+              value: hash_map
+                entry 28ed628c325e89863d81bda1a904f552c440eb5d:
+                  value: hash_map
+                    entry 69992f1747443a7ccd623ae5b1b7169fdeb09a01:
+                      value: short_bytes "false" format tag "bl"
+                    entry 14ada64430430619a3e54c3ddc67902d16514bc2:
+                      value: uint 1
+                    entry 5006ed0248a019713b762563076292379daf07b4:
+                      value: hash_map
+                        entry 3c6de1b7dd91465d437ef415f94f36afc1fbc8a8:
+                          value: bytes "First issue"
+                        entry cb329146a0dd0d566b0628744d67936558741ffa:
+                          value: bytes hex 4c696e65206f6e650a4c696e652074776f
+                        entry 48a3661d846478fa991a825ebd10b78671444b5b:
+                          value: short_bytes "closed"
+                        entry c7775e9214ae79db6716acbac8529400a4aff25c:
+                          value: short_bytes "bug"
+                    entry f172219ea3a15a93af5b1689b159a0f600d1bba6:
+                      value: uint 3
+                    entry c0a92b123de0134067dd7eeddd2bb74bc79fef3a:
+                      value: uint 1794521013
+                    entry 384deada87eb62ab31c5d5afae561f2399616e1e:
+                      value: bytes "alice@example.com"
+  entry 7138a51661947b19b5088da5a2bfede2876f49b9:
+    value: bytes "ref: refs/heads/master"
+  entry 31fc0e811ecc3fc4455570aac729d63902c6c3d9:
+    value: bytes hex 2c57a4dbfbfcd62798edb32ad224256f973d734d
+  entry c37bd01f6fc0c709c199863265caeab5b94098aa:
+    value: counted_hash_map of 0
+  entry dfba7aade0868074c2861c98e2a9a92f3178a51b:
+    value: sorted_map of 1
+      [0]:
+        key: short_bytes "core"
+        value: sorted_map of 1
+          [0]:
+            key: short_bytes "bare"
+            value: short_bytes "true"

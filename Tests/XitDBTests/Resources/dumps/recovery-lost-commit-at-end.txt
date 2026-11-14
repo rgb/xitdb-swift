@@ -1,8 +1,8 @@
-xitdb file: 1037 bytes, 517 committed; hash size 20, hash id "sha1", file id c0f0000000000015; 1 moment
+xitdb file: 1032 bytes, 512 committed; hash size 20, hash id "sha1", file id c0f0000000000015; 1 moment
 verify: 3 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 517, id 3e3486b15328ce07, root arrayList
-  commit 2: ends at 1037, id 6895d834317845fc, root arrayList
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 512, id 483949915e822c6b, root arrayList
+  commit 2: ends at 1032, id 9638dddce69647c7, root arrayList
 moment 0: map (2 entries)
   86f7e437faa5a7fc: uint 1
   bd3027fa569ea15c: bytes 33 "a value too long to fit in a slot"

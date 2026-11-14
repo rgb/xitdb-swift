@@ -1,0 +1,13 @@
+version: 2
+hash size: 20
+hash id: sha1
+file id: 8c432b0b9b803ea1
+root: hash_map
+  entry 604c03a59286fc5c1390b10bd1205056f6db4ca4:
+    value: hash_map
+      entry 922cab387e9ee2ce035fefe83e0664629840f1ad:
+        value: uint 0
+  entry cce55e4309a753985bdd21919395fdc17daa11e4:
+    value: sorted_set of 1
+      [0]:
+        key: bytes hex fffffffffffffffff76c027a1d11db693d2f2868e7a3aace

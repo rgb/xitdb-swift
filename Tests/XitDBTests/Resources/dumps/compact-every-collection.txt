@@ -1,9 +1,9 @@
-xitdb file: 6968 bytes; hash size 20, hash id "sha1", file id 0011223344556677; 3 moments
+xitdb file: 6963 bytes; hash size 20, hash id "sha1", file id 0011223344556677; 3 moments
 verify: 4 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 559, id 93bc9e60dd46b664, root arrayList
-  commit 2: ends at 4903, id 598206d5a6ebf288, root arrayList
-  commit 3: ends at 6968, id f18fdc3233bbc450, root arrayList
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 554, id b40e2a20ad0723f1, root arrayList
+  commit 2: ends at 4898, id 6454da81a8ccd468, root arrayList
+  commit 3: ends at 6963, id 675537980e593d24, root arrayList
 moment 2: map (27 entries)
   c34bf5a9ecca6edc: float 3.14
   a90108078540b6b9: linked (3)
@@ -30,7 +30,7 @@ moment 2: map (27 entries)
     #0: bytes 5 "apple"
     #1: bytes 6 "banana"
     #2: bytes 28 "a cherry too long for a slot"
-    #3: empty
+    #3: nothing
   1073ab6cda4b991c: bytes 11 "final_value"
   "a long key that's written with a value" af065e03e22fe1f5: uint 5
   d25af6a2a05de768: counted map (2)

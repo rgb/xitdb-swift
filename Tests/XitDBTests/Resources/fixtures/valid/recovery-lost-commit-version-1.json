@@ -1,0 +1,23 @@
+{
+  "format": "xitdb-script/1",
+  "description": "recovery-lost-commit on a version 1 file (inputs/v1-history), whose commits end at 839 and 1215. Setting the committed size at 29 back to the first commit gives what a crash before the root header pointed at the second leaves: it opens at the first commit, the rest is bytes past the committed size, and the next transaction writes over them. The file stays version 1, and nothing writes the copy of the root slot at 20 to 28.",
+  "hash_size": 20,
+  "hash_id": "sha1",
+  "file_id": "c0f0000000000001",
+  "ops": [
+    {"op": "close"},
+    {"op": "raw_load", "input": "v1-history"},
+    {"op": "raw_write", "offset": 29, "bytes": {"hex": "0000000000000347"}, "note": "the committed size as it was after the first commit, 839"},
+    {"op": "reopen", "note": "the committed size goes back, without a commit"},
+    {"op": "count", "on": "root", "expect": 1},
+    {"op": "read_path", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "short"}}}], "as": "c"},
+    {"op": "read_bytes", "on": "c", "expect": "foo"},
+    {"op": "read_path_slot", "on": "root", "path": [{"array_list_get": -1}], "as": "last"},
+    {"op": "write_path", "on": "root", "path": ["array_list_init", "array_list_append", {"write": {"slot": {"var": "last"}}}, {"hash_map_init": {}}, {"hash_map_get": {"value": {"sha1": "c"}}}, {"write": {"uint": 3}}], "note": "over the lost commit's bytes"},
+    {"op": "count", "on": "root", "expect": 2},
+    {"op": "read_path", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "short"}}}], "as": "c"},
+    {"op": "read_bytes", "on": "c", "expect": "foo"},
+    {"op": "read_path", "on": "root", "path": [{"array_list_get": -1}, {"hash_map_get": {"value": {"sha1": "c"}}}], "as": "c"},
+    {"op": "read_uint", "on": "c", "expect": 3}
+  ]
+}

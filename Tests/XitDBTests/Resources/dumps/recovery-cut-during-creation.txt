@@ -1,0 +1,6 @@
+xitdb file: 63 bytes; hash size 20, hash id "sha1", file id 0000000000000010
+verify: 1 commit verifies; 1 bytes past the last do not
+  commit 0: ends at 62, id 0000000000000000, root none
+note: 1 bytes after the last good commit, which ends at 62, do not verify
+note: the root is not a list of moments; it is dumped as it is
+moment 0: unreadable: the slot could not be read: invalidDatabase

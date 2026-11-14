@@ -1,8 +1,8 @@
-xitdb file: 24766 bytes; hash size 20, hash id "sha1", file id 00000000000000bb; 2 moments
+xitdb file: 24761 bytes; hash size 20, hash id "sha1", file id 00000000000000bb; 2 moments
 verify: 3 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 21936, id 46656ef184851f09, root arrayList
-  commit 2: ends at 24766, id dcf408c1baf9f0c9, root arrayList
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 21931, id 225de7bf811c5aa1, root arrayList
+  commit 2: ends at 24761, id 8b2f39dffc78349d, root arrayList
 moment 1: map (2 entries)
   65c10dc3549fe074: sorted set (201)
     "000 is a separator that is too long for a slot": empty

@@ -1,6 +1,6 @@
 {
   "format": "xitdb-script/1",
-  "description": "A key that's been removed, or a value that's been cleared, doesn't leave an empty slot behind wherever a cursor is pointing, so write_if_empty through that cursor holds back, whether it goes by its snapshot or by the slot as it is now. So this does the same on a Zig from before 185af01 and after it. The pair is unreachable from the map but not emptied, and neither is the block that a remove leaves behind. write-if-empty-emptied-slot has the slot that a remove does empty.",
+  "description": "A key that's been removed, or a value that's been cleared, doesn't leave an empty slot behind wherever a cursor is pointing, so write_if_empty through that cursor holds back, whether it goes by its snapshot or by the slot as it is now. So this does the same on the original and on the fixes branch. The pair is unreachable from the map but not emptied, and neither is the block that a remove leaves behind. write-if-empty-emptied-slot has the slot that a remove does empty.",
   "hash_size": 8,
   "hash_id": null,
   "file_id": "c0f000000000001d",

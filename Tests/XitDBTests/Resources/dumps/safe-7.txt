@@ -1,19 +1,19 @@
-xitdb file: 19238 bytes; hash size 8, hash id 0x00000000, file id 63cbe1e459320dd7; 13 moments
+xitdb file: 19233 bytes; hash size 8, hash id 0x00000000, file id 63cbe1e459320dd7; 13 moments
 verify: 14 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 1590, id b1d0ab1d15b96933, root arrayList
-  commit 2: ends at 1954, id 8fc9ffe7d65544f0, root arrayList
-  commit 3: ends at 5306, id 4a75932f93fe1f3b, root arrayList
-  commit 4: ends at 6021, id 2a31020d4293428e, root arrayList
-  commit 5: ends at 6402, id 8290734c49966d28, root arrayList
-  commit 6: ends at 6740, id bbd56ff85064874a, root arrayList
-  commit 7: ends at 7459, id 561d3be48074a170, root arrayList
-  commit 8: ends at 7967, id 99254acbd7e75d57, root arrayList
-  commit 9: ends at 9603, id 54a8d0e10581709e, root arrayList
-  commit 10: ends at 14979, id 1b224eaba6751499, root arrayList
-  commit 11: ends at 15487, id 86bf13095da03841, root arrayList
-  commit 12: ends at 18610, id 387b6cff85d11cac, root arrayList
-  commit 13: ends at 19238, id 281dd3dd5e2f57c2, root arrayList
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 1585, id 553ac617e5d312e6, root arrayList
+  commit 2: ends at 1949, id d05c2774b2500448, root arrayList
+  commit 3: ends at 5301, id 1034edc5ab832c11, root arrayList
+  commit 4: ends at 6016, id dd8cb641a5539dc8, root arrayList
+  commit 5: ends at 6397, id aabbe240a94c9e1b, root arrayList
+  commit 6: ends at 6735, id 4e97e9424ee31f72, root arrayList
+  commit 7: ends at 7454, id b6f85d53c015acec, root arrayList
+  commit 8: ends at 7962, id d054740c948ad97a, root arrayList
+  commit 9: ends at 9598, id a99fcd9acab619dc, root arrayList
+  commit 10: ends at 14974, id e1bb16fe21d7e6f1, root arrayList
+  commit 11: ends at 15482, id cd7bd4a0c67293c7, root arrayList
+  commit 12: ends at 18605, id e0a9640aff46a08c, root arrayList
+  commit 13: ends at 19233, id dfaef7137d5ae0db, root arrayList
 moment 12: map (21 entries)
   f527c79294c5f400: int -469
   0000000000000001: bytes 6 "maumnv"

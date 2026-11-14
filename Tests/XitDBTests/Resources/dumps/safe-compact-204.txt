@@ -1,20 +1,20 @@
-xitdb file: 1103 bytes; hash size 20, hash id "sha1", file id 172b3485e05703ad
+xitdb file: 1098 bytes; hash size 20, hash id "sha1", file id 172b3485e05703ad
 verify: 15 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 127, id f79407e8927c4334, root bytes
-  commit 2: ends at 265, id 1e9f069d0937e88e, root bytes
-  commit 3: ends at 310, id de8f093aaa8fa97b, root bytes
-  commit 4: ends at 344, id 42590093e106c9b6, root bytes
-  commit 5: ends at 378, id 9d8abbc108c88a70, root float
-  commit 6: ends at 430, id b2f51e4ebb6b3a59, root float
-  commit 7: ends at 497, id 7915549c2ece9421, root bytes
-  commit 8: ends at 531, id f84fd47af4167711, root int
-  commit 9: ends at 646, id 30b084cefca359bc, root uint
-  commit 10: ends at 728, id 58e86406d9d26eef, root bytes
-  commit 11: ends at 762, id b6fc67eef74e0d6d, root int
-  commit 12: ends at 796, id f44666332f3b5b85, root float
-  commit 13: ends at 879, id 561f8ba1873fb516, root none
-  commit 14: ends at 1103, id 5adb0f5ea8e1ad2e, root countedHashMap
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 122, id 2edc97c262371f85, root bytes
+  commit 2: ends at 260, id 136891ccc542738f, root bytes
+  commit 3: ends at 305, id 02785e78113a74d4, root bytes
+  commit 4: ends at 339, id b25cdc9439b55dd6, root bytes
+  commit 5: ends at 373, id ee2280b76785cca4, root float
+  commit 6: ends at 425, id 4108495762a1cb15, root float
+  commit 7: ends at 492, id d7deb2a9150fec15, root bytes
+  commit 8: ends at 526, id 4ff28df2852fff6a, root int
+  commit 9: ends at 641, id 1da702321c825d0e, root uint
+  commit 10: ends at 723, id 0b8f31f31b4f7a87, root bytes
+  commit 11: ends at 757, id 34b178660088255e, root int
+  commit 12: ends at 791, id b862a08f9c1a739f, root float
+  commit 13: ends at 874, id a9095b4074c0e7fa, root none
+  commit 14: ends at 1098, id 964c66bc52dc539d, root countedHashMap
 note: the root is not a list of moments; it is dumped as it is
 moment 0: counted map (1)
   a2ab1959c1c3bfa2: int -203

@@ -1,17 +1,17 @@
-xitdb file: 2564 bytes; hash size 20, hash id "sha1", file id c0f0000000000005
+xitdb file: 2559 bytes; hash size 20, hash id "sha1", file id c0f0000000000005
 verify: 12 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 240, id 093f34be3d4dee8d, root hashMap
-  commit 2: ends at 1095, id 266205d67da3b9a1, root hashMap
-  commit 3: ends at 1311, id fda52fb24317adcf, root hashMap
-  commit 4: ends at 1489, id adb2c0cea552adb4, root hashMap
-  commit 5: ends at 1849, id 3d4aa5942eb3e8e3, root hashMap
-  commit 6: ends at 2027, id 619488e5e5c83b8e, root none
-  commit 7: ends at 2061, id 938deb15f401c00b, root uint
-  commit 8: ends at 2136, id 3983e340a0b33f6c, root bytes
-  commit 9: ends at 2170, id cf19f188745bf4c9, root none
-  commit 10: ends at 2386, id 0ca53f6e55279ae1, root hashMap
-  commit 11: ends at 2564, id 897257defa79f6dd, root hashSet
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 235, id eb5b6c6330959026, root hashMap
+  commit 2: ends at 1090, id d814d5ef0827b178, root hashMap
+  commit 3: ends at 1306, id cb69c2e64caf613d, root hashMap
+  commit 4: ends at 1484, id b6d07da59872cf74, root hashMap
+  commit 5: ends at 1844, id d65f279f3b49a665, root hashMap
+  commit 6: ends at 2022, id 17eabdf71a0c8340, root none
+  commit 7: ends at 2056, id 1a3ce1ab706f0dc5, root uint
+  commit 8: ends at 2131, id 3c90a44767cf9c86, root bytes
+  commit 9: ends at 2165, id 3071930aad1074aa, root none
+  commit 10: ends at 2381, id decc73a66863b47b, root hashMap
+  commit 11: ends at 2559, id fafa12d9d47b6ce7, root hashSet
 note: the root is not a list of moments; it is dumped as it is
 moment 0: set (1 entry)
   0beec7b5ea3f0fdb: uint 1

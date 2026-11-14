@@ -1,9 +1,9 @@
 { "format": "xitdb-script/1", "description": "expected failure: unexpected error InvalidDatabase", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
   "ops": [
     { "op": "write", "on": "root", "data": { "uint": 1 } },
-    { "op": "read_committed", "start": 62, "end": 96, "as": "b" },
+    { "op": "read_committed", "start": 57, "end": 91, "as": "b" },
     { "op": "create_database", "name": "o", "file_id": "0000000000000001" },
-    { "op": "read_committed", "start": 0, "end": 62, "as": "first" },
+    { "op": "read_committed", "start": 0, "end": 57, "as": "first" },
     { "op": "use", "name": "o" },
-    { "op": "apply_replicated", "start": 62, "bytes": "b", "short_by": 1 }
+    { "op": "apply_replicated", "start": 57, "bytes": "b", "short_by": 1 }
   ] }

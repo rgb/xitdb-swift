@@ -1,5 +1,5 @@
 { "format": "xitdb-script/1", "description": "expected failure: doesn't hold a number", "hash_size": 20, "hash_id": null, "file_id": "0000000000000001",
   "ops": [
     { "op": "replica_state", "as": "s" },
-    { "op": "read_committed", "start": { "var": "s" }, "end": 62, "as": "b" }
+    { "op": "read_committed", "start": { "var": "s" }, "end": 57, "as": "b" }
   ] }

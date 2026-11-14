@@ -6,7 +6,7 @@
   "file_id": "0011223344556677",
   "ops": [
     {"op":"create_database","name":"replica","file_id":"00000000000000cc"},
-    {"op":"read_committed","start":0,"end":62,"as":"new_database","note":"even a new database can be sent"},
+    {"op":"read_committed","start":0,"end":57,"as":"new_database","note":"even a new database can be sent"},
     {"op":"use","name":"replica"},
     {"op":"committed_size","as":"have"},
     {"op":"replica_state","as":"state"},

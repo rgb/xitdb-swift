@@ -91,7 +91,7 @@
     {"op":"read_path_slot","on":"root","path":[{"array_list_get":-1}],"as":"s14"},
     {"op":"write_path","on":"root","path":["array_list_init","array_list_append",{"write":{"slot":{"var":"s14"}}},{"hash_map_init":{}},{"hash_map_get":{"value":{"hex":"4464c0f830bc951c"}}},{"write":{"bytes":"fbewol"}}]},
     {"op":"close"},
-    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffffffffffffff"}},
+    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffff"}},
     {"op":"reopen"},
     {"op":"read_path","on":"root","path":[{"array_list_get":5}],"expect_null":true},
     {"op":"read_path","on":"root","path":[{"array_list_get":1},{"hash_map_get":{"value":{"hex":"fe655fc29367d436"}}}],"as":"r1000000005","expect_null":false},

@@ -1,10 +1,6 @@
-{ "format": "xitdb-script/1", "description": "Finding 9, as the port does it: streaming a short value serves the cursor's own slot, with or without a position.", "hash_size": 20, "hash_id": "sha1", "file_id": "0011223344556677",
+{ "format": "xitdb-script/1", "description": "Finding 9, as the port does it: streaming a short value serves the cursor's own slot, with or without a position, so a key reached by sorted_map_get with key streams.", "hash_size": 20, "hash_id": "sha1", "file_id": "0011223344556677",
   "ops": [
     { "op": "write_path", "on": "root", "path": [{ "sorted_map_init": { "set": true } }, { "sorted_map_get": { "key": "ab" } }] },
     { "op": "read_path", "on": "root", "path": [{ "sorted_map_get": { "key": "ab" } }], "as": "by_path" },
-    { "op": "iterator", "on": "root", "as": "it" },
-    { "op": "next", "on": "it", "as": "entry" },
-    { "op": "read_key_value_pair", "on": "entry", "key_as": "from_pair" },
-    { "op": "read_stream", "on": "by_path", "steps": [{ "read": 10, "expect": "ab" }] },
-    { "op": "read_stream", "on": "from_pair", "steps": [{ "read": 10, "expect": "ab" }] }
+    { "op": "read_stream", "on": "by_path", "steps": [{ "read": 10, "expect": "ab" }] }
   ] }

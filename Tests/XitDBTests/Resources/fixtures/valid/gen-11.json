@@ -258,7 +258,7 @@
       {"op":"read_bytes","on":"r19","expect":"ipdch","expect_format_tag":{"hex":"6769"}},
       {"op":"read_path","on":"r17","path":[{"linked_array_list_get":102}],"expect_null":true}]}}]},
     {"op":"close"},
-    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffffffffffffff"}},
+    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffff"}},
     {"op":"reopen"},
     {"op":"read_path_slot","on":"root","path":[{"array_list_get":-1}],"as":"s20"},
     {"op":"write_path","on":"root","path":["array_list_init","array_list_append",{"write":{"slot":{"var":"s20"}}},{"hash_map_init":{}},{"hash_map_get":{"value":{"hex":"0000000000000000000000000000000000000061"}}},{"write":{"bytes":"nk"}}]},

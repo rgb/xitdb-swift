@@ -423,7 +423,7 @@
       {"op":"write_path","on":"c52","path":[{"hash_map_init":{}},{"hash_map_remove":{"hex":"0000000000000000000000000000000000000051"}}],"expect_error":"KeyNotFound"},
       {"op":"writer","on":"c55","format_tag":"hl","steps":[{"write":"dfhzzzpkokvopwlzmksolts"},{"seek":6},{"write":"dzegfpqxa"}]}]}}]},
     {"op":"close"},
-    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffffffffffffff"}},
+    {"op":"raw_write","offset":20,"bytes":{"hex":"ffffffff"}},
     {"op":"reopen"}
   ]
 }

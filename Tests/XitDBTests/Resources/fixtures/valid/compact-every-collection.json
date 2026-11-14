@@ -115,7 +115,7 @@
     { "op": "count", "on": "list", "expect": 4 },
     { "op": "read_path", "on": "list", "path": [{ "array_list_get": 2 }], "as": "v" },
     { "op": "read_bytes", "on": "v", "expect": "a cherry too long for a slot" },
-    { "op": "read_path", "on": "list", "path": [{ "array_list_get": 3 }], "expect_null": true },
+    { "op": "read_path_slot", "on": "list", "path": [{ "array_list_get": 3 }], "expect": { "tag": "none", "full": true }, "note": "appended and never written, which since 89da8e7 is a none slot marked full, and is compacted as one" },
     { "op": "read_path", "on": "moment", "path": [{ "hash_map_get": { "value": { "sha1": "empty_list" } } }], "as": "list" },
     { "op": "count", "on": "list", "expect": 0 },
 

@@ -1,12 +1,12 @@
-xitdb file: 752 bytes; hash size 8, hash id 0x00000000, file id c0f000000000001c; 1 moment
+xitdb file: 747 bytes; hash size 8, hash id 0x00000000, file id c0f000000000001c; 1 moment
 verify: 2 commits verify, the last ending at the file's end
-  commit 0: ends at 62, id 0000000000000000, root none
-  commit 1: ends at 752, id 36446daa05a86261, root arrayList
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 747, id 86b54d3959bd0e7e, root arrayList
 moment 0: map (7 entries)
   00000000000000a1: uint 7
   ·: unreadable: a uint where an entry should be: unexpectedTag
   00000000000000a3: uint 3
-  00000000000000a4: nothing
+  00000000000000a4: uint 9
   ·: nothing
   0000000000000025: uint 5
   0000000000000035: uint 6

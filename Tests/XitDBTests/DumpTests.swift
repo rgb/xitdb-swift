@@ -43,7 +43,7 @@ import XitDBDumpKit
     /// `Resources/dumps`, which `scripts/pin-dumps.sh` writes.
     @Test func everyFixtureDumpsAsPinned() throws {
         let fixtures = try Self.files("fixtures/valid", suffix: ".db")
-        #expect(fixtures.count == 248)
+        #expect(fixtures.count == 294)
         let dumps = try Self.resources().appendingPathComponent("dumps")
         for fixture in fixtures {
             let name = fixture.deletingPathExtension().lastPathComponent
@@ -162,7 +162,9 @@ import XitDBDumpKit
 
         let truncated = Self.dump(Array(whole.dropLast(10)), Self.verifying)
         #expect(truncated.exitCode == 1)
-        #expect(truncated.verification?.bytesPastLastCommit == UInt64(whole.count - 10 - 62))
+        // cut inside its second commit, it is left with the first: a new
+        // version 2 database, 57 bytes
+        #expect(truncated.verification?.bytesPastLastCommit == UInt64(whole.count - 10 - 57))
         #expect(truncated.notes.contains { $0.contains("what follows is what recovery would open") })
         #expect(truncated.moments.isEmpty || truncated.header?.momentCount == 0)
 
@@ -198,24 +200,46 @@ import XitDBDumpKit
     /// too. Three fixtures end in bytes past their last commit by design,
     /// a rolled-back or interrupted write's leftovers, which the scan shows
     /// as such.
+    ///
+    /// A script whose own database starts from an input, a version 1 file
+    /// the original wrote at `6b93af1`, has that input's commits before its
+    /// own: they were made before the script began, and the scan finds
+    /// them, or as many as the script left. One of those ends on a file of
+    /// one byte, which has no header to scan by.
     @Test func verifiedCommitsMatchTheSidecars() throws {
         let folder = try Self.resources().appendingPathComponent("fixtures/valid")
         var checked = 0
+        var fromInputs: [String] = []
+        var withOneCommit: [String] = []
         for sidecar in try Self.files("fixtures/valid", suffix: ".db.sidecar.json") {
             let name = sidecar.lastPathComponent.replacing(".db.sidecar.json", with: "")
+            let comment = Comment(rawValue: name)
             let document = try #require(
-                try JSONSerialization.jsonObject(with: Data(contentsOf: sidecar)) as? [String: Any],
-                Comment(rawValue: name))
-            let ops = try #require(document["ops"] as? [[String: Any]], Comment(rawValue: name))
+                try JSONSerialization.jsonObject(with: Data(contentsOf: sidecar)) as? [String: Any], comment)
+            let ops = try #require(document["ops"] as? [[String: Any]], comment)
             var recorded = ["\(try #require(document["initial_size"] as? UInt64)):0000000000000000"]
             for op in ops {
                 guard let id = op["commit_id"] as? String, let end = op["committed_size"] as? UInt64 else { continue }
                 recorded.append("\(end):\(id)")
             }
+            // the commits of the inputs the script's own database was loaded with
+            var before: [String] = []
+            for input in try Self.inputsOfTheMainDatabase(folder.appendingPathComponent("\(name).json")) {
+                let bytes = try Self.bytes(try Self.resources().appendingPathComponent("fixtures/inputs/\(input).db"))
+                before += try Database.verifiedCommits(in: MemoryStorage(bytes: bytes)).map(Self.text)
+            }
+            if !before.isEmpty { fromInputs.append(name) }
             let bytes = try Self.bytes(folder.appendingPathComponent("\(name).db"))
+            if name == "recovery-cut-during-creation-read-only" {
+                #expect(bytes.count == 1)
+                #expect(throws: XitDBError.endOfStream) {
+                    try Database.verifiedCommits(in: MemoryStorage(bytes: bytes))
+                }
+                continue
+            }
             let commits = try Database.verifiedCommits(in: MemoryStorage(bytes: bytes))
-            let scanned = commits.map { "\($0.end):\(Dumper.hex(bigEndian: $0.commitID))" }
-            var remaining = recorded[...]
+            let scanned = commits.map(Self.text)
+            var remaining = (before + recorded)[...]
             var inOrder = true
             for commit in scanned {
                 guard let index = remaining.firstIndex(of: commit) else {
@@ -224,12 +248,64 @@ import XitDBDumpKit
                 }
                 remaining = remaining[(index + 1)...]
             }
-            #expect(inOrder, "\(name): scan \(scanned) is not in the sidecar's order \(recorded)")
-            #expect(commits.last.map { $0.end <= UInt64(bytes.count) } == true, Comment(rawValue: name))
-            #expect(commits.count >= 2, Comment(rawValue: name))
+            #expect(inOrder, "\(name): scan \(scanned) is not in the order of \(before) and then \(recorded)")
+            #expect(commits.last.map { $0.end <= UInt64(bytes.count) } == true, comment)
+            #expect(commits.count >= 1, comment)
+            if commits.count == 1 { withOneCommit.append(name) }
             checked += 1
         }
-        #expect(checked == 131, "every fixture with a sidecar")
+        #expect(checked == 145, "every fixture with a sidecar but the one that ends on one byte")
+        #expect(
+            fromInputs.sorted() == [
+                "recovery-cut-during-creation", "recovery-cut-during-creation-read-only",
+                "recovery-lost-commit-version-1", "recovery-open-errors-version-1--port", "recovery-torn-root-slot",
+                "replicate-version-1", "version-1-lists", "version-1-read", "version-1-write",
+            ])
+        // Every other script commits after its database's first commit.
+        // These two end on a database that has only that one: a recovery
+        // that cut back to it, and a version 1 input cut during creation.
+        #expect(withOneCommit.sorted() == ["recover-without-first-commit--port", "recovery-cut-during-creation"])
+
+        // Three of them, as their scripts leave them.
+        func commits(_ name: String) throws -> [VerifiedCommit] {
+            try Database.verifiedCommits(
+                in: MemoryStorage(bytes: try Self.bytes(folder.appendingPathComponent("\(name).db"))))
+        }
+        // the new version 1 database of the input, its committed size
+        // zeroed and a byte added: the input's first trailer still verifies
+        let cut = try commits("recovery-cut-during-creation")
+        #expect(cut.map(\.end) == [62])
+        #expect(cut.map(\.commitID) == [0])
+        // the input's three commits, and the one the script made
+        let torn = try commits("recovery-torn-root-slot")
+        #expect(torn.map(\.end) == [62, 839, 1215, 1591])
+        // the input's three, and the script's, still where version 1 puts them
+        let written = try commits("version-1-write")
+        #expect(Array(written.map(\.end).prefix(3)) == [62, 839, 1215])
+        #expect(written.count > 3)
+    }
+
+    /// A commit as the sidecars have it: where it ends and its ID.
+    private static func text(_ commit: VerifiedCommit) -> String {
+        "\(commit.end):\(Dumper.hex(bigEndian: commit.commitID))"
+    }
+
+    /// The inputs a script loads into its own database, the one called
+    /// `main`, in the order of their first load.
+    private static func inputsOfTheMainDatabase(_ script: URL) throws -> [String] {
+        let document = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: script)) as? [String: Any])
+        var current = "main"
+        var inputs: [String] = []
+        for op in try #require(document["ops"] as? [[String: Any]]) {
+            switch op["op"] as? String {
+            case "use": current = try #require(op["name"] as? String)
+            case "raw_load":
+                let input = try #require(op["input"] as? String)
+                if current == "main", !inputs.contains(input) { inputs.append(input) }
+            default: break
+            }
+        }
+        return inputs
     }
 
     /// Floats print from their bits, the same on every machine: the two
