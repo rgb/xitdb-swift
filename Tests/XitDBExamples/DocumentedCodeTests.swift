@@ -20,11 +20,7 @@ import Testing
 /// and in the sources `#expect` lines and the scratch directory around a file's
 /// name. A block may therefore run across the checks between its lines, but it
 /// cannot skip code.
-///
-/// A comment's block is matched in its runs between blank lines, each run whole
-/// and the runs in order in one file. A comment may declare a type and then use
-/// it in one block, and no file but a `main.swift` can hold that as one run of
-/// code: the declarations stay at the top level and the uses go in a test.
+
 @Suite("Documented code") struct DocumentedCodeTests {
     private static let packageRoot = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
@@ -39,12 +35,10 @@ import Testing
             .filter { FileManager.default.fileExists(atPath: $0.path) }
     }()
 
-    /// A piece of code the documentation shows, and where: its lines, in the
-    /// runs that are matched each as a whole and in order. A page's block is
-    /// one run.
+    /// A piece of code the documentation shows, and where.
     private struct ShownCode: CustomTestStringConvertible {
         let place: String
-        let runs: [[String]]
+        let lines: [String]
 
         var testDescription: String { place }
     }
@@ -76,7 +70,7 @@ import Testing
     /// The fenced `swift` blocks of a document.
     private static func fencedBlocks(in url: URL) throws -> [ShownCode] {
         let lines = try String(contentsOf: url, encoding: .utf8).components(separatedBy: "\n")
-        return fencedBlocks(in: lines.map { Optional($0) }, of: url, inRuns: false)
+        return fencedBlocks(in: lines.map { Optional($0) }, of: url)
     }
 
     /// The fenced `swift` blocks of the documentation comments in a source
@@ -91,13 +85,12 @@ import Testing
                 guard trimmed.hasPrefix("///") else { return nil }
                 let text = trimmed.dropFirst(3)
                 return String(text.hasPrefix(" ") ? text.dropFirst() : text)
-            }, of: url, inRuns: true)
+            }, of: url)
     }
 
     /// The fenced `swift` blocks of a document's lines, where a `nil` line is
-    /// one that cannot be inside a block, each block one run or, `inRuns`, its
-    /// runs between blank lines.
-    private static func fencedBlocks(in lines: [String?], of url: URL, inRuns: Bool) -> [ShownCode] {
+    /// one that cannot be inside a block.
+    private static func fencedBlocks(in lines: [String?], of url: URL) -> [ShownCode] {
         var blocks: [ShownCode] = []
         var current: [String]?
         var start = 0
@@ -112,11 +105,7 @@ import Testing
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if let block = current {
                 if trimmed == "```" {
-                    let runs =
-                        inRuns
-                        ? block.split { $0.trimmingCharacters(in: .whitespaces).isEmpty }.map { normalised($0) }
-                        : [normalised(block)]
-                    blocks.append(ShownCode(place: "\(relative(url)):\(start)", runs: runs.filter { !$0.isEmpty }))
+                    blocks.append(ShownCode(place: "\(relative(url)):\(start)", lines: normalised(block)))
                     current = nil
                 } else {
                     current = block + [line]
@@ -178,33 +167,20 @@ import Testing
         #expect(shown.contains { $0.place.hasPrefix("Sources/XitDB/") && $0.place.contains(".swift:") })
     }
 
-    /// How many of the runs, from the first, a compiled file holds in order.
-    private static func runsFound(_ runs: [[String]], in file: String) -> Int {
-        var rest = file[...]
-        for (index, run) in runs.enumerated() {
-            let wanted = "\n" + run.joined(separator: "\n") + "\n"
-            guard let found = rest.range(of: wanted) else { return index }
-            rest = rest[rest.index(before: found.upperBound)...]
-        }
-        return runs.count
-    }
-
     @Test func everyShownLineIsCompiled() throws {
         let compiled = try Self.compiledCode()
         for code in try Self.shownCode() {
-            let found = compiled.map { Self.runsFound(code.runs, in: $0) }.max() ?? 0
-            guard found < code.runs.count else { continue }
-            // The longest run of the first missing run's lines that is there,
-            // after the runs found, says where it departs from the code.
-            let earlier = Array(code.runs[..<found])
-            let lines = code.runs[found]
+            let wanted = "\n" + code.lines.joined(separator: "\n") + "\n"
+            guard !compiled.contains(where: { $0.contains(wanted) }) else { continue }
+            // The longest run of the block's first lines that is there says
+            // where it departs from the code.
             var matched = 0
-            while matched < lines.count {
-                let prefix = earlier + [Array(lines[...matched])]
-                guard compiled.contains(where: { Self.runsFound(prefix, in: $0) == prefix.count }) else { break }
+            while matched < code.lines.count {
+                let prefix = "\n" + code.lines[...matched].joined(separator: "\n") + "\n"
+                guard compiled.contains(where: { $0.contains(prefix) }) else { break }
                 matched += 1
             }
-            let departure = matched < lines.count ? lines[matched] : "(the block as a whole)"
+            let departure = matched < code.lines.count ? code.lines[matched] : "(the block as a whole)"
             Issue.record("\(code.place): not in Tests/XitDBExamples, from this line: \(departure)")
         }
     }
