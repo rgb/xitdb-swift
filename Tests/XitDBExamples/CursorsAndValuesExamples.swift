@@ -78,14 +78,16 @@ private struct FailingRecord: StorableValue {
 }
 
 @Suite("Cursors and values") struct CursorsAndValuesExamples {
-    /// Through the root cursor every write commits on its own, so a record
-    /// that fails partway leaves what it wrote; through a collection's typed
-    /// call at the root it is one transaction, and nothing of it stays.
+    /// A typed write is one write: through the root cursor or a collection at
+    /// the root it is one transaction, so a record that fails partway leaves
+    /// the database as it was, and a whole one is the commit a transaction's
+    /// body makes of it. Afterwards the cursor is at what was written.
     @Test func aRecordThroughTheRootCursor() throws {
         let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         try database.withTransaction { cursor in
             try HashMap<ReadWrite>(cursor).put("Alice", forKey: "name")
         }
+        let before = try database.committedSize
 
         let map = try HashMap<ReadWrite>(database.rootCursor)
         #expect(throws: XitDBError.keyNotFound) { try map.put(FailingRecord(), forKey: "name") }
@@ -93,21 +95,34 @@ private struct FailingRecord: StorableValue {
 
         var root = database.rootCursor
         #expect(throws: XitDBError.keyNotFound) { try root.write(FailingRecord()) }
-        #expect(try database.rootCursor.slot.tag == .none)
+        #expect(try database.rootCursor.slot.tag == .hashMap)
+        #expect(try HashMap<ReadOnly>(database.rootCursor).value(forKey: "name", as: String.self) == "Alice")
+        #expect(try database.committedSize == before)
 
-        // A whole record through the root cursor commits more than once.
+        // A whole record through the root cursor is one commit, the size of
+        // the one a transaction's body makes of it, and the cursor reads it
+        // back.
         let other = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         var otherRoot = other.rootCursor
         let empty = try other.committedSize
         try otherRoot.write(Person(name: "Bob", age: 42))
         let throughCursor = try other.committedSize - empty
+        #expect(try otherRoot.read(Person.self).name == "Bob")
         let third = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         let start = try third.committedSize
         try third.withTransaction { cursor in
             var body = cursor
             try body.write(Person(name: "Bob", age: 42))
         }
-        #expect(throughCursor > (try third.committedSize) - start)
+        #expect(throughCursor == (try third.committedSize) - start)
+
+        // Below the root, in a transaction, the cursor is at what the record
+        // wrote, and reads it back.
+        try database.withTransaction { cursor in
+            var slot = try HashMap<ReadWrite>(cursor).putCursor(forKey: "someone")
+            try slot.write(Person(name: "Carol", age: 30))
+            #expect(try slot.read(Person.self).name == "Carol")
+        }
     }
 
     private func newMoment(_ body: (HashMap<ReadWrite>) throws -> Void) throws -> HashMap<ReadOnly> {

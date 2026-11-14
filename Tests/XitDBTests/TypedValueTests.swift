@@ -77,6 +77,17 @@ struct Team: StorableValue, Equatable {
     }
 }
 
+/// A value whose writing clears its slot and then fails.
+private struct FailsAfterClearing: StorableValue {
+    init() {}
+    init(reading cursor: Cursor<ReadOnly>) throws(XitDBError) {}
+
+    func write(to cursor: inout Cursor<ReadWrite>) throws(XitDBError) {
+        try cursor.write(.slot(nil))
+        throw .keyNotFound
+    }
+}
+
 /// A value and the data it stands for.
 private struct Case {
     let name: String
@@ -362,6 +373,182 @@ private struct ThroughACursor: TypedPlace {
                 try cursor.write(item.data)
             }
         }
+    }
+
+    // MARK: Through a cursor, at the root and below it
+
+    /// What the root holds before a write through the root cursor: nothing,
+    /// a number, a map, a list.
+    private static let roots: [(name: String, make: @Sendable (Database) throws -> Void)] = [
+        ("an empty root", { _ in }),
+        (
+            "a number at the root",
+            { database in
+                var root = database.rootCursor
+                try root.write(.uint(1))
+            }
+        ),
+        ("a map at the root", { database in try HashMap<ReadWrite>(database.rootCursor).put(.uint(1), forKey: "k") }),
+        ("a list at the root", { database in try ArrayList<ReadWrite>(database.rootCursor).append(.uint(1)) }),
+    ]
+
+    /// Through the root cursor a typed write of one of the library's types
+    /// leaves the file the write of its data leaves, whatever the root
+    /// held.
+    @Test func aTypedWriteThroughTheRootCursorWritesTheValuesSlot() throws {
+        for root in Self.roots {
+            for item in cases {
+                let twins = try TypedTwins()
+                try root.make(twins.typed)
+                try root.make(twins.data)
+                var typedRoot = twins.typed.rootCursor
+                try typedRoot.write(item.value)
+                var dataRoot = twins.data.rootCursor
+                try dataRoot.write(item.data)
+                #expect(twins.typedStorage.bytes == twins.dataStorage.bytes, "\(item.name) over \(root.name)")
+            }
+        }
+    }
+
+    /// Through the root cursor, with no transaction running, a record is
+    /// one transaction: one commit, and the file a transaction with the
+    /// one write in it leaves.
+    @Test func aRecordThroughTheRootCursorIsOneTransaction() throws {
+        let alice = Person(name: "Alice", age: 25)
+        for root in Self.roots {
+            let twins = try TypedTwins()
+            try root.make(twins.typed)
+            try root.make(twins.data)
+            let commitsBefore = try Database.verifiedCommits(in: twins.typedStorage).count
+
+            var cursor = twins.typed.rootCursor
+            try cursor.write(alice)
+            try twins.data.withTransaction { body in try body.write(alice) }
+
+            #expect(twins.typedStorage.bytes == twins.dataStorage.bytes, "over \(root.name)")
+            #expect(
+                try Database.verifiedCommits(in: twins.typedStorage).count == commitsBefore + 1, "over \(root.name)")
+            #expect(try twins.typed.rootCursor.read(Person.self) == alice, "over \(root.name)")
+            // The root cursor reads the root as it is now.
+            #expect(try cursor.read(Person.self) == alice, "over \(root.name)")
+        }
+    }
+
+    /// A value whose writing fails, through the root cursor: the error
+    /// comes out, and the root and the file are as they were, even though
+    /// the value had cleared the root before it failed.
+    @Test func aValueThatFailsThroughTheRootCursorLeavesTheRootAsItWas() throws {
+        for root in Self.roots {
+            let storage = MemoryStorage()
+            let database = try Database(creating: storage, hashing: SHA256.self)
+            try root.make(database)
+            let before = storage.bytes
+            let slotBefore = try database.rootCursor.slot
+
+            var cursor = database.rootCursor
+            #expect(throws: XitDBError.keyNotFound, "over \(root.name)") { try cursor.write(FailsAfterClearing()) }
+            #expect(storage.bytes == before, "over \(root.name)")
+            #expect(try database.rootCursor.slot == slotBefore, "over \(root.name)")
+            // And the database goes on: the next write commits.
+            try cursor.write(UInt64(9))
+            #expect(try database.rootCursor.read(UInt64.self) == 9, "over \(root.name)")
+        }
+    }
+
+    /// Inside a transaction a typed write through a cursor is the value's
+    /// own writes, made in the transaction: the root cursor refuses it as
+    /// it refuses any write then, the transaction's own cursor makes it,
+    /// also after a freeze, and a value that fails leaves what it had
+    /// written to the transaction's fate. Below the root with no
+    /// transaction it is refused as the write of data is.
+    @Test func insideATransactionATypedWriteIsAWriteOfTheTransaction() throws {
+        let alice = Person(name: "Alice", age: 25)
+        let storage = MemoryStorage()
+        let database = try Database(creating: storage, hashing: SHA256.self)
+        try database.withTransaction { body in
+            var root = database.rootCursor
+            #expect(throws: XitDBError.nestedTopLevelWrite) { try root.write(alice) }
+            #expect(throws: XitDBError.nestedTopLevelWrite) { try root.write(UInt64(1)) }
+            try body.write(UInt64(1))
+            try database.freeze()
+            // After a freeze the transaction's own cursor goes on.
+            try body.write(alice)
+            #expect(try body.read(Person.self) == alice)
+        }
+        #expect(try database.rootCursor.read(Person.self) == alice)
+
+        // A value that fails after it has written, inside a transaction:
+        // the error comes out, and passed on it rolls the transaction
+        // back, so the database is as it was.
+        let committed = storage.bytes
+        #expect(throws: XitDBError.keyNotFound) {
+            try database.withTransaction { body in try body.write(FailsAfterClearing()) }
+        }
+        #expect(storage.bytes == committed)
+        #expect(try database.rootCursor.read(Person.self) == alice)
+        // What the value wrote before it failed is written, as if the
+        // caller had made those writes: a body that swallows the error
+        // commits them. (The collections' typed writes differ: there the
+        // value writes inside the collection's own write, whose failure
+        // poisons the transaction.)
+        var failure: XitDBError?
+        try database.withTransaction { body in
+            do {
+                try body.write(FailsAfterClearing())
+            } catch {
+                failure = error as? XitDBError
+            }
+        }
+        #expect(failure == .keyNotFound)
+        #expect(try database.rootCursor.slot.tag == Tag.none)
+        var root = database.rootCursor
+        try root.write(alice)
+
+        let fields = try HashMap<ReadWrite>(database.rootCursor)
+        var below = try fields.putCursor(forKey: "other")
+        #expect(throws: XitDBError.expectedTxStart) { try below.write(alice) }
+        #expect(throws: XitDBError.expectedTxStart) { try below.write(UInt64(1)) }
+    }
+
+    /// After a typed write the cursor is at what was written, as after a
+    /// write of data: a record, which makes its map from a copy of the
+    /// cursor it is given, reads back through the cursor that wrote it,
+    /// and so does a number, below the root and at it.
+    @Test func afterATypedWriteTheCursorIsAtWhatWasWritten() throws {
+        let alice = Person(name: "Alice", age: 25)
+        let team = Team(name: "A", members: [alice, Person(name: "Bob", age: 31)])
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
+        try database.withTransaction { root in
+            let map = try HashMap<ReadWrite>(root)
+
+            var record = try map.putCursor(forKey: "record")
+            try record.write(alice)
+            #expect(try record.slot.tag == .hashMap)
+            #expect(try record.slot == map.slot(forKey: "record"))
+            #expect(try record.read(Person.self) == alice)
+            // And again over the record that is there, and over a number.
+            try record.write(team)
+            #expect(try record.read(Team.self) == team)
+            try record.write(UInt64(3))
+            #expect(try record.read(UInt64.self) == 3)
+            try record.write(alice)
+            #expect(try record.read(Person.self) == alice)
+
+            var number = try map.putCursor(forKey: "number")
+            try number.write(UInt64(7))
+            #expect(try number.slot.tag == .uint)
+            #expect(try number.read(UInt64.self) == 7)
+            var text = try map.putCursor(forKey: "text")
+            try text.write(longText)
+            #expect(try text.read(String.self) == longText)
+            #expect(try text.slot == map.slot(forKey: "text"))
+        }
+        // At the root, where the cursor reads the root as it is.
+        var root = database.rootCursor
+        try root.write(alice)
+        #expect(try root.read(Person.self) == alice)
+        try root.write(UInt64(5))
+        #expect(try root.read(UInt64.self) == 5)
     }
 
     // MARK: Reading

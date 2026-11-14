@@ -81,9 +81,11 @@ swift test -c release "${strict[@]}"
 
 # The benchmark, built above as the release build's second product, runs every
 # workload on every kind at a hundredth of its size: that it runs is the check, not
-# its numbers. It prints one line per phase; a workload that fails exits non-zero.
+# its numbers. It prints one line per phase; a workload that fails exits non-zero. So
+# does its measure of what a hash costs, which checks every hash it computes.
 step "Benchmark smoke run"
 .build/release/XitDBBenchmark --divide 100 > /dev/null
+.build/release/XitDBBenchmark --hash-cost --divide 100 > /dev/null
 echo "ok"
 
 # R23: a damaged file gives an error, never a trap or a hang. The fuzzer, the

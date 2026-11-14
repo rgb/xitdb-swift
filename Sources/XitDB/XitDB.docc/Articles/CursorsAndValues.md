@@ -174,10 +174,9 @@ extension Person: StorableValue {
 The line that clears the slot matters. A map made from a cursor writes into the map that is already there, so without it
 the record would keep the fields of an earlier one that it does not write, and a slot that holds a number would refuse
 it with ``XitDBError/unexpectedTag``. Cleared, the slot takes the record in place of whatever it held. The record then
-goes wherever a value goes. Through the cursor at the root of the database, though, every write is a transaction of its
-own, so a record written there commits its cleared slot and each field one by one, and one that fails partway leaves
-what it had written. Write a record in a transaction's body, or through a collection's typed call, which is one
-transaction even at the root:
+goes wherever a value goes, and its write is one write: through the cursor at the root of the database, or a collection
+at the root, it is one transaction, committed whole, and a record that fails leaves the database as it was. A cursor it
+was written through is at what it wrote, and reads it back. Here it goes into a list:
 
 ```swift
 let people = try ArrayList<ReadWrite>(moment.putCursor(forKey: "people"))

@@ -7,6 +7,13 @@
 /// written as the slot the format has for it, which a program in any
 /// language reads back.
 ///
+/// **A typed write is one write.** Inside a transaction it is part of
+/// the transaction, as any write is. Through the root cursor or a
+/// collection at the root, where every write is a transaction of its own,
+/// a typed write is one transaction however much the value writes: a
+/// record is committed whole, and one whose writing fails leaves the
+/// database as it was.
+///
 /// | Type | Written as |
 /// |---|---|
 /// | `UInt64` | an unsigned integer |
@@ -97,7 +104,13 @@ public protocol StorableValue {
     /// kind is, and is refused where the slot holds another kind, unless
     /// it clears the slot first with `cursor.write(.slot(nil))`.
     ///
-    /// - Parameter cursor: A cursor at the slot, inside a transaction.
+    /// The typed calls run this inside a transaction, their own when none
+    /// is running, so everything written here is committed or dropped
+    /// together.
+    ///
+    /// - Parameter cursor: A cursor at the slot. After the write it need
+    ///   not be at what was written: the typed call that asked for the
+    ///   write sees to that.
     /// - Throws: What the writes it makes throw.
     func write(to cursor: inout Cursor<ReadWrite>) throws(XitDBError)
 }
@@ -251,10 +264,55 @@ extension Cursor where Access == ReadWrite {
     /// has for it, exactly as ``write(_:)-(WritableData)`` writes it, and
     /// one of your own as it says.
     ///
+    /// Through the root cursor, with no transaction running, the whole
+    /// value is one transaction: it is committed when the value has
+    /// written itself, and if the value fails nothing of it is. Inside a
+    /// transaction the value's writes are writes of the transaction, and
+    /// the root cursor refuses them as it refuses any write then.
+    ///
+    /// Afterwards the cursor is at what was written, as after a write of
+    /// ``WritableData``, whatever the value did: a record that makes a
+    /// collection in the slot can be read back through this cursor.
+    ///
     /// - Parameter value: The value.
     /// - Throws: What ``write(_:)-(WritableData)`` throws, and what a
-    ///   conformer of your own throws.
+    ///   conformer of your own throws. Through the root cursor the
+    ///   transaction is then rolled back. Inside a transaction, what the
+    ///   value had written before it failed stays written, as if the
+    ///   caller had made those writes one by one: pass the error on and
+    ///   the transaction rolls back with it.
     public mutating func write(_ value: some StorableValue) throws(XitDBError) {
+        if isRoot, engine.transactionStart == nil {
+            // One transaction for all the value writes: a path that is the
+            // callback alone, which is what a transaction's body is.
+            let path: InlineArray<1, PathPart> = [.ctx]
+            let written = try writePath(
+                path.span,
+                typed: { (cursor: inout Cursor<ReadWrite>) throws(XitDBError) in
+                    try value.write(to: &cursor)
+                })
+            slotPointer = written.slotPointer
+            return
+        }
+        // Inside a transaction the value writes through this cursor as it
+        // is: after a freeze the transaction's own cursor goes on only
+        // through a path that begins with a write or an init, which the
+        // value's own writes do and a callback's path would not.
         try value.write(to: &self)
+        // A value of the caller's may have written through a copy of the
+        // cursor, as a record does when it makes its map, which leaves
+        // this cursor remembering the slot as it was before. The library's
+        // own types write through the cursor they are given, which is then
+        // at what they wrote: they are spared the read.
+        if !Self.writesThroughItsCursor(type(of: value)), !isRoot, let position = slotPointer.position {
+            slotPointer.slot = try engine.reader.slot(at: position)
+        }
+    }
+
+    /// Whether a type is one of the library's own values, each of which
+    /// writes its one slot through the cursor it is given.
+    private static func writesThroughItsCursor(_ type: (some StorableValue).Type) -> Bool {
+        type == UInt64.self || type == Int64.self || type == Double.self || type == String.self
+            || type == [UInt8].self || type == Bytes.self
     }
 }
