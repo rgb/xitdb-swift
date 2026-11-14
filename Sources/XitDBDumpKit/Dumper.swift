@@ -423,10 +423,10 @@ package struct Dumper {
             let read = try reader.read(into: &span)
             shown = Array(buffer.prefix(read))
         }
-        if length <= 64, let text = String(validating: shown, as: UTF8.self), Self.isPrintable(text) {
+        if length <= 64, let text = String(validating: shown, as: UTF8.self), Self.isText(text) {
             node.text = text
         } else {
-            node.text = "0x" + Self.hex(shown)
+            node.hex = Self.hex(shown)
         }
         if options.offsets, slot.tag == .bytes {
             node.position = slot.value
@@ -541,10 +541,10 @@ package struct Dumper {
         if sorted {
             // A sorted collection's key is the pair's bytes.
             if let key = try? entry.key.readBytes(), let text = String(validating: key, as: UTF8.self),
-                Self.isPrintable(text)
+                Self.isText(text)
             {
                 child.name = text
-                label = text
+                label = Self.escaped(text)
             } else if let key = try? entry.key.readBytes() {
                 child.keyHex = Self.hex(key)
                 label = child.keyHex!
@@ -556,13 +556,13 @@ package struct Dumper {
             label = Self.hex(options.fullHashes ? entry.hash : Array(entry.hash.prefix(8)))
             if let keyTag = try? entry.key.slot.tag, keyTag == .bytes || keyTag == .shortBytes,
                 let key = try? entry.key.readBytes(), let text = String(validating: key, as: UTF8.self),
-                Self.isPrintable(text)
+                Self.isText(text)
             {
                 child.name = text
             } else if let name = names[entry.hash] {
                 child.name = name
             }
-            if let name = child.name { label = name }
+            if let name = child.name { label = Self.escaped(name) }
         }
         return Pending(cursor: entry.value, ready: nil, child: child, path: path + "/" + label)
     }
@@ -605,10 +605,35 @@ package struct Dumper {
         }
     }
 
-    private static func isPrintable(_ text: String) -> Bool {
+    /// Whether bytes that are valid UTF-8 are shown as text: they are
+    /// unless they hold a control character other than a line feed, a
+    /// carriage return and a tab, which ``escaped(_:)`` writes out.
+    private static func isText(_ text: String) -> Bool {
         text.unicodeScalars.allSatisfy { scalar in
-            scalar.value >= 0x20 && scalar.value != 0x7F || scalar == "\t"
+            switch scalar.value {
+            case 0x09, 0x0A, 0x0D: true
+            case 0x00..<0x20, 0x7F..<0xA0: false
+            default: true
+            }
         }
+    }
+
+    /// Text as the dump shows it between double quotes, on one line: a
+    /// line feed, a carriage return and a tab as `\n`, `\r` and `\t`, and
+    /// the backslash and the double quote with a backslash before them.
+    package static func escaped(_ text: String) -> String {
+        var out = ""
+        for scalar in text.unicodeScalars {
+            switch scalar {
+            case "\n": out += "\\n"
+            case "\r": out += "\\r"
+            case "\t": out += "\\t"
+            case "\\": out += "\\\\"
+            case "\"": out += "\\\""
+            default: out.unicodeScalars.append(scalar)
+            }
+        }
+        return out
     }
 
     package static func hex(_ bytes: [UInt8]) -> String {

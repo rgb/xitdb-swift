@@ -308,6 +308,97 @@ import XitDBDumpKit
         return inputs
     }
 
+    /// Bytes of at most 64 that are valid UTF-8 print as text, unless they
+    /// hold a control character other than a line feed, a carriage return
+    /// and a tab. Those three print as `\n`, `\r` and `\t`, and the
+    /// backslash and the double quote with a backslash before them, so
+    /// that a value stays on its line and what is between the quotes says
+    /// exactly which bytes are there. Everything else is hex, and so is
+    /// anything longer than 64 bytes. A key follows the same rule, and the
+    /// JSON has the text itself, escaped as JSON escapes it.
+    @Test func bytesPrintAsTextWithLineBreaksEscaped() throws {
+        let values: [(bytes: [UInt8], shown: String)] = [
+            (utf8("Line one\nLine two"), #"bytes 17 "Line one\nLine two""#),
+            (utf8("a\tb"), #"bytes 3 "a\tb""#),
+            (utf8("cr\r\nlf"), #"bytes 6 "cr\r\nlf""#),
+            (utf8(#"back\slash "quoted""#), #"bytes 19 "back\\slash \"quoted\"""#),
+            // a backslash and an n, which is not a line feed
+            (utf8(#"\n"#), #"bytes 2 "\\n""#),
+            // text that looks like the tool's hex
+            (utf8("0xab"), #"bytes 4 "0xab""#),
+            (utf8("é ✓"), "bytes 6 \"é ✓\""),
+            ([], #"bytes 0 """#),
+            (
+                utf8(String(repeating: "x", count: 63) + "\n"),
+                "bytes 64 \"" + String(repeating: "x", count: 63) + #"\n""#
+            ),
+            // a NUL, an escape sequence, a delete
+            ([0x61, 0x00], "bytes 2 0x6100"),
+            ([0x1B, 0x5B, 0x6D], "bytes 3 0x1b5b6d"),
+            ([0x61, 0x7F], "bytes 2 0x617f"),
+            // U+0085 and U+009B, controls of the second range, and U+00A0,
+            // the first scalar after it
+            ([0xC2, 0x85], "bytes 2 0xc285"),
+            ([0xC2, 0x9B, 0x6D], "bytes 3 0xc29b6d"),
+            ([0xC2, 0xA0], "bytes 2 \"\u{A0}\""),
+            // not UTF-8
+            ([0xFF, 0x61], "bytes 2 0xff61"),
+            // a byte too long to be shown as text
+            (
+                utf8(String(repeating: "x", count: 65)),
+                "bytes 65 0x" + String(repeating: "78", count: 64) + "… (64 of 65)"
+            ),
+        ]
+        let keys: [(bytes: [UInt8], label: String)] = [
+            (utf8("k\n1"), #""k\n1""#), (utf8("tab\tkey"), #""tab\tkey""#), (utf8(#"q"k\"#), #""q\"k\\""#),
+            ([0x00, 0x01], "0x0001"),
+        ]
+
+        let storage = MemoryStorage()
+        let database = try Database(creating: storage, hashSize: 20)
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
+        try history.append(.slot(try history.slot(at: -1))) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            let list = try ArrayList<ReadWrite>(try moment.putCursor(forHash: Self.sha1("values")))
+            for value in values {
+                try list.append(.bytes(value.bytes))
+            }
+            let sorted = try SortedMap<ReadWrite>(try moment.putCursor(forHash: Self.sha1("sorted")))
+            for (index, key) in keys.enumerated() {
+                try sorted.put(.uint(UInt64(index)), forKey: key.bytes)
+            }
+            // a hash map's entry whose stored key is text with a line feed
+            try moment.putKey(.bytes(utf8("named\nkey")), forHash: Self.sha1("named"))
+            try moment.put(.uint(7), forHash: Self.sha1("named"))
+        }
+
+        var options = DumpOptions()
+        options.hash = .sha1
+        let text = Self.text(storage.bytes, options)
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        for (index, value) in values.enumerated() {
+            #expect(lines.contains { $0.hasSuffix("#\(index): \(value.shown)") }, "value \(index): \(value.shown)")
+        }
+        for (index, key) in keys.enumerated() {
+            #expect(lines.contains { $0.hasSuffix("\(key.label): uint \(index)") }, "key \(index): \(key.label)")
+        }
+        #expect(lines.contains { $0.contains(#""named\nkey" "#) && $0.hasSuffix(": uint 7") })
+        // nothing but the line ends is a control character in what is printed
+        #expect(!text.unicodeScalars.contains { $0 != "\n" && ($0.value < 0x20 || (0x7F..<0xA0).contains($0.value)) })
+        // one line for each value, each key and the named entry, and no more
+        // lines than the tree has nodes
+        #expect(lines.filter { $0.contains("#") }.count == values.count)
+
+        // the JSON has the text, and reads back as the same tree
+        let dump = Self.dump(storage.bytes, options)
+        let json = JSONRenderer.render(dump, options: options)
+        #expect(json.contains(#""utf8": "Line one\nLine two""#) || json.contains(#""utf8":"Line one\nLine two""#))
+        #expect(json.contains(#""0xab""#))
+        let parsed = try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+        let moments = try #require(parsed["moments"] as? [[String: Any]])
+        #expect(try #require(JSONTree.node(moments.first?["root"])) == dump.moments.first?.root)
+    }
+
     /// Floats print from their bits, the same on every machine: the two
     /// patterns the first Actions run of 0.2.1 printed differently on the
     /// runner Mac, and the rest of the forms.
@@ -441,7 +532,7 @@ enum JSONTree {
             }
         case .bytes:
             if let utf8 = object["utf8"] as? String { node.text = utf8 }
-            if let hex = object["hex"] as? String { node.text = "0x" + hex }
+            if let hex = object["hex"] as? String { node.hex = hex }
             if let length = object["length"] as? NSNumber { node.length = length.uint64Value }
             node.formatTag = object["formatTag"] as? String
         case .shared, .cycle, .truncated, .unreadable:

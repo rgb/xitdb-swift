@@ -51,8 +51,11 @@ package struct Node: Equatable, Sendable {
     }
 
     package var kind: Kind
-    /// The number as text, the bytes as text or hex, or the note.
+    /// The number as text, the bytes as text when they are shown as text,
+    /// or the note.
     package var text: String?
+    /// For bytes that are not shown as text: the bytes shown, as hex.
+    package var hex: String?
     /// For bytes: how many, when more than the text shows.
     package var length: UInt64?
     /// For a byte array with a format tag: the tag.
