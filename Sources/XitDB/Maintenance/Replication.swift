@@ -249,7 +249,8 @@ extension Database {
     /// ``init(creating:hashSize:hashID:fileID:)`` creates over. On a
     /// ``BufferedFileStorage`` the blocks may still be in the buffer, and
     /// reach the file when the storage is flushed or synced: a process
-    /// that ends before that leaves the two headers in the file. Its
+    /// that ends before that leaves the two headers in the file, and any
+    /// blocks the buffer had already written out. The database's
     /// ``replicaState`` is a size of zero and a checksum of zero, to which
     /// the source answers 0, so the next sync replaces it; everything else
     /// throws ``XitDBError/invalidDatabase`` until then, as
