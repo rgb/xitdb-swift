@@ -34,13 +34,27 @@ final class ModelRunner {
 
     static let hashSize: UInt16 = 20
 
-    init(kinds: [StorageKind]) throws {
+    /// The format version the databases have and must keep: 2 for one that
+    /// is created, 1 for a run that starts from the version 1 input.
+    let version: FormatVersion
+
+    /// - Parameter version: `.two` creates each database; `.one` starts
+    ///   each from a new version 1 database that the original wrote at
+    ///   `6b93af1`, since nothing creates version 1.
+    init(kinds: [StorageKind], version: FormatVersion = .two) throws {
+        self.version = version
         var databases: [ModelDatabase] = []
         for kind in kinds {
             let subject = try StorageUnderTest(kind)
-            let database = try Database(
-                storage: subject.storage, hashSize: Self.hashSize, hashID: nil, fileID: 7,
-                random: FixedRandom((1...4000).map { UInt64($0) }))
+            let random = FixedRandom((1...4000).map { UInt64($0) })
+            let database: Database
+            switch version {
+            case .two:
+                database = try Database(
+                    storage: subject.storage, hashSize: Self.hashSize, hashID: nil, fileID: 7, random: random)
+            case .one:
+                database = try newDatabase(.one, in: subject.storage, random: random)
+            }
             databases.append(ModelDatabase(kind: kind, subject: subject, database: database))
         }
         self.databases = databases
@@ -220,6 +234,21 @@ final class ModelRunner {
                 )
             }
         }
+        // A database keeps the format version it began with, in its header
+        // and in its storage, whose committed size is where that version
+        // keeps it.
+        for database in databases {
+            let stored = try database.subject.stored()
+            let sizePosition = version == .one ? 29 : 24
+            if database.database.header.version != version.rawValue || stored[4] != 0
+                || stored[5] != UInt8(version.rawValue)
+                || Array(stored[sizePosition..<(sizePosition + 8)]) != bigEndianBytes(UInt64(stored.count))
+            {
+                mismatches.append(
+                    "after transaction \(transactionsRun): \(database.kind) is no longer a \(version) database whose committed size is its length"
+                )
+            }
+        }
         for database in databases {
             let history = try ArrayList<ReadOnly>(database.database.rootCursor)
             guard try history.count == UInt64(moments.count) else {
@@ -258,6 +287,13 @@ final class ModelRunner {
         for database in databases {
             var offsets = MemoryOffsetMap()
             let compacted = try database.database.compact(into: MemoryStorage(), fileID: 9, offsetMap: &offsets)
+            // A compaction's target is created, so it is version 2 whatever
+            // its source is.
+            if compacted.header.version != 2 {
+                mismatches.append(
+                    "after transaction \(transactionsRun): \(database.kind) compacted is version \(compacted.header.version), not 2"
+                )
+            }
             let compactedHistory = try ArrayList<ReadOnly>(compacted.rootCursor)
             if try compactedHistory.count != 1 {
                 mismatches.append(
@@ -289,6 +325,10 @@ final class ModelRunner {
                 Int(commits[commits.count - 2].end)
                 + (Int(commits[commits.count - 1].end) - Int(commits[commits.count - 2].end)) / 2
             let recovered = try Database.recover(MemoryStorage(bytes: Array(bytes.prefix(cut))))
+            if recovered.header.version != version.rawValue {
+                mismatches.append(
+                    "after transaction \(transactionsRun): the recovered copy is version \(recovered.header.version)")
+            }
             let history = try ArrayList<ReadOnly>(recovered.rootCursor)
             // The commits are the creation and one per committed transaction,
             // so the copy holds the model's moments but the last.
@@ -309,6 +349,13 @@ final class ModelRunner {
             if start < end {
                 let bytes = try first.database.readCommitted(from: start, to: end)
                 try replica.applyReplicated(at: start, bytes: bytes)
+            }
+            // A replica is created as version 2 and takes its source's
+            // version with the first sync, which replaces it.
+            if replica.header.version != version.rawValue {
+                mismatches.append(
+                    "after transaction \(transactionsRun): the replica is version \(replica.header.version), its source \(version)"
+                )
             }
             let replicaHistory = try ArrayList<ReadOnly>(replica.rootCursor)
             if try replicaHistory.count != UInt64(moments.count) {

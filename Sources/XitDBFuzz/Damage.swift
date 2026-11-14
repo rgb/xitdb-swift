@@ -72,13 +72,16 @@ func harvestedPositions(of sample: [UInt8]) throws -> [Int] {
 }
 
 /// The eight-byte values a change may write: the edges of a size, a count
-/// or a position, and the file's own size and its neighbours.
+/// or a position, the file's own size and its neighbours, and where the
+/// headers' parts are: the root header at 20; the committed size at 24, the
+/// first data at 32 and a new database's end at 57 in format version 2,
+/// which the sample is; and 37 and 62, the last two in version 1.
 func interestingValues(fileSize: Int) -> [UInt64] {
     let size = UInt64(fileSize)
     return [
         0, 1, 2, 15, 16, 17, 255, 256, 1 << 32, 1 << 60, (1 << 60) + 1, 1 << 63, UInt64.max, UInt64.max - 1,
-        UInt64.max - 15, size, size - 1, size - 9, 20, 37, 62, UInt64.max - (1 << 60) + 2, UInt64(Int64.max),
-        UInt64(Int64.max) + 1,
+        UInt64.max - 15, size, size - 1, size - 9, 20, 24, 32, 57, 37, 62, UInt64.max - (1 << 60) + 2,
+        UInt64(Int64.max), UInt64(Int64.max) + 1,
     ]
 }
 

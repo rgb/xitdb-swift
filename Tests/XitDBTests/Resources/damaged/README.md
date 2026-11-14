@@ -22,6 +22,12 @@ for. The first set of these files, saved while the sample's commit IDs were stil
 drawn at random, differed from this one only in the commit ID and checksum of each
 trailer.
 
+They are format version 1 files: they were saved before the library created version 2, which it does since 0.3.0.
+The samples the fuzzer builds are version 2 now, five bytes shorter in their root headers, so a seed's damage lands
+elsewhere and `save` no longer gives these files again. They stay as they are, as version 1 inputs that once
+trapped. Fresh damage from the gate's seed ranges runs on the version 2 samples, and on a version 1 sample that the
+fuzzer keeps the bytes of (`XitDBFuzz run v1`): the fixtures' input `v1-history`.
+
 Each file was checked twice when it was saved: it passes on the current library,
 and it traps with SIGTRAP (exit status 133) on the library before commit 3675d55,
 which fixed the line of `compact` all fourteen trapped at. `scripts/fuzz.sh

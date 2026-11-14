@@ -378,6 +378,61 @@ struct CollectingSink: ByteSink {
         #expect(try replica.committedSize == committed)
     }
 
+    /// A source that gives at most `piece` bytes per read and counts what it
+    /// has given.
+    private struct CountingSource: ByteSource {
+        let bytes: [UInt8]
+        let piece: Int
+        private(set) var given = 0
+
+        mutating func read(into buffer: inout MutableSpan<UInt8>) -> Int {
+            let count = min(piece, bytes.count - given, buffer.count)
+            for index in 0..<count {
+                buffer[index] = bytes[given + index]
+            }
+            given += count
+            return count
+        }
+    }
+
+    /// A sync takes exactly `count` bytes from its source and leaves what
+    /// follows them unread, at 0 and at the committed size, however the
+    /// source hands its bytes out: a stream may carry more after a sync's
+    /// bytes. While part of a block is held back, what is asked for is
+    /// what remains less that part.
+    @Test(arguments: StorageKind.allCases)
+    func aSyncTakesNoMoreThanItsCount(kind: StorageKind) throws {
+        let (sourceStorage, source) = try FirstCommitTests.makeLargeSource(.two)
+        let committed = try source.committedSize
+        let whole = try source.readCommitted(from: 0, to: committed)
+        let ends = try Database.verifiedCommits(in: sourceStorage).map(\.end)
+        let from = ends[1]
+        let tail = try source.readCommitted(from: from, to: committed)
+        let more = [UInt8](repeating: 0xEE, count: 20_000)
+
+        for piece in [Int.max, 4096, 1000, 7, 1] {
+            let comment: Comment = "at most \(piece) bytes at a time"
+            let replicaSubject = try StorageUnderTest(kind)
+            let replica = try makeDatabase(replicaSubject, fileID: 7)
+            var first = CountingSource(bytes: Array(whole[..<Int(from)]) + more, piece: piece)
+            try replica.applyReplicated(at: 0, from: &first, count: from)
+            #expect(first.given == Int(from), comment)
+            #expect(try replica.committedSize == from, comment)
+
+            var rest = CountingSource(bytes: tail + more, piece: piece)
+            try replica.applyReplicated(at: from, from: &rest, count: UInt64(tail.count))
+            #expect(rest.given == tail.count, comment)
+            #expect(try replica.committedSize == committed, comment)
+            #expect(try replicaSubject.storage.length == committed, comment)
+            #expect(try replica.readCommitted(from: 0, to: committed) == whole, comment)
+
+            var all = CountingSource(bytes: whole + more, piece: piece)
+            try replica.applyReplicated(at: 0, from: &all, count: committed)
+            #expect(all.given == whole.count, comment)
+            #expect(try replica.readCommitted(from: 0, to: committed) == whole, comment)
+        }
+    }
+
     /// A source or a sink of the caller's that fails: a source claiming more
     /// than its buffer holds is `endOfStream` at the committed size as at
     /// 0, before anything is written; one that throws has its error

@@ -7,10 +7,11 @@
 #       runs every file in Tests/XitDBTests/Resources/damaged/ through the battery, as the
 #       gate does. A trap or a hang fails it.
 #
-#   scripts/fuzz.sh run <hashSize> <from> <to> [targeted]
+#   scripts/fuzz.sh run <hashSize|v1> <from> <to> [targeted]
 #       the long run: the seeds from..<to on the sample database of that hash
-#       size, restarting the tool after each crash and going on from the next
-#       seed. Each crash is a line `seed=N exit=CODE :: message` in
+#       size, or on the version 1 sample for `v1`, restarting the tool after
+#       each crash and going on from the next seed. Each crash is a line
+#       `seed=N exit=CODE :: message` in
 #       .build/fuzz/<tag>.log, where 133 is SIGTRAP; the tool's output is in
 #       .build/fuzz/<tag>.out and .build/fuzz/<tag>.err, and the seed being run
 #       in .build/fuzz/<tag>.progress. At the end it prints the crashes grouped
@@ -24,7 +25,7 @@ cd "$(dirname "$0")/.."
 
 usage() {
     echo "usage: scripts/fuzz.sh regressions" >&2
-    echo "       scripts/fuzz.sh run <hashSize> <from> <to> [targeted]" >&2
+    echo "       scripts/fuzz.sh run <hashSize|v1> <from> <to> [targeted]" >&2
     exit 2
 }
 

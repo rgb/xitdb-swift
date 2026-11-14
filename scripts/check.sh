@@ -83,11 +83,27 @@ echo "ok"
 # fresh damage from fixed seed ranges, so that the gate is reproducible. It runs
 # directly and not through the restarting driver, so that a trap fails the gate;
 # each file has twenty seconds before the tool's alarm ends it.
+#
+# Targeted damage lands near a position taken from the sample's data and never in a
+# header, so each sample also gets damage anywhere in the file: a header that claims
+# another hash size is how compaction's trap on long hashes was found.
+#
+# The samples it builds are format version 2, as every new database is. The last runs
+# are on its version 1 sample, whose bytes it keeps, since nothing creates version 1:
+# they are the fixtures' input v1-history, and the comparison holds the two copies to
+# each other.
 step "Corruption fuzzer"
 .build/release/XitDBFuzz check Tests/XitDBTests/Resources/damaged/*.db
 .build/release/XitDBFuzz run 32 1 2001 targeted
 .build/release/XitDBFuzz run 2 1 1001 targeted
 .build/release/XitDBFuzz run 65 1 501 targeted
+.build/release/XitDBFuzz run 32 1 2001
+.build/release/XitDBFuzz run 2 1 2001
+.build/release/XitDBFuzz run 65 1 2001
+.build/release/XitDBFuzz save v1 good .build/fuzz-v1-sample.db
+cmp .build/fuzz-v1-sample.db Tests/XitDBTests/Resources/fixtures/inputs/v1-history.db
+.build/release/XitDBFuzz run v1 1 2001 targeted
+.build/release/XitDBFuzz run v1 1 2001
 
 # R5: Sources/XitDB may import the standard library, Synchronization and the platform C
 # library, and nothing else. The platform C library is imported in exactly one file,
