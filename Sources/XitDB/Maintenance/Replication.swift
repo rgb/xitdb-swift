@@ -230,10 +230,10 @@ extension Database {
     /// is in the storage, its format version included: a replica takes the
     /// version of what it was sent. A sync that fails before that, as on a
     /// storage opened read-only, leaves this database as it was. The bytes
-    /// between the database header and the
-    /// committed size, which are padding, or in a version 1 file a copy of
-    /// the root slot that nothing reads, are not taken from the source: the
-    /// replica has zeros there.
+    /// between the database header and the committed size, which are
+    /// padding, or in a version 1 file a copy of the root slot that
+    /// nothing reads, are not taken from the source: the replica has zeros
+    /// there.
     ///
     /// What a failure leaves is what the original leaves. The data is
     /// written in blocks of 4096 bytes, counted from where it starts, each
@@ -246,7 +246,10 @@ extension Database {
     /// header, a committed size of zero, and the blocks that arrived whole.
     /// With no whole block it is no longer than a new database, and is what
     /// a creation that did not finish leaves, which
-    /// ``init(creating:hashSize:hashID:fileID:)`` creates over. Its
+    /// ``init(creating:hashSize:hashID:fileID:)`` creates over. On a
+    /// ``BufferedFileStorage`` the blocks may still be in the buffer, and
+    /// reach the file when the storage is flushed or synced: a process
+    /// that ends before that leaves the two headers in the file. Its
     /// ``replicaState`` is a size of zero and a checksum of zero, to which
     /// the source answers 0, so the next sync replaces it; everything else
     /// throws ``XitDBError/invalidDatabase`` until then, as

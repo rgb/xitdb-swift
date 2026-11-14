@@ -42,8 +42,10 @@ public enum XitDBError: Error, Sendable {
     /// instead.
     ///
     /// It is also what a database without a first commit answers to
-    /// everything but its replica state and a sync from 0: a full copy that
-    /// did not finish, which opens so that the next sync can replace it.
+    /// everything but its replica state and a sync from 0. That is the
+    /// database a sync from 0 failed on, and what a full copy that did not
+    /// finish opens as when at least one block of its data arrived, so
+    /// that the next sync can replace it.
     case invalidDatabase
 
     /// The file was written with a format version this implementation does
@@ -87,10 +89,9 @@ public enum XitDBError: Error, Sendable {
     /// before anything is written to the target.
     ///
     /// An empty last slot is what an element appended and never written
-    /// was in a file written by a version before 0.3.0, or by the original
-    /// before its format version 2. Since then such an element is a slot
-    /// set to nothing, which is a moment like one set to nothing on
-    /// purpose, and compacts.
+    /// before 0.3.0, or by the original before `89da8e7`, is. One appended
+    /// since then is a slot set to nothing, which is a moment like one set
+    /// to nothing on purpose, and compacts.
     case emptyLastMoment
 
     /// The storage a database was to be created in already contains data,

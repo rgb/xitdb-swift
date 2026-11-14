@@ -120,8 +120,9 @@ public final class Database {
     /// **A full copy that did not finish opens.** When a sync from 0
     /// (``applyReplicated(at:from:count:)``) stops before all its bytes
     /// have arrived, the storage holds the source's header, a committed
-    /// size of zero and what did arrive: a database without a first
-    /// commit, longer than a new database. Opening it succeeds and checks
+    /// size of zero and the 4096-byte blocks of data that arrived whole:
+    /// a database without a first commit. With at least one block it is
+    /// longer than a new database. Opening it then succeeds and checks
     /// nothing, so that the next sync can replace it: its ``replicaState``
     /// is a size of zero and a checksum of zero, for which the source
     /// answers 0, and a sync from 0 replaces it. Everything else on it
@@ -131,6 +132,12 @@ public final class Database {
     /// anywhere but 0, and compaction from it or into it. ``recover(_:)``,
     /// instead of opening, cuts such a storage back to the last commit of
     /// the source that arrived whole.
+    ///
+    /// A copy that stopped inside its first block of data left no block,
+    /// and neither did one whose blocks were still in a
+    /// ``BufferedFileStorage``'s buffer when its process ended. The file
+    /// then holds the two headers and no more, which is what a creation
+    /// that did not finish leaves.
     ///
     /// **A creation that did not finish does not open.** A storage with a
     /// header, a committed size of zero and no more bytes than a new

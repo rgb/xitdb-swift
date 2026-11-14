@@ -24,13 +24,12 @@ extension Database {
     /// root with no last element to keep is refused, whether or not the
     /// list is a history: one with no elements, or one whose last
     /// element's slot is empty, which is what an element appended and
-    /// never written was in a file written by a version before 0.3.0 or by
-    /// the original before its format version 2. Compacting such a list
-    /// would keep nothing of it. A last element set to nothing is a
-    /// moment, and compacts, and so does one appended and never written
-    /// since then, which is kept as a slot set to nothing. An empty root
-    /// commits nothing. Any other root, one set to nothing included, is
-    /// copied whole.
+    /// never written before 0.3.0, or by the original before `89da8e7`,
+    /// is. Compacting such a list would keep nothing of it. A last element
+    /// set to nothing is a moment, and compacts, and so does one appended
+    /// and never written since then, which is kept as a slot set to
+    /// nothing. An empty root commits nothing. Any other root, one set to
+    /// nothing included, is copied whole.
     ///
     /// The target must be a database whose root is empty, opened by the
     /// caller, with the same hash size as this one: a new one, or an
@@ -75,9 +74,11 @@ extension Database {
     /// hash ID given or else this one's, and the file ID given or else a
     /// random one. It is created as any new database is, at format version
     /// 2, whatever this database's version is: compacting a version 1
-    /// database gives a version 2 one. A storage that holds a database
-    /// already keeps that database's file ID, hash ID and version, and must
-    /// have an empty root.
+    /// database gives a version 2 one. A storage that holds what a creation
+    /// that did not finish left is taken for an empty one, and the database
+    /// is created over it, as ``init(creating:hashSize:hashID:fileID:)``
+    /// does. A storage that holds a database already keeps that database's
+    /// file ID, hash ID and version, and must have an empty root.
     ///
     /// The target draws from this database's source of randomness, as the
     /// original's target draws from its source's: its file ID, when none
