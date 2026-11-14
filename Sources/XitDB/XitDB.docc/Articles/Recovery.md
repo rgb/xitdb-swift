@@ -20,11 +20,15 @@ and 639, 1,027 and 1,415 (one moment each).
 
 - **Sound.** The committed size is inside the file and ends at a trailer that verifies. The file opens. Bytes past the committed
   size, if there are any, are what an unfinished transaction left, and the next transaction discards them.
-- **Damaged in its size.** The size is past the end of the file, smaller than a database can be, or not at a trailer that verifies,
-  as when the root header's own write was torn. Opening throws ``XitDBError/untrustedRootHeader(lastVerified:)``, and
-  `lastVerified` is where the last trailer that verifies ends: 1,415 here, as nothing else is wrong. A size of zero in a file
-  longer than a new database is not refused: that is what a full copy that did not finish leaves, and it opens, as the last
-  section says.
+- **Damaged in its size.** The size is not zero, and is past the end of the file, smaller than a database can be, or not at a
+  trailer that verifies, as when the root header's own write was torn. Opening throws
+  ``XitDBError/untrustedRootHeader(lastVerified:)``, and `lastVerified` is where the last trailer that verifies ends: 1,415 here,
+  as nothing else is wrong.
+- **Zero.** A committed size of zero is not taken for damage. A file longer than a new database whose size is zero opens,
+  whatever left it so, as a database without a first commit, in which nothing can be read: that is what a full copy that did
+  not finish leaves (see the last section). If it happens to a database that had commits, ``Database/recover(_:)`` takes it
+  back to the last one that verifies, and `xitdb-dump` says where that is: see <doc:ReadingAFileWithXitdbDump>. A file no
+  longer than a new database whose size is zero is a creation that did not finish, which opening refuses: see <doc:Storage>.
 - **Pointing at a damaged trailer**, or past the end of a file that was cut short. Opening throws the same error, and
   `lastVerified` is the end of the commit before: 1,027.
 - **In a file with no commit to go back to.** If the file does not start with a database's header, or no trailer in it verifies,

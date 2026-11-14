@@ -52,6 +52,17 @@ import XitDB
             }
         }
 
+        // A size of zero is not damage: the file opens as a database without a
+        // first commit, in which nothing can be read, and recovering takes it
+        // back to its last commit that verifies.
+        let zeroed = MemoryStorage(bytes: withCommittedSize(0, good))
+        let withoutFirstCommit = try Database(opening: zeroed)
+        #expect(try withoutFirstCommit.replicaState == ReplicaState(committedSize: 0, checksum: 0))
+        #expect(throws: XitDBError.invalidDatabase) { try withoutFirstCommit.committedSize }
+        #expect(throws: XitDBError.invalidDatabase) { try moments(withoutFirstCommit) }
+        #expect(try moments(Database.recover(zeroed)) == 3)
+        #expect(zeroed.bytes == good)
+
         // The file cut short, or its last trailer damaged: the last commit that
         // verifies is the one before.
         #expect(throws: XitDBError.untrustedRootHeader(lastVerified: 1027)) {
