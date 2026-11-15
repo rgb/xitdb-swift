@@ -233,6 +233,14 @@ import Testing
         // and so is one whose bytes come to more than a number holds
         let overflowing = try subject.damaged(bigEndianBytes(UInt64.max / sized.bytesEach + 1), at: sizePtr)
         #expect(throws: XitDBError.invalidCount) { try cursor(sized.rawValue, in: overflowing).count }
+        // Counted in 64 bits those bytes wrap around to a few, fewer than
+        // any file has. A sound read has the reader ask the storage for its
+        // length and keep it; held against the kept length the few bytes
+        // would fit, and the size is refused all the same.
+        let sound: Sized = sized == .arrayList ? .sortedMap : .arrayList
+        let soundCount = try cursor(sound.rawValue, in: subject.database).count
+        #expect(try cursor(sound.rawValue, in: overflowing).count == soundCount)
+        #expect(throws: XitDBError.invalidCount) { try cursor(sized.rawValue, in: overflowing).count }
     }
 
     /// A linked array list's size is not held against the file: a list
@@ -412,6 +420,16 @@ import Testing
 
     /// A sorted map's key record that lies before the data is refused by
     /// the search that would compare it.
+    ///
+    /// The first place is the byte before the data, where the bytes read
+    /// as a length no file holds: a search that read them would refuse
+    /// them for that, with the same error. The second is one where the
+    /// header's bytes read as a short key the file does hold, an empty one
+    /// in version 2's padding and the upper half of its size, and in
+    /// version 1 one whose length is the old copy of the root slot's
+    /// value: only the check of the position refuses that one, and a
+    /// search without it would compare the header's bytes as a key and
+    /// answer.
     @Test(arguments: FormatVersion.allCases)
     func aKeyRecordBeforeTheDataIsRefused(version: FormatVersion) throws {
         let dataStart: UInt64 = version == .one ? 37 : 32
@@ -434,6 +452,18 @@ import Testing
         #expect(throws: XitDBError.endOfStream) { try map.cursor(forKey: keys[1]) }
         #expect(throws: XitDBError.endOfStream) { try map.rank(of: keys[0]) }
         #expect(throws: XitDBError.endOfStream) { try map.iterator(fromKey: keys[2]) }
+
+        // the header's bytes that would be a key record the file holds
+        let inHeader: UInt64 = version == .one ? 21 : 20
+        let stored = try subject.subject.stored()
+        let wouldBeLength = stored[Int(inHeader)..<Int(inHeader) + 8].reduce(UInt64(0)) { $0 << 8 | UInt64($1) }
+        #expect(wouldBeLength <= 56)
+        #expect(inHeader + 8 + wouldBeLength <= UInt64(stored.count))
+        let short = try subject.damaged(slotBytes(Slot(value: inHeader, tag: .bytes)), at: middle.value)
+        let shortMap = try SortedMap(try cursor("long keys", in: short))
+        #expect(throws: XitDBError.endOfStream) { try shortMap.cursor(forKey: keys[1]) }
+        #expect(throws: XitDBError.endOfStream) { try shortMap.rank(of: keys[0]) }
+        #expect(throws: XitDBError.endOfStream) { try shortMap.iterator(fromKey: keys[2]) }
     }
 
     /// Where data starts follows the format's version, which a replication
