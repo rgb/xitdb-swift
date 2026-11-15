@@ -269,7 +269,7 @@ public enum XitDBError: Error, Sendable {
     case poisonedTransaction
 
     /// A call of a hash map or set that takes a key, such as
-    /// ``HashMap/put(_:forKey:)-(WritableData,_)``, was made on a database
+    /// ``HashMap/put(_:forKey:storingKey:)-(WritableData,_,_)``, was made on a database
     /// that was given no hasher, or on a snapshot of one: the database was
     /// made with a hash size alone, as ``Database/init(opening:hashSize:)``
     /// makes it. A sorted map or set takes a key on any database, since it
