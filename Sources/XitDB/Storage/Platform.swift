@@ -540,6 +540,83 @@ enum Platform {
         }
     }
 
+    /// Gives the open file `new` what the open file `old` has beyond its
+    /// bytes, as far as the system lets a process carry it: what a new file
+    /// that takes an old one's place must have before a byte is written to
+    /// it, so that it is never less protected than the old one.
+    ///
+    /// On every system the permission bits, first. On Apple platforms then
+    /// the access control list, the file's flags, its owner and group
+    /// where the process may set them, and its extended attributes, the
+    /// mark that keeps a file out of backups among them, by the system's
+    /// own call for a file's metadata; and the data protection class,
+    /// which that call does not carry, where the old file has one. On
+    /// Linux the owner and the group: a process that is neither the
+    /// superuser nor the owner may not give a file to another owner, and
+    /// then the group alone is asked for; where that is refused too the
+    /// new file stays the process's own, which is no error.
+    ///
+    /// Not carried, on any system: the file's times and its other names.
+    /// On Linux, also not: the extended attributes and the access control
+    /// list, which is one of them there (Swift is not shown the calls),
+    /// the security labels and the file's flags.
+    ///
+    /// - Parameter setOwner: Sets the owner and the group of an open file
+    ///   and returns zero or the error; `uid_t.max` for the owner leaves
+    ///   the owner as it is. Used on Linux only; a test puts a refusing
+    ///   one in its place.
+    /// - Throws: `storageFailure` with the error of the first step that
+    ///   failed, other than a refusal of the owner or the group on Linux.
+    static func carryAttributes(
+        from old: Int32, to new: Int32, setOwner: (Int32, uid_t, gid_t) -> Int32 = Platform.setOwner
+    ) throws(XitDBError) {
+        var status = stat()
+        while true {
+            // Safe: `fstat` writes one `stat` structure through the
+            // pointer.
+            if unsafe fstat(old, &status) == 0 { break }
+            let error = errno
+            if error != EINTR { throw .storageFailure(errno: error) }
+        }
+        while fchmod(new, status.st_mode & 0o7777) != 0 {
+            let error = errno
+            if error != EINTR { throw .storageFailure(errno: error) }
+        }
+        #if canImport(Darwin)
+            // No state is passed: the call reads the one open file's
+            // metadata and sets the other's.
+            if fcopyfile(old, new, nil, copyfile_flags_t(COPYFILE_METADATA)) != 0 {
+                throw .storageFailure(errno: errno)
+            }
+            // The class a file's bytes are encrypted under. A file that has
+            // none, or a system that has no classes, answers with an error
+            // here, and there is nothing to carry.
+            let protection = fcntl(old, F_GETPROTECTIONCLASS)
+            if protection >= 0, fcntl(new, F_SETPROTECTIONCLASS, protection) != 0 {
+                throw .storageFailure(errno: errno)
+            }
+        #else
+            var error = setOwner(new, status.st_uid, status.st_gid)
+            if error == EPERM {
+                error = setOwner(new, uid_t.max, status.st_gid)
+                if error == EPERM { error = 0 }
+            }
+            if error != 0 { throw .storageFailure(errno: error) }
+        #endif
+    }
+
+    /// Sets the owner and the group of an open file; `uid_t.max` for the
+    /// owner, or `gid_t.max` for the group, leaves that one as it is.
+    ///
+    /// - Returns: Zero, or the error `fchown` reported.
+    static func setOwner(_ descriptor: Int32, _ owner: uid_t, _ group: gid_t) -> Int32 {
+        while true {
+            if fchown(descriptor, owner, group) == 0 { return 0 }
+            let error = errno
+            if error != EINTR { return error }
+        }
+    }
+
     /// Takes an advisory lock on the whole file without waiting for it.
     ///
     /// - Throws: `storageFailure` with the error `flock` reported, which is

@@ -137,6 +137,13 @@ package struct FileCalls {
     /// file of that name.
     package var remove: (String) throws(XitDBError) -> Bool = Platform.removeFile
 
+    /// Gives a new open file what an old one has beyond its bytes: the
+    /// permission bits and what else the system lets a process carry.
+    package var carryAttributes: (Int32, Int32) throws(XitDBError) -> Void = {
+        (old: Int32, new: Int32) throws(XitDBError) in
+        try Platform.carryAttributes(from: old, to: new)
+    }
+
     package init() {}
 }
 
