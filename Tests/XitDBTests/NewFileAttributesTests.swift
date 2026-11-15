@@ -153,29 +153,34 @@ import Testing
             #expect(fcntl(newFile.rawValue, F_GETPROTECTIONCLASS) == old)
         }
     #else
-        private func owner(_ descriptor: Int32) -> (uid_t, gid_t) {
-            var status = stat()
-            #expect(fstat(descriptor, &status) == 0)
-            return (status.st_uid, status.st_gid)
+        /// The owner and the group of the file at `path`, asked of
+        /// Foundation and not by a `stat` of the tests' own, whose members
+        /// the compiler does not reliably find here on Linux.
+        private func owner(_ path: String) throws -> (uid_t, gid_t) {
+            let attributes = try FileManager.default.attributesOfItem(atPath: path)
+            let owner = try #require(attributes[.ownerAccountID] as? NSNumber)
+            let group = try #require(attributes[.groupOwnerAccountID] as? NSNumber)
+            return (owner.uint32Value, group.uint32Value)
         }
 
         /// The owner and the group of the old file are the new file's,
         /// where the process may give a file away: the superuser may.
         @Test(.enabled(if: geteuid() == 0, "only the superuser can give a file to another owner"))
         func theOwnerAndTheGroupAreCarried() throws {
-            let (_, oldFile, newFile) = try files()
+            let (directory, oldFile, newFile) = try files()
             #expect(fchown(oldFile.rawValue, 1234, 5678) == 0)
-            #expect(owner(newFile.rawValue) != (1234, 5678))
+            #expect(try owner(directory.path()) == (1234, 5678))
+            #expect(try owner(directory.path("test.db.incoming")) != (1234, 5678))
             try Platform.carryAttributes(from: oldFile.rawValue, to: newFile.rawValue)
-            #expect(owner(newFile.rawValue) == (1234, 5678))
+            #expect(try owner(directory.path("test.db.incoming")) == (1234, 5678))
         }
 
         /// A process that may not give the file to the old owner asks for
         /// the group alone; refused that too, it leaves the new file its
         /// own, which is no error. Any other failure is the carry's.
         @Test func aProcessThatMayNotSetTheOwnerAsksForTheGroupAlone() throws {
-            let (_, oldFile, newFile) = try files()
-            let (uid, gid) = owner(oldFile.rawValue)
+            let (directory, oldFile, newFile) = try files()
+            let (uid, gid) = try owner(directory.path())
             final class Asked {
                 var calls: [[UInt32]] = []
             }

@@ -202,18 +202,21 @@ import Testing
 }
 
 /// The number of this process's descriptors that refer to the file at
-/// `path`: every descriptor number the process may have, asked for its
-/// device and inode. Descriptors of other files, which other tests open and
-/// close at the same time, do not count.
+/// `path`: every descriptor number the process may have, asked whether the
+/// path leads to its file, by device and inode. Descriptors of other files,
+/// which other tests open and close at the same time, do not count, and a
+/// number that is no open descriptor is an error that counts as none.
+///
+/// The asking is the library's (`Platform.leads`), and not a `stat` of the
+/// tests' own: on Linux the compiler finds the members of the system's
+/// file status through one module or another, by what else the tests
+/// import, and refuses them when it is not one this file imports. In the
+/// library only the system's own module is there to find them in.
 private func descriptorsOpen(on path: String) throws -> Int {
-    var target = stat()
-    try #require(stat(path, &target) == 0)
+    try #require(FileManager.default.fileExists(atPath: path))
     var count = 0
-    for descriptor in 0..<getdtablesize() {
-        var status = stat()
-        if fstat(descriptor, &status) == 0 && status.st_dev == target.st_dev && status.st_ino == target.st_ino {
-            count += 1
-        }
+    for descriptor in 0..<getdtablesize() where (try? Platform.leads(path, to: descriptor)) == true {
+        count += 1
     }
     return count
 }

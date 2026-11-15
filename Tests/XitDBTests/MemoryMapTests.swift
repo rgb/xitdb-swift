@@ -384,65 +384,73 @@ private struct RolledBack: Error {}
         #expect(advised.lengths.count == 3)
     }
 
-    /// The stream of committed bytes gives the same bytes whichever way it
-    /// reads a mapped file: by file calls, which is its way, through the
-    /// map, or through the map with each stretch asked for ahead. Only the
-    /// last asks the system for anything, and only the first reads the
-    /// data by file calls.
+    /// The stream of committed bytes, which feeds a replica, reads a mapped
+    /// file by file calls: the map is advised as read in no order, and the
+    /// stream is the one read the library knows to be in file order. Its
+    /// data comes in the stream's chunks, each a file call, one after
+    /// another up to the committed size; an ordinary read of the same
+    /// bytes makes no file call after the headers.
     @Test(arguments: mappedKinds)
-    func theStreamOfCommittedBytesReadsItsOwnWay(kind: StorageKind) throws {
+    func theStreamOfCommittedBytesReadsByFileCalls(kind: StorageKind) throws {
         let subject = try StorageUnderTest(kind)
         let database = try Database(creating: subject.storage, hashSize: 20)
         try database.withTransaction { root in
-            try HashMap<ReadWrite>(root).put(.bytes(Self.pattern(40 * Self.page)), forHash: hashInt("large"))
+            // a megabyte, which is several of the stream's chunks whatever
+            // the system's page is
+            try HashMap<ReadWrite>(root).put(.bytes(Self.pattern(1 << 20)), forHash: hashInt("large"))
         }
         let file = try #require(
             (subject.storage as? FileStorage) ?? (subject.storage as? BufferedFileStorage)?.file)
-        let counts = CallCounts()
-        final class Asked {
-            var stretches = 0
+        /// The file calls that read, each with where it began and how many
+        /// bytes it was asked for.
+        final class FileReads {
+            var all: [(offset: UInt64, count: Int)] = []
+            /// Those that began after the headers, which a read through
+            /// the map does not make.
+            var afterTheHeaders: [(offset: UInt64, count: Int)] {
+                all.filter { $0.offset >= UInt64(MemoryMapTests.headers) }
+            }
         }
-        let asked = Asked()
+        let reads = FileReads()
         file.calls.read = {
             (descriptor: Int32, buffer: inout MutableSpan<UInt8>, range: Range<Int>, offset: UInt64)
                 throws(XitDBError) -> Int in
-            counts.reads += 1
+            reads.all.append((offset, range.count))
             return try Platform.readFile(descriptor, into: &buffer, range: range, at: offset)
         }
-        file.calls.willNeed = { (address: UInt, length: Int) in
-            asked.stretches += 1
-            Platform.adviseWillNeed(address: address, length: length)
-        }
         let size = try database.committedSize
-        let expected = try subject.stored()
+        #expect(size > UInt64(1 << 20))
 
-        /// The stream of the whole database from its first byte, through
-        /// a sink, which is how a replica's source sends it.
-        func stream() throws -> [UInt8] {
-            var sink = ArrayByteSink()
-            try database.readCommitted(from: 0, to: size, into: &sink)
-            return sink.bytes
+        // an ordinary read of everything after the headers: through the map
+        let ordinary = try Self.afterTheHeaders(file, Int(size))
+        #expect(reads.afterTheHeaders.isEmpty, "an ordinary read of committed bytes makes no file call")
+        let expected = try readBytes(file, at: 0, count: Self.headers) + ordinary
+        reads.all = []
+
+        // the stream through a sink, which is how a replica's source sends it
+        var sink = ArrayByteSink()
+        try database.readCommitted(from: 0, to: size, into: &sink)
+        #expect(sink.bytes == expected)
+        // what is read before the data is the headers, by the engine and
+        // by the stream, each within them
+        let dataStart = database.header.dataStart
+        let chunks = reads.all.filter { $0.offset >= dataStart }
+        let others = reads.all.filter { $0.offset < dataStart }
+        #expect(others.allSatisfy { $0.offset + UInt64($0.count) <= UInt64(Self.headers) })
+        #expect(chunks.count >= 2, "the data in more than one of the stream's chunks")
+        var position = chunks.first?.offset ?? 0
+        #expect(position == dataStart, "the data begins where the header ends")
+        for chunk in chunks {
+            #expect(chunk.offset == position, "one chunk after another")
+            position += UInt64(chunk.count)
         }
+        #expect(position == size, "up to the committed size and no further")
+        reads.all = []
 
-        #expect(file.streamWay == .fileCalls, "the stream's own way")
-        var reads = counts.reads
-        #expect(try stream() == expected)
-        let byFileCalls = counts.reads - reads
-        #expect(byFileCalls >= 3, "the headers, and the data in the stream's chunks")
-        #expect(asked.stretches == 0)
-        // the bytes read straight into an array go the same way
+        // the bytes read straight into an array: one file call for all of them
         #expect(try database.readCommitted(from: 0, to: size) == expected)
-        #expect(asked.stretches == 0)
-
-        file.streamWay = .map
-        reads = counts.reads
-        #expect(try stream() == expected)
-        #expect(counts.reads - reads < byFileCalls, "through the map all but what starts in the headers")
-        #expect(asked.stretches == 0)
-
-        file.streamWay = .willNeed
-        #expect(try stream() == expected)
-        #expect(asked.stretches >= 1, "each stretch is asked for ahead of its reading")
+        #expect(reads.all.contains { $0.offset == 0 && $0.count == Int(size) })
+        #expect(reads.afterTheHeaders.isEmpty)
     }
 
     // MARK: The fallback

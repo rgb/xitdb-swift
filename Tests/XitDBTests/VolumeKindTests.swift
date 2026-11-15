@@ -108,10 +108,13 @@ import Testing
             #expect(FileManager.default.createFile(atPath: directory.path(), contents: Data([1, 2, 3])))
             let descriptor = try FileDescriptor(opening: directory.path(), access: .readOnly)
             let mounts = try String(contentsOfFile: "/proc/self/mountinfo", encoding: .utf8)
-            var status = stat()
-            #expect(fstat(descriptor.rawValue, &status) == 0)
+            // the file's device from Foundation and not by a `stat` of the
+            // tests' own, whose members the compiler does not reliably
+            // find here
+            let device = try #require(
+                try FileManager.default.attributesOfItem(atPath: directory.path())[.systemNumber] as? NSNumber)
             let kind = try #require(
-                Platform.fileSystemKind(device: UInt64(status.st_dev), path: directory.path(), mounts: mounts),
+                Platform.fileSystemKind(device: device.uint64Value, path: directory.path(), mounts: mounts),
                 "no mount found for \(directory.path())")
             #expect(Platform.volumeIsLocal(descriptor.rawValue) == !Platform.isRemoteFileSystem(kind), "\(kind)")
         }

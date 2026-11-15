@@ -142,10 +142,6 @@ package struct FileCalls {
     /// each segment; its answer is not looked at.
     package var advise: (UInt, Int) -> Void = Platform.adviseRandom
 
-    /// Asks the system to bring a part of the map into memory ahead of its
-    /// reading, given its address and its length.
-    package var willNeed: (UInt, Int) -> Void = Platform.adviseWillNeed
-
     /// Gives a new open file what an old one has beyond its bytes: the
     /// permission bits and what else the system lets a process carry.
     package var carryAttributes: (Int32, Int32) throws(XitDBError) -> Void = {
@@ -317,60 +313,21 @@ public final class FileStorage: WritableStorage {
 
     // MARK: A read in file order
 
-    /// The ways the stream of committed bytes, which feeds a replica, can
-    /// read a file that is read through a map. The map is advised as read
-    /// in no order, and a read in file order through it would bring the
-    /// file in a page at a time; the stream is the one read the library
-    /// knows to be in file order, and is kept from paying for the advice.
+    /// A read of the stream of committed bytes, which feeds a replica: as
+    /// ``read(into:range:at:)``, but by a file call whether or not the
+    /// file is read through a map.
     ///
-    /// A switch for measuring: the benchmark turns it, the figures choose
-    /// one way, and the switch goes.
-    package enum StreamWay: Sendable {
-        /// Through the map, as any other read.
-        case map
-        /// By file calls, whose read-ahead follows the descriptor.
-        case fileCalls
-        /// Through the map, each stretch asked for ahead of its reading.
-        case willNeed
-    }
-
-    /// How the stream of committed bytes reads this file where it is read
-    /// through a map.
-    package var streamWay = StreamWay.fileCalls
-
-    /// A read of the stream of committed bytes: as
-    /// ``read(into:range:at:)``, but for where the bytes are taken from on
-    /// a file that is read through a map (``streamWay``).
+    /// The map is advised as read in no order, and a read in file order
+    /// through it brings the file in a page at a time. The stream is the
+    /// one read the library knows to be in file order, and the system
+    /// reads ahead of a file call: a stream of a file that was not in
+    /// memory took between a sixth and a tenth of the time this way that
+    /// it took through the advised map, on macOS and on Linux in a
+    /// container.
     func readForStream(
         into buffer: inout MutableSpan<UInt8>, range: Range<Int>, at offset: UInt64
     ) throws(XitDBError) -> Int {
-        guard map != nil else { return try read(into: &buffer, range: range, at: offset) }
-        switch streamWay {
-        case .map:
-            return try read(into: &buffer, range: range, at: offset)
-        case .fileCalls:
-            return try calls.read(descriptor.rawValue, &buffer, range, offset)
-        case .willNeed:
-            askForStretch(at: offset, count: range.count)
-            return try read(into: &buffer, range: range, at: offset)
-        }
-    }
-
-    /// Asks the system to bring the part of `count` bytes from `offset`
-    /// that the map may give into memory, segment by segment.
-    private func askForStretch(at offset: UInt64, count: Int) {
-        let limit = map!.limit
-        guard offset < limit, count > 0 else { return }
-        let end = offset + min(UInt64(count), limit - offset)
-        let size = UInt64(map!.view.segmentSize)
-        var position = offset
-        while position < end {
-            guard let segment = segment(at: Int(position / size)) else { return }
-            let local = Int(position % size)
-            let stretch = Int(min(end - position, size - UInt64(local)))
-            segment.willNeed(at: local, count: stretch, by: calls.willNeed)
-            position += UInt64(stretch)
-        }
+        try calls.read(descriptor.rawValue, &buffer, range, offset)
     }
 
     // MARK: Replacing the file

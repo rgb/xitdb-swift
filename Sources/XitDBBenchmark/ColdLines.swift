@@ -4,7 +4,7 @@
 //
 //     XitDBBenchmark --cold prepare <path> <elements>
 //     XitDBBenchmark --cold walk <path> [--no-advice] [--warm]
-//     XitDBBenchmark --cold stream <path> [--no-advice] [--warm] [--stream-by map|file|will-need]
+//     XitDBBenchmark --cold stream <path> [--no-advice] [--warm]
 //
 // `prepare` writes a database whose one moment is a list of `elements`
 // values of 256 bytes each, appended in order in one transaction, so that
@@ -17,12 +17,12 @@
 // to be read through a memory map, and the line is run once and timed.
 //
 // The map tells the system that it is read in no order; `--no-advice` runs
-// the same without that, which is what the two are measured against. The
-// stream reads its own way, by file calls; `--stream-by` chooses another.
+// the same without that, which is what the walk is measured against. The
+// stream reads by file calls, which the advice does not reach.
 //
-// One line of JSON a run: the line, the advice, the stream's way, the
-// seconds, the elements or bytes, the major faults the run took, and the
-// part of the file that was in memory before it.
+// One line of JSON a run: the line, the advice, the seconds, the elements
+// or bytes, the major faults the run took, and the part of the file that
+// was in memory before it.
 
 import Foundation
 import XitDB
@@ -64,12 +64,15 @@ private struct WholeFile {
     init(_ path: String) throws {
         descriptor = open(path, O_RDONLY)
         guard descriptor >= 0 else { throw BenchmarkFailure(description: "cannot open \(path)") }
-        var status = stat()
-        guard fstat(descriptor, &status) == 0, status.st_size > 0 else {
+        // the length by seeking and not from the file's status: on Linux
+        // the compiler does not reliably find a C structure's members in a
+        // target that imports Foundation
+        let end = lseek(descriptor, 0, SEEK_END)
+        guard end > 0 else {
             close(descriptor)
             throw BenchmarkFailure(description: "cannot ask the length of \(path)")
         }
-        length = Int(status.st_size)
+        length = Int(end)
         guard let mapped = mmap(nil, length, PROT_READ, MAP_SHARED, descriptor, 0), mapped != MAP_FAILED else {
             close(descriptor)
             throw BenchmarkFailure(description: "cannot map \(path)")
@@ -118,15 +121,22 @@ private func dropPages(of path: String) throws -> Double {
 }
 
 /// The major faults this process has taken so far: reads of a page that
-/// had to be brought in from the file.
+/// had to be brought in from the file. On Linux from the system's own file
+/// about the process, whose twelfth field it is, and not from `getrusage`,
+/// for the reason given at the file's length; `-1` if it cannot be read.
 private func majorFaults() -> Int {
-    var usage = rusage()
     #if canImport(Darwin)
+        var usage = rusage()
         getrusage(RUSAGE_SELF, &usage)
+        return Int(usage.ru_majflt)
     #else
-        getrusage(__rusage_who_t(RUSAGE_SELF.rawValue), &usage)
+        guard let text = try? String(contentsOfFile: "/proc/self/stat", encoding: .utf8),
+            let name = text.range(of: ") ", options: .backwards)
+        else { return -1 }
+        // what follows the name starts at the third field
+        let fields = text[name.upperBound...].split(separator: " ")
+        return fields.count > 9 ? Int(fields[9]) ?? -1 : -1
     #endif
-    return Int(usage.ru_majflt)
 }
 
 /// A sink that counts what it is given and keeps nothing.
@@ -145,7 +155,7 @@ func runColdLines(_ arguments: [String]) throws {
         description: """
             usage: --cold prepare <path> <elements>
                    --cold walk <path> [--no-advice] [--warm]
-                   --cold stream <path> [--no-advice] [--warm] [--stream-by map|file|will-need]
+                   --cold stream <path> [--no-advice] [--warm]
             """)
     func flag(_ name: String) -> Bool {
         guard let index = arguments.firstIndex(of: name) else { return false }
@@ -154,19 +164,6 @@ func runColdLines(_ arguments: [String]) throws {
     }
     let advised = !flag("--no-advice")
     let warm = flag("--warm")
-    var way = FileStorage.StreamWay.fileCalls
-    var wayName = "file"
-    if let index = arguments.firstIndex(of: "--stream-by") {
-        guard index + 1 < arguments.count else { throw usage }
-        wayName = arguments[index + 1]
-        switch wayName {
-        case "map": way = .map
-        case "file": way = .fileCalls
-        case "will-need": way = .willNeed
-        default: throw usage
-        }
-        arguments.removeSubrange(index...(index + 1))
-    }
     guard arguments.count >= 2 else { throw usage }
     let line = arguments[0]
     let path = arguments[1]
@@ -192,7 +189,6 @@ func runColdLines(_ arguments: [String]) throws {
         throw BenchmarkFailure(description: "the file at \(path) is on a volume that is not read through a map")
     }
     if !advised { file.calls.advise = { (_: UInt, _: Int) in } }
-    file.streamWay = way
     let database = try Database(opening: file, hashSize: 20)
     let faults = majorFaults()
     let clock = ContinuousClock()
@@ -222,11 +218,10 @@ func runColdLines(_ arguments: [String]) throws {
     }
     let elapsed = clock.now - began
     let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
-    let stream = line == "stream" ? "\"\(wayName)\"" : "null"
     print(
         String(
-            format: #"{"line": "%@", "advice": %@, "stream_by": %@, "seconds": %.4f, "#
+            format: #"{"line": "%@", "advice": %@, "seconds": %.4f, "#
                 + #""done": %d, "major_faults": %d, "in_memory_before": %@, "file_size": %llu}"#,
-            line, advised ? "true" : "false", stream, seconds, done, majorFaults() - faults,
+            line, advised ? "true" : "false", seconds, done, majorFaults() - faults,
             warm ? "null" : String(format: "%.4f", before), try file.length))
 }

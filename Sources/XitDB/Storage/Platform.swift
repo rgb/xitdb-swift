@@ -319,16 +319,6 @@ enum Platform {
         _ = unsafe madvise(UnsafeMutableRawPointer(bitPattern: address), length, MADV_RANDOM)
     }
 
-    /// Asks the system to bring a part of a mapped range into memory ahead
-    /// of its reading, which is what a read in file order through a range
-    /// advised as read in no order would otherwise lack. Advice, as
-    /// ``adviseRandom(address:length:)`` is.
-    static func adviseWillNeed(address: UInt, length: Int) {
-        // Safe: the range lies within one that `mapFile` returned, and the
-        // call reads and writes nothing through the pointer.
-        _ = unsafe madvise(UnsafeMutableRawPointer(bitPattern: address), length, MADV_WILLNEED)
-    }
-
     /// Unmaps what ``mapFile(_:offset:length:)`` mapped.
     static func unmapFile(address: UInt, length: Int) {
         // Safe: the range is one that `mapFile` returned, unmapped once, by
