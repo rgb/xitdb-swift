@@ -128,11 +128,12 @@ extension DatabaseReader {
     func count(_ slot: Slot) throws(XitDBError) -> UInt64 {
         switch slot.tag {
         case .none: return 0
-        case .arrayList: return try arrayListHeader(at: slot.value).size
-        case .linkedArrayList, .sortedMap, .sortedSet: return try bTreeHeader(at: slot.value).size
+        case .arrayList: return try checkedArrayListHeader(at: slot.value).size
+        case .linkedArrayList: return try bTreeHeader(at: slot.value).size
+        case .sortedMap, .sortedSet: return try checkedSortedHeader(at: slot.value).size
         case .bytes: return try uint64(at: slot.value)
         case .shortBytes: return UInt64(ByteArrayFormat.shortByteCount(of: slot))
-        case .countedHashMap, .countedHashSet: return try uint64(at: slot.value)
+        case .countedHashMap, .countedHashSet: return try checkedHashMapCount(at: slot.value)
         default: throw .unexpectedTag
         }
     }

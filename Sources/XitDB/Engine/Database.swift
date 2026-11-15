@@ -724,6 +724,9 @@ public final class Database {
     /// take the new file ID.
     func become(_ newHeader: DatabaseHeader) {
         identity.header = newHeader
+        // Where data starts follows the format's version, which the new
+        // header may have changed.
+        reader.headerChanged()
     }
 
     /// Discards whatever lies beyond the committed size: what a transaction

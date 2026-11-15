@@ -128,6 +128,7 @@ extension DatabaseReader {
     ///   header, `invalidEnumTag` for an unknown slot tag, `endOfStream` if
     ///   the file ends inside the node.
     func bTreeNode(at position: UInt64) throws(XitDBError) -> BTreeNode {
+        try checkIsData(position)
         var buffer = InlineArray<274, UInt8>(repeating: 0)
         var span = buffer.mutableSpan
         let read = try storage.read(into: &span, at: position)

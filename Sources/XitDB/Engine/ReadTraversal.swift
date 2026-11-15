@@ -63,7 +63,7 @@ extension DatabaseReader {
         case .arrayList: break
         default: throw .unexpectedTag
         }
-        let header = try arrayListHeader(at: slot.value)
+        let header = try checkedArrayListHeader(at: slot.value)
         guard let key = Self.arrayListKey(index: index, size: header.size) else { throw .indexOutOfRange }
         // The size is at least one, since the index names an element.
         let shift = Trie.arrayListShift(lastIndex: header.size - 1)
@@ -126,8 +126,19 @@ extension DatabaseReader {
         }
     }
 
-    func sortedMapGet(_ slot: Slot, kind: HashMapSlotKind, key: SortedKey) throws(XitDBError) -> SlotPointer {
+    /// The header of a sorted map or set a slot holds, as a read takes it:
+    /// its size is held against what the file could hold.
+    ///
+    /// - Throws: `invalidCount` for a size the file has no room for, and
+    ///   what ``sortedMapHeader(_:)`` throws.
+    func checkedSortedMapHeader(_ slot: Slot) throws(XitDBError) -> BTreeHeader {
         let header = try sortedMapHeader(slot)
+        try checkCount(header.size, bytesEach: Slot.byteCount)
+        return header
+    }
+
+    func sortedMapGet(_ slot: Slot, kind: HashMapSlotKind, key: SortedKey) throws(XitDBError) -> SlotPointer {
+        let header = try checkedSortedMapHeader(slot)
         let entry = try key.withBytes { (bytes: Span<UInt8>) throws(XitDBError) in
             try sortedGet(rootPtr: header.rootPtr, key: bytes)
         }
@@ -136,7 +147,7 @@ extension DatabaseReader {
     }
 
     func sortedMapGetIndex(_ slot: Slot, index: Int64) throws(XitDBError) -> SlotPointer {
-        let header = try sortedMapHeader(slot)
+        let header = try checkedSortedMapHeader(slot)
         guard let rank = Self.linkedArrayListRank(index: index, size: header.size) else { throw .indexOutOfRange }
         return try sortedSlot(rootPtr: header.rootPtr, rank: rank)
     }

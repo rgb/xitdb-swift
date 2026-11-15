@@ -70,6 +70,7 @@ extension DatabaseReader {
     ///   header, `invalidEnumTag` for an unknown slot tag, `endOfStream` if
     ///   the file ends inside the node.
     func sortedNode(at position: UInt64) throws(XitDBError) -> SortedNode {
+        try checkIsData(position)
         var buffer = InlineArray<418, UInt8>(repeating: 0)
         var span = buffer.mutableSpan
         let read = try storage.read(into: &span, at: position)
@@ -122,6 +123,7 @@ extension DatabaseReader {
             // chunks of 256, read as the comparison needs them.
             let lengthBytes = Int(ByteArrayFormat.lengthByteCount)
             var head = InlineArray<64, UInt8>(repeating: 0)
+            try checkIsData(keySlot.value)
             var headSpan = head.mutableSpan
             let headRead = try storage.read(into: &headSpan, at: keySlot.value)
             // A storage may give fewer bytes than the length itself takes,

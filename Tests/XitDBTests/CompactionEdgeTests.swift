@@ -211,9 +211,8 @@ import Testing
     /// that the walk's arithmetic has no room for an overflow (it trapped
     /// on rounding the size up to blocks), and whose root block holds
     /// numbers where blocks are expected, which Zig reports as
-    /// `UnexpectedTag`. The read path meets the same header and reports
-    /// an error too: a get at the front of the list finds a number where a
-    /// block should be, and one at the end finds nothing.
+    /// `UnexpectedTag`. The read path refuses the header itself: no file
+    /// has room for that many elements, whichever of them is asked for.
     @Test(arguments: StorageKind.allCases)
     func aHeaderAtTheLargestSize(kind: StorageKind) throws {
         let subject = try Subject(kind, makeDatabase: makeDatabase)
@@ -222,14 +221,35 @@ import Testing
         #expect(try compacting(subject, into: kind).error == .unexpectedTag)
 
         let list = try #require(try subject.moment.readPath([.hashMapGet(.value, sha1("list"))]))
-        #expect(try ArrayList(list).count == UInt64.max)
-        for index in [Int64(0), 4, 15] {
-            #expect(throws: XitDBError.unexpectedTag) { try list.readPath([.arrayListGet(index)]) }
-            #expect(throws: XitDBError.unexpectedTag) { try ArrayList(list).cursor(at: index) }
+        #expect(throws: XitDBError.invalidCount) { try ArrayList(list).count }
+        for index in [Int64(0), 4, 15, -1, Int64.max] {
+            #expect(throws: XitDBError.invalidCount) { try list.readPath([.arrayListGet(index)]) }
+            #expect(throws: XitDBError.invalidCount) { try ArrayList(list).cursor(at: index) }
         }
-        #expect(try list.readPath([.arrayListGet(-1)]) == nil)
-        #expect(try ArrayList(list).cursor(at: -1) == nil)
-        #expect(try ArrayList(list).cursor(at: Int64.max) == nil)
+    }
+
+    /// A source that leads the compactor before where data starts, into
+    /// the file's own headers, is reported as it is to any read: by each of
+    /// the compactor's own reads, of a trie's block, of a tree's node and
+    /// of an array list's block. The position is the start of the file,
+    /// whose bytes would otherwise be taken for a block or a node.
+    @Test(arguments: StorageKind.allCases)
+    func aPositionBeforeTheDataEndsTheCompaction(kind: StorageKind) throws {
+        // the inner map's first block
+        var subject = try Subject(kind, makeDatabase: makeDatabase)
+        let map = try #require(try subject.moment.readPath([.hashMapGet(.value, sha1("map"))]))
+        try subject.damage(slotBytes(Slot(value: 0, tag: .hashMap)), at: try #require(map.slotPointer.position))
+        #expect(try compacting(subject, into: kind).error == .endOfStream)
+
+        // the linked array list's root node: its header's second number
+        subject = try Subject(kind, makeDatabase: makeDatabase)
+        try subject.damage(bigEndianBytes(0), at: try subject.slot("linked").value + 8)
+        #expect(try compacting(subject, into: kind).error == .endOfStream)
+
+        // the array list's first block: its header's second number
+        subject = try Subject(kind, makeDatabase: makeDatabase)
+        try subject.damage(bigEndianBytes(0), at: try subject.slot("list").value + 8)
+        #expect(try compacting(subject, into: kind).error == .endOfStream)
     }
 
     /// A hash trie whose block points at itself ends in the memo: the copy

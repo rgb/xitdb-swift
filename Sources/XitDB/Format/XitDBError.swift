@@ -5,6 +5,20 @@
 /// what the original reports as `KeyNotFound` for a list index. Two are
 /// comparable only loosely: ``callerError(_:)`` carries an error of the
 /// caller's own, and two of them are equal when their descriptions are.
+///
+/// **A damaged file is one thing.** Damage is reported by whichever check
+/// comes across it first, so the case says where the damage was met and
+/// not what it is. From a read of a file that may be damaged,
+/// ``endOfStream``, ``invalidCount``, ``keyOffsetExceeded``,
+/// ``unexpectedTag``, ``invalidBTreeNode`` and ``invalidBTreeNodeKind`` all
+/// mean that the bytes are not what a writer left, as ``invalidEnumTag``
+/// and ``maxShiftExceeded`` do: catch them together, and do not tell one
+/// from another. (Three of them have another meaning beside, which comes
+/// from the caller's own calls: ``unexpectedTag`` is also a typed read of
+/// another kind than a slot holds, ``endOfStream`` a source that ran out,
+/// and ``invalidBTreeNode`` a position that a tree does not have though
+/// its size says so, in a copy that was made by its slot and then written
+/// beside its original: see <doc:CloningFreezeAndStaleHandles>.)
 public enum XitDBError: Error, Sendable {
     /// A slot holds a kind of value that the operation cannot work with.
     ///
@@ -94,6 +108,13 @@ public enum XitDBError: Error, Sendable {
 
     /// A tree node records more entries than a node can hold, or a position
     /// in a node is out of range.
+    ///
+    /// It is also a tree that is not one: deeper than a tree can be, or
+    /// with more nodes than its collection can have, which is how a walk
+    /// ends among nodes that lead to each other. A sorted map's or set's
+    /// walk enters no more nodes than the file has room for; a linked
+    /// array list's no more than the depth of a tree for each element it
+    /// has given and for the next.
     case invalidBTreeNode
 
     /// A tree node is neither a leaf nor a branch.
@@ -132,7 +153,9 @@ public enum XitDBError: Error, Sendable {
     /// created over.
     case storageNotEmpty
 
-    /// A hash trie is deeper than a hash of the database's hash size allows.
+    /// A hash trie is deeper than a hash of the database's hash size
+    /// allows, or a walk of one has entered more blocks than the file has
+    /// room for: its blocks lead to each other, as no writer leaves them.
     case keyOffsetExceeded
 
     /// An array list is deeper than the format allows.
@@ -149,6 +172,10 @@ public enum XitDBError: Error, Sendable {
 
     /// Data ended before a complete value could be read, or the storage is
     /// too short to hold its headers: 32 bytes, or 37 in a version 1 file.
+    ///
+    /// It is also a position in the file that no record can be at: beyond
+    /// any position a storage has, or before where the data starts, in the
+    /// file's own headers. A file that leads a read there is damaged.
     ///
     /// It is also a ``ByteSource`` that runs out, and a read of a whole
     /// buffer from a `ByteReader` with fewer bytes left than the buffer
@@ -187,9 +214,18 @@ public enum XitDBError: Error, Sendable {
     /// comes out of the call as itself.
     case callerError(any Error)
 
-    /// A count recorded in the file disagrees with its tree: a counted hash
-    /// map or set whose count says it is empty holds the key being removed,
-    /// or whose count cannot grow is being added to.
+    /// A count recorded in the file disagrees with what it counts.
+    ///
+    /// For a write: a counted hash map or set whose count says it is empty
+    /// holds the key being removed, or whose count cannot grow is being
+    /// added to.
+    ///
+    /// For a read: the size of an array list or of a sorted map or set, or
+    /// a counted hash map's or set's count, is more than the file has room
+    /// for, at a slot for each element and a pair for each counted entry.
+    /// (A linked array list's size is held to nothing: a list joined to
+    /// itself holds its nodes many times over. Nor is any size or count
+    /// held against the tree under it.)
     case invalidCount
 
     /// A cursor that cannot be used any more: for a write, one made before the

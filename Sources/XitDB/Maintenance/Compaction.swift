@@ -377,6 +377,7 @@ struct Compactor {
         ensureRoom(for: frame)
         let storage = source.storage
         let wanted = frame.byteCount
+        try source.checkIsData(position)
         var span = blockBytes.mutableSpan
         let read = try storage.read(into: &span, range: frame.start..<(frame.start + wanted), at: position)
         guard read == wanted else { throw .endOfStream }
@@ -395,6 +396,7 @@ struct Compactor {
     private func nodeKind(at position: UInt64) throws(XitDBError) -> BTreeNodeKind {
         var buffer = InlineArray<2, UInt8>(repeating: 0)
         var span = buffer.mutableSpan
+        try source.checkIsData(position)
         let read = try source.storage.read(into: &span, at: position)
         return try TreeNodeHeader.decode(buffer.span.extracting(0..<read)).kind
     }
@@ -657,6 +659,7 @@ struct Compactor {
                 frame.start..<(frame.start + frame.byteCount), with: repeatElement(0, count: frame.byteCount))
             if used > 0 {
                 let storage = source.storage
+                try source.checkIsData(blockPtr)
                 var span = blockBytes.mutableSpan
                 let read = try storage.read(into: &span, range: frame.start..<(frame.start + used * 9), at: blockPtr)
                 guard read == used * 9 else { throw .endOfStream }

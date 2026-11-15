@@ -520,8 +520,9 @@ import Testing
 
     /// A slot's position is computed from offsets in the file. In a sound
     /// file no slot is at the root header's position, which is how a cursor
-    /// at the root is told from any other. A file that leads a write path
-    /// there is corrupt, and the write is refused.
+    /// at the root is told from any other. A file that leads a path there
+    /// is corrupt, and the path is refused where it reads the slot: no
+    /// record is before where data starts.
     @Test func aPathThatArrivesAtTheRootHeaderIsRefused() throws {
         let storage = MemoryStorage()
         let database = try makeDatabase(storage)
@@ -543,18 +544,18 @@ import Testing
         expectPoisoned {
             try reopened.withTransaction { cursor in
                 // without the init part, the element's slot is where the header says: at the root header
-                #expect(throws: XitDBError.invalidDatabase) {
+                #expect(throws: XitDBError.endOfStream) {
                     try cursor.writePath([.hashMapGet(.value, sha1("list")), .arrayListGet(0), .write(.uint(9))])
                 }
             }
         }
         // the root header was not written to
         #expect(Array(damaged.bytes[..<32]) == Array(bytes[..<32]))
-        // and a read there finds no element: the root header of a version 2
+        // and a read there is refused too: the root header of a version 2
         // file holds no slot, and the nine bytes at its start, padding and
-        // the first bytes of the committed size, read as an empty one
+        // the first bytes of the committed size, are not read as one
         let list = try #require(try reopened.rootCursor.readPath([.hashMapGet(.value, sha1("list"))]))
-        #expect(try list.readPath([.arrayListGet(0)]) == nil)
+        #expect(throws: XitDBError.endOfStream) { try list.readPath([.arrayListGet(0)]) }
     }
 
     /// A hash trie works to the full depth its hash allows: 128 levels for

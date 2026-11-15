@@ -319,6 +319,20 @@ import XitDBHashing
             #expect(dump.moments.first?.root.kind == .unreadable, "\(name)")
             #expect(dump.exitCode == 1, "\(name)")
         }
+        // A sorted map and a sorted set have no hashes: a whole hash given
+        // as a step is refused, and the refusal says how they are reached,
+        // where it said "not a map".
+        let hash = Self.sha1("a")
+        for (bytes, kind) in [(sortedMap, "sortedMap"), (sortedSet, "sortedSet")] {
+            options.path = [.hash(hash)]
+            dump = Self.dump(bytes, options)
+            #expect(dump.moments.first?.root.kind == .unreadable, "\(kind)")
+            #expect(dump.exitCode == 1, "\(kind)")
+            #expect(
+                Self.text(bytes, options).contains(
+                    "\nmoment 0/\(Dumper.hex(hash)): unreadable: no such place: \(Dumper.hex(hash)) "
+                        + "(a \(kind) has no hashes: it is reached by a key or a position)\n"), "\(kind)")
+        }
     }
 
     /// A dump stops at its budget of nodes and says so, whether the root is
