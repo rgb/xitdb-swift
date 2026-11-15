@@ -416,6 +416,58 @@ import Testing
         #expect(try directory.contents("elsewhere.db") == [4, 5, 6])
     }
 
+    /// The property a caller has, asked of a storage of either type.
+    private static func isStillAtPath(_ storage: any WritableStorage) throws -> Bool {
+        if let buffered = storage as? BufferedFileStorage { return try buffered.isStillAtPath }
+        return try #require(storage as? FileStorage).isStillAtPath
+    }
+
+    /// A reader's storage of the type of `kind` on the file at `path`, with
+    /// no lock and no map, as a reader beside a writer has it.
+    private static func reader(_ kind: Kind, at path: String) throws -> any WritableStorage {
+        kind.isBuffered
+            ? try BufferedFileStorage(path: path, access: .readOnly)
+            : try FileStorage(path: path, access: .readOnly)
+    }
+
+    /// The property across a symbolic link: a storage that was opened
+    /// through a link is asked about the link as it is at the asking, and
+    /// not as it was resolved at opening. Changed to lead to another file,
+    /// the path no longer leads to the storage's file, for the writer and
+    /// for a reader; changed back, it does again; and the storages read
+    /// their own file all the while. The same is shown of a reader in
+    /// another process, by the tests that start one; this holds the rule
+    /// without them.
+    @Test(arguments: Kind.allCases)
+    func aStorageOpenedThroughALinkIsAskedAboutTheLinkAsItIs(kind: Kind) throws {
+        let directory = try Self.folder()
+        let link = directory.path("link.db")
+        let elsewhere = directory.path("elsewhere.db")
+        #expect(FileManager.default.createFile(atPath: elsewhere, contents: Data([4, 5, 6])))
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: directory.path())
+        let writer = try Self.writer(kind, at: link)
+        let reader = try Self.reader(kind, at: link)
+        #expect(try Self.isStillAtPath(writer.storage))
+        #expect(try Self.isStillAtPath(reader))
+
+        try FileManager.default.removeItem(atPath: link)
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: elsewhere)
+        #expect(try Self.isStillAtPath(writer.storage) == false, "the link leads to another file")
+        #expect(try Self.isStillAtPath(reader) == false)
+        #expect(try readBytes(reader, at: 0, count: Self.old.count) == Self.old, "the reader has its own file")
+
+        try FileManager.default.removeItem(atPath: link)
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: directory.path())
+        #expect(try Self.isStillAtPath(writer.storage), "the link leads to the storage's file again")
+        #expect(try Self.isStillAtPath(reader))
+
+        // a link in the path that leads nowhere is a path with no file
+        try FileManager.default.removeItem(atPath: link)
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: directory.path("no such file"))
+        #expect(try Self.isStillAtPath(writer.storage) == false)
+        #expect(try Self.isStillAtPath(reader) == false)
+    }
+
     /// What a storage says of its own path, by the property a caller has,
     /// on both file storages: `true` while the path leads to the file it
     /// opened, and through a replacement of its own from its beginning to
@@ -426,14 +478,8 @@ import Testing
     func aStorageSaysWhetherItsPathStillLeadsToItsFile(kind: Kind) throws {
         let directory = try Self.folder()
         let writer = try Self.writer(kind, at: directory.path())
-        func still(_ storage: any WritableStorage) throws -> Bool {
-            if let buffered = storage as? BufferedFileStorage { return try buffered.isStillAtPath }
-            return try #require(storage as? FileStorage).isStillAtPath
-        }
-        let reader: any WritableStorage =
-            kind.isBuffered
-            ? try BufferedFileStorage(path: directory.path(), access: .readOnly)
-            : try FileStorage(path: directory.path(), access: .readOnly)
+        let still = Self.isStillAtPath
+        let reader = try Self.reader(kind, at: directory.path())
         #expect(try still(writer.storage))
         #expect(try still(reader))
 
