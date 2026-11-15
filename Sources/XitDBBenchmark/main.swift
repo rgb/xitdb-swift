@@ -68,7 +68,34 @@ enum StorageKind: String {
     case memory
     case bufferedFile = "buffered_file"
     case file
+    /// A buffered file whose file is read through a memory map.
+    case mappedBufferedFile = "mapped_buffered_file"
+    /// A file read through a memory map.
+    case mappedFile = "mapped_file"
+
+    /// The kind that reads the same file through a memory map, for the
+    /// two kinds that have one.
+    var mapped: StorageKind? {
+        switch self {
+        case .bufferedFile: .mappedBufferedFile
+        case .file: .mappedFile
+        case .memory, .mappedBufferedFile, .mappedFile: nil
+        }
+    }
+
+    var isMapped: Bool { self == .mappedBufferedFile || self == .mappedFile }
 }
+
+/// With `--mapped` every workload runs on the mapped twins of its file
+/// kinds and not in memory, so that the lines can be laid beside those of
+/// a run without it.
+let mappedRun = CommandLine.arguments.contains("--mapped")
+
+/// With `--map-at-commits` a mapped storage reads through its map only
+/// what is committed, and what the open transaction has written by file
+/// calls: the other of the two limits, for measuring one against the
+/// other.
+let mapAtCommits = CommandLine.arguments.contains("--map-at-commits")
 
 /// A storage of one kind for one run, in a file of its own that is removed
 /// afterwards. Syncing is off, so that the engine is measured and not the
@@ -94,6 +121,20 @@ final class RunStorage {
             let file = try FileStorage(path: path, access: .truncate, durability: .none)
             self.file = file
             storage = kind == .file ? file : BufferedFileStorage(file)
+        case .mappedBufferedFile, .mappedFile:
+            let path = FileManager.default.temporaryDirectory
+                .appendingPathComponent("xitdb-benchmark-\(UUID().uuidString).db").path
+            self.path = path
+            let file = try FileStorage(
+                path: path, access: .truncate, durability: .none, lock: .exclusive, memoryMapped: true)
+            // A line that says "mapped" must be one: on a volume the
+            // library does not map the storage would read by file calls.
+            guard file.isMemoryMapped else {
+                throw BenchmarkFailure(description: "the temporary folder is on a volume that is not mapped")
+            }
+            file.mapsCommittedBytesOnly = mapAtCommits
+            self.file = file
+            storage = kind == .mappedFile ? file : BufferedFileStorage(file)
         }
     }
 
@@ -1039,15 +1080,29 @@ let onlyKind: StorageKind? = {
     let arguments = CommandLine.arguments
     guard let index = arguments.firstIndex(of: "--kind"), index + 1 < arguments.count else { return nil }
     guard let kind = StorageKind(rawValue: arguments[index + 1]) else {
-        FileHandle.standardError.write(Data("--kind takes memory, file or buffered_file\n".utf8))
+        FileHandle.standardError.write(
+            Data("--kind takes memory, file or buffered_file, or with --mapped a mapped kind\n".utf8))
         exit(2)
     }
     return kind
 }()
 
+/// The kinds a workload runs on: its own, or with `--mapped` the mapped
+/// twins of its file kinds; with `--kind`, the one of them that was named.
+func runKinds(_ workload: Workload) -> [StorageKind] {
+    let kinds = mappedRun ? workload.kinds.compactMap(\.mapped) : workload.kinds
+    return kinds.filter { onlyKind == nil || $0 == onlyKind }
+}
+
+/// Whether a workload runs on a kind: one of its own, or the mapped twin
+/// of one.
+func runs(_ workload: Workload, on kind: StorageKind) -> Bool {
+    workload.kinds.contains(kind) || workload.kinds.contains { $0.mapped == kind }
+}
+
 func run(_ workload: Workload) throws {
     let keys = Keys(workload.keyKind, count: workload.keyCount)
-    for kind in workload.kinds where onlyKind == nil || kind == onlyKind {
+    for kind in runKinds(workload) {
         var writes: [Measurement] = []
         var reads: [Measurement] = []
         var iterates: [Measurement] = []
@@ -1289,7 +1344,7 @@ let arguments: [String] = {
     if let index = arguments.firstIndex(of: "--kind"), index + 1 < arguments.count {
         arguments.removeSubrange(index...(index + 1))
     }
-    arguments.removeAll { $0 == "--snapshot" }
+    arguments.removeAll { $0 == "--snapshot" || $0 == "--mapped" || $0 == "--map-at-commits" }
     return arguments
 }()
 if arguments.first == "--hash-cost" {
@@ -1315,7 +1370,7 @@ if arguments.first == "--stack-sweep" {
     guard
         arguments.count == 4 || arguments.count == 5,
         let kind = StorageKind(rawValue: arguments[2]),
-        let workload = workloads.first(where: { $0.name == arguments[1] && $0.kinds.contains(kind) }),
+        let workload = workloads.first(where: { $0.name == arguments[1] && runs($0, on: kind) }),
         ["write", "read", "iterate"].contains(arguments[3]),
         let passes = arguments.count == 5 ? Int(arguments[4]) : 3, passes > 0
     else {
@@ -1328,7 +1383,7 @@ if arguments.first == "--stack-sweep" {
         arguments.count == 5,
         let seconds = Double(arguments[1]),
         let kind = StorageKind(rawValue: arguments[3]),
-        let workload = workloads.first(where: { $0.name == arguments[2] && $0.kinds.contains(kind) }),
+        let workload = workloads.first(where: { $0.name == arguments[2] && runs($0, on: kind) }),
         ["write", "read", "iterate"].contains(arguments[4])
     else {
         throw BenchmarkFailure(description: "usage: --repeat <seconds> <workload> <kind> <write|read|iterate>")
