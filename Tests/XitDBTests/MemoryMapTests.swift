@@ -42,6 +42,16 @@ private struct RolledBack: Error {}
         return (file, counts)
     }
 
+    /// The bytes at a file's start that are its two headers, which a storage
+    /// never reads through its map.
+    static let headers = Int(FileStorage.headerBytes)
+
+    /// The first `count` bytes of the file but for the headers: the read of
+    /// a whole file that can go through the map.
+    private static func afterTheHeaders(_ file: FileStorage, _ count: Int) throws -> [UInt8] {
+        try readBytes(file, at: FileStorage.headerBytes, count: count - headers)
+    }
+
     /// Bytes that differ from place to place, so that a read of the wrong
     /// place shows.
     private static func pattern(_ count: Int, seed: Int = 0) -> [UInt8] {
@@ -109,7 +119,7 @@ private struct RolledBack: Error {}
         let bytes = Self.pattern(3 * page + 100)
         try writeBytes(file, bytes, at: 0)
 
-        #expect(try readBytes(file, at: 0, count: bytes.count) == bytes)
+        #expect(try Self.afterTheHeaders(file, bytes.count) == Array(bytes[Self.headers...]))
         #expect(try readBytes(file, at: UInt64(page - 3), count: 10) == Array(bytes[(page - 3)..<(page + 7)]))
         #expect(
             try readBytes(file, at: UInt64(2 * page - 1), count: page + 2) == Array(bytes[(2 * page - 1)...(3 * page)]))
@@ -138,21 +148,23 @@ private struct RolledBack: Error {}
         let page = Self.page
         let bytes = Self.pattern(4 * page)
         try writeBytes(file, bytes, at: 0)
-        #expect(try readBytes(file, at: 0, count: bytes.count) == bytes)
+        #expect(try Self.afterTheHeaders(file, bytes.count) == Array(bytes[Self.headers...]))
         #expect(counts.reads == 0)
 
         try file.truncate(to: UInt64(page + 10))
         #expect(try readBytes(file, at: UInt64(2 * page), count: 16) == [])
         #expect(try readBytes(file, at: UInt64(page + 10), count: 16) == [])
         #expect(counts.reads == 2, "what was cut away is asked of the file")
-        #expect(try readBytes(file, at: 0, count: 2 * page) == Array(bytes[..<(page + 10)]))
+        #expect(
+            try readBytes(file, at: FileStorage.headerBytes, count: 2 * page)
+                == Array(bytes[Self.headers..<(page + 10)]))
         #expect(counts.reads == 3, "the part below the cut from the map, the rest from the file")
 
         let again = Self.pattern(2 * page, seed: 77)
         try writeBytes(file, again, at: UInt64(page + 10))
         let whole = Array(bytes[..<(page + 10)]) + again
         let reads = counts.reads
-        #expect(try readBytes(file, at: 0, count: whole.count) == whole)
+        #expect(try Self.afterTheHeaders(file, whole.count) == Array(whole[Self.headers...]))
         #expect(try readBytes(file, at: UInt64(2 * page), count: 16) == Array(whole[(2 * page)..<(2 * page + 16)]))
         #expect(counts.reads == reads, "what was written again is read through the map")
         #expect(counts.maps == 4, "through the segments mapped before the cut")
@@ -169,7 +181,7 @@ private struct RolledBack: Error {}
         let page = Self.page
         let bytes = Self.pattern(2 * page + 7)
         try writeBytes(file, bytes, at: 0)
-        #expect(try readBytes(file, at: 0, count: bytes.count) == bytes)
+        #expect(try Self.afterTheHeaders(file, bytes.count) == Array(bytes[Self.headers...]))
         #expect(counts.reads == 1)
         #expect(counts.maps == 0)
 
@@ -178,15 +190,14 @@ private struct RolledBack: Error {}
         #expect(counts.reads == 2, "the first sync of a commit is not the commit")
 
         try file.sync(.afterRootHeader)
-        #expect(try readBytes(file, at: 0, count: bytes.count) == bytes)
+        #expect(try Self.afterTheHeaders(file, bytes.count) == Array(bytes[Self.headers...]))
         #expect(counts.reads == 2, "after the commit the bytes are read through the map")
         #expect(counts.maps == 3)
     }
 
-    /// What is in the file when the storage opens it is known to be there,
-    /// with the lock held, and is read through the map from the first read
-    /// on.
-    @Test func whatIsInTheFileAtOpeningIsReadThroughTheMap() throws {
+    /// What is in the file when a writer opens it is known to be there, with
+    /// the lock held, and is read through the map from the first read on.
+    @Test func whatIsInTheFileWhenAWriterOpensItIsReadThroughTheMap() throws {
         let directory = try TemporaryDirectory()
         let page = Self.page
         let bytes = Self.pattern(2 * page + 33)
@@ -204,11 +215,109 @@ private struct RolledBack: Error {}
         }
         let file = try readThroughTheMap(
             try FileStorage(
-                path: directory.path(), access: .readOnly, durability: .none, lock: .shared, memoryMapped: true,
+                path: directory.path(), access: .readWrite, durability: .none, lock: .exclusive, memoryMapped: true,
                 segmentSize: page, calls: calls), at: directory.path())
-        #expect(try readBytes(file, at: 0, count: bytes.count) == bytes)
+        #expect(try Self.afterTheHeaders(file, bytes.count) == Array(bytes[Self.headers...]))
         #expect(try readBytes(file, at: UInt64(page + 1), count: page) == Array(bytes[(page + 1)..<(2 * page + 1)]))
         #expect(counts.reads == 0)
+    }
+
+    /// The two headers are read by a file call always, by a writer too: a
+    /// read that starts in them is a file call for all of it, and one that
+    /// starts right after them is none.
+    @Test func theHeadersAreReadByAFileCall() throws {
+        let directory = try TemporaryDirectory()
+        let (file, counts) = try Self.mapped(directory)
+        let bytes = Self.pattern(2 * Self.page)
+        try writeBytes(file, bytes, at: 0)
+        #expect(try readBytes(file, at: 0, count: 20) == Array(bytes[..<20]))
+        #expect(counts.reads == 1)
+        #expect(try readBytes(file, at: 24, count: 8) == Array(bytes[24..<32]))
+        #expect(counts.reads == 2)
+        #expect(try readBytes(file, at: 36, count: 100) == Array(bytes[36..<136]))
+        #expect(counts.reads == 3, "a read that starts in the headers is a file call for all of it")
+        #expect(counts.maps == 0)
+        #expect(try readBytes(file, at: 37, count: 100) == Array(bytes[37..<137]))
+        #expect(counts.reads == 3)
+        #expect(counts.maps == 1)
+    }
+
+    /// A storage that only reads has no say over where the file ends: what
+    /// lies past the last commit may be cut by the file's writer. So its
+    /// limit is the committed size its engine has verified: nothing before
+    /// a database on it has verified a commit, that commit's size after,
+    /// and a later commit's once the engine has seen and verified it. What
+    /// lies past the limit is read by a file call.
+    @Test func aReadersLimitIsTheCommittedSizeItsEngineVerified() throws {
+        let directory = try TemporaryDirectory()
+        let page = Self.page
+        // a database of several pages, by a writer without the map
+        let writerStorage = try FileStorage(path: directory.path(), access: .create, durability: .none)
+        let writer = try Database(creating: writerStorage, hashSize: 20)
+        try writer.withTransaction { root in
+            try HashMap<ReadWrite>(root).put(.bytes(Self.pattern(3 * page)), forHash: hashInt("first"))
+        }
+        let committed = try writer.committedSize
+        try #require(committed > UInt64(3 * page))
+        // and bytes past the commit, as a transaction that is not
+        // committed leaves them
+        try writeBytes(writerStorage, Self.pattern(page, seed: 5), at: committed)
+
+        let counts = CallCounts()
+        var calls = FileCalls()
+        calls.read = {
+            (descriptor: Int32, buffer: inout MutableSpan<UInt8>, range: Range<Int>, offset: UInt64)
+                throws(XitDBError) -> Int in
+            counts.reads += 1
+            return try Platform.readFile(descriptor, into: &buffer, range: range, at: offset)
+        }
+        calls.map = { (descriptor: Int32, offset: UInt64, length: Int) in
+            counts.maps += 1
+            return Platform.mapFile(descriptor, offset: offset, length: length)
+        }
+        let file = try readThroughTheMap(
+            try FileStorage(
+                path: directory.path(), access: .readOnly, durability: .none, lock: .shared, memoryMapped: true,
+                segmentSize: page, calls: calls), at: directory.path())
+        var onDisk = try directory.contents()
+        let end = Int(committed)
+
+        // nothing is verified yet: a file call, and nothing mapped
+        #expect(try readBytes(file, at: UInt64(page), count: 100) == Array(onDisk[page..<(page + 100)]))
+        #expect(counts.reads == 1)
+        #expect(counts.maps == 0)
+
+        // a database on the storage verifies the commit: up to its size
+        // the map, past it a file call
+        let reader = try Database(opening: file, hashSize: 20)
+        #expect(try reader.committedSize == committed)
+        var reads = counts.reads
+        #expect(try readBytes(file, at: UInt64(page), count: 2 * page) == Array(onDisk[page..<(3 * page)]))
+        #expect(counts.reads == reads, "what is committed is read through the map")
+        #expect(counts.maps > 0)
+        #expect(try readBytes(file, at: committed, count: 10) == Array(onDisk[end..<(end + 10)]))
+        #expect(counts.reads == reads + 1, "what lies past the commit is asked of the file")
+        #expect(try readBytes(file, at: committed - 4, count: 10) == Array(onDisk[(end - 4)..<(end + 6)]))
+        #expect(counts.reads == reads + 2, "across the commit's end: its part from the map, the rest from the file")
+
+        // the writer commits again; the reader has not looked, and its
+        // limit is where it was
+        try writer.withTransaction { root in
+            try HashMap<ReadWrite>(root).put(.bytes(Self.pattern(2 * page, seed: 9)), forHash: hashInt("second"))
+        }
+        let later = try writer.committedSize
+        try #require(later > committed + UInt64(2 * page))
+        onDisk = try directory.contents()
+        let laterEnd = Int(later)
+        reads = counts.reads
+        #expect(try readBytes(file, at: later - 50, count: 20) == Array(onDisk[(laterEnd - 50)..<(laterEnd - 30)]))
+        #expect(counts.reads == reads + 1, "a commit the reader's engine has not verified is past its limit")
+
+        // the reader's engine sees the commit and verifies it
+        #expect(try reader.committedSize == later)
+        reads = counts.reads
+        #expect(try readBytes(file, at: later - 50, count: 20) == Array(onDisk[(laterEnd - 50)..<(laterEnd - 30)]))
+        #expect(counts.reads == reads, "and from then on it is read through the map")
     }
 
     /// A write below the end, in place, leaves the limit where it was: what
@@ -220,12 +329,12 @@ private struct RolledBack: Error {}
         let page = Self.page
         var bytes = Self.pattern(3 * page)
         try writeBytes(file, bytes, at: 0)
-        #expect(try readBytes(file, at: 0, count: bytes.count) == bytes)
+        #expect(try Self.afterTheHeaders(file, bytes.count) == Array(bytes[Self.headers...]))
 
         let patch = Self.pattern(40, seed: 9)
-        try writeBytes(file, patch, at: 12)
-        bytes.replaceSubrange(12..<52, with: patch)
-        #expect(try readBytes(file, at: 0, count: bytes.count) == bytes)
+        try writeBytes(file, patch, at: 100)
+        bytes.replaceSubrange(100..<140, with: patch)
+        #expect(try Self.afterTheHeaders(file, bytes.count) == Array(bytes[Self.headers...]))
         #expect(
             try readBytes(file, at: UInt64(2 * page + 5), count: 100) == Array(bytes[(2 * page + 5)..<(2 * page + 105)])
         )
@@ -258,7 +367,7 @@ private struct RolledBack: Error {}
         #expect(!file.isMemoryMapped)
         let bytes = Self.pattern(2 * Self.page)
         try writeBytes(file, bytes, at: 0)
-        #expect(try readBytes(file, at: 0, count: bytes.count) == bytes)
+        #expect(try Self.afterTheHeaders(file, bytes.count) == Array(bytes[Self.headers...]))
         #expect(counts.reads == 1)
         #expect(counts.maps == 0)
 
@@ -317,13 +426,13 @@ private struct RolledBack: Error {}
         try writeBytes(file, bytes, at: 0)
         #expect(file.isMemoryMapped)
 
-        #expect(try readBytes(file, at: 0, count: 2 * page) == Array(bytes[..<(2 * page)]))
+        #expect(try Self.afterTheHeaders(file, 2 * page) == Array(bytes[Self.headers..<(2 * page)]))
         #expect(counts.reads == 0)
         #expect(file.isMemoryMapped)
 
         // The read that reaches into the refused segment: two pages from
         // the map, the rest by a file call.
-        #expect(try readBytes(file, at: 0, count: bytes.count) == bytes)
+        #expect(try Self.afterTheHeaders(file, bytes.count) == Array(bytes[Self.headers...]))
         #expect(counts.reads == 1)
         #expect(counts.maps == 3, "two segments mapped and one refused")
         #expect(!file.isMemoryMapped, "partly")
@@ -331,7 +440,7 @@ private struct RolledBack: Error {}
         #expect(try readBytes(file, at: UInt64(4 * page), count: 20) == Array(bytes[(4 * page)..<(4 * page + 20)]))
         #expect(counts.reads == 2)
         #expect(counts.maps == 3, "after a refusal no further segment is asked for")
-        #expect(try readBytes(file, at: 7, count: page) == Array(bytes[7..<(page + 7)]))
+        #expect(try readBytes(file, at: 50, count: page) == Array(bytes[50..<(page + 50)]))
         #expect(counts.reads == 2, "what is mapped is still read through the map")
     }
 

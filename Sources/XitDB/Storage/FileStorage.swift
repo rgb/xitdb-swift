@@ -235,6 +235,31 @@ public final class FileStorage: WritableStorage {
     /// The size of the segments a file is mapped in.
     package static let defaultSegmentSize = 64 * 1024 * 1024
 
+    /// The bytes at the start of a file that are never read through the
+    /// map: the database header and the root header, as long as the longer
+    /// of the two format versions has them.
+    static let headerBytes: UInt64 = 37
+
+    /// Told by the engine that the file's first `size` bytes are committed,
+    /// which it has verified by the trailer that ends them: a storage that
+    /// only reads may read that much through its map from now on. It is
+    /// what a reader's limit is made of. Committed bytes are not cut by the
+    /// file's writer, as long as that writer replaces the file where it
+    /// takes a full copy, which a writer on a mapped storage does; what
+    /// lies past them can be, by a writer that rolls back or recovers.
+    ///
+    /// A storage that writes follows its own writes and takes nothing from
+    /// this.
+    func committedBytesVerified(upTo size: UInt64) {
+        guard map != nil, isReadOnly, size > map!.limit else { return }
+        map!.limit = size
+        map!.writtenEnd = size
+    }
+
+    /// Whether the engine is to tell this storage what it has verified:
+    /// only a storage that reads through a map and cannot write.
+    var takesItsLimitFromTheEngine: Bool { map != nil && isReadOnly }
+
     /// Whether the storage's reads go through a memory map.
     ///
     /// It is `true` only while all of this holds: the map was asked for
@@ -348,10 +373,14 @@ public final class FileStorage: WritableStorage {
         }
         self.calls = calls
         if memoryMapped, calls.isLocal(descriptor.rawValue) {
-            // With the lock held, what is in the file now stays there
-            // until this storage cuts it.
+            // A writer holds the lock, so what is in the file now stays
+            // there until this storage cuts it. A reader holds none: what
+            // lies past the last commit may be cut by the file's writer, so
+            // its limit starts at nothing and is raised by the engine, to
+            // each committed size it has verified.
             let length = try Platform.fileLength(descriptor.rawValue)
-            map = FileMap(view: FileMapView(segmentSize: segmentSize), limit: length, writtenEnd: length)
+            let limit: UInt64 = if case .readOnly = access { 0 } else { length }
+            map = FileMap(view: FileMapView(segmentSize: segmentSize), limit: limit, writtenEnd: limit)
         }
     }
 
@@ -419,7 +448,12 @@ public final class FileStorage: WritableStorage {
     /// - Precondition: The storage has a memory map.
     private func readThroughMap(into buffer: inout MutableSpan<UInt8>, range: Range<Int>, at offset: UInt64) -> Int {
         let limit = map!.limit
-        guard offset < limit, range.count > 0 else { return 0 }
+        // A read that starts in the two headers takes nothing from the map
+        // and is a file call for all of it: the root header's committed
+        // size is rewritten in place by every commit, of this process or
+        // another, and a reader that takes it by a file call takes it
+        // whole.
+        guard offset >= Self.headerBytes, offset < limit, range.count > 0 else { return 0 }
         let end = offset + min(UInt64(range.count), limit - offset)
         let first = map!.view.segmentIndex(of: offset)
         let last = map!.view.segmentIndex(of: end - 1)

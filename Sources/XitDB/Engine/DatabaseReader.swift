@@ -68,6 +68,13 @@ final class DatabaseReader {
     /// The bytes, as the engine holds a storage. Only its reads are used
     /// here.
     let storage: BuiltInStorage
+
+    /// The storage itself, where it is a file storage that only reads and
+    /// reads through a memory map: it is told each committed size this
+    /// reader verifies, which is how far it may read through the map. For
+    /// every other storage there is nobody to tell, and the telling costs a
+    /// reader in memory one test of this for nothing.
+    private let takerOfTheLimit: FileStorage?
     /// The hash size, which a replication cannot change.
     let hashSize: UInt16
     private let identity: DatabaseIdentity
@@ -110,6 +117,7 @@ final class DatabaseReader {
         pinnedCommitRoot: Slot? = nil
     ) {
         self.storage = storage
+        takerOfTheLimit = storage.takerOfTheLimit
         hashSize = identity.header.hashSize
         self.identity = identity
         self.pinnedRoot = pinnedRoot
@@ -395,7 +403,22 @@ final class DatabaseReader {
         if fileSize < header.minimumFileSize { throw .invalidDatabase }
         if try storage.length < fileSize { throw .truncatedDatabase }
         // The committed bytes must end with a trailer.
-        return RootHeader(root: try rootTrailer(endingAt: fileSize).root, fileSize: fileSize)
+        let root = try rootTrailer(endingAt: fileSize).root
+        // They are verified now: a file storage that only reads may read
+        // this much through its memory map.
+        if takerOfTheLimit != nil { tellTheLimit(fileSize) }
+        return RootHeader(root: root, fileSize: fileSize)
+    }
+
+    /// Tells the storage that takes its limit from the engine that `size`
+    /// bytes are committed and verified. Kept out of ``rootHeader()``'s
+    /// body, which every read starts with: with the call in it the
+    /// optimiser stopped compiling that function into an array list's read
+    /// by index, which then took 1.6% more instructions in memory, where
+    /// there is nobody to tell.
+    @inline(never)
+    private func tellTheLimit(_ size: UInt64) {
+        takerOfTheLimit?.committedBytesVerified(upTo: size)
     }
 
     /// The root header's committed size as it is, with nothing checked:

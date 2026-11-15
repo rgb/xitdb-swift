@@ -132,4 +132,16 @@ enum BuiltInStorage {
         case .snapshot: throw .cursorNotWritable
         }
     }
+
+    /// The file storage that takes its memory map's limit from the engine,
+    /// if this is one: a file storage that only reads and reads through a
+    /// map (``FileStorage/committedBytesVerified(upTo:)``). The other kinds
+    /// have nothing to take from the engine.
+    var takerOfTheLimit: FileStorage? {
+        switch self {
+        case .file(let storage): storage.takesItsLimitFromTheEngine ? storage : nil
+        case .bufferedFile(let storage): storage.file.takesItsLimitFromTheEngine ? storage.file : nil
+        case .memory, .custom, .snapshot: nil
+        }
+    }
 }
