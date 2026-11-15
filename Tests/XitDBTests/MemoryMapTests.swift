@@ -182,7 +182,121 @@ private struct RolledBack: Error {}
         #expect(counts.maps == 3)
     }
 
+    /// What is in the file when the storage opens it is known to be there,
+    /// with the lock held, and is read through the map from the first read
+    /// on.
+    @Test func whatIsInTheFileAtOpeningIsReadThroughTheMap() throws {
+        let directory = try TemporaryDirectory()
+        let page = Self.page
+        let bytes = Self.pattern(2 * page + 33)
+        do {
+            let first = try FileStorage(path: directory.path(), access: .create, durability: .none)
+            try writeBytes(first, bytes, at: 0)
+        }
+        let counts = CallCounts()
+        var calls = FileCalls()
+        calls.read = {
+            (descriptor: Int32, buffer: inout MutableSpan<UInt8>, range: Range<Int>, offset: UInt64)
+                throws(XitDBError) -> Int in
+            counts.reads += 1
+            return try Platform.readFile(descriptor, into: &buffer, range: range, at: offset)
+        }
+        let file = try FileStorage(
+            path: directory.path(), access: .readOnly, durability: .none, lock: .shared, memoryMapped: true,
+            segmentSize: page, calls: calls)
+        #expect(try readBytes(file, at: 0, count: bytes.count) == bytes)
+        #expect(try readBytes(file, at: UInt64(page + 1), count: page) == Array(bytes[(page + 1)..<(2 * page + 1)]))
+        #expect(counts.reads == 0)
+    }
+
+    /// A write below the end, in place, leaves the limit where it was: what
+    /// lies after it is still read through the map, and what was written
+    /// is what the map gives.
+    @Test func aWriteInPlaceLeavesTheLimit() throws {
+        let directory = try TemporaryDirectory()
+        let (file, counts) = try Self.mapped(directory)
+        let page = Self.page
+        var bytes = Self.pattern(3 * page)
+        try writeBytes(file, bytes, at: 0)
+        #expect(try readBytes(file, at: 0, count: bytes.count) == bytes)
+
+        let patch = Self.pattern(40, seed: 9)
+        try writeBytes(file, patch, at: 12)
+        bytes.replaceSubrange(12..<52, with: patch)
+        #expect(try readBytes(file, at: 0, count: bytes.count) == bytes)
+        #expect(
+            try readBytes(file, at: UInt64(2 * page + 5), count: 100) == Array(bytes[(2 * page + 5)..<(2 * page + 105)])
+        )
+        #expect(counts.reads == 0, "the bytes after an overwrite in place are still read through the map")
+    }
+
     // MARK: The fallback
+
+    /// A file on a volume that is not this machine's, as far as the system
+    /// says, is read by file calls though the map was asked for: there is
+    /// no error, the property says so, and nothing is mapped.
+    @Test func aFileOnAVolumeThatIsNotMappedIsReadByFileCalls() throws {
+        let directory = try TemporaryDirectory()
+        let counts = CallCounts()
+        var calls = FileCalls()
+        calls.isLocal = { _ in false }
+        calls.read = {
+            (descriptor: Int32, buffer: inout MutableSpan<UInt8>, range: Range<Int>, offset: UInt64)
+                throws(XitDBError) -> Int in
+            counts.reads += 1
+            return try Platform.readFile(descriptor, into: &buffer, range: range, at: offset)
+        }
+        calls.map = { (descriptor: Int32, offset: UInt64, length: Int) in
+            counts.maps += 1
+            return Platform.mapFile(descriptor, offset: offset, length: length)
+        }
+        let file = try FileStorage(
+            path: directory.path(), access: .create, durability: .none, lock: .exclusive, memoryMapped: true,
+            segmentSize: Self.page, calls: calls)
+        #expect(!file.isMemoryMapped)
+        let bytes = Self.pattern(2 * Self.page)
+        try writeBytes(file, bytes, at: 0)
+        #expect(try readBytes(file, at: 0, count: bytes.count) == bytes)
+        #expect(counts.reads == 1)
+        #expect(counts.maps == 0)
+
+        // A snapshot of a database in it has no map either, and the file
+        // may be cut under it, as without the map.
+        let other = try TemporaryDirectory()
+        let storage = try FileStorage(
+            path: other.path(), access: .create, durability: .none, lock: .exclusive, memoryMapped: true,
+            segmentSize: Self.page, calls: calls)
+        let database = try Database(creating: storage, hashSize: 20)
+        try database.withTransaction { root in
+            try HashMap<ReadWrite>(root).put(.uint(1), forHash: hashInt("one"))
+        }
+        let snapshot = try database.snapshot()
+        guard case .file(_, _, let view) = snapshot.storage.source else {
+            Issue.record("a snapshot of a file storage reads a file")
+            return
+        }
+        #expect(view == nil)
+        try storage.truncate(to: 0)
+        #expect(throws: XitDBError.snapshotOverwritten) { try readBytes(snapshot.storage, at: 0, count: 8) }
+    }
+
+    /// The system's refusal of a mapping comes back as its error, and
+    /// never as an address.
+    @Test func aMappingTheSystemRefusesIsAnError() throws {
+        let directory = try TemporaryDirectory()
+        let file = try FileStorage(path: directory.path(), access: .create, durability: .none)
+        try writeBytes(file, [1, 2, 3], at: 0)
+        let tooLarge = Platform.mapFile(file.descriptor.rawValue, offset: 0, length: 1 << 52)
+        #expect(tooLarge.error != 0)
+        #expect(tooLarge.address == 0)
+        #expect(Platform.mapFile(file.descriptor.rawValue, offset: 0, length: 0).error == EINVAL)
+        #expect(MappedSegment(descriptor: file.descriptor.rawValue, offset: 0, length: 1 << 52) == nil)
+
+        let mapped = Platform.mapFile(file.descriptor.rawValue, offset: 0, length: Self.page)
+        #expect(mapped.error == 0)
+        #expect(mapped.address != 0 && mapped.address != UInt.max)
+        Platform.unmapFile(address: mapped.address, length: Self.page)
+    }
 
     /// A segment the system refuses to map is read by file calls, and so is
     /// what follows it; what is mapped goes on being read through the map.
@@ -344,6 +458,21 @@ private struct RolledBack: Error {}
         }
         let map = try #require(view, "the snapshot holds the map")
         #expect(map.lease != nil)
+
+        // A read through the snapshot's storage is made through the map,
+        // all of it: nothing is left to a file call.
+        guard case .file(let descriptor, _, _) = snapshot.storage.source else { return }
+        var whole = [UInt8](repeating: 0, count: Int(committed))
+        var wholeSpan = whole.mutableSpan
+        let split = try SnapshotStorage.readFile(
+            descriptor, map, into: &wholeSpan, range: 0..<Int(committed), at: 0, limit: committed)
+        #expect(split.mapped == Int(committed))
+        #expect(split.byFileCall == 0)
+        // Without the map the same read is a file call.
+        let plain = try SnapshotStorage.readFile(
+            descriptor, nil, into: &wholeSpan, range: 0..<Int(committed), at: 0, limit: committed)
+        #expect(plain.mapped == 0)
+        #expect(plain.byFileCall == Int(committed))
 
         // The view alone gives the whole commit: no part is left to a file
         // call.

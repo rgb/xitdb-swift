@@ -19,9 +19,12 @@
 /// it shares the storage's descriptor, so the file stays open, and any lock
 /// held, until the storage and the last snapshot have gone; a replication
 /// from zero through the writer then rewrites the file under it, and its
-/// reads report ``XitDBError/snapshotOverwritten`` from then on. On a
-/// storage of the caller's own it is a copy of the committed bytes, made
-/// when the snapshot is taken.
+/// reads report ``XitDBError/snapshotOverwritten`` from then on. Where the
+/// storage reads through a memory map the snapshot reads through the same
+/// map, and that replication is refused while the snapshot lives, with
+/// ``XitDBError/snapshotStillMapped``: the snapshot goes on reading its
+/// commit. On a storage of the caller's own it is a copy of the committed
+/// bytes, made when the snapshot is taken.
 ///
 /// That report covers the one storage object the snapshot was taken
 /// through. A rewrite of the file through another storage object on the
@@ -106,8 +109,12 @@ extension Database {
     /// write to the database copies the array while the snapshot lives. On
     /// the file storages it is a read of the root header and the trailer
     /// and shares the storage's descriptor; the file then stays open until
-    /// the storage and the last snapshot have gone. On a storage of the
-    /// caller's own it copies the committed bytes, which costs their size.
+    /// the storage and the last snapshot have gone. Where the storage reads
+    /// through a memory map it also maps the parts of the commit that were
+    /// not mapped yet, once for all snapshots, and from then on the
+    /// storage does not cut the file below the commit while the snapshot
+    /// lives. On a storage of the caller's own it copies the committed
+    /// bytes, which costs their size.
     ///
     /// - Throws: ``XitDBError/invalidDatabase`` if the committed size is
     ///   too small to hold a database or the trailer at it does not verify,

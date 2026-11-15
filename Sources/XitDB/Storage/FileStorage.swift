@@ -113,6 +113,13 @@ package struct FileCalls {
     /// of a length, and returns the mapping's address and zero, or the
     /// error the system refused it with.
     package var map: (Int32, UInt64, Int) -> (address: UInt, error: Int32) = Platform.mapFile
+
+    /// Whether the file is on a volume of this machine, which is asked
+    /// once, when a storage that is to read through a memory map opens its
+    /// file.
+    package var isLocal: (Int32) -> Bool = Platform.volumeIsLocal
+
+    package init() {}
 }
 
 /// Owns an open file descriptor and closes it when the last reference goes.
@@ -144,6 +151,15 @@ final class FileDescriptor: Sendable {
 /// is told of a rewrite of the file below its committed size through this
 /// storage object only; a second storage on the same path, or another
 /// process, rewrites it unseen.
+///
+/// Opened with `memoryMapped: true`, the storage reads through a memory
+/// map of the file: a read is then a copy from memory that the system
+/// keeps for the file, where it is a system call otherwise, and readers on
+/// several threads, which read through snapshots, no longer wait for one
+/// another in the system. Nothing else changes: writes are file writes,
+/// and what is read is the same. The map asks more of the file than file
+/// calls do, and the initialiser says what; ``isMemoryMapped`` says
+/// whether the map was had.
 public final class FileStorage: WritableStorage {
     let descriptor: FileDescriptor
 
@@ -275,8 +291,10 @@ public final class FileStorage: WritableStorage {
     }
 
     /// Opens a file as a storage, with the size of the segments its memory
-    /// map is made of: the tests map in segments of one page, so that
-    /// reads cross from one segment to the next.
+    /// map is made of and the system calls it makes: the tests map in
+    /// segments of one page, so that reads cross from one segment to the
+    /// next, and replace the call that asks the volume, which is made
+    /// here.
     ///
     /// - Precondition: `segmentSize` is a power of two and a multiple of
     ///   the page size.
@@ -286,7 +304,8 @@ public final class FileStorage: WritableStorage {
         durability: Durability = .full,
         lock: FileLock? = nil,
         memoryMapped: Bool,
-        segmentSize: Int
+        segmentSize: Int,
+        calls: FileCalls = FileCalls()
     ) throws(XitDBError) {
         if memoryMapped {
             // The map needs the lock that keeps a second opener from
@@ -309,7 +328,8 @@ public final class FileStorage: WritableStorage {
         if case .truncate = access {
             try Platform.setFileLength(descriptor.rawValue, 0)
         }
-        if memoryMapped, Platform.volumeIsLocal(descriptor.rawValue) {
+        self.calls = calls
+        if memoryMapped, calls.isLocal(descriptor.rawValue) {
             // With the lock held, what is in the file now stays there
             // until this storage cuts it.
             let length = try Platform.fileLength(descriptor.rawValue)
@@ -484,8 +504,11 @@ public final class FileStorage: WritableStorage {
     ///
     /// - Parameter length: The new length in bytes.
     /// - Throws: ``XitDBError/invalidLength`` if `length` is larger than the
-    ///   file's length, or ``XitDBError/storageFailure(errno:)`` if the file
-    ///   cannot be shortened.
+    ///   file's length; ``XitDBError/snapshotStillMapped`` if the storage
+    ///   reads through a memory map and `length` is below what a snapshot
+    ///   that is still alive reads, in which case nothing is changed; or
+    ///   ``XitDBError/storageFailure(errno:)`` if the file cannot be
+    ///   shortened.
     public func truncate(to length: UInt64) throws(XitDBError) {
         guard length <= (try self.length) else { throw .invalidLength }
         try resize(to: length)

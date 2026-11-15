@@ -48,7 +48,7 @@ public final class BufferedFileStorage: WritableStorage {
     /// Puts a buffer in front of a file storage. Package-level: the tests
     /// use it to put their own calls on the file, and the benchmark to
     /// count them; a client opens the file through
-    /// ``init(path:access:durability:lock:bufferLimit:)``, so that nothing
+    /// ``init(path:access:durability:lock:memoryMapped:bufferLimit:)``, so that nothing
     /// else can write through it.
     ///
     /// - Parameters:
@@ -69,8 +69,14 @@ public final class BufferedFileStorage: WritableStorage {
     ///     create or empty it.
     ///   - durability: How far to go to put a commit on the disk.
     ///   - lock: An advisory lock to take on the file, or `nil` for none.
+    ///   - memoryMapped: Whether to read the file through a memory map, as
+    ///     ``FileStorage/init(path:access:durability:lock:memoryMapped:)``
+    ///     says, with what that asks of the file and of the lock. What the
+    ///     buffer holds is read from the buffer either way.
     ///   - bufferLimit: The most bytes to hold before flushing.
-    /// - Throws: ``XitDBError/storageFailure(errno:)`` if the file cannot be
+    /// - Throws: ``XitDBError/memoryMapNeedsLock`` if the map is asked for
+    ///   without the lock it needs, before the file is opened;
+    ///   ``XitDBError/storageFailure(errno:)`` if the file cannot be
     ///   opened or the lock cannot be had at once. A path with a NUL byte in
     ///   it is refused with `EINVAL`, rather than opening the file that the
     ///   part before the NUL names.
@@ -244,8 +250,11 @@ public final class BufferedFileStorage: WritableStorage {
     ///
     /// - Parameter length: The new length in bytes.
     /// - Throws: ``XitDBError/invalidLength`` if `length` is larger than the
-    ///   storage's length, or ``XitDBError/storageFailure(errno:)`` if the
-    ///   file cannot be shortened.
+    ///   storage's length; ``XitDBError/snapshotStillMapped`` if the file
+    ///   is read through a memory map and `length` is below what a
+    ///   snapshot that is still alive reads, in which case the file is as
+    ///   it was; or ``XitDBError/storageFailure(errno:)`` if the file
+    ///   cannot be shortened.
     public func truncate(to length: UInt64) throws(XitDBError) {
         guard length <= (try self.length) else { throw .invalidLength }
         let bufferSize = UInt64(memory.count)

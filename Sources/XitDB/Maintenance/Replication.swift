@@ -267,8 +267,12 @@ extension Database {
     ///   header, which changes nothing; ``XitDBError/invalidVersion`` and
     ///   ``XitDBError/invalidHashSize`` at 0 for a database of a format
     ///   version this implementation does not read, or of another hash
-    ///   size, which change nothing; the storage's errors; and the
-    ///   source's, carried as ``XitDBError/callerError(_:)``.
+    ///   size, which change nothing; ``XitDBError/snapshotStillMapped`` at
+    ///   0 on a storage that reads through a memory map while a snapshot
+    ///   of this database is alive, which changes nothing: a sync from 0
+    ///   begins by emptying the storage, and there the storage refuses;
+    ///   the storage's errors; and the source's, carried as
+    ///   ``XitDBError/callerError(_:)``.
     public func applyReplicated<Source: ByteSource>(at start: UInt64, from source: inout Source, count: UInt64)
         throws(XitDBError)
     {

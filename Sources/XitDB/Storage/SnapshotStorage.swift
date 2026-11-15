@@ -106,20 +106,30 @@ struct SnapshotStorage: ReadableStorage, Sendable {
             return count
         case .file(let descriptor, let fence, let map):
             let bounded = range.lowerBound..<(range.lowerBound + count)
-            // Through the map what is mapped, bounded by the commit's
-            // size, which the storage does not cut the file below while
-            // this snapshot lives; by a file call the rest.
-            var read = map?.read(into: &buffer, range: bounded, at: offset, limit: committedSize) ?? 0
-            if read < count {
-                let rest = (bounded.lowerBound + read)..<bounded.upperBound
-                read += try Platform.readFile(
-                    descriptor.rawValue, into: &buffer, range: rest, at: offset + UInt64(read))
-            }
+            let read = try Self.readFile(
+                descriptor, map, into: &buffer, range: bounded, at: offset, limit: committedSize)
             // After the read, so that a read which saw the new contents
             // sees the fence tripped.
             if fence.isTripped { throw .snapshotOverwritten }
-            return read
+            return read.mapped + read.byFileCall
         }
+    }
+
+    /// Reads a part of a file's commit: through the map what is mapped,
+    /// bounded by the commit's size, which the storage does not cut the
+    /// file below while the snapshot lives; by a file call the rest.
+    ///
+    /// - Returns: How many bytes came each way, the mapped ones first.
+    static func readFile(
+        _ descriptor: FileDescriptor, _ map: FileMapView?, into buffer: inout MutableSpan<UInt8>, range: Range<Int>,
+        at offset: UInt64, limit: UInt64
+    ) throws(XitDBError) -> (mapped: Int, byFileCall: Int) {
+        let mapped = map?.read(into: &buffer, range: range, at: offset, limit: limit) ?? 0
+        guard mapped < range.count else { return (mapped, 0) }
+        let rest = (range.lowerBound + mapped)..<range.upperBound
+        let byFileCall = try Platform.readFile(
+            descriptor.rawValue, into: &buffer, range: rest, at: offset + UInt64(mapped))
+        return (mapped, byFileCall)
     }
 
     /// The commit's size. This never throws.
