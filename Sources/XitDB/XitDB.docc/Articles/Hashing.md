@@ -23,17 +23,18 @@ try users.put("Alice", forKey: "alice")
 A keyed call is its call by hash with the hash computed for it, and writes nothing more: that put writes what
 `users.put(.bytes(Array("Alice".utf8)), forHash: SHA256.keyHash(of: "alice"))` writes, which is what a Zig program
 writes with `put` and a `hashInt` that is SHA-256 (the original's README makes its `hashInt` SHA-1). Neither stores the
-key: a put given `storingKey: true` does, and so does ``HashMap/putKey(_:)`` (see <doc:TheCollections>). A keyed call
-costs its call by hash and the hash of the key. On Apple silicon the hash of a short key is a fraction of the call: in
-memory a keyed call costs somewhat more than its call by hash, and on a file a few percent more. On Linux, where
-portable code computes the hash, more of the call is the hash. A loop that uses one key many times can hash it once with
-``KeyHashing/keyHash(of:)`` and go by `forHash:`.
+key. A put given `storingKey: true` is two calls by hash: it writes what ``HashMap/putKey(_:forHash:)-(_,Span<UInt8>)``
+and then ``HashMap/put(_:forHash:)-(_,Span<UInt8>)`` write in one transaction, and stores the key as
+``HashMap/putKey(_:)`` does (see <doc:TheCollections>). A keyed call costs its call by hash and the hash of the key. On
+Apple silicon the hash of a short key is a fraction of the call: in memory a keyed call costs somewhat more than its
+call by hash, and on a file a few percent more. On Linux, where portable code computes the hash, more of the call is the
+hash. A loop that uses one key many times can hash it once with ``KeyHashing/keyHash(of:)`` and go by `forHash:`.
 
-A put that stores its key costs less than ``HashMap/putKey(_:)`` and then the put, and more than a put that stores none:
-nearly twice as much in memory, and somewhat more on a file. A stored key that fits the key's slot that every entry has,
-at most eight bytes with no zero byte or six with a format tag, takes no room in the file; any other takes a record of
-its own, with an eight-byte length in front (see <doc:CursorsAndValues>). A read by key costs the same with stored keys
-and without.
+With keys of about nine bytes, on Apple silicon, a put that stores its key costs less than ``HashMap/putKey(_:)`` and
+then the put, and more than a put that stores none: nearly twice as much in memory, and somewhat more on a file. A
+stored key that fits the key's slot that every entry has, at most eight bytes with no zero byte or six with a format
+tag, takes no room in the file; any other takes a record of its own, with an eight-byte length in front (see
+<doc:CursorsAndValues>). A read by key costs the same with stored keys and without.
 
 What is hashed is the key's bytes. A `String` is its UTF-8, with nothing added and nothing normalised, so the hash is
 the one a program in any language computes over the same text, and a file is shared with a Zig program that hashes the

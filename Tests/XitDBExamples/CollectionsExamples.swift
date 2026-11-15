@@ -286,7 +286,7 @@ import XitDBHashing
 
         #expect(try map.value(forKey: "age", as: UInt64.self) == 25)
         #expect(try map.keyCursor(forKey: "age")!.read(String.self) == "age")
-        // Each keyed call is its call by hash.
+        // Each keyed read is its read by hash.
         #expect(try map.cursor(forHash: sha256("age"))!.readUInt64() == 25)
         #expect(try map.keyCursor(forHash: sha256("age"))!.readBytes() == Array("age".utf8))
         #expect(try map.remove(forKey: "age"))
@@ -411,6 +411,13 @@ import XitDBHashing
         try map.put(.int(-3), forKey: tagged, storingKey: true)
         #expect(try map.keyCursor(forKey: "name")?.read(String.self) == "name")
         #expect(try map.keyCursor(forKey: tagged)?.read(Bytes.self) == tagged)
+        // A put without the argument leaves a key the entry has; an entry
+        // that putCursor(forKey:) made has none, and its key reads as empty.
+        try map.put("Bob", forKey: "name")
+        #expect(try map.keyCursor(forKey: "name")?.read(String.self) == "name")
+        _ = try map.putCursor(forKey: "made")
+        #expect(try map.keyCursor(forKey: "made") == nil)
+        #expect(try map.entry(forKey: "made")?.key.read(String.self) == "")
 
         // The counted map's put is the same put.
         let counted = try file { database in

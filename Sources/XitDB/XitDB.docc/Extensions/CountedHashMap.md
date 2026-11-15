@@ -28,7 +28,7 @@
 
 ### Reading keys
 
-A map has a key to give only where one was stored, by a put given `storingKey: true` or with ``putKey(_:)``. See
+A map has a key to give only where one was stored, as a put given `storingKey: true` and ``putKey(_:)`` store it. See
 <doc:CursorsAndValues>.
 
 - ``keyCursor(forKey:)``
