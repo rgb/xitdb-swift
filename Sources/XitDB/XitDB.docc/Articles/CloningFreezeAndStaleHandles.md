@@ -170,17 +170,18 @@ the copy's write comes first. Its count can be wrong with no error, and its read
 - A position, a key's rank and a walk go by the size and the counts as they are. A position can give another entry than a walk
   gives at that place, a walk can stop at the size with entries left in the tree or give an element twice, and a rank can be
   off, all with no error.
-- A read or a write that is led where the tree has nothing throws ``XitDBError/invalidBTreeNode``, where the original can crash.
-
-The package's suite "What the freeze hazard leaves", in `Tests/XitDBExamples/FreezeHazardTable.swift`, shows every read of
-twelve such copies, of the three kinds, with either side's writes first, removing and adding, in the transaction and after the
-commit; and the conformance fixtures hold the port's reads of eight such copies, which the original made, to the original's own,
-on every kind of storage.
+- A read or a write that is led where the tree has nothing throws ``XitDBError/invalidBTreeNode``, as the original's read by
+  position does; where the original's iterator or a write can crash there, the port throws the same error.
 
 So use ``Database/freeze()`` whenever both sides may be written in the same transaction. A cursor's freeze makes no handle
 stale, and the guard does not count it. The port reads such a copy as the original does, except where the original can crash,
-where it throws an error, and in two reads that start an iterator where the size and the tree disagree (see
+where it throws an error, and in two reads that start an iterator where a size or a branch's counts disagree with the tree (see
 <doc:DifferencesFromTheOriginal>).
+
+The package's suite "What the freeze hazard leaves", in `Tests/XitDBExamples/FreezeHazardTable.swift`, shows each kind of read
+of twelve such copies, of the three kinds, with either side's writes first, removing and adding, in the transaction and after
+the commit; and the conformance fixtures hold the port's reads of twelve such copies that the original made, in eight files, to
+the original's own, on every kind of storage.
 
 ### What a freeze costs
 
