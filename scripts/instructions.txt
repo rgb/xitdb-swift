@@ -4,15 +4,15 @@
 # `scripts/instructions.sh pin`; take them again on another toolchain or system.
 toolchain: swift-driver version: 1.168.6 Apple Swift version 6.4.2 (swiftlang-6.4.2.1.9 clang-2100.4.1.1)
 system: macOS 27.2 (26B123), Apple M4
-map_insert write 3366.9
-map_insert read 2169.8
-map_insert iterate 1812.1
+map_insert write 3364.4
+map_insert read 2170.8
+map_insert iterate 1812.0
 list_append write 2649.8
-list_append read 1423.0
+list_append read 1439.0
 list_append iterate 385.2
-linked_append write 30100.3
+linked_append write 30099.6
 linked_append read 3632.9
 linked_append iterate 508.0
-sorted_insert write 40085.8
-sorted_insert read 13503.0
+sorted_insert write 40085.3
+sorted_insert read 13501.7
 sorted_insert iterate 1785.3
