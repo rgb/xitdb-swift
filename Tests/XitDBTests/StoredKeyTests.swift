@@ -1008,10 +1008,12 @@ enum StoredKeyWriting: CaseIterable, CustomTestStringConvertible {
     @Test func thePutCursorAsksOnceAndRefusesFirst() throws {
         let pair = try Pair()
         var kept: HashMap<ReadWrite>?
+        var keptCounted: CountedHashMap<ReadWrite>?
         try pair.one.withTransaction { root in
             let map = try HashMap<ReadWrite>(try Pair.place(root))
             let counted = try CountedHashMap<ReadWrite>(try map.putCursor(forKey: "counted"))
             kept = map
+            keptCounted = counted
 
             let key = CountedKey("asked once")
             _ = try map.putCursor(forKey: key, storingKey: true)
@@ -1046,6 +1048,11 @@ enum StoredKeyWriting: CaseIterable, CustomTestStringConvertible {
             try map.putCursor(storingKey: .slot(Slot(value: 57, tag: .index)), forHash: sha1("no"))
         }
         #expect(throws: XitDBError.expectedTxStart) { try map.putCursor(forKey: "no", storingKey: true) }
+        let counted = try #require(keptCounted)
+        #expect(throws: XitDBError.expectedTxStart) {
+            try counted.putCursor(storingKey: .slot(Slot(value: 57, tag: .index)), forHash: sha1("no"))
+        }
+        #expect(throws: XitDBError.expectedTxStart) { try counted.putCursor(forKey: "no", storingKey: true) }
 
         let none = try Database(creating: MemoryStorage(), hashSize: 20)
         try none.withTransaction { root in
