@@ -96,8 +96,8 @@ data, or into a walk without end. The original holds none of them; it bounds its
 - **A size the file has no room for** is refused by every read of the collection that takes it, with
   ``XitDBError/invalidCount``: an array list's or a sorted map's or set's, at nine bytes for each element, and a counted hash
   map's or set's count, at the hash and eighteen bytes for each entry. A linked array list's size is held to nothing, since a
-  list joined to itself holds its nodes many times over, so a walk of one gives as many elements as its size says. No write
-  checks a size this way.
+  list joined to itself holds its nodes many times over: a walk of one is not held to the file's length, and gives the elements
+  its tree holds, at most as many as its size says. No write checks a size this way.
 - **No read takes bytes from before where data starts**, 32 bytes into the file, or 37 in a version 1 file: a slot, a header, a
   block, a node, a pair or a byte array whose bytes would come from the file's own headers is refused with
   ``XitDBError/endOfStream``, as one beyond the end is.
