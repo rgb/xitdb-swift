@@ -169,6 +169,18 @@ func onLargeStack(stackSize: Int = 64 << 20, _ body: @escaping @Sendable () thro
     // Room for the attributes, and not `pthread_attr_t()`: on Linux that
     // initializer belongs to a module of Dispatch's that no file can import,
     // and the compiler refuses its use.
+    //
+    // The rule this is one case of, for whoever writes the next test or
+    // tool for Linux: in a target that imports Foundation, a C structure's
+    // initializer or members can be refused there for the lack of an import
+    // of whichever module the compiler takes the structure to belong to
+    // that time, and importing that one moves it to another (`st_uid` was
+    // refused for CoreFoundation and, with that imported, `st_dev` for
+    // CDispatch). So the tests and the tools read no C structure's members
+    // on Linux: they ask the library (`Platform.leads(_:to:)`), Foundation
+    // (a file's attributes), a call that returns a number (`lseek` for a
+    // length) or the system's own files. The library is not exposed: it
+    // imports the system's module alone.
     let attributes = UnsafeMutablePointer<pthread_attr_t>.allocate(capacity: 1)
     defer { attributes.deallocate() }
     var code = pthread_attr_init(attributes)

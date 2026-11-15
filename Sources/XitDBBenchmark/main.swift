@@ -50,9 +50,11 @@
 // `--hash-cost` measures no database: what hashing a key costs, by each way
 // of computing it, for keys of three lengths (HashCost.swift).
 //
-// `--cold` runs none of the workloads: it is the two cold lines of the
-// memory map, a walk in file order and the stream of a whole file, each
-// read when none of the file's pages is in memory (ColdLines.swift).
+// `--cold` runs none of the workloads: it is the cold lines of the memory
+// map, what a walk in file order, the stream of a whole file, reads by key
+// and a compaction cost when none of the file's pages is in memory, with
+// the map's advice to the system and without it; `--cold report <folder>`
+// runs all of them and prints the machine they ran on (ColdLines.swift).
 //
 // With `--kind <kind>` the workloads run on that kind of storage alone,
 // `memory`, `file` or `buffered_file`, and a workload that does not have
@@ -1352,8 +1354,15 @@ let arguments: [String] = {
     return arguments
 }()
 if arguments.first == "--cold" {
-    // the two cold lines of the memory map (ColdLines.swift)
-    try runColdLines(Array(CommandLine.arguments.dropFirst().drop { $0 != "--cold" }.dropFirst()))
+    // the cold lines of the memory map (ColdLines.swift)
+    // a failure is said in a line and is status 1: the report is run by
+    // people on other machines, who can do nothing with a trap's dump
+    do {
+        try runColdLines(Array(CommandLine.arguments.dropFirst().drop { $0 != "--cold" }.dropFirst()))
+    } catch {
+        FileHandle.standardError.write(Data("XitDBBenchmark --cold: \(error)\n".utf8))
+        exit(1)
+    }
     exit(0)
 }
 if arguments.first == "--hash-cost" {
