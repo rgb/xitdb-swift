@@ -26,9 +26,12 @@ import XitDBHashing
 /// rank and a walk go by counts and slots that may no longer agree, so a
 /// position can give another entry than the walk gives at that place, a
 /// walk can give an element twice, and a rank can be off, each without an
-/// error. The port reads these copies as the original does, except where
-/// the original ends its process: an iterator started at a position the
-/// tree does not have.
+/// error. The port reads these copies as the original does, but for two
+/// reads: an iterator started at a position the tree does not have, which
+/// the port refuses where the original gives nothing, or other entries, or
+/// ends its process; and an iterator started at a key whose place is past
+/// the size, which gives nothing in the port where the original runs on to
+/// the tree's end.
 @Suite("What the freeze hazard leaves") struct FreezeHazardTable {
     enum Collection: String, CaseIterable {
         case sortedMap, sortedSet, linkedArrayList

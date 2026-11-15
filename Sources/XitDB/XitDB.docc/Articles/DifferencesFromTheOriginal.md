@@ -4,20 +4,21 @@ What this package does differently from xitdb in Zig, and what it does the same 
 
 ## Overview
 
-The port's first rule is that it writes the same bytes: given the same file ID, the same commit IDs and the same operations,
-it produces the same file as the original. The original here is xitdb at the commit the port follows, `89da8e7`. That is
-checked with 244 conformance scripts. In 146 the file must match byte for byte the one the original writes, or, for the few
-operations the port deliberately does differently, the one the original writes when it is made to do the same. The other 98
-must fail, as they do with the original: they check that a runner catches what is wrong.
+The port's first rule is that it writes the same bytes: given the same file ID, the same commit IDs and the same operations, it
+produces the same file as the original. The original here is xitdb at the commit the port follows, `89da8e7`. That is checked
+with 253 conformance scripts. In 155 the file must match byte for byte the one the original writes, or, for the few operations
+the port deliberately does differently, the one the original writes when it is made to do the same. The other 98 must fail, as
+they do with the original: they check that a runner catches what is wrong.
 
-The second rule is that where the original's behaviour looks wrong, the port does what is correct. The differences are of three
+The second rule is that where the original's behaviour looks wrong, the port does what is correct. The differences are of four
 kinds: the port refuses with an error, or decides differently, what would damage data in the original; it gives an error or a
-sensible result where the original crashes or disagrees with itself; and it recovers, when asked, a file the original cannot
-open. A refusal reaches no file: it comes before the write, and where an operation had already written, the transaction can no
-longer commit. So it narrows which sequences of operations the port accepts and leaves the files alone: the port reads every
-file the original writes. Two of the differences change the bytes of operations that are valid in both: the operations
-after a join in the same transaction, and ``Cursor/writeIfEmpty(_:)``. Each of those was made in a branch of the original first,
-and the port's files are compared with that branch's.
+sensible result where the original crashes or disagrees with itself; it holds a read to what the file can hold, which the
+original does not; and it recovers, when asked, a file the original cannot open. A refusal reaches no file: it comes before the
+write, and where an operation had already written, the transaction can no longer commit. So it narrows which sequences of
+operations the port accepts and leaves the files alone: the port reads every file the original writes. Two of the differences
+change the bytes of operations that are valid in both: the operations after a join in the same transaction, and
+``Cursor/writeIfEmpty(_:)``. Each of those was made in a branch of the original first, and the port's files are compared with
+that branch's.
 
 ### Where the original lets data be damaged
 
@@ -53,7 +54,13 @@ and the port's files are compared with that branch's.
 
 - **An offset past any a file can have** aborts the original's process. The port throws an error.
 - **A tree whose header disagrees with its nodes**, which a damaged file or the original's freeze hazards produce, can crash the
-  original. The port throws an error where it comes across one, and never traps: see <doc:Errors>.
+  original. The port throws an error where a read or a write is led where the tree has nothing, and never traps: see
+  <doc:Errors>. Within what a read is held to (below), it otherwise reads such a tree as the original does, by its size and
+  counts as they are, and two reads differ even so:
+  - **An iterator started at a position its tree does not have**, though its size has it, gives nothing in the original, or the
+    entries after the leaf, or with a fuller leaf ends its process. The port throws ``XitDBError/invalidBTreeNode``.
+  - **An iterator started at a key whose place is past the size**, in a tree that holds more than its size says, runs on to the
+    tree's end in the original. The port gives nothing.
 - **The key and value slots of a hashed entry** are read without checking their tags in the original. The port checks them.
 - **With 64-byte hashes**, the original's depth counter overflows at 64 levels. The port goes as deep as the hash allows, and then
   throws ``XitDBError/keyOffsetExceeded``.
@@ -80,6 +87,32 @@ and the port's files are compared with that branch's.
   commit.
 - **Reading committed bytes into a writer with no buffer** panics on the original's buffered file. The port has no such writer:
   a ``ByteSink`` is handed the bytes, a part at a time.
+
+### What a read is held to that the original's is not
+
+The port holds four things a read takes from a file to what the file can be, so that no file leads a read outside the file's
+data, or into a walk without end. The original holds none of them; it bounds its reads by depth, as the port does too.
+
+- **A size the file has no room for** is refused by every read of the collection that takes it, with
+  ``XitDBError/invalidCount``: an array list's or a sorted map's or set's, at nine bytes for each element, and a counted hash
+  map's or set's count, at the hash and eighteen bytes for each entry. A linked array list's size is held to nothing, since a
+  list joined to itself holds its nodes many times over, so a walk of one gives as many elements as its size says. No write
+  checks a size this way.
+- **No read takes bytes from before where data starts**, 32 bytes into the file, or 37 in a version 1 file: a slot, a header, a
+  block, a node, a pair or a byte array whose bytes would come from the file's own headers is refused with
+  ``XitDBError/endOfStream``, as one beyond the end is.
+- **A walk of a hash map or set** enters no more blocks than the file has room for, at 144 bytes a block, and ends with
+  ``XitDBError/keyOffsetExceeded`` when it would enter more, so a block that many slots lead to can give its entries more than
+  once before then. The original's walk has no bound but its stack's depth: such a block is entered once for each slot that
+  leads to it, which can come to sixteen to the power of that depth, and blocks that lead back up end it with an error when the
+  stack is full.
+- **A walk of a tree** enters no more nodes than its file or its elements allow, and then ends with
+  ``XitDBError/invalidBTreeNode``: a sorted map's or set's no more than the file has room for, at 146 bytes a node, and a linked
+  array list's no more than 65 for each element it has given and for the next.
+
+None of the four holds a size or a count against the tree under it. A position, a rank and a walk answer from the counts as they
+are, as in the original but for the two iterator starts above, so a size or a branch's count that is wrong but fits the file is
+read as it is, with no error, and what is answered from it can be wrong.
 
 ### On the disk
 
@@ -114,7 +147,8 @@ And these of the original's ways stay as they are, hazards included:
 - **A copy made within a transaction** is a second name for something still mutable, until a freeze. That is the original's
   design, and the port keeps it: see <doc:CloningFreezeAndStaleHandles>.
 - **A freeze of one cursor**, ``Cursor/freeze()``, protects the data from writes through that cursor and from nothing else. The
-  port does what the original does, except that where the original can crash it throws an error.
+  port does what the original does, except that where the original can crash it throws an error, and in the two iterator starts
+  under "A tree whose header disagrees with its nodes" above.
 - **Writing a slot set to nothing** writes the value bits it carries, which mean nothing, in both. A client of the port cannot
   make a slot, so it cannot choose them.
 - **Two of the original's hazards need its raw path API**, which the port does not make public: a path that skips a collection's
