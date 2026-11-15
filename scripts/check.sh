@@ -241,8 +241,14 @@ limited "$release_limit" swift test -c release --skip-build "${strict[@]}"
 # differently would bring about. If it fails here, the library is not at fault: the two
 # recursions in the benchmark (descend and descendByLongerFrames) need another look, so
 # that one of them again moves the stack by an odd number of sixteen bytes a level.
+#
+# The second run is the same workloads on files read through a memory map, with the
+# map's limit at each write and then at each commit. It fails where the temporary
+# folder is on a volume the library does not map.
 step "Benchmark smoke run"
 .build/release/XitDBBenchmark --divide 100 > /dev/null
+.build/release/XitDBBenchmark --divide 100 --mapped > /dev/null
+.build/release/XitDBBenchmark --divide 100 --mapped --map-at-commits > /dev/null
 .build/release/XitDBBenchmark --hash-cost --divide 100 > /dev/null
 if [ "$platform" = Darwin ]; then
     .build/release/XitDBBenchmark --divide 100 --stack-sweep list_append memory iterate 1 > /dev/null
@@ -263,6 +269,12 @@ echo "ok"
 # are on its version 1 sample, whose bytes it keeps, since nothing creates version 1:
 # they are the fixtures' input v1-history, and the comparison holds the two copies to
 # each other.
+#
+# With --mapped the battery works on files read through a memory map, where a damaged
+# pointer or count must give an error and never a read of a part of the file that is
+# not there, which is a signal and ends the tool: the damaged files that once trapped,
+# and the targeted and the anywhere damage of the first sample and of the version 1
+# sample.
 step "Corruption fuzzer"
 .build/release/XitDBFuzz check Tests/XitDBTests/Resources/damaged/*.db
 .build/release/XitDBFuzz run 32 1 2001 targeted
@@ -275,6 +287,13 @@ step "Corruption fuzzer"
 cmp .build/fuzz-v1-sample.db Tests/XitDBTests/Resources/fixtures/inputs/v1-history.db
 .build/release/XitDBFuzz run v1 1 2001 targeted
 .build/release/XitDBFuzz run v1 1 2001
+.build/release/XitDBFuzz check --mapped Tests/XitDBTests/Resources/damaged/*.db
+.build/release/XitDBFuzz run 32 1 2001 targeted --mapped
+.build/release/XitDBFuzz run 32 1 2001 --mapped
+.build/release/XitDBFuzz run 2 1 1001 targeted --mapped
+.build/release/XitDBFuzz run 65 1 501 targeted --mapped
+.build/release/XitDBFuzz run v1 1 2001 targeted --mapped
+.build/release/XitDBFuzz run v1 1 2001 --mapped
 
 # R5: Sources/XitDB may import the standard library, Synchronization and the platform C
 # library, and nothing else. The platform C library is imported in exactly one file,

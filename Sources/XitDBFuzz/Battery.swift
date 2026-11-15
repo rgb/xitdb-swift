@@ -5,8 +5,60 @@
 // with `try?`: the battery checks that the library neither traps nor hangs
 // on the file (R23), and nothing about which error it gives or what it
 // reads back. The hash size it needs comes from the file's own header.
+//
+// The damaged bytes are in memory, or, with `--mapped`, in files that are
+// read through a memory map: there a damaged pointer or count must still
+// give an error, and never a read of a part of the file that is not there,
+// which would end the process with a signal.
 
 import XitDB
+
+/// Where the battery keeps the bytes it works on.
+struct BatteryPlace {
+    /// A directory for the battery's files, which are then read through a
+    /// memory map; `nil` for memory.
+    let directory: String?
+
+    /// A storage that holds `bytes`, to read a database from.
+    func readable(_ bytes: [UInt8]) -> (any WritableStorage)? {
+        guard let directory else { return MemoryStorage(bytes: bytes) }
+        let path = directory + "/source.db"
+        guard put(bytes, at: path) else { return nil }
+        return try? FileStorage(path: path, access: .readOnly, durability: .none, lock: .shared, memoryMapped: true)
+    }
+
+    /// A storage that holds `bytes` and may grow by `room` bytes and no
+    /// more, to write a database in.
+    func writable(_ bytes: [UInt8], room: UInt64, name: String) -> (any WritableStorage)? {
+        let limit = UInt64(bytes.count) + room
+        guard let directory else { return MemoryStorage(bytes: bytes, maxSize: limit) }
+        let path = directory + "/" + name
+        guard put(bytes, at: path),
+            let file = try? FileStorage(
+                path: path, access: .readWrite, durability: .none, lock: .exclusive, memoryMapped: true)
+        else { return nil }
+        // A file has no largest size of its own: a damaged count must not
+        // fill the disk, so the calls that make the file longer refuse
+        // beyond the room, as a memory storage does.
+        let write = file.calls.write
+        file.calls.write = { (descriptor: Int32, bytes: Span<UInt8>, offset: UInt64) throws(XitDBError) in
+            guard offset <= limit, UInt64(bytes.count) <= limit - offset else { throw .maxSizeExceeded }
+            try write(descriptor, bytes, offset)
+        }
+        let setLength = file.calls.setLength
+        file.calls.setLength = { (descriptor: Int32, length: UInt64) throws(XitDBError) in
+            guard length <= limit else { throw .maxSizeExceeded }
+            try setLength(descriptor, length)
+        }
+        return BufferedFileStorage(file)
+    }
+
+    /// Makes the file at `path` hold `bytes` and nothing else.
+    private func put(_ bytes: [UInt8], at path: String) -> Bool {
+        guard let file = try? FileStorage(path: path, access: .truncate, durability: .none) else { return false }
+        return (try? file.write(bytes.span, at: 0)) != nil
+    }
+}
 
 /// Ten write transactions on `database`, each a new moment that touches one
 /// kind of collection: puts, appends, inserts, removals, truncations, a
@@ -91,12 +143,20 @@ func writeEverywhere(_ database: Database) {
 }
 
 /// Runs the battery on the bytes of one file.
-func runBattery(on bytes: [UInt8]) {
-    guard let database = try? Database(opening: MemoryStorage(bytes: bytes)) else { return }
+func runBattery(on bytes: [UInt8], in place: BatteryPlace) {
+    guard let source = place.readable(bytes), let database = try? Database(opening: source) else { return }
 
     // read everything reachable from the root
     var budget = 3000
     walk(database.rootCursor, hashSize: Int(database.header.hashSize), depth: 0, budget: &budget)
+
+    // through the map, a snapshot reads by another way than its database:
+    // its own copy of the segments, up to its commit
+    if place.directory != nil, let snapshot = try? database.snapshot() {
+        var snapshotBudget = 2000
+        walk(snapshot.rootCursor, hashSize: Int(snapshot.header.hashSize), depth: 0, budget: &snapshotBudget)
+        _ = try? SnapshotDatabase(snapshot).readCommitted(from: 0, to: snapshot.committedSize)
+    }
 
     // compact into memory, the target capped at 256 MiB, and read the result
     var offsets = MemoryOffsetMap()
@@ -118,15 +178,15 @@ func runBattery(on bytes: [UInt8]) {
     }
 
     // write on a copy, which may grow by 64 MiB and no more
-    let copy = MemoryStorage(bytes: bytes, maxSize: UInt64(bytes.count) + (1 << 26))
-    if let writable = try? Database(opening: copy) {
+    if let copy = place.writable(bytes, room: 1 << 26, name: "copy.db"), let writable = try? Database(opening: copy) {
         writeEverywhere(writable)
     }
 
     // one transaction that opens the last moment for writing, iterates it
     // and reads each entry
-    let secondCopy = MemoryStorage(bytes: bytes, maxSize: UInt64(bytes.count) + (1 << 26))
-    if let writable = try? Database(opening: secondCopy) {
+    if let secondCopy = place.writable(bytes, room: 1 << 26, name: "second-copy.db"),
+        let writable = try? Database(opening: secondCopy)
+    {
         _ = try? writable.withTransaction { cursor in
             let history = try ArrayList<ReadWrite>(cursor)
             let moment = try HashMap<ReadWrite>(try history.putCursor(at: -1))

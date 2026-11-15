@@ -4,9 +4,9 @@
 // file through the battery of `Battery.swift`. It checks nothing else:
 // every error is discarded.
 //
-//     XitDBFuzz run <hashSize|v1> <from> <to> [targeted] [--progress <file>]
+//     XitDBFuzz run <hashSize|v1> <from> <to> [targeted] [--progress <file>] [--mapped]
 //     XitDBFuzz save <hashSize|v1> <seed|good> [targeted] <path>
-//     XitDBFuzz check <file>...
+//     XitDBFuzz check [--mapped] <file>...
 //
 // The sample is built in memory with hashes of `hashSize` bytes, in format
 // version 2, as every new database is; `v1` names the version 1 sample of
@@ -20,7 +20,11 @@
 // on after a crash. `save` writes the damaged file of a seed, or the
 // undamaged sample for `good`, to a path. `check` runs files through the
 // battery, printing each path before it runs, so that a trap names the
-// file. A file gets twenty seconds; a hang is ended by the alarm.
+// file. A file gets twenty seconds; a hang is ended by the alarm. With
+// `--mapped` the battery works on files in a temporary folder, read
+// through a memory map, in place of bytes in memory: a damaged file must
+// then give an error and never a read of a part of the file that is not
+// there, which is a signal.
 //
 // Exits 2 on bad arguments, 1 when the sample cannot be built or a file
 // cannot be read or written, and 0 otherwise. A trap ends the process with
@@ -30,9 +34,9 @@ import Foundation
 import XitDB
 
 let usage = """
-    usage: XitDBFuzz run <hashSize|v1> <from> <to> [targeted] [--progress <file>]
+    usage: XitDBFuzz run <hashSize|v1> <from> <to> [targeted] [--progress <file>] [--mapped]
            XitDBFuzz save <hashSize|v1> <seed|good> [targeted] <path>
-           XitDBFuzz check <file>...
+           XitDBFuzz check [--mapped] <file>...
     """
 
 /// Prints `message` to standard error and exits with `status`.
@@ -107,15 +111,37 @@ func makePlan(_ choice: SampleChoice, targeted: Bool) -> DamagePlan {
     }
 }
 
+/// Where the battery works: memory, or with `--mapped` a new folder for
+/// its files, removed when the run ends without a trap.
+func makePlace(mapped: Bool) -> BatteryPlace {
+    guard mapped else { return BatteryPlace(directory: nil) }
+    let folder = FileManager.default.temporaryDirectory
+        .appendingPathComponent("xitdb-fuzz-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+    do {
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    } catch {
+        fail("XitDBFuzz: cannot make \(folder.path): \(error)", status: 1)
+    }
+    return BatteryPlace(directory: folder.path)
+}
+
+/// Removes the battery's folder, if it has one.
+func remove(_ place: BatteryPlace) {
+    if let directory = place.directory {
+        try? FileManager.default.removeItem(atPath: directory)
+    }
+}
+
 /// Runs the battery on `bytes` with the alarm set, so that a hang ends the
 /// process after twenty seconds.
-func runTimed(_ bytes: [UInt8]) {
+func runTimed(_ bytes: [UInt8], in place: BatteryPlace) {
     alarm(20)
-    runBattery(on: bytes)
+    runBattery(on: bytes, in: place)
     alarm(0)
 }
 
-func run(_ choice: SampleChoice, seeds: Range<Int>, targeted: Bool, progress: String?) {
+func run(_ choice: SampleChoice, seeds: Range<Int>, targeted: Bool, progress: String?, mapped: Bool) {
+    let place = makePlace(mapped: mapped)
     let plan = makePlan(choice, targeted: targeted)
     say("file size \(plan.sample.count)")
     say("harvested \(plan.positions.count)")
@@ -123,12 +149,13 @@ func run(_ choice: SampleChoice, seeds: Range<Int>, targeted: Bool, progress: St
         if let progress {
             write(String(seed), to: progress)
         }
-        runTimed(plan.damaged(seed: seed))
+        runTimed(plan.damaged(seed: seed), in: place)
     }
+    remove(place)
     if let progress {
         write("done", to: progress)
     }
-    let mode = targeted ? "targeted" : "untargeted"
+    let mode = (targeted ? "targeted" : "untargeted") + (mapped ? ", through a memory map" : "")
     say("done: \(seeds.count) files, seeds \(seeds.lowerBound)..<\(seeds.upperBound), \(choice), \(mode)")
 }
 
@@ -142,7 +169,9 @@ func save(_ choice: SampleChoice, seed: Int?, targeted: Bool, to path: String) {
     }
 }
 
-func check(_ paths: [String]) {
+func check(_ paths: [String], mapped: Bool) {
+    let place = makePlace(mapped: mapped)
+    defer { remove(place) }
     for path in paths {
         let bytes: [UInt8]
         do {
@@ -151,13 +180,15 @@ func check(_ paths: [String]) {
             fail("XitDBFuzz: cannot read \(path): \(error)", status: 1)
         }
         say(path)
-        runTimed(bytes)
+        runTimed(bytes, in: place)
     }
 }
 
 var arguments = Array(CommandLine.arguments.dropFirst())
 guard let command = arguments.first else { fail(usage, status: 2) }
 arguments.removeFirst()
+let mapped = arguments.contains("--mapped")
+arguments.removeAll { $0 == "--mapped" }
 switch command {
 case "run":
     var progress: String? = nil
@@ -171,9 +202,9 @@ case "run":
         let from = Int(arguments[1]), from >= 0,
         let to = Int(arguments[2]), to >= from
     else { fail(usage, status: 2) }
-    run(choice, seeds: from..<to, targeted: arguments.count == 4, progress: progress)
+    run(choice, seeds: from..<to, targeted: arguments.count == 4, progress: progress, mapped: mapped)
 case "save":
-    guard arguments.count == 3 || arguments.count == 4 && arguments[2] == "targeted",
+    guard !mapped, arguments.count == 3 || arguments.count == 4 && arguments[2] == "targeted",
         let choice = SampleChoice(arguments[0])
     else { fail(usage, status: 2) }
     let seed: Int?
@@ -187,7 +218,7 @@ case "save":
     save(choice, seed: seed, targeted: arguments.count == 4, to: arguments[arguments.count - 1])
 case "check":
     guard !arguments.isEmpty else { fail(usage, status: 2) }
-    check(arguments)
+    check(arguments, mapped: mapped)
 default:
     fail(usage, status: 2)
 }
