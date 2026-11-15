@@ -129,7 +129,7 @@ or `--depth`; and a million nodes in all, or ten times `--limit` if that is more
 | `--moment N` | The moment to show, negative from the end; the last by default. A root that is not a list of moments, such as the set above, is moment 0 and has no other. |
 | `--all-moments` | Every moment, with sharing between them marked. |
 | `--depth D` | How deep to descend; 200 levels by default. |
-| `--path k1/k2/#3` | Start below the moment's root, or below a root that is not a list of moments: a key by its name, or by its whole hash in hex (`--full-hashes` shows it), and a list element by `#` and its index. |
+| `--path k1/k2/#3` | Start below the moment's root, or below a root that is not a list of moments: a key by its name, or by its whole hash in hex (`--full-hashes` shows it), and a list element by `#` and its index. A step into a set or a counted set leads to the member itself, the key the set stores, and not to its empty value. No step leads into a sorted set, even to a member it has. |
 | `--json` | The same tree as one JSON document, for tools. |
 | `--keys FILE` | Key names, one per line, hashed to label the entries that store no name. |
 | `--hash NAME` | The hash for `--keys` and for the names in `--path`: `sha256` by default, or `sha1`. |
@@ -170,7 +170,7 @@ The exit code says what the tool found:
 | Code | Meaning |
 |---|---|
 | 0 | The file is sound. |
-| 1 | The file is damaged, has no first commit, or is a creation that did not finish, and what could be read was dumped. |
+| 1 | The file is damaged, has no first commit, or is a creation that did not finish, and what could be read was dumped; or the moment or the place the options ask for is not there. |
 | 2 | The file is not xitdb or cannot be read as one, or the arguments are not understood. |
 
 ## See Also
