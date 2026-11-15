@@ -17,6 +17,9 @@ package struct Dumper {
     /// than any dump should print.
     private var budget: Int
     private var budgetSpent = false
+    /// The budget the dump started with, for the note that says it was
+    /// spent.
+    private let nodeBudget: Int
 
     /// The most nodes one dump makes: a million, or ten times the
     /// per-collection limit when that is raised, so that a reader who asks
@@ -25,10 +28,13 @@ package struct Dumper {
         max(1_000_000, limit.multipliedReportingOverflow(by: 10).partialValue)
     }
 
-    package init(options: DumpOptions) {
+    /// - Parameter nodeBudget: The most nodes the dump makes, where a test
+    ///   wants fewer than ``nodeBudget(limit:)`` gives.
+    package init(options: DumpOptions, nodeBudget: Int? = nil) {
         self.options = options
         depthLimit = options.depth ?? DumpOptions.defaultDepth
-        budget = Self.nodeBudget(limit: options.limit)
+        self.nodeBudget = nodeBudget ?? Self.nodeBudget(limit: options.limit)
+        budget = self.nodeBudget
     }
 
     /// Dumps the file in a storage, read-only; a damaged file is dumped as
@@ -172,6 +178,7 @@ package struct Dumper {
                 return
             }
             dump.moments = [Dump.Moment(index: 0, root: node(below: root, label: "root"))]
+            noteASpentBudget(in: &dump)
             if dump.exitCode == 0, containsDamage(dump.moments[0].root) { dump.exitCode = 1 }
             return
         }
@@ -203,12 +210,17 @@ package struct Dumper {
             }
             dump.moments.append(Dump.Moment(index: index, root: node(below: cursor, label: "moment \(index)")))
         }
-        if budgetSpent {
-            dump.notes.append(
-                "the dump stopped at \(Self.nodeBudget(limit: options.limit)) nodes, what came first; --limit raises it with the collections' cap"
-            )
-        }
+        noteASpentBudget(in: &dump)
         if dump.exitCode == 0, dump.moments.contains(where: { containsDamage($0.root) }) { dump.exitCode = 1 }
+    }
+
+    /// Says that the dump stopped for its budget of nodes, if it did:
+    /// whatever the root is, a list of moments or not.
+    private func noteASpentBudget(in dump: inout Dump) {
+        guard budgetSpent else { return }
+        dump.notes.append(
+            "the dump stopped at \(nodeBudget) nodes, what came first; --limit raises it with the collections' cap"
+        )
     }
 
     // MARK: Paths
@@ -256,6 +268,15 @@ package struct Dumper {
                 switch tag {
                 case .arrayList: next = try ArrayList<ReadOnly>(cursor).cursor(at: index)
                 case .linkedArrayList: next = try LinkedArrayList<ReadOnly>(cursor).cursor(at: index)
+                case .sortedMap:
+                    // A sorted collection has positions too, in key order:
+                    // the value at one in a map, as a name leads to the
+                    // value, and nothing where the value was never written.
+                    let value = try SortedMap<ReadOnly>(cursor).entry(at: index)?.value
+                    next = try value.flatMap { value throws(XitDBError) in try value.slot.isEmpty ? nil : value }
+                case .sortedSet:
+                    // The member at a position in a set.
+                    next = try SortedSet<ReadOnly>(cursor).entry(at: index)?.key
                 default: return .failure(.kind("not a list: \(tag)"))
                 }
                 guard let next else { return .failure(.missing) }
@@ -267,6 +288,16 @@ package struct Dumper {
                         return .failure(.missing)
                     }
                     return .success(next)
+                case .sortedSet:
+                    // A sorted set keeps its keys, so the name is the
+                    // member itself, at its place in key order: as a name
+                    // leads to the member of a hashed set.
+                    let set = try SortedSet<ReadOnly>(cursor)
+                    let key = Array(name.utf8)
+                    guard try set.contains(key), let entry = try set.entry(at: try set.rank(of: key)) else {
+                        return .failure(.missing)
+                    }
+                    return .success(entry.key)
                 default:
                     return descend(cursor, by: .hash(options.hash.hash(Array(name.utf8))))
                 }

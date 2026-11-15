@@ -20,8 +20,9 @@ package struct DumpOptions: Sendable {
         }
     }
 
-    /// One step of `--path`: into a map by a key's name or its hash, or
-    /// into a list by index.
+    /// One step of `--path`: into a map or a set by a key's name or its
+    /// hash, or by position into a list, a sorted map or a sorted set, which
+    /// have an order; a negative position counts from the end.
     package enum PathStep: Equatable, Sendable {
         case key(String)
         case hash([UInt8])

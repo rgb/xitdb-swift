@@ -255,6 +255,161 @@ import XitDBHashing
         #expect(Self.dump(map, options).moments.map(\.index) == [0])
     }
 
+    /// A name that is a member of a sorted set leads to the member, as it
+    /// does for a hashed set, and a position leads into a sorted set and a
+    /// sorted map in key order, counted from the end when negative. The tool
+    /// once answered "not a map: sortedSet" for the name, and "not a list"
+    /// for a position into either.
+    @Test func aNameAndAPositionLeadIntoTheSortedCollections() throws {
+        func fixture(_ name: String) throws -> [UInt8] {
+            try Self.bytes(try Self.resources().appendingPathComponent("fixtures/valid/compact-roots--port.\(name).db"))
+        }
+        var options = DumpOptions()
+        options.hash = .sha1
+
+        // A sorted set of "a" and "b", and a hashed set of "a": the name
+        // leads to the same thing in both.
+        let sortedSet = try fixture("s_sorted_set")
+        let hashedSet = try fixture("s_set")
+        options.path = [.key("a")]
+        var dump = Self.dump(sortedSet, options)
+        #expect(dump.exitCode == 0)
+        #expect(dump.moments.first?.root == Self.dump(hashedSet, options).moments.first?.root)
+        #expect(Self.text(sortedSet, options).contains("\nmoment 0/a: bytes 1 \"a\"\n"))
+        options.path = [.key("b")]
+        #expect(Self.text(sortedSet, options).contains("\nmoment 0/b: bytes 1 \"b\"\n"))
+        options.path = [.key("c")]
+        dump = Self.dump(sortedSet, options)
+        #expect(dump.moments.first?.root.kind == .unreadable)
+        #expect(dump.exitCode == 1)
+        #expect(
+            Self.text(sortedSet, options).contains("\nmoment 0/c: unreadable: no such place: c (nothing there)\n"))
+
+        // By position, in key order.
+        for (index, member) in [(0, "a"), (1, "b"), (-1, "b"), (-2, "a")] {
+            options.path = [.index(index)]
+            dump = Self.dump(sortedSet, options)
+            #expect(dump.exitCode == 0, "\(index)")
+            #expect(Self.text(sortedSet, options).contains("\nmoment 0/#\(index): bytes 1 \"\(member)\"\n"), "\(index)")
+        }
+        for index in [2, -3] {
+            options.path = [.index(index)]
+            dump = Self.dump(sortedSet, options)
+            #expect(dump.moments.first?.root.kind == .unreadable, "\(index)")
+            #expect(dump.exitCode == 1, "\(index)")
+        }
+
+        // A sorted map of "a" to 1 and "b" to 2: a position leads to the
+        // value, as a name does.
+        let sortedMap = try fixture("s_sorted")
+        for (index, value) in [(0, "1"), (1, "2"), (-1, "2")] {
+            options.path = [.index(index)]
+            dump = Self.dump(sortedMap, options)
+            #expect(dump.moments.first?.root == Node(.uint, text: value), "\(index)")
+            #expect(dump.exitCode == 0, "\(index)")
+        }
+        options.path = [.index(2)]
+        dump = Self.dump(sortedMap, options)
+        #expect(dump.moments.first?.root.kind == .unreadable)
+        #expect(dump.exitCode == 1)
+        // A hashed map and a hashed set have no positions.
+        for name in ["t_map", "s_set"] {
+            options.path = [.index(0)]
+            dump = Self.dump(try fixture(name), options)
+            #expect(dump.moments.first?.root.kind == .unreadable, "\(name)")
+            #expect(dump.exitCode == 1, "\(name)")
+        }
+    }
+
+    /// A dump stops at its budget of nodes and says so, whether the root is
+    /// a list of moments or not: the note was missing where it is not.
+    @Test func aDumpThatStopsForItsBudgetSaysSo() throws {
+        let options = DumpOptions()
+        func dump(_ storage: MemoryStorage, budget: Int?) -> Dump {
+            var dumper = Dumper(options: options, nodeBudget: budget)
+            return dumper.dump(storage)
+        }
+        let note = "the dump stopped at 10 nodes, what came first; --limit raises it with the collections' cap"
+
+        // A root that is a map, of forty entries.
+        let mapStorage = MemoryStorage()
+        let mapDatabase = try Database(creating: mapStorage, hashSize: 20)
+        try mapDatabase.withTransaction { root in
+            let map = try HashMap<ReadWrite>(root)
+            for index in 0..<40 {
+                try map.put(.uint(UInt64(index)), forHash: hashInt("key-\(index)"))
+            }
+        }
+        var cut = dump(mapStorage, budget: 10)
+        #expect(cut.notes.contains("the root is not a list of moments; it is dumped as it is"))
+        #expect(cut.notes.contains(note))
+        #expect(cut.moments.count == 1)
+        var whole = dump(mapStorage, budget: nil)
+        #expect(!whole.notes.contains { $0.hasPrefix("the dump stopped") })
+        #expect(whole.moments.first?.root.children.count == 40)
+        // The entries past the budget are there, each as a mark that the
+        // dump stopped: the root took one node, nine entries the rest.
+        let entries = cut.moments.first?.root.children.map(\.node.kind) ?? []
+        #expect(entries.count == 40)
+        #expect(entries.filter { $0 == .truncated }.count == 31)
+        #expect(whole.moments.first?.root.children.contains { $0.node.kind == .truncated } == false)
+
+        // A root that is a list of moments, the last of them such a map.
+        let historyStorage = MemoryStorage()
+        let historyDatabase = try Database(creating: historyStorage, hashSize: 20)
+        let history = try ArrayList<ReadWrite>(historyDatabase.rootCursor)
+        try history.append(.slot(nil)) { cursor in
+            let map = try HashMap<ReadWrite>(cursor)
+            for index in 0..<40 {
+                try map.put(.uint(UInt64(index)), forHash: hashInt("key-\(index)"))
+            }
+        }
+        cut = dump(historyStorage, budget: 10)
+        #expect(cut.notes.contains(note))
+        whole = dump(historyStorage, budget: nil)
+        #expect(!whole.notes.contains { $0.hasPrefix("the dump stopped") })
+    }
+
+    /// A set's entry whose key was never written, which a cursor to insert
+    /// through leaves when nothing is written through it: the dump of the
+    /// set shows the entry with nothing for its member, and a step to it by
+    /// its name or its hash finds nothing there, exit code 1, as for a
+    /// member the set does not have. The library's own read by hash gives
+    /// nothing for it either.
+    @Test func aStepToASetsEntryWhoseKeyWasNeverWritten() throws {
+        var options = DumpOptions()
+        options.hash = .sha1
+        for counted in [false, true] {
+            let storage = MemoryStorage()
+            let database = try Database(creating: storage, hashing: Insecure.SHA1.self)
+            try database.withTransaction { root in
+                if counted {
+                    let set = try CountedHashSet<ReadWrite>(root)
+                    try set.insert("written")
+                    _ = try set.insertCursor(forKey: "ghost")
+                } else {
+                    let set = try HashSet<ReadWrite>(root)
+                    try set.insert("written")
+                    _ = try set.insertCursor(forKey: "ghost")
+                }
+            }
+            options.path = []
+            let whole = Self.dump(storage.bytes, options)
+            #expect(whole.exitCode == 0, "counted \(counted)")
+            #expect(whole.moments.first?.root.children.count == 2, "counted \(counted)")
+
+            options.path = [.key("written")]
+            #expect(Self.text(storage.bytes, options).contains("\nmoment 0/written: bytes 7 \"written\"\n"))
+            for step in [DumpOptions.PathStep.key("ghost"), .hash(Self.sha1("ghost"))] {
+                options.path = [step]
+                let dump = Self.dump(storage.bytes, options)
+                #expect(dump.moments.first?.root.kind == .unreadable, "counted \(counted)")
+                #expect(dump.moments.first?.root.text?.hasSuffix("(nothing there)") == true, "counted \(counted)")
+                #expect(dump.exitCode == 1, "counted \(counted)")
+            }
+        }
+    }
+
     /// The names `--hash` takes are those of the hashes the package has:
     /// `sha256` and `sha1`. `siphash128` was one until SipHash-128 left the
     /// package with the store, and is refused now as any unknown name is:
