@@ -82,10 +82,18 @@ swift test -c release "${strict[@]}"
 # The benchmark, built above as the release build's second product, runs every
 # workload on every kind at a hundredth of its size: that it runs is the check, not
 # its numbers. It prints one line per phase; a workload that fails exits non-zero. So
-# does its measure of what a hash costs, which checks every hash it computes.
+# does its measure of what a hash costs, which checks every hash it computes. On macOS
+# its map of a phase over the stack positions of a page runs too: it fails when its
+# recursion no longer reaches every position, which a compiler that lays the frames out
+# differently would bring about. If it fails here, the library is not at fault: the two
+# recursions in the benchmark (descend and descendByLongerFrames) need another look, so
+# that one of them again moves the stack by an odd number of sixteen bytes a level.
 step "Benchmark smoke run"
 .build/release/XitDBBenchmark --divide 100 > /dev/null
 .build/release/XitDBBenchmark --hash-cost --divide 100 > /dev/null
+if [ "$platform" = Darwin ]; then
+    .build/release/XitDBBenchmark --divide 100 --stack-sweep list_append memory iterate 1 > /dev/null
+fi
 echo "ok"
 
 # R23: a damaged file gives an error, never a trap or a hang. The fuzzer, the

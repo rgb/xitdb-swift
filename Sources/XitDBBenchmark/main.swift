@@ -6,7 +6,36 @@
 //
 // With no arguments every workload runs. Each prints three lines of JSON,
 // one for its write phase, one for its read phase and one for its iterate
-// phase.
+// phase: the median of five runs.
+//
+// Two things move an in-memory figure by more than the work does, and both
+// were found on the release of 0.4.0, when one cell read 30% slower with
+// two more arguments on the command line and another 5% slower than the
+// release before.
+//
+// The first is where the stack lies. A load or a store of two neighbouring
+// 8-byte words of the stack at once, which compilers make everywhere, costs
+// tens of cycles when a page boundary falls between the two words. A
+// million appends to a list in memory took 99 ms at most positions of the
+// stack and up to 135 ms at 15 of the 1,024 sixteen-byte positions a 16 KB
+// page has, the same 15 in 0.3.0 and in 0.4.0; a process's position is its
+// environment, its arguments and its call depth, so a given start is always
+// fast or always slow. The five runs of an in-memory phase are therefore
+// made at five depths of the stack, a kilobyte or two apart, and the median
+// does not rest on one position. One phase can be mapped over a whole page:
+//
+//     XitDBBenchmark --stack-sweep <workload> <kind> <write|read|iterate> [passes]
+//
+// The second is where the binary's code lies, and no mode takes it out. The
+// same sources built with a few bytes of padding before the library's code
+// ran a list's iteration in memory in 16.0 to 16.9 ms, a spread of 5%. So
+// a difference of about that size between two binaries is not the
+// library's until the instructions say so. On Apple's platforms each line
+// has `instructions` and `cycles`, the processor's counts for the phase
+// (the median run's), which the system gives a process about itself:
+// equal instructions with more cycles is layout and not work. Linux gives
+// no such count without a permission the benchmark does not ask for, and
+// the lines have none there.
 //
 // For a profiler, one phase of one workload on one kind of storage can be
 // run over and over for a number of seconds:
@@ -124,6 +153,112 @@ func milliseconds(_ body: () throws -> Void) rethrows -> Double {
     let start = DispatchTime.now().uptimeNanoseconds
     try body()
     return Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000
+}
+
+/// What one run of a phase took: its time, and the processor's counts for
+/// it where the system gives them.
+struct Measurement {
+    var milliseconds: Double
+    var instructions: UInt64?
+    var cycles: UInt64?
+}
+
+/// The instructions this process has retired and the cycles it has taken so
+/// far, on Apple's platforms, where a process may ask the system about
+/// itself; nil elsewhere, and where the system gives no answer.
+func processorCounts() -> (instructions: UInt64, cycles: UInt64)? {
+    #if canImport(Darwin)
+        var info = rusage_info_v4()
+        let status = withUnsafeMutablePointer(to: &info) { pointer in
+            pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { rebound in
+                proc_pid_rusage(getpid(), RUSAGE_INFO_V4, rebound)
+            }
+        }
+        return status == 0 ? (info.ri_instructions, info.ri_cycles) : nil
+    #else
+        return nil
+    #endif
+}
+
+/// The time `body` takes, with the processor's counts for it. The counts
+/// are read outside the clock.
+func measured(_ body: () throws -> Void) rethrows -> Measurement {
+    let before = processorCounts()
+    let time = try milliseconds(body)
+    let after = processorCounts()
+    guard let before, let after else { return Measurement(milliseconds: time) }
+    return Measurement(
+        milliseconds: time, instructions: after.instructions &- before.instructions,
+        cycles: after.cycles &- before.cycles)
+}
+
+/// How many levels of ``atStackDepth(_:byLongerFrames:_:)`` each of the
+/// five runs of an in-memory phase is made under: the stack a kilobyte or
+/// two further down from one run to the next, by amounts that are no
+/// multiple of one another.
+let stackDepths = [0, 23, 61, 113, 167]
+
+/// What ``atStackDepth(_:byLongerFrames:_:)`` runs at the bottom of its
+/// recursion. The recursion takes no closure of its own: the compiler makes
+/// a copy of a function for each closure it is called with, each with a
+/// frame of its own length, and the depth would not be the same for two
+/// callers.
+nonisolated(unsafe) var bodyAtStackDepth: () throws -> Void = {}
+
+/// Two numbers for the recursions to carry across their calls. They are
+/// written after the call a level makes, so that the call is not the last
+/// thing the level does and each level keeps a frame of its own.
+nonisolated(unsafe) var stackLevels = (returned: 0, entered: 0)
+
+/// Runs ``bodyAtStackDepth`` `levels` frames of this function further down
+/// the stack.
+@inline(never)
+func descend(_ levels: Int) throws {
+    if levels <= 0 {
+        try bodyAtStackDepth()
+    } else {
+        try descend(levels - 1)
+        stackLevels.returned &+= levels
+    }
+}
+
+/// The same by longer frames: it carries three numbers across its call,
+/// which takes one more pair of saved registers.
+@inline(never)
+func descendByLongerFrames(_ levels: Int) throws {
+    if levels <= 0 {
+        try bodyAtStackDepth()
+    } else {
+        let before = stackLevels
+        try descendByLongerFrames(levels - 1)
+        stackLevels = (before.returned &+ levels, before.entered &+ 1)
+    }
+}
+
+/// Runs `body` with the stack `levels` frames further down, by one of two
+/// recursions whose frames differ in length. `--stack-sweep` needs one that
+/// moves the stack by an odd number of sixteen bytes a level, since only
+/// that reaches every sixteen-byte position of a page, and takes whichever
+/// of the two does.
+func atStackDepth(_ levels: Int, byLongerFrames: Bool = false, _ body: () throws -> Void) throws {
+    try withoutActuallyEscaping(body) { body in
+        let outer = bodyAtStackDepth
+        bodyAtStackDepth = body
+        defer { bodyAtStackDepth = outer }
+        if byLongerFrames {
+            try descendByLongerFrames(levels)
+        } else {
+            try descend(levels)
+        }
+    }
+}
+
+/// Where the stack is: the address of a local of a function that is not
+/// inlined.
+@inline(never)
+func stackMarker() -> UInt {
+    var marker: UInt8 = 0
+    return withUnsafeMutablePointer(to: &marker) { UInt(bitPattern: $0) }
 }
 
 /// What a read or iterate phase reads: a read-only cursor at the root,
@@ -809,49 +944,61 @@ func median(_ values: [Double]) -> Double {
     values.sorted()[values.count / 2]
 }
 
-func report(_ workload: Workload, _ phase: String, _ kind: StorageKind, _ times: [Double], _ fileSize: UInt64) {
-    let line = String(
-        format: #"{"workload": "%@", "phase": "%@", "kind": "%@", "n": %ld, "median_ms": %.6f, "file_size": %llu}"#,
-        workload.name, phase, kind.rawValue, workload.size, median(times), fileSize
+/// One line for a phase: the run of median time, with its counts where
+/// there are any.
+func report(
+    _ workload: Workload, _ phase: String, _ kind: StorageKind, _ runs: [Measurement], _ fileSize: UInt64
+) {
+    let middle = runs.sorted { $0.milliseconds < $1.milliseconds }[runs.count / 2]
+    var line = String(
+        format: #"{"workload": "%@", "phase": "%@", "kind": "%@", "n": %ld, "median_ms": %.6f, "file_size": %llu"#,
+        workload.name, phase, kind.rawValue, workload.size, middle.milliseconds, fileSize
     )
-    print(line)
+    if let instructions = middle.instructions, let cycles = middle.cycles {
+        line += String(format: #", "instructions": %llu, "cycles": %llu"#, instructions, cycles)
+    }
+    print(line + "}")
 }
 
 func run(_ workload: Workload) throws {
     let keys = Keys(workload.keyKind, count: workload.keyCount)
     for kind in workload.kinds {
-        var writeTimes: [Double] = []
-        var readTimes: [Double] = []
-        var iterateTimes: [Double] = []
+        var writes: [Measurement] = []
+        var reads: [Measurement] = []
+        var iterates: [Measurement] = []
         var fileSize: UInt64 = 0
-        // Every run starts from a new, empty storage.
-        for _ in 0..<5 {
-            let storage = try RunStorage(kind)
-            let prepared = try workload.prepare(storage, keys)
-            var database: Database? = nil
-            writeTimes.append(try milliseconds { database = try workload.write(storage, keys, prepared) })
-            guard let database else { throw BenchmarkFailure(description: "the write phase gave no database") }
-            try workload.afterWrite(database, prepared)
-            try workload.beforeRead(database, prepared)
-            // With --snapshot the reading phases see one snapshot, taken off
-            // the clock, through a fresh read-only database.
-            let reading =
-                readThroughSnapshot && !workload.readPhasesNeedDatabase
-                ? try Reading(snapshotOf: database) : Reading(database)
-            readTimes.append(try milliseconds { try workload.read(reading, keys, prepared) })
-            try workload.afterRead(database, prepared)
-            iterateTimes.append(try milliseconds { try workload.iterate(reading, keys, prepared) })
-            // the file as the phases leave it: reads change nothing, and
-            // a replication's read phase is its second sync
-            let size = try storage.storage.length
-            if fileSize != 0 && size != fileSize {
-                throw BenchmarkFailure(description: "\(workload.name) left files of different sizes")
+        // Every run starts from a new, empty storage. In memory each of the
+        // five is made at its own depth of the stack; on a file the stack's
+        // place is lost in the system calls.
+        for depth in stackDepths {
+            try atStackDepth(kind == .memory ? depth : 0) {
+                let storage = try RunStorage(kind)
+                let prepared = try workload.prepare(storage, keys)
+                var database: Database? = nil
+                writes.append(try measured { database = try workload.write(storage, keys, prepared) })
+                guard let database else { throw BenchmarkFailure(description: "the write phase gave no database") }
+                try workload.afterWrite(database, prepared)
+                try workload.beforeRead(database, prepared)
+                // With --snapshot the reading phases see one snapshot, taken
+                // off the clock, through a fresh read-only database.
+                let reading =
+                    readThroughSnapshot && !workload.readPhasesNeedDatabase
+                    ? try Reading(snapshotOf: database) : Reading(database)
+                reads.append(try measured { try workload.read(reading, keys, prepared) })
+                try workload.afterRead(database, prepared)
+                iterates.append(try measured { try workload.iterate(reading, keys, prepared) })
+                // the file as the phases leave it: reads change nothing, and
+                // a replication's read phase is its second sync
+                let size = try storage.storage.length
+                if fileSize != 0 && size != fileSize {
+                    throw BenchmarkFailure(description: "\(workload.name) left files of different sizes")
+                }
+                fileSize = size
             }
-            fileSize = size
         }
-        report(workload, "write", kind, writeTimes, fileSize)
-        report(workload, "read", kind, readTimes, fileSize)
-        report(workload, "iterate", kind, iterateTimes, fileSize)
+        report(workload, "write", kind, writes, fileSize)
+        report(workload, "read", kind, reads, fileSize)
+        report(workload, "iterate", kind, iterates, fileSize)
     }
 }
 
@@ -930,6 +1077,91 @@ func runCounting(_ workload: Workload, _ kind: StorageKind) throws {
     counts.report(workload, "iterate", kind)
 }
 
+/// One phase of one workload timed at every sixteen-byte position of the
+/// stack that a page has, `passes` times over, the least time kept for
+/// each: `--stack-sweep`. One line of JSON a position, with the stack's
+/// offset in its page there, and a last line that says how many positions
+/// were reached and how many stand out from the median by more than 5%.
+///
+/// A level of recursion moves the stack by one frame, and as many levels
+/// are run as a page has positions; they reach every position when a frame
+/// is an odd number of sixteen bytes, so the one of the two recursions that
+/// is so is found first, by where a marker lands.
+func stackSweep(_ workload: Workload, _ kind: StorageKind, phase: String, passes: Int) throws {
+    let page = UInt(getpagesize())
+    let levels = Int(page / 16)
+    /// How far one level of a recursion moves the stack.
+    func frame(byLongerFrames: Bool) throws -> UInt {
+        // One closure for both depths: two closures have frames of their own.
+        var seen: UInt = 0
+        let mark = { seen = stackMarker() }
+        try atStackDepth(1, byLongerFrames: byLongerFrames, mark)
+        let one = seen
+        try atStackDepth(2, byLongerFrames: byLongerFrames, mark)
+        return one - seen
+    }
+    let frames = [try frame(byLongerFrames: false), try frame(byLongerFrames: true)]
+    guard let odd = frames.firstIndex(where: { $0 % 16 == 0 && ($0 / 16) % 2 == 1 }) else {
+        throw BenchmarkFailure(
+            description: "--stack-sweep: its two recursions move the stack by \(frames[0]) and \(frames[1]) bytes a "
+                + "level, and neither is an odd number of sixteen, so a sweep would miss positions of the page. "
+                + "The compiler lays their frames out otherwise than when this was written: it is "
+                + "descend(_:) and descendByLongerFrames(_:) in the benchmark that need another look, not the library.")
+    }
+    let byLongerFrames = odd == 1
+
+    let keys = Keys(workload.keyKind, count: workload.keyCount)
+    var best = [Double](repeating: .infinity, count: levels)
+    var offsets = [UInt](repeating: 0, count: levels)
+    // The read and iterate phases read one database, written before.
+    var written: (database: Database, prepared: Any, storage: RunStorage)?
+    if phase != "write" {
+        let storage = try RunStorage(kind)
+        let prepared = try workload.prepare(storage, keys)
+        written = (try workload.write(storage, keys, prepared), prepared, storage)
+    }
+    for _ in 0..<passes {
+        for level in 0..<levels {
+            var time = 0.0
+            if let written {
+                if phase == "read" { try workload.beforeRead(written.database, written.prepared) }
+                let run = phase == "read" ? workload.read : workload.iterate
+                try atStackDepth(level, byLongerFrames: byLongerFrames) {
+                    offsets[level] = stackMarker() % page
+                    time = try milliseconds { try run(Reading(written.database), keys, written.prepared) }
+                }
+            } else {
+                let storage = try RunStorage(kind)
+                let prepared = try workload.prepare(storage, keys)
+                try atStackDepth(level, byLongerFrames: byLongerFrames) {
+                    offsets[level] = stackMarker() % page
+                    time = try milliseconds { _ = try workload.write(storage, keys, prepared) }
+                }
+            }
+            best[level] = min(best[level], time)
+        }
+    }
+    for level in 0..<levels {
+        print(
+            String(format: #"{"level": %ld, "page_offset": %lu, "best_ms": %.6f}"#, level, offsets[level], best[level]))
+    }
+    let middle = median(best)
+    let reached = Set(offsets.map { $0 / 16 }).count
+    guard reached == levels else {
+        throw BenchmarkFailure(
+            description: "--stack-sweep reached \(reached) of the page's \(levels) positions: the recursion it chose "
+                + "does not move the stack by the same amount at every level. It is the benchmark's recursions that "
+                + "need another look, not the library.")
+    }
+    let above = best.count { $0 > middle * 1.05 }
+    print(
+        String(
+            format: #"{"workload": "%@", "phase": "%@", "kind": "%@", "positions": %ld, "frame_bytes": %lu, "#
+                + #""median_ms": %.6f, "least_ms": %.6f, "most_ms": %.6f, "above_5_percent": %ld}"#,
+            workload.name, phase, kind.rawValue, reached, frames[odd], middle, best.min() ?? 0, best.max() ?? 0,
+            above))
+}
+
 /// Runs one phase of a workload until `seconds` have passed, and prints how
 /// often it ran and how long a run took on average. The write phase starts
 /// from a new, empty database each time, as it does when it is measured. The
@@ -991,7 +1223,19 @@ if arguments.first == "--count" {
     }
     exit(0)
 }
-if arguments.first == "--repeat" {
+if arguments.first == "--stack-sweep" {
+    guard
+        arguments.count == 4 || arguments.count == 5,
+        let kind = StorageKind(rawValue: arguments[2]),
+        let workload = workloads.first(where: { $0.name == arguments[1] && $0.kinds.contains(kind) }),
+        ["write", "read", "iterate"].contains(arguments[3]),
+        let passes = arguments.count == 5 ? Int(arguments[4]) : 3, passes > 0
+    else {
+        throw BenchmarkFailure(
+            description: "usage: --stack-sweep <workload> <kind> <write|read|iterate> [passes]")
+    }
+    try stackSweep(workload, kind, phase: arguments[3], passes: passes)
+} else if arguments.first == "--repeat" {
     guard
         arguments.count == 5,
         let seconds = Double(arguments[1]),
