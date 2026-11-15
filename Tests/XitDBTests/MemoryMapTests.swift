@@ -24,9 +24,10 @@ private struct RolledBack: Error {}
     /// A file storage that reads through a map of segments of one page,
     /// with its calls counted.
     private static func mapped(_ directory: TemporaryDirectory) throws -> (FileStorage, CallCounts) {
-        let file = try FileStorage(
-            path: directory.path(), access: .create, durability: .none, lock: .exclusive, memoryMapped: true,
-            segmentSize: page)
+        let file = try readThroughTheMap(
+            try FileStorage(
+                path: directory.path(), access: .create, durability: .none, lock: .exclusive, memoryMapped: true,
+                segmentSize: page), at: directory.path())
         let counts = CallCounts()
         file.calls.read = {
             (descriptor: Int32, buffer: inout MutableSpan<UInt8>, range: Range<Int>, offset: UInt64)
@@ -201,9 +202,10 @@ private struct RolledBack: Error {}
             counts.reads += 1
             return try Platform.readFile(descriptor, into: &buffer, range: range, at: offset)
         }
-        let file = try FileStorage(
-            path: directory.path(), access: .readOnly, durability: .none, lock: .shared, memoryMapped: true,
-            segmentSize: page, calls: calls)
+        let file = try readThroughTheMap(
+            try FileStorage(
+                path: directory.path(), access: .readOnly, durability: .none, lock: .shared, memoryMapped: true,
+                segmentSize: page, calls: calls), at: directory.path())
         #expect(try readBytes(file, at: 0, count: bytes.count) == bytes)
         #expect(try readBytes(file, at: UInt64(page + 1), count: page) == Array(bytes[(page + 1)..<(2 * page + 1)]))
         #expect(counts.reads == 0)

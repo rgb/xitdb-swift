@@ -94,9 +94,11 @@ final class ScriptStorage {
     /// The file opened to be read through a memory map, in segments of one
     /// page, with the lock the map needs.
     private func mappedFile(readOnly: Bool) throws -> FileStorage {
-        try FileStorage(
-            path: try #require(directory).path(), access: readOnly ? .readOnly : .create, durability: .none,
-            lock: readOnly ? .shared : .exclusive, memoryMapped: true, segmentSize: Platform.pageSize)
+        let path = try #require(directory).path()
+        return try readThroughTheMap(
+            try FileStorage(
+                path: path, access: readOnly ? .readOnly : .create, durability: .none,
+                lock: readOnly ? .shared : .exclusive, memoryMapped: true, segmentSize: Platform.pageSize), at: path)
     }
 
     /// Ends the use of the storage, flushing it first as the Zig runner's

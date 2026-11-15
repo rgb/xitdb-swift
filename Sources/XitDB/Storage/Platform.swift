@@ -313,39 +313,158 @@ enum Platform {
     }
 
     /// Whether an open file is on a volume of this machine, as far as the
-    /// system says: the mount's local flag on Apple platforms, and
-    /// elsewhere a file system type that is not one of the network and
+    /// system says: the mount's local flag on Apple platforms, and on Linux
+    /// a kind of file system that is not one of the network and
     /// passed-through ones. A file whose volume cannot be asked is not
     /// local.
     ///
     /// A file that is not local is not read through a memory map: what the
     /// other side of such a mount does to the file is not ours to know.
+    ///
+    /// Linux gives a file system's kind through `statfs`, which Swift is
+    /// not shown there. So the kind is taken from the system's own list of
+    /// mounts, `/proc/self/mountinfo`: of the mount that has the device
+    /// number the open file reports, or, where none has it, as on a btrfs
+    /// subvolume, of the longest mount point that leads to the file's path.
     static func volumeIsLocal(_ descriptor: Int32) -> Bool {
-        var status = statfs()
-        while true {
-            // Safe: `fstatfs` writes one `statfs` structure through the
-            // pointer.
-            if unsafe fstatfs(descriptor, &status) == 0 { break }
-            if errno != EINTR { return false }
-        }
         #if canImport(Darwin)
+            var status = statfs()
+            while true {
+                // Safe: `fstatfs` writes one `statfs` structure through the
+                // pointer.
+                if unsafe fstatfs(descriptor, &status) == 0 { break }
+                if errno != EINTR { return false }
+            }
             return status.f_flags & UInt32(MNT_LOCAL) != 0
         #else
-            let type = UInt64(truncatingIfNeeded: status.f_type) & 0xFFFF_FFFF
-            return !remoteFileSystemTypes.contains(type)
+            var status = stat()
+            while true {
+                // Safe: `fstat` writes one `stat` structure through the
+                // pointer.
+                if unsafe fstat(descriptor, &status) == 0 { break }
+                if errno != EINTR { return false }
+            }
+            guard let mounts = wholeFile("/proc/self/mountinfo") else { return false }
+            let kind = fileSystemKind(
+                device: UInt64(status.st_dev), path: pathOfOpenFile(descriptor), mounts: mounts)
+            guard let kind else { return false }
+            return !isRemoteFileSystem(kind)
         #endif
     }
 
-    #if !canImport(Darwin)
-        /// The file system types, as `statfs` gives them on Linux, of a
-        /// file that is not on this machine or is passed through from
-        /// somewhere else: NFS, SMB in its three forms, 9p, FUSE (which a
-        /// container's mounted folder is, and virtiofs with it), Ceph, AFS,
-        /// Lustre and GFS2.
-        static let remoteFileSystemTypes: [UInt64] = [
-            0x6969, 0x517B, 0xFF53_4D42, 0xFE53_4D42, 0x0102_1997, 0x6573_5546, 0x00C3_6400, 0x5346_414F,
-            0x0BD0_0BD0, 0x0116_1970,
+    /// The kind of file system a file is on, from the text of Linux's list
+    /// of mounts: the kind of the mount whose device number is `device`,
+    /// as `fstat` gives it, or, where no mount has that number, of the
+    /// longest mount point that leads to `path`; `nil` where neither is
+    /// found. A later mount is taken before an earlier one that it covers.
+    /// A path the system gives with ` (deleted)` after it is the path of a
+    /// file that has no name any more, and leads nowhere.
+    ///
+    /// A line of the list reads `36 35 98:0 / /mnt rw,noatime shared:1 -
+    /// ext4 /dev/root rw`: the third field is the device, the fifth the
+    /// mount point, with a space, a tab, a newline and a backslash written
+    /// as a backslash and three octal digits, and the kind follows the
+    /// lone hyphen.
+    static func fileSystemKind(device: UInt64, path: String?, mounts: String) -> String? {
+        // the numbers as glibc packs them into a device number
+        let major = ((device >> 32) & 0xFFFF_F000) | ((device >> 8) & 0xFFF)
+        let minor = ((device >> 12) & 0xFFFF_FF00) | (device & 0xFF)
+        let wanted = "\(major):\(minor)"
+        let path = path.flatMap { $0.hasSuffix(" (deleted)") ? nil : $0 }
+        var byDevice: String?
+        var byPath: (length: Int, kind: String)?
+        for line in mounts.split(separator: "\n") {
+            let fields = line.split(separator: " ")
+            guard fields.count >= 7, let hyphen = fields.dropFirst(6).firstIndex(of: "-"), hyphen + 1 < fields.count
+            else { continue }
+            let kind = String(fields[hyphen + 1])
+            if fields[2] == wanted { byDevice = kind }
+            if let path {
+                let mountPoint = unescapedMountPoint(fields[4])
+                let leads = mountPoint == "/" || path == mountPoint || path.hasPrefix(mountPoint + "/")
+                if leads, mountPoint.utf8.count >= byPath?.length ?? 0 {
+                    byPath = (mountPoint.utf8.count, kind)
+                }
+            }
+        }
+        return byDevice ?? byPath?.kind
+    }
+
+    /// A mount point as the list of mounts writes it, with its escapes of a
+    /// backslash and three octal digits put back into the bytes they stand
+    /// for.
+    private static func unescapedMountPoint(_ field: Substring) -> String {
+        let bytes = Array(field.utf8)
+        var plain: [UInt8] = []
+        var index = 0
+        while index < bytes.count {
+            let isOctal = { (byte: UInt8) in byte >= UInt8(ascii: "0") && byte <= UInt8(ascii: "7") }
+            if bytes[index] == UInt8(ascii: "\\"), index + 3 < bytes.count, isOctal(bytes[index + 1]),
+                isOctal(bytes[index + 2]), isOctal(bytes[index + 3])
+            {
+                let value =
+                    Int(bytes[index + 1] - 48) * 64 + Int(bytes[index + 2] - 48) * 8 + Int(bytes[index + 3] - 48)
+                plain.append(UInt8(truncatingIfNeeded: value))
+                index += 4
+            } else {
+                plain.append(bytes[index])
+                index += 1
+            }
+        }
+        return String(decoding: plain, as: UTF8.self)
+    }
+
+    /// Whether a kind of file system, by the name Linux has for it, is
+    /// another machine's or is passed through from somewhere else: NFS, SMB
+    /// in its forms, 9p, FUSE in every form (which a container's mounted
+    /// folder is), virtiofs, Ceph, AFS, Lustre and GFS2.
+    static func isRemoteFileSystem(_ kind: String) -> Bool {
+        let remote: Set<String> = [
+            "nfs", "nfs4", "cifs", "smb", "smbfs", "smb2", "smb3", "9p", "fuse", "fuseblk", "virtiofs", "ceph", "afs",
+            "lustre", "gfs2",
         ]
+        return remote.contains(kind) || kind.hasPrefix("fuse.")
+    }
+
+    #if !canImport(Darwin)
+        /// The text of a file that the system makes up as it is read, which
+        /// has no length to ask for: read to its end, or `nil` if it cannot
+        /// be opened or read, or is longer than any list of mounts.
+        private static func wholeFile(_ path: String) -> String? {
+            // Safe: the path is passed as a C string that `open` only reads,
+            // and only during the call.
+            let descriptor = unsafe open(path, O_RDONLY | O_CLOEXEC)
+            guard descriptor >= 0 else { return nil }
+            defer { _ = close(descriptor) }
+            var bytes: [UInt8] = []
+            let size = 16 * 1024
+            var buffer = [UInt8](repeating: 0, count: size)
+            while bytes.count < 16 * 1024 * 1024 {
+                // Safe: `read` writes at most `size` bytes into the buffer,
+                // which holds that many and outlives the call.
+                let count = unsafe read(descriptor, &buffer, size)
+                if count == 0 { return String(decoding: bytes, as: UTF8.self) }
+                if count < 0 {
+                    if errno == EINTR { continue }
+                    return nil
+                }
+                bytes.append(contentsOf: buffer[0..<count])
+            }
+            return nil
+        }
+
+        /// The path the system has for an open file, or `nil` if it gives
+        /// none.
+        private static func pathOfOpenFile(_ descriptor: Int32) -> String? {
+            let size = 4096
+            var buffer = [CChar](repeating: 0, count: size)
+            // Safe: `readlink` writes at most `size` bytes into the buffer,
+            // which holds that many and outlives the call, and the link's
+            // path is a C string it only reads.
+            let count = unsafe readlink("/proc/self/fd/\(descriptor)", &buffer, size)
+            guard count > 0, count < size else { return nil }
+            return String(decoding: buffer[0..<count].map { UInt8(truncatingIfNeeded: $0) }, as: UTF8.self)
+        }
     #endif
 
     /// Takes an advisory lock on the whole file without waiting for it.

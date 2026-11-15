@@ -59,6 +59,27 @@ final class TemporaryDirectory {
     }
 }
 
+/// A storage of a test was asked to read through a memory map and does not.
+struct NotReadThroughTheMap: Error, CustomStringConvertible {
+    let path: String
+
+    var description: String {
+        "the file at \(path) was to be read through a memory map and is not: its volume is not of a kind the library "
+            + "maps, so a test on it would hold nothing of the map"
+    }
+}
+
+/// Holds a storage that a test made of a mapped kind to being mapped. A
+/// storage that was asked for the map and reads by file calls says so only
+/// through ``FileStorage/isMemoryMapped``, by design, and a suite "on the
+/// mapped kinds" whose files lay on a volume that is not mapped, as a
+/// container's mounted folder is, would pass and have tested nothing of
+/// the map.
+func readThroughTheMap(_ file: FileStorage, at path: String) throws -> FileStorage {
+    guard file.isMemoryMapped else { throw NotReadThroughTheMap(path: path) }
+    return file
+}
+
 /// The kinds of storage, for tests that run against each.
 enum StorageKind: String, CaseIterable, CustomTestStringConvertible {
     case memory
@@ -112,17 +133,19 @@ struct StorageUnderTest {
             path = directory.path()
         case .mappedFile:
             let directory = try TemporaryDirectory()
-            storage = try FileStorage(
-                path: directory.path(), access: .create, durability: .none, lock: .exclusive, memoryMapped: true,
-                segmentSize: Platform.pageSize)
+            storage = try readThroughTheMap(
+                try FileStorage(
+                    path: directory.path(), access: .create, durability: .none, lock: .exclusive, memoryMapped: true,
+                    segmentSize: Platform.pageSize), at: directory.path())
             stored = { try directory.contents() }
             path = directory.path()
         case .mappedBufferedFile:
             let directory = try TemporaryDirectory()
             storage = BufferedFileStorage(
-                try FileStorage(
-                    path: directory.path(), access: .create, durability: .none, lock: .exclusive,
-                    memoryMapped: true, segmentSize: Platform.pageSize))
+                try readThroughTheMap(
+                    try FileStorage(
+                        path: directory.path(), access: .create, durability: .none, lock: .exclusive,
+                        memoryMapped: true, segmentSize: Platform.pageSize), at: directory.path()))
             stored = { try directory.contents() }
             path = directory.path()
         }

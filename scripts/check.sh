@@ -72,6 +72,15 @@ esac
 # The snapshot proof over the fixtures (SnapshotProofTests) costs many times the
 # replay in a debug build; it runs in the release tests below.
 step "Debug build and tests"
+# A file is read through a memory map only on a volume of this machine's own, and a
+# storage that was asked for the map and is not given it says so only through a
+# property. The tests of the mapped kinds therefore fail where their files are not
+# mapped, naming the file; on Linux, where the rule goes by the kind of file system,
+# this line says which kind the tests' files were on.
+if [ "$platform" = Linux ]; then
+    tests_folder=${TMPDIR:-/tmp}
+    echo "the tests' files are in $tests_folder, on a $(df --output=fstype "$tests_folder" | tail -1) file system"
+fi
 swift build "${strict[@]}"
 swift build --build-tests "${strict[@]}"
 limited "$debug_limit" swift test --skip-build --skip SnapshotProofTests "${strict[@]}"
