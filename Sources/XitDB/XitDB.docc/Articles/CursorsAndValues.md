@@ -246,13 +246,12 @@ Every collection has an iterator, such as ``ArrayList/iterator()``. It gives a `
 reading the next element can fail. For a map or a set, each cursor is at an entry, which ``Cursor/readEntry()`` turns
 into an ``Entry``, with a cursor for its key and one for its value.
 
-**A map's entry has a key only where one was stored.** A put stores the value under the hash of its key and does not
-store the key, as in the original, and a hash cannot be turned back into its key. ``HashMap/putKey(_:)`` stores a key
-beside its value. Here one entry has its key and the other does not:
+**A map's entry has a key only where one was stored.** A put stores the value under the hash of its key, and the key
+beside it only when that put is given `storingKey: true` (see <doc:TheCollections>); a hash cannot be turned back into
+its key. Here the second put goes without the argument, and its entry has no key:
 
 ```swift
-try moment.putKey("name")
-try moment.put("Alice", forKey: "name")
+try moment.put("Alice", forKey: "name", storingKey: true)
 try moment.put(UInt64(25), forKey: "age")
 ```
 
@@ -270,10 +269,10 @@ while let cursor = try iterator.next() {
 
 That prints `name Alice` and `a value stored under its hash alone: 25`, in the order the map keeps, which follows the
 hashes and not the order of the puts. Where no key was stored, the entry's key is a slot never written, and a cursor
-reads one as empty bytes, so check ``Slot/isEmpty`` before taking it for a name. A set is the other case: its member is
-its key, so ``HashSet/insert(_:)`` stores it, and an entry's key is the member. An ``Entry`` is read-only whatever the
-collection was, since a key is what the collection is ordered or indexed by. ``Entry/hash`` gives the entry's hash as a
-new array, and ``Entry/withHash(_:)`` lets you look at it without one.
+reads one as empty bytes, with no error, so check ``Slot/isEmpty`` before taking it for a name. A set is the other case:
+its member is its key, so ``HashSet/insert(_:)`` stores it, and an entry's key is the member. An ``Entry`` is read-only
+whatever the collection was, since a key is what the collection is ordered or indexed by. ``Entry/hash`` gives the
+entry's hash as a new array, and ``Entry/withHash(_:)`` lets you look at it without one.
 
 Iterate over a collection that is not being changed. An iterator goes through the collection as it was when the
 iterator was made, unless the collection is changed in place during the same transaction. Then it can give a mix of old

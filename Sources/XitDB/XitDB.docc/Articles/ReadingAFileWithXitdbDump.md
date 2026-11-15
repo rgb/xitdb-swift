@@ -57,11 +57,11 @@ nothing at the root. Commit 1 made the history and its first moment, and commit 
 them says whether the last ends at the file's end.
 
 Then comes the last moment, `moment 1`. Each line is a label, a colon, and what the slot holds. An entry of a map is
-labelled by the first eight bytes of its hash. Where the file stores the key's name beside the hash, as
-``HashMap/putKey(_:)`` does, the name comes first, in quotes: `"short"`. A put does not store it, in the port as in the
-original, so the other entries here store hashes alone. A plain map or set keeps no count, so `map (10 entries)` counts
-the entries the dump found, while a counted map, a sorted map or set and a list show the count they keep:
-`counted map (1)`, `list (2)`.
+labelled by the first eight bytes of its hash. Where the file stores the key's name beside the hash, as a put given
+`storingKey: true` and ``HashMap/putKey(_:)`` do, the name comes first, in quotes: `"short"`. Without the argument a put
+does not store it, as the original's put does not, so the other entries here store hashes alone. A plain map or set
+keeps no count, so `map (10 entries)` counts the entries the dump found, while a counted map, a sorted map or set and a
+list show the count they keep: `counted map (1)`, `list (2)`.
 
 The values are the format's own:
 

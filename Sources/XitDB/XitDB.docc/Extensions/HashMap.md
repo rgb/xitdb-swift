@@ -27,7 +27,8 @@
 
 ### Reading keys
 
-A map has a key to give only where one was stored, with ``putKey(_:)``. See <doc:CursorsAndValues>.
+A map has a key to give only where one was stored, by a put given `storingKey: true` or with ``putKey(_:)``. See
+<doc:CursorsAndValues>.
 
 - ``keyCursor(forKey:)``
 - ``keySlot(forKey:)``
@@ -38,7 +39,7 @@ A map has a key to give only where one was stored, with ``putKey(_:)``. See <doc
 
 ### Writing
 
-A put stores the value under the key's hash, and not the key. See <doc:Hashing>.
+A put stores the value under the key's hash, and the key only when given `storingKey: true`. See <doc:TheCollections>.
 
 - ``put(_:forKey:storingKey:)-(StorableValue,_,_)``
 - ``put(_:forKey:storingKey:)-(WritableData,_,_)``

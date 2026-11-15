@@ -132,16 +132,21 @@ throws ``XitDBError/indexOutOfRange``. Use ``LinkedArrayList/append(_:)-(Storabl
 ```swift
 let map = try HashMap<ReadWrite>(database.rootCursor)
 
-try map.put(UInt64(25), forKey: "age")
-try map.putKey("age")
+try map.put(UInt64(25), forKey: "age", storingKey: true)
 ```
 
-**A map stores the value under the key's hash, and not the key**, as the original's map does. ``HashMap/putKey(_:)``
-stores the key beside it, which is what makes keys readable when you iterate: a map whose keys were not stored lists
-hashes and values (see <doc:CursorsAndValues>). The number is `UInt64(25)`, since `25` does not compile: a number says
-which of the format's kinds it is. Each untyped keyed call has a twin by hash, `forHash:` (`hash:` for a set's
-`contains`), which it is with the hash computed (see <doc:Hashing>); the typed calls have none, so by hash a value is
-put as `.uint(25)` and read with `cursor(forHash:)?.read(UInt64.self)`.
+**A map stores the value under the key's hash, and the key only when asked.** Given `storingKey: true`, a put stores the
+key beside the value, in the one walk to the entry, and writes what ``HashMap/putKey(_:)`` and then the put write in one
+transaction. Without it the map has the hash alone, as in the original, and a hash cannot be turned back into its key.
+Store the keys of a map that is to be listed: a program that lists the map, another port's or xitdb-dump, sees hashes
+and not names. Store them too in a file that programs in the other ports write: their keyed put always stores the key,
+so a map put here without it becomes one where some entries have a key and some have none, though a read by key finds
+them all. The argument is given put by put: an entry put without it has a key that reads as empty, with no error (see
+<doc:CursorsAndValues>). On an entry that has its key, the argument writes nothing more. The number is `UInt64(25)`,
+since `25` does not compile: a number says which of the format's kinds it is. Each untyped keyed call has a twin by
+hash, `forHash:` (`hash:` for a set's `contains`), which it is with the hash computed, and a put that stores its key is
+the twins of `putKey` and then `put` (see <doc:Hashing>); the typed calls have none, so by hash a value is put as
+`.uint(25)` and read with `cursor(forHash:)?.read(UInt64.self)`.
 
 **A set stores its members.** A member is a key, so ``HashSet/insert(_:)`` writes its bytes, with a ``Bytes`` key's
 format tag, as the original's set does, and iterating gives them back:
@@ -208,8 +213,8 @@ try person.put(UInt64(25), forKey: Field.age)
 ```
 
 A hash map or set hashes the key with the database's hasher and keeps the hash; a ``Bytes`` key is hashed without its
-format tag, which ``HashSet/insert(_:)`` and ``HashMap/putKey(_:)`` keep. A sorted map or set hashes nothing: it keeps
-the key's bytes, in their order, without a ``Bytes`` key's tag, and needs no hasher:
+format tag, which ``HashSet/insert(_:)``, ``HashMap/putKey(_:)`` and a put that stores its key keep. A sorted map or set
+hashes nothing: it keeps the key's bytes, in their order, without a ``Bytes`` key's tag, and needs no hasher:
 
 ```swift
 let sorted = try SortedMap<ReadWrite>(database.rootCursor)

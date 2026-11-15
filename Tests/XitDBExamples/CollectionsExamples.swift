@@ -282,8 +282,7 @@ import XitDBHashing
         let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
         let map = try HashMap<ReadWrite>(database.rootCursor)
 
-        try map.put(UInt64(25), forKey: "age")
-        try map.putKey("age")
+        try map.put(UInt64(25), forKey: "age", storingKey: true)
 
         #expect(try map.value(forKey: "age", as: UInt64.self) == 25)
         #expect(try map.keyCursor(forKey: "age")!.read(String.self) == "age")
@@ -294,9 +293,164 @@ import XitDBHashing
         #expect(try !map.remove(forKey: "age"))
         #expect(try map.cursor(forKey: "age") == nil)
 
-        // Without putKey the entry has no key.
+        // Without the argument the entry has no key, and a read by key finds
+        // it all the same.
         try map.put(UInt64(1), forKey: "anonymous")
         #expect(try map.keyCursor(forKey: "anonymous") == nil)
+        #expect(try map.value(forKey: "anonymous", as: UInt64.self) == 1)
+    }
+
+    /// Two databases with the same file ID and the same commit IDs, so that
+    /// two ways of writing can be compared as files.
+    private static func twin(_ storage: MemoryStorage) throws -> Database {
+        try Database(
+            creating: storage, hashSize: 32, hashID: "sha2", fileID: 7, random: RandomSource(Counting()),
+            hasher: KeyHasher(SHA256.self))
+    }
+
+    /// Commit IDs 1, 2, 3, … so that two databases draw the same ones.
+    private struct Counting: RandomNumberGenerator {
+        var last: UInt64 = 0
+        mutating func next() -> UInt64 {
+            last += 1
+            return last
+        }
+    }
+
+    /// A put given `storingKey: true` writes what `putKey(_:)` and then the
+    /// put write in one transaction, which is what their twins by hash
+    /// write; the key comes first. On an entry that has its key the argument
+    /// writes nothing more. A `Bytes` key's tag is kept, as `putKey(_:)`
+    /// keeps it. On both hash maps.
+    @Test func aPutThatStoresItsKey() throws {
+        let long = "a key longer than eight bytes"
+        let tagged = Bytes(Array("tagged".utf8), formatTag: "tg")
+
+        func file(_ write: (Database) throws -> Void) throws -> [UInt8] {
+            let storage = MemoryStorage()
+            try write(try Self.twin(storage))
+            return storage.bytes
+        }
+        let oneCall = try file { database in
+            let map = try HashMap<ReadWrite>(database.rootCursor)
+            try map.put("Alice", forKey: "name", storingKey: true)
+            try map.put(UInt64(25), forKey: long, storingKey: true)
+            try map.put(.int(-3), forKey: tagged, storingKey: true)
+        }
+        let twoCalls = try file { database in
+            _ = try HashMap<ReadWrite>(database.rootCursor)
+            for (value, key) in [(WritableData.bytes(Array("Alice".utf8)), "name"), (.uint(25), long)] {
+                try database.withTransaction { cursor in
+                    let map = try HashMap<ReadWrite>(cursor)
+                    try map.putKey(key)
+                    try map.put(value, forKey: key)
+                }
+            }
+            try database.withTransaction { cursor in
+                let map = try HashMap<ReadWrite>(cursor)
+                try map.putKey(tagged)
+                try map.put(.int(-3), forKey: tagged)
+            }
+        }
+        let byHash = try file { database in
+            _ = try HashMap<ReadWrite>(database.rootCursor)
+            for (value, key) in [(WritableData.bytes(Array("Alice".utf8)), "name"), (.uint(25), long)] {
+                try database.withTransaction { cursor in
+                    let map = try HashMap<ReadWrite>(cursor)
+                    try map.putKey(.bytes(Array(key.utf8)), forHash: SHA256.keyHash(of: key))
+                    try map.put(value, forHash: SHA256.keyHash(of: key))
+                }
+            }
+            try database.withTransaction { cursor in
+                let map = try HashMap<ReadWrite>(cursor)
+                try map.putKey(.bytes(tagged.value, formatTag: tagged.formatTag), forHash: SHA256.keyHash(of: tagged))
+                try map.put(.int(-3), forHash: SHA256.keyHash(of: tagged))
+            }
+        }
+        #expect(oneCall == twoCalls)
+        #expect(oneCall == byHash)
+
+        // The key is written first: with a key and a value that are both too
+        // long for a slot, the two calls the other way round leave another
+        // file.
+        func theTwoCalls(keyFirst: Bool) throws -> [UInt8] {
+            try file { database in
+                _ = try HashMap<ReadWrite>(database.rootCursor)
+                try database.withTransaction { cursor in
+                    let map = try HashMap<ReadWrite>(cursor)
+                    if keyFirst { try map.putKey(long) }
+                    try map.put(.bytes(Array(long.utf8)), forKey: long)
+                    if !keyFirst { try map.putKey(long) }
+                }
+            }
+        }
+        let longValue = try file { database in
+            let map = try HashMap<ReadWrite>(database.rootCursor)
+            try map.put(long, forKey: long, storingKey: true)
+        }
+        #expect(try longValue == theTwoCalls(keyFirst: true))
+        #expect(try longValue != theTwoCalls(keyFirst: false))
+
+        // On an entry that has its key, the argument writes nothing more.
+        let again = try file { database in
+            let map = try HashMap<ReadWrite>(database.rootCursor)
+            try map.put(UInt64(25), forKey: long, storingKey: true)
+            try map.put(UInt64(26), forKey: long, storingKey: true)
+        }
+        let plainAgain = try file { database in
+            let map = try HashMap<ReadWrite>(database.rootCursor)
+            try map.put(UInt64(25), forKey: long, storingKey: true)
+            try map.put(UInt64(26), forKey: long)
+        }
+        #expect(again == plainAgain)
+
+        // The keys read back, the tag with its key.
+        let database = try Self.twin(MemoryStorage())
+        let map = try HashMap<ReadWrite>(database.rootCursor)
+        try map.put("Alice", forKey: "name", storingKey: true)
+        try map.put(.int(-3), forKey: tagged, storingKey: true)
+        #expect(try map.keyCursor(forKey: "name")?.read(String.self) == "name")
+        #expect(try map.keyCursor(forKey: tagged)?.read(Bytes.self) == tagged)
+
+        // The counted map's put is the same put.
+        let counted = try file { database in
+            let map = try CountedHashMap<ReadWrite>(database.rootCursor)
+            try map.put(UInt64(25), forKey: long, storingKey: true)
+        }
+        let countedTwoCalls = try file { database in
+            _ = try CountedHashMap<ReadWrite>(database.rootCursor)
+            try database.withTransaction { cursor in
+                let map = try CountedHashMap<ReadWrite>(cursor)
+                try map.putKey(long)
+                try map.put(UInt64(25), forKey: long)
+            }
+        }
+        #expect(counted == countedTwoCalls)
+    }
+
+    /// What a stored key takes in the file: a key that fits the key's slot
+    /// that every entry has, at most eight bytes with no zero byte or six
+    /// with a format tag, takes nothing; any other takes a record of its
+    /// own, with an eight-byte length in front (and its tag at the end).
+    @Test func whatAStoredKeyTakes() throws {
+        func more(_ key: some KeyRepresentable) throws -> Int {
+            func size(storingKey: Bool) throws -> Int {
+                let storage = MemoryStorage()
+                try HashMap<ReadWrite>(try Self.twin(storage).rootCursor)
+                    .put(UInt64(1), forKey: key, storingKey: storingKey)
+                return storage.bytes.count
+            }
+            return try size(storingKey: true) - size(storingKey: false)
+        }
+        for key in ["", "a", "eight by"] {
+            #expect(try more(key) == 0, "\(key)")
+        }
+        for key in ["nine byte", "a key longer than eight bytes"] {
+            #expect(try more(key) == key.utf8.count + 8, "\(key)")
+        }
+        #expect(try more([0, 1, 2] as [UInt8]) == 3 + 8, "a zero byte")
+        #expect(try more(Bytes(Array("six by".utf8), formatTag: "tg")) == 0)
+        #expect(try more(Bytes(Array("seven b".utf8), formatTag: "tg")) == 7 + 8 + 2)
     }
 
     @Test func hashSet() throws {
