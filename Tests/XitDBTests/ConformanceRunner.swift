@@ -1545,7 +1545,7 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
 
         // The snapshot proof: a snapshot of every open database after
         // every op, held to its copy at the end (D25).
-        let proof = proving ? SnapshotProof(kind: kind) : nil
+        let proof = proving ? SnapshotProof(kind: kind, fixture: name) : nil
         for (index, op) in ops.enumerated() {
             if let proof {
                 let opObject = try ScriptObject(op, "an op")

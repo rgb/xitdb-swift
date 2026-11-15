@@ -35,14 +35,49 @@ final class SnapshotProof {
         var fileChangedOutsideTheEngine = false
     }
 
+    /// How often the walks of a fixture's snapshots say that a header and
+    /// its tree disagree, in the two ways the walk has of saying it.
+    struct Disagreements: Equatable, CustomStringConvertible {
+        /// Positions of a linked array list that its tree does not have.
+        var positionsLacking = 0
+        /// Collections whose count is not the number of elements given.
+        var countsApart = 0
+
+        var description: String {
+            "\(positionsLacking) positions a tree does not have and \(countsApart) counts apart from the elements given"
+        }
+    }
+
+    /// The fixtures whose walks may say that a header and its tree
+    /// disagree, and how often theirs do, over the snapshots of one replay:
+    /// the files the freeze hazard leaves, which hold a copy whose header
+    /// counts other elements than its tree has. Every other fixture's walks
+    /// must say it nowhere. Without this list a fault that made a database
+    /// and its snapshot lack the same position, or miscount alike, would
+    /// walk to equal strings and pass as a proof.
+    static let disagreements: [String: Disagreements] = [
+        "linked-counts-above-leaves": Disagreements(positionsLacking: 2),
+        "linked-counts-below-leaves": Disagreements(positionsLacking: 1),
+        "linked-header-above-tree": Disagreements(positionsLacking: 10),
+        "sorted-counts-above-leaves": Disagreements(countsApart: 2),
+        "sorted-header-above-tree": Disagreements(countsApart: 2),
+    ]
+
     let kind: StorageKind
+    /// The fixture whose replay is proved, by its name.
+    let fixture: String
     private(set) var kept: [Kept] = []
     /// How many snapshots were checked, so that a proof that checked none
     /// can be told from one that passed.
     private(set) var checked = 0
+    /// What each snapshot's walk said of a header and its tree, by the
+    /// database and the step it was taken at, so that one checked twice
+    /// counts once.
+    private var said: [String: Disagreements] = [:]
 
-    init(kind: StorageKind) {
+    init(kind: StorageKind, fixture: String) {
         self.kind = kind
+        self.fixture = fixture
     }
 
     private var isFile: Bool { kind != .memory }
@@ -109,6 +144,20 @@ final class SnapshotProof {
             try check(one, expected: expectedFiles[one.database])
         }
         kept.removeAll()
+
+        // The walks said that a header and its tree disagree exactly as
+        // often as this fixture is known to, which for all but the freeze
+        // hazard's files is never.
+        var total = Disagreements()
+        for one in said.values {
+            total.positionsLacking += one.positionsLacking
+            total.countsApart += one.countsApart
+        }
+        let expected = Self.disagreements[fixture] ?? Disagreements()
+        guard total == expected else {
+            throw ScriptFailure(
+                "the walks of \(fixture)'s snapshots hold \(total), and \(expected) are expected of it")
+        }
     }
 
     private func check(_ one: Kept, expected: [UInt8]?) throws {
@@ -170,6 +219,9 @@ final class SnapshotProof {
         guard fromSnapshot == fromCopy else {
             throw ScriptFailure("step \(one.step): the snapshot of \(one.database) walks differently from its copy")
         }
+        said["\(one.database) at \(one.step)"] = Disagreements(
+            positionsLacking: fromSnapshot.ranges(of: StructureWalk.noPosition).count,
+            countsApart: fromSnapshot.ranges(of: StructureWalk.countedAndGiven).count)
 
         // Committed bytes never change, so the copy's first bytes are the
         // final file's, unless something outside the engine changed the file
@@ -218,6 +270,16 @@ final class SnapshotProof {
                 .filter { !($0 == .memory && fixture.features.contains("read_only")) }
                 .map { (fixture, $0) }
         }
+
+    /// The fixtures named for a header and a tree that disagree are
+    /// fixtures the proof runs on, so that a name that is no longer one
+    /// does not stay in the list unnoticed.
+    @Test func theFixturesNamedForADisagreementAreProved() {
+        let proved = Set(Self.runnable.map(\.0.name))
+        for name in SnapshotProof.disagreements.keys.sorted() {
+            #expect(proved.contains(name), "\(name)")
+        }
+    }
 
     @Test(arguments: runnable)
     func proof(fixture: ConformanceFixture, kind: StorageKind) throws {

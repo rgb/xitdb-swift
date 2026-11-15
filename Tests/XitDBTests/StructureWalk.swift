@@ -34,6 +34,10 @@ enum StructureWalk {
     ///
     /// - Throws: Whatever reading throws, or a `WalkFailure` for a
     ///   structure that is not a value; damage is reported, never described.
+    ///   The two disagreements of a header with its tree that the freeze
+    ///   hazard leaves are not damage and are described: a count beside
+    ///   the elements given, and a linked array list's position that the
+    ///   tree does not have (``noPosition``).
     static func describe(_ cursor: Cursor<ReadOnly>) throws -> String {
         var output = ""
         // The positions of the collections being walked, root first.
@@ -96,13 +100,29 @@ enum StructureWalk {
             }
             push("list", elements, count: count, onto: &stack, into: &output)
         case .linkedArrayList:
+            // By position, as the array list is. A position the header
+            // counts and the tree does not have is described as that, "no
+            // position": a copy made by a slot and a frozen cursor and then
+            // written beside its original (the freeze hazard) is such a
+            // list, and the read of such a position throws
+            // `invalidBTreeNode`. Nothing else is described so: any other
+            // error ends the walk, and so does a list that lacks more
+            // positions than a hazard's copy in a test has, since a size
+            // gone wild lacks all but a few of 2^64.
             let list = try LinkedArrayList<ReadOnly>(cursor)
             let count = try list.count
             var elements: [Cursor<ReadOnly>?] = []
+            var lacking: Set<Int> = []
             for index in 0..<count {
-                elements.append(try list.cursor(at: index))
+                do {
+                    elements.append(try list.cursor(at: index))
+                } catch XitDBError.invalidBTreeNode {
+                    guard lacking.count < mostPositionsLacking else { throw XitDBError.invalidBTreeNode }
+                    lacking.insert(elements.count)
+                    elements.append(nil)
+                }
             }
-            push("linked", elements, count: count, onto: &stack, into: &output)
+            push("linked", elements, count: count, lacking: lacking, onto: &stack, into: &output)
         case .hashMap:
             push("map", try all(HashMap<ReadOnly>(cursor).iterator()), count: nil, onto: &stack, into: &output)
         case .hashSet:
@@ -135,16 +155,29 @@ enum StructureWalk {
         return elements
     }
 
+    /// What the walk writes for a position of a linked array list that its
+    /// header counts and its tree does not have.
+    static let noPosition = "no position"
+
+    /// What the walk writes after a collection whose count is not the
+    /// number of elements it gave: "](41 counted, 31 given)".
+    static let countedAndGiven = " counted, "
+
+    /// The most positions a linked array list may lack and still be
+    /// described.
+    static let mostPositionsLacking = 1024
+
     /// Queues a collection's opening, its elements in order with their
     /// separators, and its closing with the count, which the description
-    /// shows beside the number of elements where they differ.
+    /// shows beside the number of elements where they differ. The elements
+    /// at the indexes in `lacking` are positions the tree does not have.
     private static func push(
-        _ kind: String, _ elements: [Cursor<ReadOnly>?], count: UInt64?, onto stack: inout [Step],
-        into output: inout String
+        _ kind: String, _ elements: [Cursor<ReadOnly>?], count: UInt64?, lacking: Set<Int> = [],
+        onto stack: inout [Step], into output: inout String
     ) {
         output += "\(kind)["
         if let count, count != UInt64(elements.count) {
-            stack.append(.text("](\(count) counted, \(elements.count) given)"))
+            stack.append(.text("](\(count)\(countedAndGiven)\(elements.count) given)"))
         } else {
             stack.append(.text(count.map { "](\($0))" } ?? "]"))
         }
@@ -153,7 +186,7 @@ enum StructureWalk {
             if let element {
                 stack.append(.value(element))
             } else {
-                stack.append(.text("empty"))
+                stack.append(.text(lacking.contains(index) ? noPosition : "empty"))
             }
             if index > 0 { stack.append(.text(", ")) }
         }
