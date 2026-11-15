@@ -136,22 +136,77 @@ func firstDifference(_ actual: [UInt8], _ expected: [UInt8]) -> String? {
         """
 }
 
-/// Runs `body` on a thread with a 64 MiB stack and waits for it.
-func onLargeStack(_ body: @escaping @Sendable () throws -> Void) throws {
-    final class Outcome: @unchecked Sendable {
-        // Written by the thread before it signals, read after the wait.
+/// A thread could not be made, or waited for, by ``onLargeStack(stackSize:_:)``.
+struct NoThreadForALargeStack: Error, CustomStringConvertible {
+    /// The call that failed.
+    let call: String
+    /// The error number it gave.
+    let code: Int32
+
+    var description: String { "\(call) failed with error \(code): no thread with a large stack was run" }
+}
+
+/// Runs `body` on a thread with a large stack, 64 MiB unless another size
+/// is given, and waits for it.
+///
+/// The thread is made by `pthread_create`, which says whether there is a
+/// thread, with the stack's size as an attribute. Foundation's
+/// `Thread.start()` says nothing when the process can make no more threads,
+/// and waiting for a thread that never started does not end.
+///
+/// - Throws: ``NoThreadForALargeStack`` if the thread cannot be made or
+///   joined, and whatever `body` throws.
+func onLargeStack(stackSize: Int = 64 << 20, _ body: @escaping @Sendable () throws -> Void) throws {
+    final class Run: @unchecked Sendable {
+        let body: @Sendable () throws -> Void
+        // Written by the thread before it ends, read after it is joined.
         var error: (any Error)?
+
+        init(_ body: @escaping @Sendable () throws -> Void) {
+            self.body = body
+        }
     }
-    let outcome = Outcome()
-    let done = DispatchSemaphore(value: 0)
-    let thread = Thread {
-        do { try body() } catch { outcome.error = error }
-        done.signal()
+    var attributes = pthread_attr_t()
+    var code = pthread_attr_init(&attributes)
+    guard code == 0 else { throw NoThreadForALargeStack(call: "pthread_attr_init", code: code) }
+    defer { _ = pthread_attr_destroy(&attributes) }
+    code = pthread_attr_setstacksize(&attributes, stackSize)
+    guard code == 0 else { throw NoThreadForALargeStack(call: "pthread_attr_setstacksize", code: code) }
+
+    let run = Run(body)
+    // One more reference, for the thread, which gives it up once it runs.
+    let context = Unmanaged.passRetained(run).toOpaque()
+    #if canImport(Darwin)
+        var thread: pthread_t?
+        code = pthread_create(
+            &thread, &attributes,
+            { context in
+                let run = Unmanaged<Run>.fromOpaque(context).takeRetainedValue()
+                do { try run.body() } catch { run.error = error }
+                return nil
+            }, context)
+    #else
+        var thread = pthread_t()
+        code = pthread_create(
+            &thread, &attributes,
+            { context in
+                guard let context else { return nil }
+                let run = Unmanaged<Run>.fromOpaque(context).takeRetainedValue()
+                do { try run.body() } catch { run.error = error }
+                return nil
+            }, context)
+    #endif
+    guard code == 0 else {
+        // No thread took the reference made for it.
+        Unmanaged<Run>.fromOpaque(context).release()
+        throw NoThreadForALargeStack(call: "pthread_create", code: code)
     }
-    thread.stackSize = 64 << 20
-    thread.start()
-    done.wait()
-    if let error = outcome.error { throw error }
+    #if canImport(Darwin)
+        guard let thread else { throw NoThreadForALargeStack(call: "pthread_create", code: 0) }
+    #endif
+    code = pthread_join(thread, nil)
+    guard code == 0 else { throw NoThreadForALargeStack(call: "pthread_join", code: code) }
+    if let error = run.error { throw error }
 }
 
 /// Runs `body`, which has to end in a poisoned transaction (finding 16), and

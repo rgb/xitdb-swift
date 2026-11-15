@@ -177,6 +177,9 @@ benchmark and of the corruption fuzzer, the import check, the formatting check, 
 compile check for iOS and the tests on an iOS simulator. On macOS it runs on one toolchain, Xcode 27.2's Swift 6.4.2,
 and refuses any other; on Linux it runs on any Swift 6.4.x and skips the iOS steps.
 
+Every run of the tests has a time limit: one that does not end is ended, after a look at what its test process was
+doing, and fails the gate.
+
 Issues are welcome: bug reports, questions about the conformance suite, requests. The repository does not take pull
 requests, since every change goes through the gate and the conformance suite here; a reader with a fix opens an
 issue.

@@ -4,6 +4,8 @@
 #
 #   1. debug build and tests, and what must not compile
 #   2. release build and tests, a smoke run of the benchmark and the corruption fuzzer
+#      Every run of the tests has a time limit (scripts/limit.sh), and the limit is
+#      tried on a test planted to sleep.
 #   3. import check for Sources/XitDB
 #   4. formatting check
 #   5. documentation build
@@ -31,6 +33,18 @@ strict=(-Xswiftc -warnings-as-errors)
 # the record of which one ran.
 expected_swift="6.4.2"
 platform=$(uname -s)
+source scripts/limit.sh
+
+# The limits of the test runs, in seconds: some ten times what each run takes on this
+# machine with other work beside it, so that only a run that does not end reaches one.
+# Measured: the debug tests 50 to 150 seconds here and 37 to 44 in the container; the
+# snapshot suite under the thread sanitizer under 5; the release tests, with the
+# snapshot proof, 20; the simulator's two runs, which build as they go, 100 to 230
+# together.
+debug_limit=900
+sanitizer_limit=300
+release_limit=600
+simulator_limit=1800
 
 step "Toolchain"
 swift --version
@@ -57,7 +71,39 @@ esac
 # replay in a debug build; it runs in the release tests below.
 step "Debug build and tests"
 swift build "${strict[@]}"
-swift test --skip SnapshotProofTests "${strict[@]}"
+swift build --build-tests "${strict[@]}"
+limited "$debug_limit" swift test --skip-build --skip SnapshotProofTests "${strict[@]}"
+
+# The limit itself, tried: a test that sleeps for an hour when the gate's variable is
+# set (GatePlantTests) is run with a limit of ten seconds. The gate has to end it, show
+# what its test process was doing, and leave no test process behind.
+step "A run of the tests that does not end is ended"
+if limited 10 env XITDB_GATE_PLANT_A_TEST_WITHOUT_END=1 swift test --skip-build \
+    --filter aTestThatDoesNotEnd "${strict[@]}" >.build/without-end.txt 2>&1; then
+    echo "error: a test that sleeps for an hour was let run to its end"
+    exit 1
+fi
+grep -q "^error: the run did not end within 10 seconds" .build/without-end.txt || {
+    tail -5 .build/without-end.txt
+    echo "error: the run was not ended by its limit"
+    exit 1
+}
+grep -q "^---- the test process" .build/without-end.txt || {
+    tail -5 .build/without-end.txt
+    echo "error: the run was ended without a look at its test process"
+    exit 1
+}
+grep -q "aTestThatDoesNotEnd\|sleep\|^ *[0-9][0-9]* .* [RSD]$" .build/without-end.txt || {
+    echo "error: the look at the test process shows nothing of it"
+    exit 1
+}
+sleep 1
+left=$(test_processes_left)
+[ -z "$left" ] || {
+    echo "error: test processes were left behind when the run was ended: $left"
+    exit 1
+}
+echo "ended at its limit, its test process looked at ($(grep -c . .build/without-end.txt) lines), none left behind"
 
 # On macOS the package is built for an iOS simulator now, and only run at the gate's end.
 # The simulator's tests build every target, the tools with the libraries, so a source
@@ -143,21 +189,24 @@ scripts/must-not-compile.sh
 # simulator's sanitizer run further down, which fails by itself on a race:
 # both are left as they are.
 step "Thread sanitizer: snapshot concurrency"
+swift build --build-tests --sanitize=thread --scratch-path .build/tsan "${strict[@]}"
 sanitized=(
-    swift test --sanitize=thread --scratch-path .build/tsan
+    swift test --skip-build --sanitize=thread --scratch-path .build/tsan
     --filter "SnapshotConcurrencyTests|tasksReadOneSnapshotWhileTheWriterCommits" "${strict[@]}"
 )
 if [ "$platform" = Darwin ]; then
-    TSAN_OPTIONS="${TSAN_OPTIONS:+$TSAN_OPTIONS }symbolize=0" "${sanitized[@]}"
+    limited "$sanitizer_limit" env TSAN_OPTIONS="${TSAN_OPTIONS:+$TSAN_OPTIONS }symbolize=0" "${sanitized[@]}"
 else
-    "${sanitized[@]}"
+    limited "$sanitizer_limit" "${sanitized[@]}"
 fi
 
-# The plain release build is what a client compiles. `swift test` then rebuilds the
-# library with testing enabled so that the tests can reach internal declarations.
+# The plain release build is what a client compiles. The build of the tests then
+# rebuilds the library with testing enabled so that the tests can reach internal
+# declarations.
 step "Release build and tests"
 swift build -c release "${strict[@]}"
-swift test -c release "${strict[@]}"
+swift build -c release --build-tests "${strict[@]}"
+limited "$release_limit" swift test -c release --skip-build "${strict[@]}"
 
 # The benchmark, built above as the release build's second product, runs every
 # workload on every kind at a hundredth of its size: that it runs is the check, not
@@ -302,21 +351,33 @@ if [ "$platform" = Darwin ]; then
     if [ -z "$simulator" ]; then
         echo "skipped: no iPhone simulator is available on this machine"
     else
-        xcodebuild test \
+        # A simulator run under its limit: its output is kept and only its summary
+        # shown, as before; a run that is ended shows what the limit printed, the look
+        # at its test process with it.
+        simulated() {
+            local status=0
+            limited "$simulator_limit" "$@" >.build/simulator-tests.txt 2>&1 || status=$?
+            summary <.build/simulator-tests.txt
+            if [ "$status" -eq 124 ]; then
+                sed -n '/^error: the run did not end within/,$p' .build/simulator-tests.txt
+            fi
+            return "$status"
+        }
+        simulated xcodebuild test \
             -scheme xitdb-swift-Package \
             -destination "platform=iOS Simulator,name=$simulator" \
             -derivedDataPath .build/xcodebuild-ios \
             -configuration Release \
             ENABLE_TESTABILITY=YES \
-            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES 2>&1 | summary
-        xcodebuild test \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
+        simulated xcodebuild test \
             -scheme xitdb-swift-Package \
             -destination "platform=iOS Simulator,name=$simulator" \
             -derivedDataPath .build/xcodebuild-ios-tsan \
             -enableThreadSanitizer YES \
             -only-testing:XitDBTests/SnapshotConcurrencyTests \
             '-only-testing:XitDBTests/SnapshotTests/tasksReadOneSnapshotWhileTheWriterCommits(kind:)' \
-            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES 2>&1 | summary
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
         echo "ok ($(( $(date +%s) - simulator_start )) s)"
     fi
     echo "$current" > "$stamp"
