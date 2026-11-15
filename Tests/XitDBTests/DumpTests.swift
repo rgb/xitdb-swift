@@ -44,7 +44,7 @@ import XitDBHashing
     /// `Resources/dumps`, which `scripts/pin-dumps.sh` writes.
     @Test func everyFixtureDumpsAsPinned() throws {
         let fixtures = try Self.files("fixtures/valid", suffix: ".db")
-        #expect(fixtures.count == 294)
+        #expect(fixtures.count == 295)
         let dumps = try Self.resources().appendingPathComponent("dumps")
         for fixture in fixtures {
             let name = fixture.deletingPathExtension().lastPathComponent
@@ -376,7 +376,7 @@ import XitDBHashing
             if commits.count == 1 { withOneCommit.append(name) }
             checked += 1
         }
-        #expect(checked == 145, "every fixture with a sidecar but the one that ends on one byte")
+        #expect(checked == 146, "every fixture with a sidecar but the one that ends on one byte")
         #expect(
             fromInputs.sorted() == [
                 "recovery-cut-during-creation", "recovery-cut-during-creation-read-only",

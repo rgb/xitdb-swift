@@ -1,6 +1,6 @@
 {
   "format": "xitdb-fixtures/1",
-  "conformance_commit": "98c1d45168c8140326ec5d6697c713e838c65012",
+  "conformance_commit": "c398a24e59711ea869a26d084126b10c8520315c",
   "zig_commit": "89da8e76f0dd82baefeadb656f0f734bf920be05",
   "zig_version": "0.17.1",
   "fixtures": [
@@ -49,6 +49,7 @@
     {"name": "overwriting-committed-bytes-sorted--port", "outcome": "pass", "format": "xitdb-script/1", "hash_size": 20, "zig_commit": "89da8e76f0dd82baefeadb656f0f734bf920be05", "script": "valid/overwriting-committed-bytes-sorted--port.json", "db": "valid/overwriting-committed-bytes-sorted--port.db", "sidecar": "valid/overwriting-committed-bytes-sorted--port.db.sidecar.json", "collections": ["array_list", "hash_map", "sorted_map"], "features": []},
     {"name": "path-api-edges--port", "outcome": "pass", "format": "xitdb-script/1", "hash_size": 20, "zig_commit": "bd6abc3b813e1869b0cc3b62f549e9747cf86f63", "script": "valid/path-api-edges--port.json", "db": "valid/path-api-edges--port.db", "sidecar": "valid/path-api-edges--port.db.sidecar.json", "collections": ["array_list", "hash_map"], "features": []},
     {"name": "path-api-edges-sorted--port", "outcome": "pass", "format": "xitdb-script/1", "hash_size": 20, "zig_commit": "89da8e76f0dd82baefeadb656f0f734bf920be05", "script": "valid/path-api-edges-sorted--port.json", "db": "valid/path-api-edges-sorted--port.db", "sidecar": "valid/path-api-edges-sorted--port.db.sidecar.json", "collections": ["array_list", "hash_map", "sorted_map"], "features": []},
+    {"name": "put-key-then-value", "outcome": "pass", "format": "xitdb-script/1", "hash_size": 20, "zig_commit": "89da8e76f0dd82baefeadb656f0f734bf920be05", "script": "valid/put-key-then-value.json", "db": "valid/put-key-then-value.db", "sidecar": "valid/put-key-then-value.db.sidecar.json", "collections": ["hash_map"], "features": []},
     {"name": "read-only-at-end", "outcome": "pass", "format": "xitdb-script/1", "hash_size": 20, "zig_commit": "89da8e76f0dd82baefeadb656f0f734bf920be05", "script": "valid/read-only-at-end.json", "db": "valid/read-only-at-end.db", "sidecar": "valid/read-only-at-end.db.sidecar.json", "collections": ["array_list", "hash_map"], "features": ["reopen", "raw_file", "read_only"]},
     {"name": "read-only-leftovers", "outcome": "pass", "format": "xitdb-script/1", "hash_size": 20, "zig_commit": "89da8e76f0dd82baefeadb656f0f734bf920be05", "script": "valid/read-only-leftovers.json", "db": "valid/read-only-leftovers.db", "sidecar": "valid/read-only-leftovers.db.sidecar.json", "collections": ["array_list", "hash_map"], "features": ["reopen", "raw_file", "read_only"]},
     {"name": "read-only", "outcome": "pass", "format": "xitdb-script/1", "hash_size": 20, "zig_commit": "89da8e76f0dd82baefeadb656f0f734bf920be05", "script": "valid/read-only.json", "db": "valid/read-only.db", "sidecar": "valid/read-only.db.sidecar.json", "collections": ["array_list", "hash_map"], "features": ["reopen", "read_only"]},

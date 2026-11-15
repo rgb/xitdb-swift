@@ -59,7 +59,7 @@ private struct Pair {
 }
 
 /// A value of the test's own that writes itself as two entries of a map.
-private struct Reading: StorableValue, Equatable {
+private struct Weather: StorableValue, Equatable {
     var place: String
     var degrees: Int64
 
@@ -132,10 +132,57 @@ private final class CountedKey: KeyRepresentable {
     }
 }
 
+/// A value of the conformance script `put-key-then-value`: text or a
+/// number.
+private enum ScriptValue {
+    case text(String)
+    case number(UInt64)
+
+    var data: WritableData {
+        switch self {
+        case .text(let text): .bytes(Array(text.utf8))
+        case .number(let number): .uint(number)
+        }
+    }
+}
+
+/// What the script does to one entry of a map: its key by write-if-empty
+/// and then its value, or its value alone.
+private struct ScriptStep {
+    let key: String
+    let value: ScriptValue
+    let withKey: Bool
+
+    init(_ key: String, _ value: ScriptValue, withKey: Bool = true) {
+        self.key = key
+        self.value = value
+        self.withKey = withKey
+    }
+}
+
+/// The ways the library has of doing what the script does to an entry.
+enum StoredKeyWriting: CaseIterable, CustomTestStringConvertible {
+    /// `putKey` and then `put`, as the script's two paths.
+    case twoCalls
+    /// The put that stores its key, of a value that is data.
+    case oneCall
+    /// The put that stores its key, of a typed value.
+    case oneTypedCall
+
+    var testDescription: String {
+        switch self {
+        case .twoCalls: "putKey and then put"
+        case .oneCall: "the one call"
+        case .oneTypedCall: "the one call with a typed value"
+        }
+    }
+}
+
 @Suite struct StoredKeyTests {
     /// Keys of each kind a key comes in, short and long.
     static let short = "a"
     static let long = String(repeating: "a long key, longer than a slot holds ", count: 3)
+    static let otherLong = String(repeating: "another key that a slot does not hold ", count: 2)
     static let tagged = Bytes(Array("tagged".utf8), formatTag: "tg")
     static let bytes: [UInt8] = [0, 1, 2, 250, 251, 252, 253, 254, 255]
 
@@ -168,6 +215,10 @@ private final class CountedKey: KeyRepresentable {
         try step("a long key and short bytes", .bytes(Array("hi".utf8)), Self.long)
         try step("a tagged key and long bytes", .bytes(Array(Self.long.utf8)), Self.tagged)
         try step("a key of bytes and a double", .double(2.5), Self.bytes)
+        // A new entry whose key and value are both records of their own:
+        // the one place where the order of the two writes shows in the
+        // file.
+        try step("a new long key and long bytes", .bytes(Array(Self.long.utf8)), Self.otherLong)
 
         // The same entries in later transactions: the keys are there.
         try step("the short key again", .uint(2), Self.short)
@@ -222,26 +273,46 @@ private final class CountedKey: KeyRepresentable {
     }
 
     /// Without the argument, and with `false`, the put is the put it was:
-    /// no key is stored.
-    @Test func withoutTheArgumentNoKeyIsStored() throws {
+    /// no key is stored. `plainPuts` makes the puts on the map's own type,
+    /// which is where the argument's default is; through the tests'
+    /// protocol the argument is always given.
+    func noKeyIsStored<Map: WritableMapUnderTest>(
+        _: Map.Type, plainPuts: (Cursor<ReadWrite>) throws -> Void
+    ) throws {
         let pair = try Pair()
         try pair.step(
             "the plain put, and the argument given as false",
-            one: { place in
-                let map = try HashMap<ReadWrite>(place)
-                try map.put(.uint(1), forKey: "a")
-                try map.put(.uint(2), forKey: "b", storingKey: false)
-                try map.put("text", forKey: "c", storingKey: false)
-            },
+            one: plainPuts,
             two: { place in
-                let map = try HashMap<ReadWrite>(place)
+                let map = try Map(place)
                 try map.put(.uint(1), forHash: Pair.hash("a"))
                 try map.put(.uint(2), forHash: Pair.hash("b"))
                 try map.put(.bytes(Array("text".utf8)), forHash: Pair.hash("c"))
+                try map.put(.bytes(Array("more text".utf8)), forHash: Pair.hash("d"))
+                try map.put(Weather(place: "Oslo", degrees: -3), forKey: "e", storingKey: false)
             })
-        let map = try HashMap<ReadOnly>(try pair.placeOfOne())
-        for key in ["a", "b", "c"] {
+        let map = try Map.reading(try pair.placeOfOne())
+        for key in ["a", "b", "c", "d", "e"] {
             #expect(try map.keyCursor(forKey: key) == nil, "\(key)")
+        }
+    }
+
+    @Test func withoutTheArgumentNoKeyIsStored() throws {
+        try noKeyIsStored(HashMap<ReadWrite>.self) { place in
+            let map = try HashMap<ReadWrite>(place)
+            try map.put(.uint(1), forKey: "a")
+            try map.put(.uint(2), forKey: "b", storingKey: false)
+            try map.put("text", forKey: "c", storingKey: false)
+            try map.put("more text", forKey: "d")
+            try map.put(Weather(place: "Oslo", degrees: -3), forKey: "e")
+        }
+        try noKeyIsStored(CountedHashMap<ReadWrite>.self) { place in
+            let map = try CountedHashMap<ReadWrite>(place)
+            try map.put(.uint(1), forKey: "a")
+            try map.put(.uint(2), forKey: "b", storingKey: false)
+            try map.put("text", forKey: "c", storingKey: false)
+            try map.put("more text", forKey: "d")
+            try map.put(Weather(place: "Oslo", degrees: -3), forKey: "e")
         }
     }
 
@@ -289,21 +360,56 @@ private final class CountedKey: KeyRepresentable {
     }
 
     /// A key the entry has already is left as it is, as `putKey` leaves it,
-    /// and the value is replaced.
-    @Test func aKeyThatIsThereIsLeft() throws {
+    /// and the value is replaced: for a value that is data and for one
+    /// that writes itself.
+    func aKeyThatIsThereIsLeft<Map: WritableMapUnderTest>(_: Map.Type) throws {
         let pair = try Pair()
         try pair.one.withTransaction { root in
-            let map = try HashMap<ReadWrite>(try Pair.place(root))
-            // The key kept under this hash is not the bytes that were hashed.
+            let map = try Map(try Pair.place(root))
+            // The keys kept under these hashes are not the bytes that were
+            // hashed.
             try map.putKey(.bytes(Array("the first".utf8)), forHash: Pair.hash("name"))
             try map.put(.uint(1), forKey: "name", storingKey: true)
+            try map.putKey(.bytes(Array("the first weather".utf8)), forHash: Pair.hash("weather"))
+            try map.put(Weather(place: "Oslo", degrees: -3), forKey: "weather", storingKey: true)
         }
         try pair.one.withTransaction { root in
-            try HashMap<ReadWrite>(try Pair.place(root)).put(.uint(2), forKey: "name", storingKey: true)
+            let map = try Map(try Pair.place(root))
+            try map.put(.uint(2), forKey: "name", storingKey: true)
+            try map.put(Weather(place: "Lima", degrees: 19), forKey: "weather", storingKey: true)
         }
-        let map = try HashMap<ReadOnly>(try pair.placeOfOne())
+        let map = try Map.reading(try pair.placeOfOne())
         #expect(try map.keyCursor(forKey: "name")?.readBytes() == Array("the first".utf8))
         #expect(try map.cursor(forKey: "name")?.readUInt64() == 2)
+        #expect(try map.keyCursor(forKey: "weather")?.readBytes() == Array("the first weather".utf8))
+        let weather = try Weather(reading: try #require(try map.cursor(forKey: "weather")))
+        #expect(weather == Weather(place: "Lima", degrees: 19))
+    }
+
+    @Test func aKeyThatIsThereIsLeftOnBothMaps() throws {
+        try aKeyThatIsThereIsLeft(HashMap<ReadWrite>.self)
+        try aKeyThatIsThereIsLeft(CountedHashMap<ReadWrite>.self)
+    }
+
+    /// The cursor's checks come before the checks of what is written, as
+    /// for a path with a write part: with no transaction open a put that
+    /// would also be refused for its value is refused for the transaction.
+    func theCursorsChecksComeFirst<Map: WritableMapUnderTest>(_: Map.Type) throws {
+        let pair = try Pair()
+        var kept: Map?
+        try pair.one.withTransaction { root in kept = try Map(try Pair.place(root)) }
+        let map = try #require(kept)
+        let before = pair.oneStorage.bytes
+        #expect(throws: XitDBError.expectedTxStart) {
+            try map.put(.slot(Slot(value: 57, tag: .index)), forKey: "a", storingKey: true)
+        }
+        #expect(throws: XitDBError.expectedTxStart) { try map.put(.uint(1), forKey: "a", storingKey: true) }
+        #expect(pair.oneStorage.bytes == before)
+    }
+
+    @Test func theCursorsChecksComeFirstOnBothMaps() throws {
+        try theCursorsChecksComeFirst(HashMap<ReadWrite>.self)
+        try theCursorsChecksComeFirst(CountedHashMap<ReadWrite>.self)
     }
 
     /// A counted map counts an entry once, when it is made.
@@ -331,31 +437,35 @@ private final class CountedKey: KeyRepresentable {
             #expect(try map.count == 3)
             #expect(try map.cursor(forKey: "d") == nil)
             // A value of the caller's own on a new entry counts it once.
-            try map.put(Reading(place: "Oslo", degrees: -3), forKey: "e", storingKey: true)
-            try map.put(Reading(place: "Oslo", degrees: -4), forKey: "e", storingKey: true)
+            try map.put(Weather(place: "Oslo", degrees: -3), forKey: "e", storingKey: true)
+            try map.put(Weather(place: "Oslo", degrees: -4), forKey: "e", storingKey: true)
             #expect(try map.count == 4)
         }
     }
 
     /// The typed put with the argument: a value of the library's own is the
     /// put of its data, and a value of the caller's writes itself after the
-    /// key, in the entry the one walk made.
-    @Test func theTypedPutStoresTheKeyToo() throws {
+    /// key, in the entry the one walk made. Each is held against `putKey`
+    /// and then the put, on new entries and on ones that are there, with
+    /// keys a slot holds and keys it does not.
+    func theTypedPutIsTheTwoCalls<Map: WritableMapUnderTest>(_: Map.Type) throws {
         let pair = try Pair()
         try pair.step(
             "values of the library's own",
             one: { place in
-                let map = try HashMap<ReadWrite>(place)
+                let map = try Map(place)
                 try map.put("Alice Smith", forKey: "alice", storingKey: true)
                 try map.put(UInt64(25), forKey: "age", storingKey: true)
                 try map.put(Int64(-4), forKey: Self.long, storingKey: true)
                 try map.put(1.5, forKey: Self.tagged, storingKey: true)
+                // A key and a value that are both records of their own.
+                try map.put(Self.long, forKey: Self.otherLong, storingKey: true)
             },
             two: { place in
-                let map = try HashMap<ReadWrite>(place)
+                let map = try Map(place)
                 let all: [(any KeyRepresentable, WritableData)] = [
                     ("alice", .bytes(Array("Alice Smith".utf8))), ("age", .uint(25)), (Self.long, .int(-4)),
-                    (Self.tagged, .double(1.5)),
+                    (Self.tagged, .double(1.5)), (Self.otherLong, .bytes(Array(Self.long.utf8))),
                 ]
                 for (key, value) in all {
                     try map.putKey(key.keyData, forHash: Pair.hash(key))
@@ -363,28 +473,44 @@ private final class CountedKey: KeyRepresentable {
                 }
             })
         try pair.step(
-            "a value that writes itself, on a new entry and on one that is there",
+            "a value that writes itself, on new entries and on one that is there",
             one: { place in
-                let map = try CountedHashMap<ReadWrite>(try HashMap<ReadWrite>(place).putCursor(forKey: "readings"))
-                try map.put(Reading(place: "Oslo", degrees: -3), forKey: "oslo", storingKey: true)
-                try map.put(Reading(place: "Lima", degrees: 19), forKey: "lima", storingKey: true)
-                try map.put(Reading(place: "Oslo", degrees: -5), forKey: "oslo", storingKey: true)
+                let map = try Map(try Map(place).putCursor(forKey: "weather"))
+                try map.put(Weather(place: "Oslo", degrees: -3), forKey: "oslo", storingKey: true)
+                // A key that is a record of its own, before a value that
+                // writes blocks of its own.
+                try map.put(Weather(place: "Lima", degrees: 19), forKey: Self.long, storingKey: true)
+                try map.put(Weather(place: "Oslo", degrees: -5), forKey: "oslo", storingKey: true)
             },
             two: { place in
-                let map = try CountedHashMap<ReadWrite>(try HashMap<ReadWrite>(place).putCursor(forKey: "readings"))
-                for (key, value) in [
-                    ("oslo", Reading(place: "Oslo", degrees: -3)), ("lima", Reading(place: "Lima", degrees: 19)),
-                    ("oslo", Reading(place: "Oslo", degrees: -5)),
-                ] {
+                let map = try Map(try Map(place).putCursor(forKey: "weather"))
+                let all: [(String, Weather)] = [
+                    ("oslo", Weather(place: "Oslo", degrees: -3)), (Self.long, Weather(place: "Lima", degrees: 19)),
+                    ("oslo", Weather(place: "Oslo", degrees: -5)),
+                ]
+                for (key, value) in all {
                     try map.putKey(key)
-                    try map.put(value, forKey: key)
+                    try map.put(value, forKey: key, storingKey: false)
                 }
             })
-        let readings = try CountedHashMap<ReadOnly>(
-            try #require(try HashMap<ReadOnly>(try pair.placeOfOne()).cursor(forKey: "readings")))
-        #expect(try readings.value(forKey: "oslo", as: Reading.self) == Reading(place: "Oslo", degrees: -5))
-        #expect(try readings.keyCursor(forKey: "lima")?.readBytes() == Array("lima".utf8))
-        #expect(try readings.count == 2)
+        let top = try Map.reading(try pair.placeOfOne())
+        #expect(try top.keyCursor(forKey: "alice")?.readBytes() == Array("alice".utf8))
+        #expect(try top.keyCursor(forKey: Self.otherLong)?.readBytes() == Array(Self.otherLong.utf8))
+        #expect(try top.keyCursor(forKey: Self.tagged)?.readBytesWithFormatTag() == Self.tagged)
+        let weather = try Map.reading(try #require(try top.cursor(forKey: "weather")))
+        #expect(
+            try Weather(reading: try #require(try weather.cursor(forKey: "oslo")))
+                == Weather(place: "Oslo", degrees: -5))
+        #expect(try weather.keyCursor(forKey: "oslo")?.readBytes() == Array("oslo".utf8))
+        #expect(try weather.keyCursor(forKey: Self.long)?.readBytes() == Array(Self.long.utf8))
+    }
+
+    @Test func onAMapTheTypedPutIsPutKeyAndThenPut() throws {
+        try theTypedPutIsTheTwoCalls(HashMap<ReadWrite>.self)
+    }
+
+    @Test func onACountedMapTheTypedPutIsPutKeyAndThenPut() throws {
+        try theTypedPutIsTheTwoCalls(CountedHashMap<ReadWrite>.self)
     }
 
     /// The value writes itself through the cursor the put without the
@@ -530,7 +656,7 @@ private final class CountedKey: KeyRepresentable {
             try map.put("text", forKey: own, storingKey: true)
             #expect(own.asked == 1)
             let itself = CountedKey("a value that writes itself")
-            try map.put(Reading(place: "Oslo", degrees: -3), forKey: itself, storingKey: true)
+            try map.put(Weather(place: "Oslo", degrees: -3), forKey: itself, storingKey: true)
             #expect(itself.asked == 1)
             let plain = CountedKey("without the argument")
             try map.put(.uint(2), forKey: plain)
@@ -540,7 +666,7 @@ private final class CountedKey: KeyRepresentable {
             try counted.put(.uint(1), forKey: countedData, storingKey: true)
             #expect(countedData.asked == 1)
             let countedItself = CountedKey("a value that writes itself")
-            try counted.put(Reading(place: "Lima", degrees: 19), forKey: countedItself, storingKey: true)
+            try counted.put(Weather(place: "Lima", degrees: 19), forKey: countedItself, storingKey: true)
             #expect(countedItself.asked == 1)
 
             let mapKey = CountedKey("put as a key")
@@ -620,5 +746,100 @@ private final class CountedKey: KeyRepresentable {
                 slotPointer: SlotPointer(position: nil, slot: Slot()), database: pair.one)
             #expect(throws: XitDBError.cursorNotWritable) { try nowhere.keyCursorBesideValue() }
         }
+    }
+
+    // MARK: Against the original
+
+    /// The first transaction of the conformance script
+    /// `put-key-then-value`, on each of its two maps: two entries with
+    /// their keys, a short one and one too long for a slot, and two with a
+    /// value alone.
+    private static let firstTransaction = [
+        ScriptStep("short", .text("one")),
+        ScriptStep("a key too long for a slot", .text("the long key's first value")),
+        ScriptStep("alone", .number(1), withKey: false),
+        ScriptStep("alone, with a key too long for a slot", .number(2), withKey: false),
+    ]
+
+    /// Its second transaction: the two entries that have their keys, the
+    /// two that have none, and a new one, each by its key and then its
+    /// value.
+    private static let secondTransaction = [
+        ScriptStep("short", .text("two")),
+        ScriptStep("a key too long for a slot", .text("the long key's second value")),
+        ScriptStep("alone", .number(3)),
+        ScriptStep("alone, with a key too long for a slot", .number(4)),
+        ScriptStep("a new key, too long for a slot", .text("new")),
+    ]
+
+    /// One step of the script on one map, in one of the library's ways.
+    private static func write<Map: WritableMapUnderTest>(
+        _ step: ScriptStep, to map: Map, by writing: StoredKeyWriting
+    ) throws {
+        guard step.withKey else {
+            try map.put(step.value.data, forKey: step.key)
+            return
+        }
+        switch writing {
+        case .twoCalls:
+            try map.putKey(step.key)
+            try map.put(step.value.data, forKey: step.key)
+        case .oneCall:
+            try map.put(step.value.data, forKey: step.key, storingKey: true)
+        case .oneTypedCall:
+            switch step.value {
+            case .text(let text): try map.put(text, forKey: step.key, storingKey: true)
+            case .number(let number): try map.put(number, forKey: step.key, storingKey: true)
+            }
+        }
+    }
+
+    /// The commit IDs a fixture's sidecar records, in order.
+    private static func commitIDs(inSidecar path: String) throws -> [UInt64] {
+        let json = try JSONSerialization.jsonObject(with: Data(try fixtureFile(path)))
+        let ops = try #require((json as? [String: Any])?["ops"] as? [[String: Any]])
+        return ops.compactMap { op in
+            (op["commit_id"] as? String).map { hex($0).reduce(UInt64(0)) { $0 << 8 | UInt64($1) } }
+        }
+    }
+
+    /// The file the original writes for `putKey` and then `put` under one
+    /// hash in one transaction is the fixture `put-key-then-value`, which
+    /// the conformance tests replay through the engine's paths. Here the
+    /// script's two transactions are written through the collections, with
+    /// the sidecar's commit IDs, in each of the library's ways: by the two
+    /// calls in the script's order, by the one call that stores the key,
+    /// and by that call with a typed value. Each leaves the original's
+    /// file, byte for byte, on the map and on the counted map.
+    ///
+    /// The script has what the side-by-side tests above cannot hold
+    /// against the original: an entry that has its key in a later
+    /// transaction, where the walk copies the pair and write-if-empty
+    /// writes nothing; an entry that got a value alone and gets its key
+    /// later, short and too long for a slot; and the counted map's count,
+    /// which moves where the entry is made.
+    @Test(arguments: StoredKeyWriting.allCases)
+    func everyWritingLeavesTheOriginalsFile(writing: StoredKeyWriting) throws {
+        let expected = try fixtureFile("valid/put-key-then-value.db")
+        let commitIDs = try Self.commitIDs(inSidecar: "valid/put-key-then-value.db.sidecar.json")
+        #expect(commitIDs.count == 2)
+
+        let storage = MemoryStorage()
+        let database = try Database(
+            creating: storage, hashSize: 20, hashID: "sha1", fileID: 0xc0f0_0000_0000_00b1,
+            random: RandomSource(FixedRandom(commitIDs)), hasher: KeyHasher(Insecure.SHA1.self))
+        let transactions = [(Self.firstTransaction, UInt64(4)), (Self.secondTransaction, UInt64(5))]
+        for (steps, count) in transactions {
+            try database.withTransaction { root in
+                let top = try HashMap<ReadWrite>(root)
+                let plain = try HashMap<ReadWrite>(top.putCursor(forKey: "plain"))
+                let counted = try CountedHashMap<ReadWrite>(top.putCursor(forKey: "counted"))
+                for step in steps { try Self.write(step, to: plain, by: writing) }
+                for step in steps { try Self.write(step, to: counted, by: writing) }
+                #expect(try counted.count == count)
+            }
+        }
+        #expect(storage.bytes.count == expected.count)
+        #expect(storage.bytes == expected)
     }
 }

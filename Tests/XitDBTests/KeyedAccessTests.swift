@@ -35,6 +35,7 @@ protocol WritableMapUnderTest: MapUnderTest where Access == ReadWrite {
     static func reading(_ cursor: Cursor<ReadOnly>) throws(XitDBError) -> Reading
 
     func put(_ value: WritableData, forKey key: some KeyRepresentable, storingKey: Bool) throws(XitDBError)
+    func put(_ value: some StorableValue, forKey key: some KeyRepresentable, storingKey: Bool) throws(XitDBError)
     func putCursor(forKey key: some KeyRepresentable) throws(XitDBError) -> Cursor<ReadWrite>
     func putKey(_ key: some KeyRepresentable) throws(XitDBError)
     func putKeyCursor(forKey key: some KeyRepresentable) throws(XitDBError) -> Cursor<ReadWrite>
