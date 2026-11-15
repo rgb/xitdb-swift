@@ -49,6 +49,12 @@
 //
 // `--hash-cost` measures no database: what hashing a key costs, by each way
 // of computing it, for keys of three lengths (HashCost.swift).
+//
+// With `--kind <kind>` the workloads run on that kind of storage alone,
+// `memory`, `file` or `buffered_file`, and a workload that does not have
+// the kind prints nothing. The gate's count of instructions
+// (`scripts/instructions.sh`) runs the in-memory kind alone, which is the
+// one whose figures a change in the engine moves by per cents.
 
 import Foundation
 import XitDB
@@ -1027,9 +1033,21 @@ func report(
     print(line + "}")
 }
 
+/// The one kind of storage to run on, under `--kind <kind>`, or `nil` for
+/// every kind a workload has.
+let onlyKind: StorageKind? = {
+    let arguments = CommandLine.arguments
+    guard let index = arguments.firstIndex(of: "--kind"), index + 1 < arguments.count else { return nil }
+    guard let kind = StorageKind(rawValue: arguments[index + 1]) else {
+        FileHandle.standardError.write(Data("--kind takes memory, file or buffered_file\n".utf8))
+        exit(2)
+    }
+    return kind
+}()
+
 func run(_ workload: Workload) throws {
     let keys = Keys(workload.keyKind, count: workload.keyCount)
-    for kind in workload.kinds {
+    for kind in workload.kinds where onlyKind == nil || kind == onlyKind {
         var writes: [Measurement] = []
         var reads: [Measurement] = []
         var iterates: [Measurement] = []
@@ -1266,6 +1284,9 @@ func runRepeatedly(_ workload: Workload, _ kind: StorageKind, phase: String, sec
 let arguments: [String] = {
     var arguments = Array(CommandLine.arguments.dropFirst())
     if let index = arguments.firstIndex(of: "--divide"), index + 1 < arguments.count {
+        arguments.removeSubrange(index...(index + 1))
+    }
+    if let index = arguments.firstIndex(of: "--kind"), index + 1 < arguments.count {
         arguments.removeSubrange(index...(index + 1))
     }
     arguments.removeAll { $0 == "--snapshot" }

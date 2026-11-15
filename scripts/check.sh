@@ -3,7 +3,9 @@
 # The gate. Run it from anywhere; it must pass at every commit offered for review.
 #
 #   1. debug build and tests, and what must not compile
-#   2. release build and tests, a smoke run of the benchmark and the corruption fuzzer
+#   2. release build and tests, the instructions of the in-memory lines against their
+#      figures (compared on macOS, on the toolchain and the system the figures were
+#      taken on), a smoke run of the benchmark and the corruption fuzzer
 #      Every run of the tests has a time limit (scripts/limit.sh), and the limit is
 #      tried on a test planted to sleep.
 #   3. import check for Sources/XitDB
@@ -203,11 +205,21 @@ else
     limited "$sanitizer_limit" "${sanitized[@]}"
 fi
 
-# The plain release build is what a client compiles. The build of the tests then
-# rebuilds the library with testing enabled so that the tests can reach internal
-# declarations.
-step "Release build and tests"
+# The plain release build is what a client compiles.
+step "Release build"
 swift build -c release "${strict[@]}"
+
+# What a write, a read and a walk cost in memory, in instructions, against the figures
+# in scripts/instructions.txt: a line that takes more than a per cent more fails the
+# gate, here, on the build a client compiles and before the tests' build replaces it.
+# The script says why it is there, and what it does on another toolchain or system, and
+# on Linux, where a process is given no such count: it compares nothing, and says so.
+step "Instructions in memory"
+scripts/instructions.sh check
+
+# The build of the tests rebuilds the library with testing enabled, so that the tests
+# can reach internal declarations.
+step "Release tests"
 swift build -c release --build-tests "${strict[@]}"
 limited "$release_limit" swift test -c release --skip-build "${strict[@]}"
 
