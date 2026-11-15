@@ -50,7 +50,7 @@ final class DatabaseIdentity {
 /// record's own bytes, the read side holds what it reads to four things,
 /// so that no file makes a read run without end or outside the file's
 /// data: no position read as data lies before where data starts
-/// (``checkIsData(_:)``); the size of an array list or of a sorted map or
+/// (``readData(into:at:)``); the size of an array list or of a sorted map or
 /// set, and a counted map's or set's count, is within what the file could
 /// hold (``checkCount(_:bytesEach:)``); a walk of a hash trie enters no
 /// more blocks than the file has room for; and a walk of a tree enters no
@@ -94,7 +94,7 @@ final class DatabaseReader {
     /// hold a size or a number of blocks against what the file could hold.
     /// A plain file storage answers its length by a system call, so it is
     /// asked again only when something does not fit in the length known so
-    /// far (``fileHolds(_:)``): a sound file costs a comparison.
+    /// far (``checkCount(_:bytesEach:)``): a sound file costs a comparison.
     private let knownLength = Atomic<UInt64>(0)
 
     /// The file ID, which the trailers' checksums cover.
@@ -125,26 +125,35 @@ final class DatabaseReader {
 
     // MARK: What a file can hold
 
-    /// Refuses a position that is read as data and lies before where data
-    /// starts. Every position a writer stores is the length the file had
-    /// when it appended what the position leads to, and the first thing
-    /// appended is at the start of data: a smaller one is damage.
+    /// Reads data at a position that came from the file: the storage's
+    /// read, which gives nothing for a position before where data starts.
+    /// Every position a writer stores is the length the file had when it
+    /// appended what the position leads to, and the first thing appended
+    /// is at the start of data, so a smaller one is damage: no record can
+    /// be there, as none can be beyond the end.
     ///
-    /// - Throws: `endOfStream`, as for a position beyond the end: both are
-    ///   places where no record can be.
+    /// Every caller holds what it got against what it asked for and reports
+    /// a read that came back short as `endOfStream`, which is how a
+    /// position before the data is reported too: the check is a comparison
+    /// and adds no failure of its own to its callers.
+    ///
+    /// - Returns: The number of bytes read: none for a position before
+    ///   where data starts, and fewer than `buffer` holds where the storage
+    ///   ends first.
+    /// - Throws: The storage's errors.
     @inline(__always)
-    func checkIsData(_ position: UInt64) throws(XitDBError) {
-        if position < dataStart.load(ordering: .relaxed) { throw .endOfStream }
+    func readData(into buffer: inout MutableSpan<UInt8>, at position: UInt64) throws(XitDBError) -> Int {
+        guard position >= dataStart.load(ordering: .relaxed) else { return 0 }
+        return try storage.read(into: &buffer, at: position)
     }
 
-    /// Whether the storage holds `needed` bytes, as far as its length says.
-    /// The storage is asked for its length only when `needed` does not fit
-    /// in the length known so far.
-    ///
-    /// - Throws: The storage's errors, when it is asked.
-    func fileHolds(_ needed: UInt64) throws(XitDBError) -> Bool {
-        if needed <= knownLength.load(ordering: .relaxed) { return true }
-        return needed <= (try lengthNow())
+    /// ``readData(into:at:)`` into a part of `buffer`.
+    @inline(__always)
+    func readData(
+        into buffer: inout MutableSpan<UInt8>, range: Range<Int>, at position: UInt64
+    ) throws(XitDBError) -> Int {
+        guard position >= dataStart.load(ordering: .relaxed) else { return 0 }
+        return try storage.read(into: &buffer, range: range, at: position)
     }
 
     /// The storage's length as it is now, asked for and kept. A snapshot's
@@ -164,10 +173,27 @@ final class DatabaseReader {
     /// A linked array list is not held to it: a list joined to itself holds
     /// its nodes twice.
     ///
+    /// The storage is asked for its length only when the count does not
+    /// fit in the length known so far, and that part is kept out of the
+    /// callers: a count that fits costs them a multiplication and a
+    /// comparison.
+    ///
     /// - Throws: `invalidCount` for such a count, and the storage's errors.
+    @inline(__always)
     func checkCount(_ count: UInt64, bytesEach: UInt64) throws(XitDBError) {
         let (needed, overflow) = count.multipliedReportingOverflow(by: bytesEach)
-        guard !overflow, try fileHolds(needed) else { throw .invalidCount }
+        if overflow || needed > knownLength.load(ordering: .relaxed) {
+            try checkCountAgainstTheStorage(needed: needed, overflow: overflow)
+        }
+    }
+
+    /// What ``checkCount(_:bytesEach:)`` does for a count that does not fit
+    /// the length known so far: asks the storage again, and refuses the
+    /// count if it still does not fit, or if its bytes are more than a
+    /// number holds.
+    @inline(never)
+    func checkCountAgainstTheStorage(needed: UInt64, overflow: Bool) throws(XitDBError) {
+        guard !overflow, needed <= (try lengthNow()) else { throw .invalidCount }
     }
 
     /// The most pieces of `byteCount` bytes the file has room for: its
@@ -184,13 +210,40 @@ final class DatabaseReader {
     /// Reads exactly as many bytes as the result holds, at a position that
     /// came from the file.
     ///
+    /// **Always compiled into its caller**, with ``slot(at:)``,
+    /// ``uint64(at:)``, an array list's checked header, the two trees' node
+    /// readers and the storage's own `switch`
+    /// (``BuiltInStorage/read(into:range:at:)``). The marks are not habit:
+    /// take one away and measure.
+    ///
+    /// The descents read a slot or a node at every level, and the
+    /// optimiser used to compile these reads into them, down to the one
+    /// call of the storage's class, by a margin. When the comparison with
+    /// where data starts was first added here, with a failure of its own,
+    /// the nine-byte read grew from 64 instructions to 86 and stayed a
+    /// call in seven functions: the hash map's and the array list's
+    /// descents, for reading and for writing, the hash map's removal, the
+    /// sorted map's search and the walk's step. Each call cost about forty
+    /// instructions.
+    ///
+    /// The measurement is the benchmark's own count, the `instructions` of
+    /// its lines in memory, in a release build, against version 0.5.0
+    /// (`XitDBBenchmark map_insert list_append linked_append
+    /// sorted_insert`). Without the marks, an array list's read by index
+    /// took 26% more instructions and 27% more time and its append 12%
+    /// more instructions, a hash map's get 11% and its put 7%, a sorted
+    /// map's get 8%. With them, and with the comparison as a read that
+    /// gives nothing, the twelve lines are within a per cent of 0.5.0 or
+    /// under it, but for the array list's read by index: 27 instructions
+    /// on 1,406, which is what its seven comparisons are.
+    ///
     /// - Throws: `endOfStream` if the storage ends first, or if the
     ///   position is before where data starts.
+    @inline(__always)
     func bytes<let count: Int>(at position: UInt64) throws(XitDBError) -> InlineArray<count, UInt8> {
-        try checkIsData(position)
         var buffer = InlineArray<count, UInt8>(repeating: 0)
         var span = buffer.mutableSpan
-        let read = try storage.read(into: &span, at: position)
+        let read = try readData(into: &span, at: position)
         guard read == count else { throw .endOfStream }
         return buffer
     }
@@ -208,11 +261,17 @@ final class DatabaseReader {
         return buffer.span.bigEndian(at: 0)
     }
 
+    /// The slot at `position`. Always compiled into its caller: see
+    /// ``bytes(at:)``.
+    @inline(__always)
     func slot(at position: UInt64) throws(XitDBError) -> Slot {
         let buffer: InlineArray<9, UInt8> = try bytes(at: position)
         return try Slot(decoding: buffer.span)
     }
 
+    /// The number at `position`. Always compiled into its caller: see
+    /// ``bytes(at:)``.
+    @inline(__always)
     func uint64(at position: UInt64) throws(XitDBError) -> UInt64 {
         let buffer: InlineArray<8, UInt8> = try bytes(at: position)
         return buffer.span.bigEndian(at: 0)
@@ -230,6 +289,7 @@ final class DatabaseReader {
     ///
     /// - Throws: `invalidCount` for a size the file has no room for, and
     ///   what reading the header throws.
+    @inline(__always)
     func checkedArrayListHeader(at position: UInt64) throws(XitDBError) -> ArrayListHeader {
         let header = try arrayListHeader(at: position)
         try checkCount(header.size, bytesEach: Slot.byteCount)
@@ -286,20 +346,19 @@ final class DatabaseReader {
     /// - Throws: `endOfStream` if the record is not all there, or
     ///   `invalidEnumTag` if one of its slots has an unknown tag.
     func hashedPair(at position: UInt64) throws(XitDBError) -> HashedPair {
-        try checkIsData(position)
         let size = Int(hashSize) + 18
         if size <= 82 {
             var buffer = InlineArray<82, UInt8>(repeating: 0)
             var span = buffer.mutableSpan
             // This may read past the record into what follows it, which is
             // harmless, or come back short because the storage ends.
-            let read = try storage.read(into: &span, at: position)
+            let read = try readData(into: &span, at: position)
             guard read >= size else { throw .endOfStream }
             return try Self.decodeHashedPair(buffer.span.extracting(0..<size), hashSize: hashSize)
         }
         var buffer = [UInt8](repeating: 0, count: size)
         var span = buffer.mutableSpan
-        let read = try storage.read(into: &span, at: position)
+        let read = try readData(into: &span, at: position)
         guard read == size else { throw .endOfStream }
         return try Self.decodeHashedPair(buffer.span, hashSize: hashSize)
     }
@@ -375,7 +434,7 @@ final class DatabaseReader {
     /// `end` is a size, the file's own or one a caller asks about, and not
     /// a position that data led to: the bytes are read wherever it puts
     /// them, and a size too small to have a trailer before it is told by
-    /// the checksum, as it was, and not by ``checkIsData(_:)``.
+    /// the checksum, as it was, and not as a position before the data.
     func rootTrailer(endingAt end: UInt64) throws(XitDBError) -> RootTrailer {
         if end < RootTrailer.byteCount { throw .invalidDatabase }
         let position = end - RootTrailer.byteCount

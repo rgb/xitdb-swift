@@ -340,6 +340,20 @@ import Testing
         }
     }
 
+    /// A pair is read by its own function, in one of two ways by the size
+    /// of the database's hashes, up to sixty-four bytes or more: both
+    /// refuse a pair before where data starts and read one at the data's
+    /// first byte.
+    @Test(arguments: [20, 65])
+    func aPairOfAnyHashSizeBeforeTheDataIsRefused(hashSize: Int) throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: hashSize)
+        try LargeHashTests.fill(database, hashSize: hashSize)
+        let dataStart = database.header.dataStart
+        #expect(throws: XitDBError.endOfStream) { try database.reader.hashedPair(at: dataStart - 1) }
+        #expect(throws: XitDBError.endOfStream) { try database.reader.hashedPair(at: 0) }
+        #expect(!endsTheStream { _ = try database.reader.hashedPair(at: dataStart) })
+    }
+
     /// A slot that points before where data starts is refused by the read
     /// that follows it, for every kind of thing a slot points at, and one
     /// that points at the first byte of data is read.

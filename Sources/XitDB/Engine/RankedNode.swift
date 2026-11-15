@@ -84,9 +84,10 @@ extension DatabaseReader {
         var nodePtr = rootPtr
         var rem = rank
         for _ in 0...BTree.maxHeight {
-            try checkIsData(nodePtr)
             var span = buffer.mutableSpan
-            let read = try storage.read(into: &span, at: nodePtr)
+            // nothing for a node before the data, which decodes as one cut
+            // short at its first byte
+            let read = try readData(into: &span, at: nodePtr)
             let bytes = buffer.span.extracting(0..<read)
             let header = try TreeNodeHeader.decode(bytes)
             try Node.validate(bytes, kind: header.kind)

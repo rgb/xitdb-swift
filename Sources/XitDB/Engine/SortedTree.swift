@@ -65,15 +65,19 @@ struct SortedInsertResult {
 extension DatabaseReader {
     /// Reads the sorted node at `position` in one call, which asks for a
     /// branch's worth of bytes and may get fewer for a leaf near the end.
+    /// Always compiled into its caller: see ``bytes(at:)``.
     ///
     /// - Throws: `invalidBTreeNodeKind` or `invalidBTreeNode` for a bad
     ///   header, `invalidEnumTag` for an unknown slot tag, `endOfStream` if
-    ///   the file ends inside the node.
+    ///   the file ends inside the node, or if the node is before where data
+    ///   starts.
+    @inline(__always)
     func sortedNode(at position: UInt64) throws(XitDBError) -> SortedNode {
-        try checkIsData(position)
         var buffer = InlineArray<418, UInt8>(repeating: 0)
         var span = buffer.mutableSpan
-        let read = try storage.read(into: &span, at: position)
+        // nothing for a position before the data, which decodes as a node
+        // cut short at its first byte
+        let read = try readData(into: &span, at: position)
         return try SortedNode(decoding: buffer.span.extracting(0..<read))
     }
 
@@ -123,9 +127,8 @@ extension DatabaseReader {
             // chunks of 256, read as the comparison needs them.
             let lengthBytes = Int(ByteArrayFormat.lengthByteCount)
             var head = InlineArray<64, UInt8>(repeating: 0)
-            try checkIsData(keySlot.value)
             var headSpan = head.mutableSpan
-            let headRead = try storage.read(into: &headSpan, at: keySlot.value)
+            let headRead = try readData(into: &headSpan, at: keySlot.value)
             // A storage may give fewer bytes than the length itself takes,
             // at the end of the file or short of what its length promises;
             // either way there is no record to compare.

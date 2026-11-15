@@ -149,13 +149,20 @@ struct SlotIterator {
 
     private let bound: Bound
 
-    /// The blocks the walk has entered below the ones it started with.
-    private var blocksEntered: UInt64 = 0
+    /// The blocks the walk may still enter before its bound is looked at
+    /// again. The step that enters a block counts this down and does
+    /// nothing else for the bound: the bound itself, which asks the file
+    /// for its length or works out what the elements given allow, is
+    /// looked at only when this is used up (``allowMoreBlocks()``). A
+    /// bound only ever grows, with the file or with the elements given, so
+    /// looking at it late refuses the same block as looking at it for
+    /// every one.
+    private var blocksLeft: UInt64
 
-    /// For a walk bounded by the file: the most blocks the file had room
-    /// for when it was last asked, which is when the blocks entered came
-    /// to be more.
-    private var blocksTheFileHolds: UInt64 = 0
+    /// The blocks the walk has been allowed in all, below the ones it
+    /// started with: when `blocksLeft` is used up, the number it has
+    /// entered.
+    private var blocksAllowed: UInt64 = 0
 
     /// For a walk bounded by what it gives: the elements it had to give
     /// when it started.
@@ -185,6 +192,14 @@ struct SlotIterator {
         self.maxDepth = maxDepth
         self.depthError = depthError
         self.nodeOffset = nodeOffset
+        // An array list's walk is never asked: its allowance is every
+        // block there could be. The others start with none, so that their
+        // bound is looked at for the first block.
+        if case .positions = bound {
+            blocksLeft = .max
+        } else {
+            blocksLeft = 0
+        }
         if case .elements(let elements) = remaining {
             elementsAtStart = elements
         }
@@ -196,33 +211,51 @@ struct SlotIterator {
             reader: reader, remaining: .positions(0), bound: .positions, maxDepth: 0, depthError: .invalidDatabase)
     }
 
-    /// Counts a block the walk is about to enter, and refuses it when the
-    /// walk has entered more blocks than its collection can have.
+    /// The block the step enters: ``DatabaseReader/indexBlock(at:)``,
+    /// written out so that it is compiled into the step with the read of
+    /// its bytes, as the step had it before the reader looked at where
+    /// data starts. Left to the optimiser, the read became a call of its
+    /// own, which cost a walk of a list one part in forty.
+    @inline(__always)
+    private func enteredBlock(at position: UInt64) throws(XitDBError) -> IndexBlock {
+        let bytes: InlineArray<144, UInt8> = try reader.bytes(at: position)
+        return try IndexBlock(decoding: bytes.span)
+    }
+
+    /// Looks at the walk's bound again, when the blocks it was allowed are
+    /// used up, and allows it as many more as the bound now has room for,
+    /// or refuses the block it is about to enter. Kept out of the step:
+    /// it runs once for a walk bounded by the file, unless the file is too
+    /// small for the walk, and once in many blocks for a list.
     ///
     /// - Throws: The error of the walk's depth, `keyOffsetExceeded` for a
-    ///   hash trie and `invalidBTreeNode` for a tree, and the storage's
-    ///   errors where its length is asked for.
-    private mutating func countBlock() throws(XitDBError) {
+    ///   hash trie and `invalidBTreeNode` for a tree, if the walk has
+    ///   entered as many blocks as its collection can have; and the
+    ///   storage's errors where its length is asked for.
+    @inline(never)
+    private mutating func allowMoreBlocks() throws(XitDBError) {
+        let allowed: UInt64
         switch bound {
         case .positions:
-            return
+            allowed = .max
         case .fileHolds(let byteCount):
-            blocksEntered += 1
-            if blocksEntered > blocksTheFileHolds {
-                // The file may have grown since it was asked.
-                blocksTheFileHolds = try reader.piecesTheFileHolds(of: byteCount)
-                if blocksEntered > blocksTheFileHolds { throw depthError }
-            }
+            // as it is now: the file may have grown since it was asked
+            allowed = try reader.piecesTheFileHolds(of: byteCount)
         case .elementsGiven:
-            blocksEntered += 1
-            guard case .elements(let left) = remaining else { return }
+            guard case .elements(let left) = remaining else {
+                blocksLeft = .max
+                return
+            }
             // The elements given so far and the next one, each allowed
             // the depth of a tree. A product past what a number holds
             // bounds nothing a walk can reach.
             let (elements, tooMany) = (elementsAtStart - left).addingReportingOverflow(1)
-            let (allowed, overflow) = elements.multipliedReportingOverflow(by: UInt64(maxDepth))
-            if !tooMany, !overflow, blocksEntered > allowed { throw depthError }
+            let (product, overflow) = elements.multipliedReportingOverflow(by: UInt64(maxDepth))
+            allowed = tooMany || overflow ? .max : product
         }
+        guard allowed > blocksAllowed else { throw depthError }
+        blocksLeft = allowed - blocksAllowed
+        blocksAllowed = allowed
     }
 
     /// Starts a walk at the first slot of the collection that `slot` holds.
@@ -527,9 +560,10 @@ struct SlotIterator {
             let slot = current.block.slots[index]
             if slot.tag == .index {
                 if depth >= maxDepth { throw depthError }
-                try countBlock()
+                if blocksLeft == 0 { try allowMoreBlocks() }
+                blocksLeft &-= 1
                 let position = try slot.value.offset(by: nodeOffset)
-                push(Level(position: position, block: try reader.indexBlock(at: position), index: 0))
+                push(Level(position: position, block: try enteredBlock(at: position), index: 0))
                 continue
             }
             // A slot that is not a block is an element, or an entry.

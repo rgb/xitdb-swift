@@ -122,16 +122,20 @@ struct BTreeJoinResult {
 extension DatabaseReader {
     /// Reads the node at `position` in one call. It asks for a branch's
     /// worth of bytes and may get fewer when the node is a leaf near the end
-    /// of the file.
+    /// of the file. Always compiled into its caller: see
+    /// ``bytes(at:)``.
     ///
     /// - Throws: `invalidBTreeNodeKind` or `invalidBTreeNode` for a bad
     ///   header, `invalidEnumTag` for an unknown slot tag, `endOfStream` if
-    ///   the file ends inside the node.
+    ///   the file ends inside the node, or if the node is before where data
+    ///   starts.
+    @inline(__always)
     func bTreeNode(at position: UInt64) throws(XitDBError) -> BTreeNode {
-        try checkIsData(position)
         var buffer = InlineArray<274, UInt8>(repeating: 0)
         var span = buffer.mutableSpan
-        let read = try storage.read(into: &span, at: position)
+        // nothing for a position before the data, which decodes as a node
+        // cut short at its first byte
+        let read = try readData(into: &span, at: position)
         return try BTreeNode(decoding: buffer.span.extracting(0..<read))
     }
 

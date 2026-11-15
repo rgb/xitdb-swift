@@ -235,11 +235,19 @@ import Testing
     /// whose bytes would otherwise be taken for a block or a node.
     @Test(arguments: StorageKind.allCases)
     func aPositionBeforeTheDataEndsTheCompaction(kind: StorageKind) throws {
-        // the inner map's first block
+        // the inner map's first block: at the start of the file, at the
+        // last byte before the data, and at the data's first byte, which
+        // is a position like any other and read as whatever is there
         var subject = try Subject(kind, makeDatabase: makeDatabase)
+        let dataStart = subject.database.header.dataStart
         let map = try #require(try subject.moment.readPath([.hashMapGet(.value, sha1("map"))]))
-        try subject.damage(slotBytes(Slot(value: 0, tag: .hashMap)), at: try #require(map.slotPointer.position))
-        #expect(try compacting(subject, into: kind).error == .endOfStream)
+        let mapSlot = try #require(map.slotPointer.position)
+        for position in [0, dataStart - 1] {
+            try subject.damage(slotBytes(Slot(value: position, tag: .hashMap)), at: mapSlot)
+            #expect(try compacting(subject, into: kind).error == .endOfStream, "the map at \(position)")
+        }
+        try subject.damage(slotBytes(Slot(value: dataStart, tag: .hashMap)), at: mapSlot)
+        #expect(try compacting(subject, into: kind).error != .endOfStream)
 
         // the linked array list's root node: its header's second number
         subject = try Subject(kind, makeDatabase: makeDatabase)
