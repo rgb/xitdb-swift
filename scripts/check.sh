@@ -218,9 +218,18 @@ step "Instructions in memory"
 scripts/instructions.sh check
 
 # The build of the tests rebuilds the library with testing enabled, so that the tests
-# can reach internal declarations.
+# can reach internal declarations. Only `swift test` builds a release that way (its
+# `--enable-testable-imports`, which `swift build` does not have: built by `swift build
+# -c release --build-tests`, the tests' `@testable import` finds no module it can use,
+# and the gate failed here). So the build is `swift test list`, which builds the tests
+# as `swift test` does and runs none; its output, a line a test, is shown only if it
+# fails.
 step "Release tests"
-swift build -c release --build-tests "${strict[@]}"
+swift test list -c release "${strict[@]}" >.build/release-tests-build.txt 2>&1 || {
+    cat .build/release-tests-build.txt
+    echo "error: the release tests did not build"
+    exit 1
+}
 limited "$release_limit" swift test -c release --skip-build "${strict[@]}"
 
 # The benchmark, built above as the release build's second product, runs every
