@@ -419,6 +419,37 @@ import XitDBHashing
         #expect(try map.keyCursor(forKey: "made") == nil)
         #expect(try map.entry(forKey: "made")?.key.read(String.self) == "")
 
+        // A put cursor given the argument stores its key, as the README's
+        // "fruits" and "people" can, and a collection is made there as
+        // through any put cursor.
+        try database.withTransaction { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            let people = try ArrayList<ReadWrite>(moment.putCursor(forKey: "people", storingKey: true))
+            try people.append("Alice")
+        }
+        let moment = try HashMap<ReadOnly>(database.rootCursor)
+        #expect(try moment.keyCursor(forKey: "people")?.read(String.self) == "people")
+        #expect(try ArrayList<ReadOnly>(moment.cursor(forKey: "people")!).value(at: 0, as: String.self) == "Alice")
+
+        // The put cursor that stores its key, and a write through it, leave
+        // what putKey(_:) and then the put cursor leave in one transaction.
+        func throughACursor(_ open: (HashMap<ReadWrite>) throws -> Cursor<ReadWrite>) throws -> [UInt8] {
+            try file { database in
+                _ = try HashMap<ReadWrite>(database.rootCursor)
+                try database.withTransaction { cursor in
+                    var value = try open(HashMap<ReadWrite>(cursor))
+                    try value.write(.bytes(Array(long.utf8)))
+                }
+            }
+        }
+        let cursorStoringKey = try throughACursor { try $0.putCursor(forKey: long, storingKey: true) }
+        let keyThenCursor = try throughACursor { map in
+            try map.putKey(long)
+            return try map.putCursor(forKey: long)
+        }
+        #expect(cursorStoringKey == keyThenCursor)
+        #expect(try cursorStoringKey != throughACursor { try $0.putCursor(forKey: long) })
+
         // The counted map's put is the same put.
         let counted = try file { database in
             let map = try CountedHashMap<ReadWrite>(database.rootCursor)

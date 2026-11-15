@@ -99,10 +99,11 @@ where the Go, Java and TypeScript ports chose otherwise for their keys:
 
 - **A put does not store the key unless asked.** A keyed put writes what the original's `put(hashInt(key), data)`
   writes, the value under the hash, and ``HashMap/putKey(_:)`` stores the key, as `putKey` does. Given
-  `storingKey: true` the put stores the key too, a convenience over the original's two calls, `putKey` and then `put`:
-  in one walk to the entry, it writes what they write in one transaction. The other ports' keyed put always stores the
-  key, and the Go port's writes it, if the entry has none, and then the value in one walk, as the argument does. A set's
-  ``HashSet/insert(_:)`` stores the member, as the original's set `put` does.
+  `storingKey: true` the put and the put cursor store the key too, a convenience over the original's two calls, `putKey`
+  and then `put` or `putCursor`: in one walk to the entry, each writes what its two calls write in one transaction. The
+  other ports' keyed put and put cursor always store the key, and the Go port's put writes it, if the entry has none,
+  and then the value in one walk, as the argument does. A set's ``HashSet/insert(_:)`` stores the member, as the
+  original's set `put` does.
 - **A number says its kind**, as the original's `.uint`, `.int` and `.float` do: `UInt64`, `Int64` or `Double`. `Int` is
   not a value, so an integer whose kind is not said does not compile.
 - **A slot set to nothing reads as no bytes**, as the original's `readBytesAlloc` reads it, and a number read from it is
@@ -129,8 +130,8 @@ The file format and the operations are the same, and the API follows Swift:
 - **The hasher is a value, not a type parameter.** The original's database is generic over the integer its hashes are,
   and the caller hashes each key. Here a database is given a hasher, a ``KeyHashing`` type passed as a value, or a hash
   size alone, and ``Database`` is not generic. The collections take a key beside a hash: an untyped keyed call is its
-  call by hash with the hash computed for it, a put that stores its key the two calls by hash in one transaction, and a
-  typed one writes what the same value written by hash writes (see <doc:Hashing>).
+  call by hash with the hash computed for it, a put or a put cursor that stores its key the two calls by hash in one
+  walk, and a typed one writes what the same value written by hash writes (see <doc:Hashing>).
 - **The storage is a value too.** ``Database`` is not generic over it either, and any ``WritableStorage`` will do.
 - **Opening and creating are separate calls**, and a file's access mode has no default: see <doc:Storage>. The original's one
   call creates over what a creation that did not finish left; here creating does, and opening refuses it.

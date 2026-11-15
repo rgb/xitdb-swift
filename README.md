@@ -30,8 +30,8 @@ a failure in the same transaction, and it recovers, when asked, a file whose roo
 which the original cannot open. It also hands one commit to other threads and tasks as a read snapshot.
 
 Its collections take keys and typed values as well as the hashes and the format's own data that the original's calls
-take. A keyed call hashes the key with the database's hasher and writes what the same value written by hash writes, so
-the files are the same either way.
+take. A keyed call hashes the key with the database's hasher and writes what the same value written by hash writes, with
+the key beside it where `storingKey: true` asks, so the files are the same either way.
 
 The package declares three products. `XitDB` is the library. `XitDBHashing` has SHA-256 and SHA-1, the same on every
 platform, to give a database as the hasher of its keys. `xitdb-dump` is a tool that prints a file as it is on disk.
@@ -56,7 +56,7 @@ The package needs Swift 6.4 and macOS 26, iOS 26 or Linux. In your `Package.swif
 
 ```swift manifest
 dependencies: [
-    .package(url: "https://github.com/rgb/xitdb-swift", from: "0.4.0")
+    .package(url: "https://github.com/rgb/xitdb-swift", from: "0.5.0")
 ],
 targets: [
     .target(
@@ -142,10 +142,10 @@ After this transaction the moment holds, if it were written as JSON:
 ```
 
 The names are there for the reader. In the file each value is under the SHA-256 hash of its name, and the names are not
-stored, as in the original: a map of names that must be listed stores each with `storingKey: true` on its put, or with
-`putKey(_:)` for an entry made with `putCursor(forKey:)`, such as `"fruits"` and `"people"`. A number says which of the
-format's kinds it is, as it does in the original: `UInt64(25)` is the unsigned integer, and `put(25, forKey: "age")`
-does not compile. `"sha2"` is the label in the header that says which hash it is, for whoever reads the file next.
+stored, as in the original: a map of names that must be listed stores each with `storingKey: true`, given to every put
+and to every put cursor, such as the two that make `"fruits"` and `"people"`. A number says which of the format's kinds
+it is, as it does in the original: `UInt64(25)` is the unsigned integer, and `put(25, forKey: "age")` does not compile.
+`"sha2"` is the label in the header that says which hash it is, for whoever reads the file next.
 
 Run it twice and the second run opens the file, adds a second moment, and the first stays readable with
 `history.cursor(at: 0)`.
