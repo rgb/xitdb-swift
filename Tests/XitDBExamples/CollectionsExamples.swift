@@ -321,7 +321,8 @@ import XitDBHashing
     /// put write in one transaction, which is what their twins by hash
     /// write; the key comes first. On an entry that has its key the argument
     /// writes nothing more. A `Bytes` key's tag is kept, as `putKey(_:)`
-    /// keeps it. On both hash maps.
+    /// keeps it. On both hash maps. The put cursor given the argument is
+    /// held to `putKey(_:)` and then the put cursor in the same way.
     @Test func aPutThatStoresItsKey() throws {
         let long = "a key longer than eight bytes"
         let tagged = Bytes(Array("tagged".utf8), formatTag: "tg")
@@ -449,6 +450,24 @@ import XitDBHashing
         }
         #expect(cursorStoringKey == keyThenCursor)
         #expect(try cursorStoringKey != throughACursor { try $0.putCursor(forKey: long) })
+
+        // On an entry that has its key, the put cursor's argument writes
+        // nothing more either; a tagged key keeps its tag through it.
+        func cursorAgain(storingKey: Bool) throws -> [UInt8] {
+            try file { database in
+                let map = try HashMap<ReadWrite>(database.rootCursor)
+                try map.put(UInt64(25), forKey: long, storingKey: true)
+                try database.withTransaction { cursor in
+                    var value = try HashMap<ReadWrite>(cursor).putCursor(forKey: long, storingKey: storingKey)
+                    try value.write(.uint(26))
+                }
+            }
+        }
+        #expect(try cursorAgain(storingKey: true) == cursorAgain(storingKey: false))
+        _ = try map.putCursor(forKey: Bytes(Array("cursor".utf8), formatTag: "cu"), storingKey: true)
+        #expect(
+            try map.keyCursor(forKey: Bytes(Array("cursor".utf8)))?.read(Bytes.self)
+                == Bytes(Array("cursor".utf8), formatTag: "cu"))
 
         // The counted map's put is the same put.
         let counted = try file { database in

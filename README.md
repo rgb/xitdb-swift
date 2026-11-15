@@ -30,8 +30,9 @@ a failure in the same transaction, and it recovers, when asked, a file whose roo
 which the original cannot open. It also hands one commit to other threads and tasks as a read snapshot.
 
 Its collections take keys and typed values as well as the hashes and the format's own data that the original's calls
-take. A keyed call hashes the key with the database's hasher and writes what the same value written by hash writes, with
-the key beside it where `storingKey: true` asks, so the files are the same either way.
+take. A keyed call hashes the key with the database's hasher and writes what the same value written by hash writes, so
+the files are the same either way. A put or a put cursor given `storingKey: true` stores the key beside the value as
+well, as the original's `putKey` does.
 
 The package declares three products. `XitDB` is the library. `XitDBHashing` has SHA-256 and SHA-1, the same on every
 platform, to give a database as the hasher of its keys. `xitdb-dump` is a tool that prints a file as it is on disk.

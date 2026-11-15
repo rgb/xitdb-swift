@@ -246,9 +246,10 @@ Every collection has an iterator, such as ``ArrayList/iterator()``. It gives a `
 reading the next element can fail. For a map or a set, each cursor is at an entry, which ``Cursor/readEntry()`` turns
 into an ``Entry``, with a cursor for its key and one for its value.
 
-**A map's entry has a key only where one was stored.** A put stores the value under the hash of its key, and the key
-beside it only when that put is given `storingKey: true` (see <doc:TheCollections>); a hash cannot be turned back into
-its key. Here the second put goes without the argument, and its entry has no key:
+**A map's entry has a key only where one was stored.** A put stores the value under the hash of its key. A put or a put
+cursor stores the key beside it only when given `storingKey: true`, and ``HashMap/putKey(_:)`` stores it on its own (see
+<doc:TheCollections>); a hash cannot be turned back into its key. Here the second put goes without the argument, and its
+entry has no key:
 
 ```swift
 try moment.put("Alice", forKey: "name", storingKey: true)

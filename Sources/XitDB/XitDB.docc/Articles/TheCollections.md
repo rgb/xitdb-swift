@@ -137,17 +137,17 @@ try map.put(UInt64(25), forKey: "age", storingKey: true)
 
 **A map stores the value under the key's hash, and the key only when asked.** Given `storingKey: true`, a put or a put
 cursor stores the key beside the value, in the one walk to the entry, and writes what ``HashMap/putKey(_:)`` and then
-the call write in one transaction. Without it the key is not stored, as in the original, and a hash cannot be turned
-back into its key. Give it to every put and put cursor of a map that is to be listed: a program that lists the map,
-another port's or xitdb-dump, sees hashes and not names. Do the same in a file that the other ports write too: their
-keyed puts and put cursors always store the key, so a map written here without it becomes mixed, some entries with a key
-and some without, though a read by key finds them all. An entry that no put or put cursor with the argument and no
-``HashMap/putKey(_:)`` gave its key has a key that reads as empty, with no error (see <doc:CursorsAndValues>). On an
-entry that has its key the argument writes nothing more, and a put without it leaves the key there. The number is
-`UInt64(25)`, since `25` does not compile: a number says which of the format's kinds it is. Each untyped keyed call has
-a twin by hash, `forHash:` (`hash:` for a set's `contains`), which it is with the hash computed, and a put or a put
-cursor that stores its key is the twins of `putKey` and of the call in one transaction (see <doc:Hashing>); the typed
-calls have none, so by hash a value is put as `.uint(25)` and read with `cursor(forHash:)?.read(UInt64.self)`.
+the same call without it write in one transaction. Without it the key is not stored, as in the original, and a hash
+cannot be turned back into its key. Give it to every put and put cursor of a map that is to be listed: a program that
+lists the map, another port's or xitdb-dump, sees hashes and not names. Do the same in a file that the other ports write
+too: their keyed puts and put cursors always store the key, so a map written here without it becomes mixed, some entries
+with a key and some without, though a read by key finds every one. An entry whose key was never stored has a key that
+reads as empty, with no error (see <doc:CursorsAndValues>). On an entry that has its key the argument writes nothing
+more, and a put or a put cursor without it leaves the key there. The number is `UInt64(25)`, since `25` does not
+compile: a number says which of the format's kinds it is. Each untyped keyed call has a twin by hash, `forHash:`
+(`hash:` for a set's `contains`), which it is with the hash computed, and a call that stores its key is the twins of
+`putKey` and of the same call without it, in one transaction (see <doc:Hashing>); the typed calls have none, so by hash
+a value is put as `.uint(25)` and read with `cursor(forHash:)?.read(UInt64.self)`.
 
 **A set stores its members.** A member is a key, so ``HashSet/insert(_:)`` writes its bytes, with a ``Bytes`` key's
 format tag, as the original's set does, and iterating gives them back:
@@ -214,8 +214,8 @@ try person.put(UInt64(25), forKey: Field.age)
 ```
 
 A hash map or set hashes the key with the database's hasher and keeps the hash; a ``Bytes`` key is hashed without its
-format tag, which ``HashSet/insert(_:)``, ``HashMap/putKey(_:)`` and a put that stores its key keep. A sorted map or set
-hashes nothing: it keeps the key's bytes, in their order, without a ``Bytes`` key's tag, and needs no hasher:
+format tag, which ``HashSet/insert(_:)``, ``HashMap/putKey(_:)`` and a put or put cursor storing its key keep. A sorted
+map or set hashes nothing: it keeps the key's bytes, in their order, without a ``Bytes`` key's tag, and needs no hasher:
 
 ```swift
 let sorted = try SortedMap<ReadWrite>(database.rootCursor)

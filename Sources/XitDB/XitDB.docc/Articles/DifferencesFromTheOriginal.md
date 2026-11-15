@@ -97,13 +97,13 @@ and the port's files are compared with that branch's.
 Keys and typed values bring three of the original's ways to a level the original does not have, and keep them there,
 where the Go, Java and TypeScript ports chose otherwise for their keys:
 
-- **A put does not store the key unless asked.** A keyed put writes what the original's `put(hashInt(key), data)`
-  writes, the value under the hash, and ``HashMap/putKey(_:)`` stores the key, as `putKey` does. Given
-  `storingKey: true` the put and the put cursor store the key too, a convenience over the original's two calls, `putKey`
-  and then `put` or `putCursor`: in one walk to the entry, each writes what its two calls write in one transaction. The
-  other ports' keyed put and put cursor always store the key, and the Go port's put writes it, if the entry has none,
-  and then the value in one walk, as the argument does. A set's ``HashSet/insert(_:)`` stores the member, as the
-  original's set `put` does.
+- **A put or a put cursor does not store the key unless asked.** A keyed put writes what the original's
+  `put(hashInt(key), data)` writes, the value under the hash, and ``HashMap/putKey(_:)`` stores the key, as `putKey`
+  does. Given `storingKey: true` the put and the put cursor store the key too, a convenience over the original's two
+  calls, `putKey` and then `put` or `putCursor`: in one walk to the entry, each writes what its two calls write in one
+  transaction. The other ports' keyed put and put cursor always store the key, and the Go port's put writes it, if the
+  entry has none, and then the value in one walk, as the argument does. A set's ``HashSet/insert(_:)`` stores the
+  member, as the original's set `put` does.
 - **A number says its kind**, as the original's `.uint`, `.int` and `.float` do: `UInt64`, `Int64` or `Double`. `Int` is
   not a value, so an integer whose kind is not said does not compile.
 - **A slot set to nothing reads as no bytes**, as the original's `readBytesAlloc` reads it, and a number read from it is
