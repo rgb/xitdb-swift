@@ -9,9 +9,9 @@ their errors arrive typed. Methods that run a closure of yours, such as ``Databa
 because they also pass on whatever your closure throws, as it was thrown. ``Entry/withHash(_:)`` throws exactly what its
 closure throws. Each case's own documentation says when it is thrown; this article says which of them to expect where.
 
-No bytes in a file can stop your program: damage that the code comes across is an error. That is not the same as noticing all
-damage. Only the trailer that ends a commit is checksummed, and the data is not, so a changed byte in a value can read back as a
-wrong value with no error at all.
+No bytes in a file can stop your program, or make a read run without end: damage that the code comes across is an error. That is
+not the same as noticing all damage. Only the trailer that ends a commit is checksummed, and the data is not, so a changed byte
+in a value can read back as a wrong value with no error at all.
 
 ### Your program
 
@@ -35,11 +35,20 @@ catches those where it reads.
 
 ### The file
 
-These mean the bytes are not what they should be. Catch them where you open a file you did not write, or where a file might
-have been damaged: ``XitDBError/invalidDatabase``, ``XitDBError/untrustedRootHeader(lastVerified:)``,
-``XitDBError/invalidVersion``, ``XitDBError/truncatedDatabase``, ``XitDBError/endOfStream``, ``XitDBError/invalidEnumTag``,
-``XitDBError/invalidBTreeNode``, ``XitDBError/invalidBTreeNodeKind``, ``XitDBError/invalidCount``,
-``XitDBError/keyOffsetExceeded`` and ``XitDBError/maxShiftExceeded``.
+These mean the bytes are not what they should be. Catch them where you open a file you did not write, or where a file might have
+been damaged: ``XitDBError/invalidDatabase``, ``XitDBError/untrustedRootHeader(lastVerified:)``, ``XitDBError/invalidVersion``,
+``XitDBError/truncatedDatabase``, ``XitDBError/endOfStream``, ``XitDBError/invalidEnumTag``, ``XitDBError/invalidBTreeNode``,
+``XitDBError/invalidBTreeNodeKind``, ``XitDBError/invalidCount``, ``XitDBError/keyOffsetExceeded`` and
+``XitDBError/maxShiftExceeded``. Read them as one thing: damage is reported by whichever check comes across it first, so the
+case says where the damage was met and not what it is. From a read of a file that may be damaged, ``XitDBError/unexpectedTag``
+means the same, beside its meaning above.
+
+Four of them come also from what a read is held to (see <doc:DifferencesFromTheOriginal>): ``XitDBError/invalidCount``,
+otherwise a write's error, from a size or a count the file has no room for; ``XitDBError/endOfStream`` from a record placed
+before where data starts, as well as beyond the end; and ``XitDBError/keyOffsetExceeded`` and ``XitDBError/invalidBTreeNode``
+from a walk that enters more blocks or nodes than its collection can have. ``XitDBError/invalidBTreeNode`` is also a position
+that a copy the freeze hazard left does not have, though its size has it: no byte of such a copy is damaged (see
+<doc:CloningFreezeAndStaleHandles>).
 
 A file whose root header or last trailer is damaged does not open, even if the commits before it are intact. Opening names
 the end of the last commit that verifies, and leaves the decision to recover to you, since recovering can lose a commit: see

@@ -162,13 +162,25 @@ let cities = try ArrayList<ReadWrite>(citiesCursor)
 
 A cursor's freeze protects what the copy points at from writes through that cursor, and through what is made from it, and from
 nothing else. Writes through the copy leave the original alone. Writes through the original still change shared data in place,
-and the copy sees them. In a linked list or a sorted map or set, the copy's header can end up disagreeing with its tree: its
-count can be wrong with no error, and a read or a write that runs into the difference throws an error such as
-``XitDBError/invalidBTreeNode``. The original can crash there; the port gives the error.
+and the copy sees them. In a linked list or a sorted map or set the copy then disagrees with itself, with no byte of the file
+damaged: its size with its tree, where the original's writes come first, or a branch's counts with the leaves under it, where
+the copy's write comes first. Its count can be wrong with no error, and its reads give this:
+
+- In a sorted map or set, a read by key finds every key that is in the tree.
+- A position, a key's rank and a walk go by the size and the counts as they are. A position can give another entry than a walk
+  gives at that place, a walk can stop at the size with entries left in the tree or give an element twice, and a rank can be
+  off, all with no error.
+- A read or a write that is led where the tree has nothing throws ``XitDBError/invalidBTreeNode``, where the original can crash.
+
+The package's suite "What the freeze hazard leaves", in `Tests/XitDBExamples/FreezeHazardTable.swift`, shows every read of
+twelve such copies, of the three kinds, with either side's writes first, removing and adding, in the transaction and after the
+commit; and the conformance fixtures hold the port's reads of eight such copies, which the original made, to the original's own,
+on every kind of storage.
 
 So use ``Database/freeze()`` whenever both sides may be written in the same transaction. A cursor's freeze makes no handle
-stale, and the guard does not count it. The port does what the original does here, except that where the original can
-crash it throws an error.
+stale, and the guard does not count it. The port reads such a copy as the original does, except where the original can crash,
+where it throws an error, and in two reads that start an iterator where the size and the tree disagree (see
+<doc:DifferencesFromTheOriginal>).
 
 ### What a freeze costs
 

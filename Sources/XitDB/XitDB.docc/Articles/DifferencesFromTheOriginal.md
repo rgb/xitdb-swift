@@ -53,7 +53,13 @@ and the port's files are compared with that branch's.
 
 - **An offset past any a file can have** aborts the original's process. The port throws an error.
 - **A tree whose header disagrees with its nodes**, which a damaged file or the original's freeze hazards produce, can crash the
-  original. The port throws an error where it comes across one, and never traps: see <doc:Errors>.
+  original. The port throws an error where a read or a write is led where the tree has nothing, and never traps: see
+  <doc:Errors>. Elsewhere it reads such a tree as the original does, by its size and counts as they are (see
+  <doc:CloningFreezeAndStaleHandles>), but for two reads:
+  - **An iterator started at a position its tree does not have**, though its size has it, gives nothing in the original, or the
+    entries after the leaf, or with a fuller leaf ends its process. The port throws ``XitDBError/invalidBTreeNode``.
+  - **An iterator started at a key whose place is past the size**, in a tree that holds more than its size says, runs on to the
+    tree's end in the original. The port gives nothing.
 - **The key and value slots of a hashed entry** are read without checking their tags in the original. The port checks them.
 - **With 64-byte hashes**, the original's depth counter overflows at 64 levels. The port goes as deep as the hash allows, and then
   throws ``XitDBError/keyOffsetExceeded``.
@@ -80,6 +86,28 @@ and the port's files are compared with that branch's.
   commit.
 - **Reading committed bytes into a writer with no buffer** panics on the original's buffered file. The port has no such writer:
   a ``ByteSink`` is handed the bytes, a part at a time.
+
+### What a read is held to that the original's is not
+
+The original reads what a file's structure says, wherever it leads. The port holds four things a read takes from a file to what
+the file can be, so that no file makes a read run without end or outside the file's data:
+
+- **A size the file has no room for** is refused by every read that takes it, with ``XitDBError/invalidCount``: an array list's
+  or a sorted map's or set's, at nine bytes for each element, and a counted hash map's or set's count, at the hash and eighteen
+  bytes for each entry. A linked array list's size is held to nothing, since a list joined to itself holds its nodes many times
+  over, and no write is held to it.
+- **No record is read before where data starts**, 32 bytes into the file, or 37 in a version 1 file: a slot, a header, a block,
+  a node, a pair or a byte array that a file places in its own headers is refused with ``XitDBError/endOfStream``, as one placed
+  beyond the end is.
+- **A walk of a hash map or set** enters no more blocks than the file has room for, at 144 bytes a block, and ends with
+  ``XitDBError/keyOffsetExceeded`` among blocks that lead to each other. The original's walk of such blocks ends, but only after
+  sixteen to the power of the depth of them.
+- **A walk of a tree** enters no more nodes than its file or its elements allow, and then ends with
+  ``XitDBError/invalidBTreeNode``: a sorted map's or set's no more than the file has room for, at 146 bytes a node, and a linked
+  array list's no more than 65 for each element it has given and for the next.
+
+None of the four holds a size or a count against the tree under it. A position, a rank and a walk answer from the counts as they
+are, as in the original, so a size or a branch's count that is wrong but fits the file reads back wrong, with no error.
 
 ### On the disk
 
