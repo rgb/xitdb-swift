@@ -30,12 +30,12 @@
 // same sources built with a few bytes of padding before the library's code
 // ran a list's iteration in memory in 16.0 to 16.9 ms, a spread of 5%. So
 // a difference of about that size between two binaries is not the
-// library's until the instructions say so. On Apple's platforms each line
-// has `instructions` and `cycles`, the processor's counts for the phase
-// (the median run's), which the system gives a process about itself:
-// equal instructions with more cycles is layout and not work. Linux gives
-// no such count without a permission the benchmark does not ask for, and
-// the lines have none there.
+// library's until the instructions say so. On macOS each line has
+// `instructions` and `cycles`, the processor's counts for the phase (the
+// median run's), which the system gives a process about itself: equal
+// instructions with more cycles is layout and not work. iOS has no such
+// call, and Linux gives no such count without a permission the benchmark
+// does not ask for: the lines have none there.
 //
 // For a profiler, one phase of one workload on one kind of storage can be
 // run over and over for a number of seconds:
@@ -164,10 +164,11 @@ struct Measurement {
 }
 
 /// The instructions this process has retired and the cycles it has taken so
-/// far, on Apple's platforms, where a process may ask the system about
-/// itself; nil elsewhere, and where the system gives no answer.
+/// far, on macOS, where a process may ask the system about itself; nil
+/// elsewhere (the call is not in iOS's SDK), and where the system gives no
+/// answer.
 func processorCounts() -> (instructions: UInt64, cycles: UInt64)? {
-    #if canImport(Darwin)
+    #if os(macOS)
         var info = rusage_info_v4()
         let status = withUnsafeMutablePointer(to: &info) { pointer in
             pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { rebound in
