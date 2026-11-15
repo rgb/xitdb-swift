@@ -126,10 +126,10 @@ or `--depth`; and a million nodes in all, or ten times `--limit` if that is more
 
 | Option | What it does |
 |---|---|
-| `--moment N` | The moment to show, negative from the end; the last by default. |
+| `--moment N` | The moment to show, negative from the end; the last by default. A root that is not a list of moments, such as the set above, is moment 0 and has no other. |
 | `--all-moments` | Every moment, with sharing between them marked. |
 | `--depth D` | How deep to descend; 200 levels by default. |
-| `--path k1/k2/#3` | Start below the moment's root: a key by its name, or by its whole hash in hex (`--full-hashes` shows it), and a list element by `#` and its index. |
+| `--path k1/k2/#3` | Start below the moment's root, or below a root that is not a list of moments: a key by its name, or by its whole hash in hex (`--full-hashes` shows it), and a list element by `#` and its index. |
 | `--json` | The same tree as one JSON document, for tools. |
 | `--keys FILE` | Key names, one per line, hashed to label the entries that store no name. |
 | `--hash NAME` | The hash for `--keys` and for the names in `--path`: `sha256` by default, or `sha1`. |
