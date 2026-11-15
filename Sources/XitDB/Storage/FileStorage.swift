@@ -345,6 +345,40 @@ public final class FileStorage: WritableStorage {
         try Platform.leads(path, to: descriptor.rawValue)
     }
 
+    /// Whether the path this storage was opened with still leads to the
+    /// file the storage reads.
+    ///
+    /// A file can be replaced under its name while a storage has it open:
+    /// another file is renamed over it, as a restore or a deployment does;
+    /// it is removed; or a symbolic link in the path is changed to lead
+    /// elsewhere. A storage that was open before keeps the file it opened.
+    /// It goes on reading what it read, whole, and sees nothing of what is
+    /// written under the name from then on. `false` says that this has
+    /// happened: opening the path again would give another file than this
+    /// storage reads, or none. A reader in another process than the one
+    /// that replaces the file asks, to learn that it has to open the path
+    /// again.
+    ///
+    /// It says where a path leads, and not whether the file changed: bytes
+    /// that a writer writes into the same file leave it `true`, and this
+    /// storage reads them.
+    ///
+    /// The path is the one given at opening, as it was given: its symbolic
+    /// links are followed anew at each asking, and a relative path is read
+    /// against the working directory of that moment. The answer is about
+    /// that moment too: the file can be replaced right after it.
+    ///
+    /// - Throws: ``XitDBError/storageFailure(errno:)`` if the system cannot
+    ///   be asked about the open file or about the path. That no file is at
+    ///   the path is not an error: it is `false`.
+    public var isStillAtPath: Bool {
+        get throws(XitDBError) {
+            // While this storage itself brings a new file, the file under
+            // the name is still the old one, which every other opener has.
+            try Platform.leads(path, to: (replacement?.old ?? descriptor).rawValue)
+        }
+    }
+
     /// Whether a replacement has begun and not ended.
     var isReplacing: Bool { replacement != nil }
 

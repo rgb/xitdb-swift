@@ -55,7 +55,7 @@ func builtTool(_ name: String) throws -> URL {
 }
 
 /// A folder for the files of one test, removed when the value goes away.
-private final class TemporaryFolder {
+final class TemporaryFolder {
     let url: URL
 
     init() throws {

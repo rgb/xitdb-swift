@@ -294,6 +294,21 @@ public final class BufferedFileStorage: WritableStorage {
         try file.leadsToItsFile()
     }
 
+    /// Whether the path this storage was opened with still leads to the
+    /// file the storage reads: ``FileStorage/isStillAtPath`` of the file
+    /// storage underneath. `false` means that another file has been given
+    /// the name, or none has it, and that opening the path again would not
+    /// give the file this storage reads. It says where the path leads, and
+    /// not whether the file changed.
+    ///
+    /// - Throws: ``XitDBError/storageFailure(errno:)`` if the system cannot
+    ///   be asked about the open file or about the path.
+    public var isStillAtPath: Bool {
+        get throws(XitDBError) {
+            try file.isStillAtPath
+        }
+    }
+
     /// Begins the replacement of the file underneath by a new one
     /// (``FileStorage/beginReplacement()``). What the window holds was to go
     /// into the old file past its last commit: it is thrown away, as a cut

@@ -8,6 +8,7 @@
 //     XitDBFuzz save <hashSize|v1> <seed|good> [targeted] <path>
 //     XitDBFuzz check [--mapped] <file>...
 //     XitDBFuzz die <step> <file|buffered> <database> <bytes> [<write>]
+//     XitDBFuzz watch <file|buffered> <path>
 //
 // The sample is built in memory with hashes of `hashSize` bytes, in format
 // version 2, as every new database is; `v1` names the version 1 sample of
@@ -29,7 +30,9 @@
 //
 // `die` is no part of the fuzzing: it is the writer that ends in the middle
 // of a full copy, for the tests of what such an end leaves behind
-// (`DyingWriter.swift`).
+// (`DyingWriter.swift`). Nor is `watch`: it is a reader in another process
+// than a file's writer, which answers a test's questions about the file
+// under its path (`Watching.swift`).
 //
 // Exits 2 on bad arguments, 1 when the sample cannot be built or a file
 // cannot be read or written, and 0 otherwise. A trap ends the process with
@@ -43,6 +46,7 @@ let usage = """
            XitDBFuzz save <hashSize|v1> <seed|good> [targeted] <path>
            XitDBFuzz check [--mapped] <file>...
            XitDBFuzz die <new-file|mid-copy|before-rename|after-rename> <file|buffered> <database> <bytes> [<write>]
+           XitDBFuzz watch <file|buffered> <path>
     """
 
 /// Prints `message` to standard error and exits with `status`.
@@ -235,6 +239,11 @@ case "die":
     }
     dieInACopy(
         at: step, buffered: arguments[1] == "buffered", path: arguments[2], bytes: [UInt8](bytes), midWrite: midWrite)
+case "watch":
+    guard !mapped, arguments.count == 2, arguments[0] == "file" || arguments[0] == "buffered" else {
+        fail(usage, status: 2)
+    }
+    watch(buffered: arguments[0] == "buffered", path: arguments[1])
 default:
     fail(usage, status: 2)
 }

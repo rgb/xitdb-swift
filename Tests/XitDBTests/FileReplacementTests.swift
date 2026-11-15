@@ -416,6 +416,46 @@ import Testing
         #expect(try directory.contents("elsewhere.db") == [4, 5, 6])
     }
 
+    /// What a storage says of its own path, by the property a caller has,
+    /// on both file storages: `true` while the path leads to the file it
+    /// opened, and through a replacement of its own from its beginning to
+    /// its end, committed or given up; `false` for whoever had the old file
+    /// open once the new one has the name, and for everybody once the file
+    /// is removed.
+    @Test(arguments: Kind.allCases)
+    func aStorageSaysWhetherItsPathStillLeadsToItsFile(kind: Kind) throws {
+        let directory = try Self.folder()
+        let writer = try Self.writer(kind, at: directory.path())
+        func still(_ storage: any WritableStorage) throws -> Bool {
+            if let buffered = storage as? BufferedFileStorage { return try buffered.isStillAtPath }
+            return try #require(storage as? FileStorage).isStillAtPath
+        }
+        let reader: any WritableStorage =
+            kind.isBuffered
+            ? try BufferedFileStorage(path: directory.path(), access: .readOnly)
+            : try FileStorage(path: directory.path(), access: .readOnly)
+        #expect(try still(writer.storage))
+        #expect(try still(reader))
+
+        try writer.beginReplacement()
+        #expect(try still(writer.storage), "the name is still the old file's, which is the one others have")
+        #expect(try writer.file.leadsToItsFile() == false, "though the writer itself is on the new file")
+        #expect(try still(reader))
+        writer.abandonReplacement()
+        #expect(try still(writer.storage))
+        #expect(try still(reader))
+
+        try writer.beginReplacement()
+        try Self.writeTheNewBytes(writer)
+        try writer.commitReplacement()
+        #expect(try still(writer.storage), "the new file has the name, and the writer has the new file")
+        #expect(try still(reader) == false, "the reader has the old file, which has no name any more")
+
+        try FileManager.default.removeItem(atPath: directory.path())
+        #expect(try still(writer.storage) == false)
+        #expect(try still(reader) == false)
+    }
+
     /// A file that has been removed is not at its path; nor one whose name
     /// another file has been given; a path that still leads to the file
     /// is.
