@@ -44,7 +44,7 @@ import XitDBHashing
     /// `Resources/dumps`, which `scripts/pin-dumps.sh` writes.
     @Test func everyFixtureDumpsAsPinned() throws {
         let fixtures = try Self.files("fixtures/valid", suffix: ".db")
-        #expect(fixtures.count == 295)
+        #expect(fixtures.count == 303)
         let dumps = try Self.resources().appendingPathComponent("dumps")
         for fixture in fixtures {
             let name = fixture.deletingPathExtension().lastPathComponent
@@ -545,12 +545,15 @@ import XitDBHashing
             if commits.count == 1 { withOneCommit.append(name) }
             checked += 1
         }
-        #expect(checked == 146, "every fixture with a sidecar but the one that ends on one byte")
+        #expect(checked == 154, "every fixture with a sidecar but the one that ends on one byte")
         #expect(
             fromInputs.sorted() == [
-                "recovery-cut-during-creation", "recovery-cut-during-creation-read-only",
+                "linked-counts-above-leaves", "linked-counts-below-leaves", "linked-header-above-tree",
+                "linked-header-below-tree", "recovery-cut-during-creation", "recovery-cut-during-creation-read-only",
                 "recovery-lost-commit-version-1", "recovery-open-errors-version-1--port", "recovery-torn-root-slot",
-                "replicate-version-1", "version-1-lists", "version-1-read", "version-1-write",
+                "replicate-version-1", "sorted-counts-above-leaves", "sorted-counts-below-leaves",
+                "sorted-header-above-tree", "sorted-header-below-tree", "version-1-lists", "version-1-read",
+                "version-1-write",
             ])
         // Every other script commits after its database's first commit.
         // These two end on a database that has only that one: a recovery

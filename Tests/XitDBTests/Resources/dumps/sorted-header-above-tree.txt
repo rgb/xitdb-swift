@@ -1,0 +1,133 @@
+xitdb file: 3789 bytes; version 2, hash size 20, hash id "sha1", file id c0f00000000000c1; 1 moment
+verify: 2 commits verify, the last ending at the file's end
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 3789, id 9c71f664a99d07c5, root arrayList
+moment 0: map (4 entries)
+  65c10dc3549fe074: sorted set (31)
+    "k00": empty
+    "k01": empty
+    "k02": empty
+    "k04": empty
+    "k05": empty
+    "k06": empty
+    "k08": empty
+    "k09": empty
+    "k10": empty
+    "k12": empty
+    "k13": empty
+    "k14": empty
+    "k16": empty
+    "k17": empty
+    "k18": empty
+    "k20": empty
+    "k21": empty
+    "k22": empty
+    "k24": empty
+    "k25": empty
+    "k26": empty
+    "k28": empty
+    "k29": empty
+    "k30": empty
+    "k32": empty
+    "k33": empty
+    "k34": empty
+    "k36": empty
+    "k37": empty
+    "k38": empty
+    "k40": empty
+  89a7732e5a945b5f: sorted set (41)
+    "k00": empty
+    "k01": empty
+    "k02": empty
+    "k04": empty
+    "k05": empty
+    "k06": empty
+    "k08": empty
+    "k09": empty
+    "k10": empty
+    "k12": empty
+    "k13": empty
+    "k14": empty
+    "k16": empty
+    "k17": empty
+    "k18": empty
+    "k20": empty
+    "k21": empty
+    "k22": empty
+    "k24": empty
+    "k25": empty
+    "k26": empty
+    "k28": empty
+    "k29": empty
+    "k30": empty
+    "k32": empty
+    "k33": empty
+    "k34": empty
+    "k36": empty
+    "k37": empty
+    "k38": empty
+    "k40": empty
+  37745ed7a0f005fb: sorted map (31)
+    "k00": uint 0
+    "k01": uint 1
+    "k02": uint 2
+    "k04": uint 4
+    "k05": uint 5
+    "k06": uint 6
+    "k08": uint 8
+    "k09": uint 9
+    "k10": uint 10
+    "k12": uint 12
+    "k13": uint 13
+    "k14": uint 14
+    "k16": uint 16
+    "k17": uint 17
+    "k18": uint 18
+    "k20": uint 20
+    "k21": uint 21
+    "k22": uint 22
+    "k24": uint 24
+    "k25": uint 25
+    "k26": uint 26
+    "k28": uint 28
+    "k29": uint 29
+    "k30": uint 30
+    "k32": uint 32
+    "k33": uint 33
+    "k34": uint 34
+    "k36": uint 36
+    "k37": uint 37
+    "k38": uint 38
+    "k40": uint 40
+  92322eded3edc153: sorted map (41)
+    "k00": uint 0
+    "k01": uint 1
+    "k02": uint 2
+    "k04": uint 4
+    "k05": uint 5
+    "k06": uint 6
+    "k08": uint 8
+    "k09": uint 9
+    "k10": uint 10
+    "k12": uint 12
+    "k13": uint 13
+    "k14": uint 14
+    "k16": uint 16
+    "k17": uint 17
+    "k18": uint 18
+    "k20": uint 20
+    "k21": uint 21
+    "k22": uint 22
+    "k24": uint 24
+    "k25": uint 25
+    "k26": uint 26
+    "k28": uint 28
+    "k29": uint 29
+    "k30": uint 30
+    "k32": uint 32
+    "k33": uint 33
+    "k34": uint 34
+    "k36": uint 36
+    "k37": uint 37
+    "k38": uint 38
+    "k40": uint 40

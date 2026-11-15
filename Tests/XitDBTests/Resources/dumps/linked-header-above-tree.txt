@@ -1,0 +1,79 @@
+xitdb file: 1507 bytes; version 2, hash size 20, hash id "sha1", file id c0f00000000000c5; 1 moment
+verify: 2 commits verify, the last ending at the file's end
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 1507, id fb247bed2f202d85, root arrayList
+moment 0: map (2 entries)
+  38b62be4bddaa566: linked (31)
+    #0: uint 1
+    #1: uint 2
+    #2: uint 3
+    #3: uint 5
+    #4: uint 6
+    #5: uint 7
+    #6: uint 9
+    #7: uint 10
+    #8: uint 11
+    #9: uint 13
+    #10: uint 14
+    #11: uint 15
+    #12: uint 17
+    #13: uint 18
+    #14: uint 19
+    #15: uint 21
+    #16: uint 22
+    #17: uint 23
+    #18: uint 25
+    #19: uint 26
+    #20: uint 27
+    #21: uint 29
+    #22: uint 30
+    #23: uint 31
+    #24: uint 33
+    #25: uint 34
+    #26: uint 35
+    #27: uint 37
+    #28: uint 38
+    #29: uint 39
+    #30: uint 40
+  d7c6c66f716d1dec: linked (41)
+    #0: uint 1
+    #1: uint 2
+    #2: uint 3
+    #3: uint 5
+    #4: uint 6
+    #5: uint 7
+    #6: uint 9
+    #7: uint 10
+    #8: uint 11
+    #9: uint 13
+    #10: uint 14
+    #11: uint 15
+    #12: uint 17
+    #13: uint 18
+    #14: uint 19
+    #15: uint 21
+    #16: uint 22
+    #17: uint 23
+    #18: uint 25
+    #19: uint 26
+    #20: uint 27
+    #21: uint 29
+    #22: uint 30
+    #23: uint 31
+    #24: uint 33
+    #25: uint 34
+    #26: uint 35
+    #27: uint 37
+    #28: uint 38
+    #29: uint 39
+    #30: uint 40
+    #31: unreadable: element 31 could not be read: invalidBTreeNode
+    #32: unreadable: element 32 could not be read: invalidBTreeNode
+    #33: unreadable: element 33 could not be read: invalidBTreeNode
+    #34: unreadable: element 34 could not be read: invalidBTreeNode
+    #35: unreadable: element 35 could not be read: invalidBTreeNode
+    #36: unreadable: element 36 could not be read: invalidBTreeNode
+    #37: unreadable: element 37 could not be read: invalidBTreeNode
+    #38: unreadable: element 38 could not be read: invalidBTreeNode
+    #39: unreadable: element 39 could not be read: invalidBTreeNode
+    #40: unreadable: element 40 could not be read: invalidBTreeNode
