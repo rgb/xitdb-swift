@@ -16,6 +16,25 @@
 # A limit is for the run and not for a build: each `swift test` in the gate is given
 # `--skip-build` after a build of its own, so that a cold build is not what runs out of
 # time. The simulator's runs build as they go, and their limit allows for it.
+#
+# What holds this, and what does not. The gate tries the limit at every run, on macOS
+# and on Linux, with a test planted to sleep (the step "A run of the tests that does not
+# end is ended" in check.sh): the run ended, the look in the output, no test process
+# left. On an iOS simulator it is not tried by the gate, where it would cost a minute
+# and a half each time; it was tried by hand, and is tried again like this, after the
+# gate's simulator build, with the first iPhone the gate would take:
+#
+#     platform=Darwin; source scripts/limit.sh
+#     limited 90 env TEST_RUNNER_XITDB_GATE_PLANT_A_TEST_WITHOUT_END=1 \
+#         xcodebuild test-without-building -scheme xitdb-swift-Package \
+#         -destination "platform=iOS Simulator,name=iPhone 17" \
+#         -derivedDataPath .build/xcodebuild-ios -configuration Release \
+#         -only-testing:XitDBTests/GatePlantTests
+#
+# (`TEST_RUNNER_` carries the variable into the simulator.) It has to give 124 after 90
+# seconds with a sample of the simulator's test process in its output, and leave no
+# xctest agent of this package behind: the simulator ends its test process when
+# xcodebuild is killed.
 
 # The processes whose parent is the one given.
 children_of() {
@@ -53,9 +72,14 @@ command_of() {
 }
 
 # The process that runs the tests of a run: below `swift test` it is SwiftPM's helper
-# on macOS, or xctest with the bundle, and the tests' runner on Linux; the simulator's
-# is not below xcodebuild, and is found by the test bundle in this package's derived
-# data.
+# on macOS, or xctest with the bundle, and the tests' runner on Linux.
+#
+# An iOS simulator's test process is not below xcodebuild: launchd_sim starts it, and
+# it is Xcode's xctest agent with no arguments, so nothing in a command line says whose
+# tests it runs. It is known by the test bundle it has open, which lies in this
+# package's derived data; a simulator run of another project beside this one has
+# another bundle open and is left alone.
+simulator_agent="iPhoneSimulator.platform/Developer/Library/Xcode/Agents/xctest"
 test_process_of() {
     local pid
     for pid in $(descendants "$1"); do
@@ -67,7 +91,12 @@ test_process_of() {
         esac
     done
     if [ "$platform" = Darwin ]; then
-        pgrep -f "$PWD/.build/xcodebuild-ios.*\.xctest" 2>/dev/null | head -1 || true
+        for pid in $(pgrep -f "$simulator_agent" 2>/dev/null || true); do
+            if lsof -p "$pid" 2>/dev/null | grep -q "$PWD/.build/xcodebuild-ios"; then
+                echo "$pid"
+                return
+            fi
+        done
     fi
 }
 
