@@ -58,8 +58,10 @@ struct SnapshotStorage: ReadableStorage, Sendable {
         case bytes([UInt8])
         /// A file, read through its storage's descriptor, and the fence the
         /// storage trips before it rewrites the file below the committed
-        /// size.
-        case file(FileDescriptor, SnapshotFence)
+        /// size; and, where the storage reads through a memory map, the
+        /// segments that hold the commit's bytes, with the lease that
+        /// keeps the storage from cutting the file below them.
+        case file(FileDescriptor, SnapshotFence, FileMapView?)
     }
 
     let source: Source
@@ -75,9 +77,10 @@ struct SnapshotStorage: ReadableStorage, Sendable {
         self.committedSize = committedSize
     }
 
-    /// A read half over a file, through its storage's descriptor.
-    init(file descriptor: FileDescriptor, fence: SnapshotFence, committedSize: UInt64) {
-        source = .file(descriptor, fence)
+    /// A read half over a file, through its storage's descriptor, and
+    /// through its memory map where it has one.
+    init(file descriptor: FileDescriptor, fence: SnapshotFence, map: FileMapView? = nil, committedSize: UInt64) {
+        source = .file(descriptor, fence, map)
         self.committedSize = committedSize
     }
 
@@ -101,9 +104,17 @@ struct SnapshotStorage: ReadableStorage, Sendable {
         case .bytes(let bytes):
             buffer.copyBytes(from: bytes.span, at: Int(offset), count: count, to: range.lowerBound)
             return count
-        case .file(let descriptor, let fence):
+        case .file(let descriptor, let fence, let map):
             let bounded = range.lowerBound..<(range.lowerBound + count)
-            let read = try Platform.readFile(descriptor.rawValue, into: &buffer, range: bounded, at: offset)
+            // Through the map what is mapped, bounded by the commit's
+            // size, which the storage does not cut the file below while
+            // this snapshot lives; by a file call the rest.
+            var read = map?.read(into: &buffer, range: bounded, at: offset, limit: committedSize) ?? 0
+            if read < count {
+                let rest = (bounded.lowerBound + read)..<bounded.upperBound
+                read += try Platform.readFile(
+                    descriptor.rawValue, into: &buffer, range: rest, at: offset + UInt64(read))
+            }
             // After the read, so that a read which saw the new contents
             // sees the fence tripped.
             if fence.isTripped { throw .snapshotOverwritten }

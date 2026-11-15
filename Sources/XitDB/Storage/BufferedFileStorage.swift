@@ -79,12 +79,21 @@ public final class BufferedFileStorage: WritableStorage {
         access: FileAccess,
         durability: Durability = .full,
         lock: FileLock? = nil,
+        memoryMapped: Bool = false,
         bufferLimit: UInt64 = BufferedFileStorage.defaultBufferLimit
     ) throws(XitDBError) {
         self.init(
-            try FileStorage(path: path, access: access, durability: durability, lock: lock),
+            try FileStorage(
+                path: path, access: access, durability: durability, lock: lock, memoryMapped: memoryMapped),
             bufferLimit: bufferLimit
         )
+    }
+
+    /// Whether the storage's reads of the file go through a memory map:
+    /// ``FileStorage/isMemoryMapped`` of the file storage underneath. What
+    /// the buffer holds is read from the buffer either way.
+    public var isMemoryMapped: Bool {
+        file.isMemoryMapped
     }
 
     /// Reads the bytes that start at `offset` into a part of `buffer`, as

@@ -285,6 +285,30 @@ public enum XitDBError: Error, Sendable {
     /// another storage on the same path, or by another process, is not.
     case snapshotOverwritten
 
+    /// The file was to be emptied or shortened below what a snapshot still
+    /// reads through the memory map, as a replication from zero does. That
+    /// would end the process at the snapshot's next read, so it is refused
+    /// and nothing is changed. Release the snapshots first, or put the new
+    /// database in a new file and rename it over the old one.
+    ///
+    /// Only a storage opened with `memoryMapped: true` throws it. Without
+    /// the map the file is cut, and the snapshot's reads report
+    /// ``snapshotOverwritten``.
+    case snapshotStillMapped
+
+    /// A file storage was asked to read through a memory map without a
+    /// lock on its file. A map is sound only for a file that nothing else
+    /// shortens, and the lock is what keeps another process of yours or a
+    /// second storage on the same path out. Ask for a lock, or leave the
+    /// map off: the file is then read by file calls, as a file in an iOS
+    /// app's shared container must be, since it cannot hold a lock while
+    /// the app is suspended.
+    ///
+    /// A file opened for writing needs ``FileLock/exclusive``; for one
+    /// opened with ``FileAccess/readOnly`` ``FileLock/shared`` is enough.
+    /// It is thrown before the file is opened.
+    case memoryMapNeedsLock
+
     /// The database reads a snapshot of one collection, made with
     /// ``Snapshot/init(_:)`` from a cursor inside a commit, and the
     /// operation needs the whole commit: compacting such a database is

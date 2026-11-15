@@ -22,6 +22,15 @@ import Testing
 /// path and may create the file again where its creation did not finish. A
 /// sync from zero is covered: in memory the snapshots read on, and on the
 /// file kinds every read of theirs refuses with `snapshotOverwritten`.
+///
+/// On the kinds that read through a memory map a sync from zero is refused
+/// while a snapshot of the database lives (`snapshotStillMapped`): the cut
+/// it begins with would end the process at the snapshot's next read. So
+/// there the database's snapshots are checked and released before the op,
+/// which is what a caller has to do. That is the rule, and not a weakening
+/// of the proof: the scripts still run to their end through the map, and
+/// what they no longer show, a snapshot that outlives a full copy, is shown
+/// refused by a test of its own in `MemoryMapTests`.
 final class SnapshotProof {
     struct Kept {
         let database: String
@@ -82,10 +91,24 @@ final class SnapshotProof {
 
     private var isFile: Bool { kind != .memory }
 
+    private var isMapped: Bool { kind == .mappedFile || kind == .mappedBufferedFile }
+
     /// Before a top-level op runs: the ops that change a file outside the
     /// engine's guarantee have the current database's snapshots checked and,
-    /// on the file kinds, dropped.
-    func before(op name: String, on database: String) throws {
+    /// on the file kinds, dropped; and so has a sync from zero on the
+    /// mapped kinds, where it is refused while a snapshot lives.
+    ///
+    /// - Parameter syncsFromZero: Whether the op is an `apply_replicated`
+    ///   that starts at 0.
+    func before(op name: String, on database: String, syncsFromZero: Bool = false) throws {
+        if syncsFromZero && isMapped {
+            let released = kept.filter { $0.database == database }
+            kept.removeAll { $0.database == database }
+            for one in released {
+                try check(one, expected: nil)
+            }
+            return
+        }
         switch name {
         case "raw_write", "raw_append", "raw_load", "raw_truncate", "recover", "reopen":
             for index in kept.indices where kept[index].database == database {

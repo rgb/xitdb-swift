@@ -108,6 +108,11 @@ package struct FileCalls {
 
     /// Sets the file's length.
     package var setLength: (Int32, UInt64) throws(XitDBError) -> Void = Platform.setFileLength
+
+    /// Maps a part of the file into memory for reading, from an offset and
+    /// of a length, and returns the mapping's address and zero, or the
+    /// error the system refused it with.
+    package var map: (Int32, UInt64, Int) -> (address: UInt, error: Int32) = Platform.mapFile
 }
 
 /// Owns an open file descriptor and closes it when the last reference goes.
@@ -156,6 +161,63 @@ public final class FileStorage: WritableStorage {
     /// The fence the snapshots taken so far check; replaced once tripped.
     private(set) var fence = SnapshotFence()
 
+    /// The memory map the storage reads through: there when it was asked
+    /// for and the file is on a volume that is mapped.
+    private var map: FileMap?
+
+    /// What every snapshot that reads through the map holds with the
+    /// storage. While a second reference to it exists such a snapshot is
+    /// alive, and the file is not cut below what it reads.
+    private var mapLease = MapLease()
+
+    /// The storage's side of its memory map.
+    private struct FileMap {
+        /// The segments mapped so far.
+        var view: FileMapView
+
+        /// The number of bytes at the start of the file that are known to
+        /// be in it, and so may be read through the map: the file's length
+        /// when the storage opened it, raised by what the storage has
+        /// itself written, and lowered before the storage cuts the file.
+        /// The one thread that may cut the file is the one that reads
+        /// through this.
+        var limit: UInt64
+
+        /// The end of what the storage has written, which becomes the
+        /// limit at a commit when only committed bytes are to be read
+        /// through the map.
+        var writtenEnd: UInt64
+
+        /// Whether the system has refused a segment. No further segment is
+        /// asked for then; the ones that are mapped go on being read.
+        var refused = false
+    }
+
+    /// Whether the map's limit follows only what is committed, and not
+    /// each write: the brief's first wording of the rule, kept as a switch
+    /// so that the two can be measured against each other.
+    package var mapsCommittedBytesOnly = false
+
+    /// The size of the segments a file is mapped in.
+    package static let defaultSegmentSize = 64 * 1024 * 1024
+
+    /// Whether the storage's reads go through a memory map.
+    ///
+    /// It is `true` only while all of this holds: the map was asked for
+    /// when the storage was opened, the file is on a volume the library
+    /// maps, and the system has refused no part of the map so far. A file
+    /// on a volume that is not this machine's, as far as the system says,
+    /// is read by file calls though the map was asked for, and this is
+    /// `false` from the start, with no error. `false` after it was `true`
+    /// means partly: the system refused to map a further part of the file,
+    /// as it does when the address space is used up; that part and what
+    /// follows are read by file calls, and what is mapped goes on being
+    /// read through the map.
+    public var isMemoryMapped: Bool {
+        guard let map else { return false }
+        return !map.refused
+    }
+
     /// How the file was opened.
     public let access: FileAccess
 
@@ -178,16 +240,64 @@ public final class FileStorage: WritableStorage {
     ///     Holding a lock on a file in a shared container while an iOS app is
     ///     suspended gets the app terminated, which is why none is taken
     ///     unless asked for.
-    /// - Throws: ``XitDBError/storageFailure(errno:)`` if the file cannot be
+    ///   - memoryMapped: Whether to read the file through a memory map,
+    ///     which makes a read a copy from memory where it is a system call
+    ///     otherwise. Writes are file writes either way. It needs a lock:
+    ///     ``FileLock/exclusive``, or ``FileLock/shared`` for a file opened
+    ///     with ``FileAccess/readOnly``. See ``isMemoryMapped`` for whether
+    ///     the map was had.
+    ///
+    ///     With the map, a file that something else shortens ends the
+    ///     process: a read of a part that is no longer there is not an
+    ///     error but a signal. The library never shortens a file below
+    ///     what a snapshot reads (see ``XitDBError/snapshotStillMapped``),
+    ///     and the lock keeps a second opener that asks for one out. What
+    ///     neither can stop is a program that takes no lock: replace such
+    ///     a file by a new file and a rename, never in place. The same
+    ///     holds for a volume that goes away, and on iOS for a file whose
+    ///     data protection makes it unreadable while the device is locked.
+    /// - Throws: ``XitDBError/memoryMapNeedsLock`` if the map is asked for
+    ///   without the lock it needs, before the file is opened;
+    ///   ``XitDBError/storageFailure(errno:)`` if the file cannot be
     ///   opened or the lock cannot be had at once. A path with a NUL byte in
     ///   it is refused with `EINVAL`, rather than opening the file that the
     ///   part before the NUL names.
-    public init(
+    public convenience init(
         path: String,
         access: FileAccess,
         durability: Durability = .full,
-        lock: FileLock? = nil
+        lock: FileLock? = nil,
+        memoryMapped: Bool = false
     ) throws(XitDBError) {
+        try self.init(
+            path: path, access: access, durability: durability, lock: lock, memoryMapped: memoryMapped,
+            segmentSize: FileStorage.defaultSegmentSize)
+    }
+
+    /// Opens a file as a storage, with the size of the segments its memory
+    /// map is made of: the tests map in segments of one page, so that
+    /// reads cross from one segment to the next.
+    ///
+    /// - Precondition: `segmentSize` is a power of two and a multiple of
+    ///   the page size.
+    package init(
+        path: String,
+        access: FileAccess,
+        durability: Durability = .full,
+        lock: FileLock? = nil,
+        memoryMapped: Bool,
+        segmentSize: Int
+    ) throws(XitDBError) {
+        if memoryMapped {
+            // The map needs the lock that keeps a second opener from
+            // cutting the file: an exclusive one, or a shared one where
+            // this opener cannot write and a writer that asks for its lock
+            // is kept out by it.
+            switch (access, lock) {
+            case (_, .exclusive?), (.readOnly, .shared?): break
+            default: throw .memoryMapNeedsLock
+            }
+        }
         self.descriptor = try FileDescriptor(opening: path, access: access)
         self.access = access
         self.durability = durability
@@ -198,6 +308,12 @@ public final class FileStorage: WritableStorage {
         }
         if case .truncate = access {
             try Platform.setFileLength(descriptor.rawValue, 0)
+        }
+        if memoryMapped, Platform.volumeIsLocal(descriptor.rawValue) {
+            // With the lock held, what is in the file now stays there
+            // until this storage cuts it.
+            let length = try Platform.fileLength(descriptor.rawValue)
+            map = FileMap(view: FileMapView(segmentSize: segmentSize), limit: length, writtenEnd: length)
         }
     }
 
@@ -214,12 +330,65 @@ public final class FileStorage: WritableStorage {
     ///   this file, which is the same for every snapshot of one file: a
     ///   file changes its format version only by being replaced, which
     ///   trips the fence.
+    ///
+    /// With a memory map the snapshot also gets the segments that hold
+    /// those bytes, mapped now if they were not, and the storage's lease:
+    /// from now on the storage refuses to cut the file below `size` while
+    /// the snapshot, or a copy of it, is alive.
     func snapshotSource(upTo size: UInt64, committedSizeAt position: UInt64) -> (
-        descriptor: FileDescriptor, fence: SnapshotFence
+        descriptor: FileDescriptor, fence: SnapshotFence, map: FileMapView?
     ) {
         pinnedSize = max(pinnedSize, size)
         committedSizePosition = position
-        return (descriptor, fence)
+        var view: FileMapView?
+        if map != nil, size > 0 {
+            let last = map!.view.segmentIndex(of: size - 1)
+            for index in 0...last { _ = segment(at: index) }
+            var copy = map!.view
+            copy.lease = mapLease
+            view = copy
+        }
+        return (descriptor, fence, view)
+    }
+
+    /// The segment at `index`, mapped now if it was not: `nil` if the
+    /// system refuses it, after which no further segment is asked for.
+    ///
+    /// - Precondition: The storage has a memory map.
+    private func segment(at index: Int) -> MappedSegment? {
+        if index < map!.view.segments.count, let segment = map!.view.segments[index] { return segment }
+        if map!.refused { return nil }
+        let size = map!.view.segmentSize
+        guard
+            let segment = MappedSegment(
+                descriptor: descriptor.rawValue, offset: UInt64(index) * UInt64(size), length: size,
+                map: calls.map)
+        else {
+            map!.refused = true
+            return nil
+        }
+        while map!.view.segments.count <= index { map!.view.segments.append(nil) }
+        map!.view.segments[index] = segment
+        return segment
+    }
+
+    /// Reads through the memory map the bytes at `offset` that are known
+    /// to be in the file, from the first on, mapping the segments they are
+    /// in where they were not.
+    ///
+    /// - Returns: The number of bytes read, less than `range.count` where
+    ///   the limit comes first or the system refuses a segment.
+    /// - Precondition: The storage has a memory map.
+    private func readThroughMap(into buffer: inout MutableSpan<UInt8>, range: Range<Int>, at offset: UInt64) -> Int {
+        let limit = map!.limit
+        guard offset < limit, range.count > 0 else { return 0 }
+        let end = offset + min(UInt64(range.count), limit - offset)
+        let first = map!.view.segmentIndex(of: offset)
+        let last = map!.view.segmentIndex(of: end - 1)
+        for index in first...last where index >= map!.view.segments.count || map!.view.segments[index] == nil {
+            if segment(at: index) == nil { break }
+        }
+        return map!.view.read(into: &buffer, range: range, at: offset, limit: limit)
     }
 
     /// Trips the fence of every snapshot taken so far, before a write or a
@@ -257,7 +426,14 @@ public final class FileStorage: WritableStorage {
         range: Range<Int>,
         at offset: UInt64
     ) throws(XitDBError) -> Int {
-        try calls.read(descriptor.rawValue, &buffer, range, offset)
+        guard map != nil else { return try calls.read(descriptor.rawValue, &buffer, range, offset) }
+        // What is known to be in the file comes from the map, and anything
+        // after it by a file call, which is also what says where the file
+        // ends.
+        let mapped = readThroughMap(into: &buffer, range: range, at: offset)
+        if mapped == range.count { return mapped }
+        let rest = (range.lowerBound + mapped)..<range.upperBound
+        return mapped + (try calls.read(descriptor.rawValue, &buffer, rest, offset + UInt64(mapped)))
     }
 
     /// The length of the file.
@@ -283,6 +459,12 @@ public final class FileStorage: WritableStorage {
         try checkWritable(bytes, at: offset)
         if overwritesSnapshot(bytes.count, at: offset) { invalidateSnapshots() }
         try calls.write(descriptor.rawValue, bytes, offset)
+        if map != nil {
+            // The bytes are in the file now. They may be read through the
+            // map at once, or from the commit on.
+            map!.writtenEnd = max(map!.writtenEnd, offset + UInt64(bytes.count))
+            if !mapsCommittedBytesOnly { map!.limit = map!.writtenEnd }
+        }
     }
 
     /// Rejects a write that can only fail, before any of it is written: one
@@ -316,9 +498,25 @@ public final class FileStorage: WritableStorage {
     /// The buffered storage needs the growing half: when its window starts
     /// beyond the end of the file and is cut away, the gap before it has to
     /// become part of the file.
+    ///
+    /// With a memory map, a cut below what a live snapshot reads is
+    /// refused: the snapshot's next read of a part that is gone would end
+    /// the process. Every cut the library makes comes through here.
+    ///
+    /// - Throws: `snapshotStillMapped` for such a cut, before anything is
+    ///   changed, and what setting the file's length throws.
     func resize(to length: UInt64) throws(XitDBError) {
         if isReadOnly { return }
-        if length < pinnedSize { invalidateSnapshots() }
+        if length < pinnedSize {
+            if map != nil, !isKnownUniquelyReferenced(&mapLease) { throw .snapshotStillMapped }
+            invalidateSnapshots()
+        }
+        if map != nil {
+            // Before the cut: nothing is read through the map beyond the
+            // new end from here on.
+            map!.limit = min(map!.limit, length)
+            map!.writtenEnd = min(map!.writtenEnd, length)
+        }
         try calls.setLength(descriptor.rawValue, length)
     }
 
@@ -331,6 +529,10 @@ public final class FileStorage: WritableStorage {
     /// - Parameter point: Which of a commit's two syncs this is.
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the sync fails.
     public func sync(_ point: SyncPoint) throws(XitDBError) {
+        if case .afterRootHeader = point, map != nil {
+            // The commit is in the file: all that was written is committed.
+            map!.limit = map!.writtenEnd
+        }
         let order = Self.syncOrder(durability, point)
         for index in order.indices {
             guard let call = order[index] else { return }

@@ -271,6 +271,83 @@ enum Platform {
         }
     }
 
+    // MARK: The memory map
+
+    /// The size of a page of memory. A mapping starts at a multiple of it
+    /// in its file.
+    static var pageSize: Int {
+        Int(getpagesize())
+    }
+
+    /// Maps `length` bytes of an open file, from `offset`, into memory for
+    /// reading only, shared with the file: what a file call writes there
+    /// afterwards is what the memory holds.
+    ///
+    /// The range may reach beyond the end of the file. Reading a page of it
+    /// that lies wholly beyond the end, at the time of the read, is not an
+    /// error the process can catch: it is a signal that ends it. Whoever
+    /// holds the mapping reads only bytes known to be in the file.
+    ///
+    /// - Parameters:
+    ///   - offset: Where in the file the mapping starts, a multiple of
+    ///     ``pageSize``.
+    ///   - length: The number of bytes to map, more than zero.
+    /// - Returns: The mapping's address and zero, or the error the system
+    ///   refused it with.
+    static func mapFile(_ descriptor: Int32, offset: UInt64, length: Int) -> (address: UInt, error: Int32) {
+        guard length > 0, let fileOffset = off_t(exactly: offset) else { return (0, EINVAL) }
+        // Safe: the system chooses the address and nothing is passed in by
+        // pointer. The address leaves here as an integer, and only
+        // `MappedSegment` makes a pointer of it again. A refusal is the
+        // pointer with every bit set, `MAP_FAILED`.
+        let address = unsafe UInt(bitPattern: mmap(nil, length, PROT_READ, MAP_SHARED, descriptor, fileOffset))
+        if address == UInt.max { return (0, errno) }
+        return (address, 0)
+    }
+
+    /// Unmaps what ``mapFile(_:offset:length:)`` mapped.
+    static func unmapFile(address: UInt, length: Int) {
+        // Safe: the range is one that `mapFile` returned, unmapped once, by
+        // the one owner of the mapping when it goes.
+        _ = unsafe munmap(UnsafeMutableRawPointer(bitPattern: address), length)
+    }
+
+    /// Whether an open file is on a volume of this machine, as far as the
+    /// system says: the mount's local flag on Apple platforms, and
+    /// elsewhere a file system type that is not one of the network and
+    /// passed-through ones. A file whose volume cannot be asked is not
+    /// local.
+    ///
+    /// A file that is not local is not read through a memory map: what the
+    /// other side of such a mount does to the file is not ours to know.
+    static func volumeIsLocal(_ descriptor: Int32) -> Bool {
+        var status = statfs()
+        while true {
+            // Safe: `fstatfs` writes one `statfs` structure through the
+            // pointer.
+            if unsafe fstatfs(descriptor, &status) == 0 { break }
+            if errno != EINTR { return false }
+        }
+        #if canImport(Darwin)
+            return status.f_flags & UInt32(MNT_LOCAL) != 0
+        #else
+            let type = UInt64(truncatingIfNeeded: status.f_type) & 0xFFFF_FFFF
+            return !remoteFileSystemTypes.contains(type)
+        #endif
+    }
+
+    #if !canImport(Darwin)
+        /// The file system types, as `statfs` gives them on Linux, of a
+        /// file that is not on this machine or is passed through from
+        /// somewhere else: NFS, SMB in its three forms, 9p, FUSE (which a
+        /// container's mounted folder is, and virtiofs with it), Ceph, AFS,
+        /// Lustre and GFS2.
+        static let remoteFileSystemTypes: [UInt64] = [
+            0x6969, 0x517B, 0xFF53_4D42, 0xFE53_4D42, 0x0102_1997, 0x6573_5546, 0x00C3_6400, 0x5346_414F,
+            0x0BD0_0BD0, 0x0116_1970,
+        ]
+    #endif
+
     /// Takes an advisory lock on the whole file without waiting for it.
     ///
     /// - Throws: `storageFailure` with the error `flock` reported, which is

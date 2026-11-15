@@ -1,0 +1,409 @@
+import Foundation
+import Testing
+
+@testable import XitDB
+
+// Reading a file through a memory map (decision D44): what the map needs,
+// and the rules that keep a read of it from ever reaching a part of the
+// file that is not there. Every suite over the kinds of storage also runs
+// through the map, as the two mapped kinds of `StorageKind`; here are the
+// tests of what is the map's own.
+
+/// Counts the calls a file storage makes to read its file and to map it.
+private final class CallCounts {
+    var reads = 0
+    var maps = 0
+}
+
+/// An error a test's transaction throws to roll itself back.
+private struct RolledBack: Error {}
+
+@Suite struct MemoryMapTests {
+    static let page = Platform.pageSize
+
+    /// A file storage that reads through a map of segments of one page,
+    /// with its calls counted.
+    private static func mapped(_ directory: TemporaryDirectory) throws -> (FileStorage, CallCounts) {
+        let file = try FileStorage(
+            path: directory.path(), access: .create, durability: .none, lock: .exclusive, memoryMapped: true,
+            segmentSize: page)
+        let counts = CallCounts()
+        file.calls.read = {
+            (descriptor: Int32, buffer: inout MutableSpan<UInt8>, range: Range<Int>, offset: UInt64)
+                throws(XitDBError) -> Int in
+            counts.reads += 1
+            return try Platform.readFile(descriptor, into: &buffer, range: range, at: offset)
+        }
+        file.calls.map = { (descriptor: Int32, offset: UInt64, length: Int) in
+            counts.maps += 1
+            return Platform.mapFile(descriptor, offset: offset, length: length)
+        }
+        return (file, counts)
+    }
+
+    /// Bytes that differ from place to place, so that a read of the wrong
+    /// place shows.
+    private static func pattern(_ count: Int, seed: Int = 0) -> [UInt8] {
+        (0..<count).map { UInt8(truncatingIfNeeded: ($0 &+ seed) &* 31 &+ ($0 >> 8)) }
+    }
+
+    // MARK: The lock
+
+    /// The map needs the lock that keeps a second opener from cutting the
+    /// file: an exclusive one, or a shared one where the file is opened for
+    /// reading only. Without it the initialiser refuses before the file is
+    /// opened, so nothing is created.
+    @Test func theMapNeedsItsLock() throws {
+        let directory = try TemporaryDirectory()
+        let path = directory.path()
+        let writable: [FileAccess] = [.readWrite, .create, .truncate]
+        for access in writable {
+            #expect(throws: XitDBError.memoryMapNeedsLock, "\(access), no lock") {
+                _ = try FileStorage(path: path, access: access, memoryMapped: true)
+            }
+            #expect(throws: XitDBError.memoryMapNeedsLock, "\(access), a shared lock") {
+                _ = try FileStorage(path: path, access: access, lock: .shared, memoryMapped: true)
+            }
+            #expect(throws: XitDBError.memoryMapNeedsLock, "\(access), buffered, no lock") {
+                _ = try BufferedFileStorage(path: path, access: access, memoryMapped: true)
+            }
+        }
+        #expect(throws: XitDBError.memoryMapNeedsLock) {
+            _ = try FileStorage(path: path, access: .readOnly, memoryMapped: true)
+        }
+        #expect(!FileManager.default.fileExists(atPath: path), "refused before the file was opened")
+
+        do {
+            let file = try FileStorage(path: path, access: .create, lock: .exclusive, memoryMapped: true)
+            #expect(file.isMemoryMapped)
+            try writeBytes(file, [1, 2, 3], at: 0)
+        }
+        // For reading only a shared lock is enough, and an exclusive one
+        // does as well.
+        do {
+            let shared = try FileStorage(path: path, access: .readOnly, lock: .shared, memoryMapped: true)
+            #expect(shared.isMemoryMapped)
+            #expect(try readBytes(shared, at: 0, count: 3) == [1, 2, 3])
+        }
+        do {
+            let exclusive = try BufferedFileStorage(path: path, access: .readOnly, lock: .exclusive, memoryMapped: true)
+            #expect(exclusive.isMemoryMapped)
+            #expect(try readBytes(exclusive, at: 0, count: 3) == [1, 2, 3])
+        }
+        // Without the argument nothing is mapped, with a lock or without.
+        #expect(try FileStorage(path: path, access: .readWrite, lock: .exclusive).isMemoryMapped == false)
+        #expect(try BufferedFileStorage(path: path, access: .readWrite).isMemoryMapped == false)
+    }
+
+    // MARK: The limit
+
+    /// Only bytes known to be in the file are read through the map: what
+    /// the storage wrote, across the segments' boundaries, with no file
+    /// call; anything at or beyond the end by a file call, which is what
+    /// says that nothing is there.
+    @Test func onlyBytesKnownToBeInTheFileAreReadThroughTheMap() throws {
+        let directory = try TemporaryDirectory()
+        let (file, counts) = try Self.mapped(directory)
+        let page = Self.page
+        let bytes = Self.pattern(3 * page + 100)
+        try writeBytes(file, bytes, at: 0)
+
+        #expect(try readBytes(file, at: 0, count: bytes.count) == bytes)
+        #expect(try readBytes(file, at: UInt64(page - 3), count: 10) == Array(bytes[(page - 3)..<(page + 7)]))
+        #expect(
+            try readBytes(file, at: UInt64(2 * page - 1), count: page + 2) == Array(bytes[(2 * page - 1)...(3 * page)]))
+        #expect(counts.reads == 0, "what was written is read through the map")
+        #expect(counts.maps == 4, "each segment is mapped once")
+
+        // A read that reaches beyond the end: what is there from the map,
+        // and one file call for the rest, which reads nothing.
+        #expect(try readBytes(file, at: UInt64(bytes.count - 5), count: 50) == Array(bytes.suffix(5)))
+        #expect(counts.reads == 1)
+        // At the end and beyond it, a file call alone.
+        #expect(try readBytes(file, at: UInt64(bytes.count), count: 9) == [])
+        #expect(try readBytes(file, at: UInt64(10 * page), count: 9) == [])
+        #expect(counts.reads == 3)
+        #expect(counts.maps == 4, "nothing is mapped for a read beyond what is in the file")
+    }
+
+    /// The storage lowers its limit before it cuts the file: a part that
+    /// was read through the map and is cut away is read by a file call
+    /// afterwards, which reads nothing. Without that the read would be of a
+    /// mapped page beyond the end of the file, and end the process. When
+    /// the file has grown again the same segment gives what is there now.
+    @Test func aCutLowersTheLimitFirst() throws {
+        let directory = try TemporaryDirectory()
+        let (file, counts) = try Self.mapped(directory)
+        let page = Self.page
+        let bytes = Self.pattern(4 * page)
+        try writeBytes(file, bytes, at: 0)
+        #expect(try readBytes(file, at: 0, count: bytes.count) == bytes)
+        #expect(counts.reads == 0)
+
+        try file.truncate(to: UInt64(page + 10))
+        #expect(try readBytes(file, at: UInt64(2 * page), count: 16) == [])
+        #expect(try readBytes(file, at: UInt64(page + 10), count: 16) == [])
+        #expect(counts.reads == 2, "what was cut away is asked of the file")
+        #expect(try readBytes(file, at: 0, count: 2 * page) == Array(bytes[..<(page + 10)]))
+        #expect(counts.reads == 3, "the part below the cut from the map, the rest from the file")
+
+        let again = Self.pattern(2 * page, seed: 77)
+        try writeBytes(file, again, at: UInt64(page + 10))
+        let whole = Array(bytes[..<(page + 10)]) + again
+        let reads = counts.reads
+        #expect(try readBytes(file, at: 0, count: whole.count) == whole)
+        #expect(try readBytes(file, at: UInt64(2 * page), count: 16) == Array(whole[(2 * page)..<(2 * page + 16)]))
+        #expect(counts.reads == reads, "what was written again is read through the map")
+        #expect(counts.maps == 4, "through the segments mapped before the cut")
+        #expect(try directory.contents() == whole)
+    }
+
+    /// With the switch that lets the limit follow commits only, what is
+    /// written is read by file calls until the commit's second sync, and
+    /// through the map from then on. Either way the bytes are the same.
+    @Test func withTheLimitAtCommitsAWriteIsReadByFileCallUntilTheCommit() throws {
+        let directory = try TemporaryDirectory()
+        let (file, counts) = try Self.mapped(directory)
+        file.mapsCommittedBytesOnly = true
+        let page = Self.page
+        let bytes = Self.pattern(2 * page + 7)
+        try writeBytes(file, bytes, at: 0)
+        #expect(try readBytes(file, at: 0, count: bytes.count) == bytes)
+        #expect(counts.reads == 1)
+        #expect(counts.maps == 0)
+
+        try file.sync(.beforeRootHeader)
+        #expect(try readBytes(file, at: 5, count: 9) == Array(bytes[5..<14]))
+        #expect(counts.reads == 2, "the first sync of a commit is not the commit")
+
+        try file.sync(.afterRootHeader)
+        #expect(try readBytes(file, at: 0, count: bytes.count) == bytes)
+        #expect(counts.reads == 2, "after the commit the bytes are read through the map")
+        #expect(counts.maps == 3)
+    }
+
+    // MARK: The fallback
+
+    /// A segment the system refuses to map is read by file calls, and so is
+    /// what follows it; what is mapped goes on being read through the map.
+    /// The property says "partly" from then on, and no further segment is
+    /// asked for.
+    @Test func aSegmentTheSystemRefusesIsReadByFileCall() throws {
+        let directory = try TemporaryDirectory()
+        let (file, counts) = try Self.mapped(directory)
+        let page = Self.page
+        file.calls.map = { (descriptor: Int32, offset: UInt64, length: Int) in
+            counts.maps += 1
+            if offset >= UInt64(2 * page) { return (0, ENOMEM) }
+            return Platform.mapFile(descriptor, offset: offset, length: length)
+        }
+        let bytes = Self.pattern(5 * page)
+        try writeBytes(file, bytes, at: 0)
+        #expect(file.isMemoryMapped)
+
+        #expect(try readBytes(file, at: 0, count: 2 * page) == Array(bytes[..<(2 * page)]))
+        #expect(counts.reads == 0)
+        #expect(file.isMemoryMapped)
+
+        // The read that reaches into the refused segment: two pages from
+        // the map, the rest by a file call.
+        #expect(try readBytes(file, at: 0, count: bytes.count) == bytes)
+        #expect(counts.reads == 1)
+        #expect(counts.maps == 3, "two segments mapped and one refused")
+        #expect(!file.isMemoryMapped, "partly")
+
+        #expect(try readBytes(file, at: UInt64(4 * page), count: 20) == Array(bytes[(4 * page)..<(4 * page + 20)]))
+        #expect(counts.reads == 2)
+        #expect(counts.maps == 3, "after a refusal no further segment is asked for")
+        #expect(try readBytes(file, at: 7, count: page) == Array(bytes[7..<(page + 7)]))
+        #expect(counts.reads == 2, "what is mapped is still read through the map")
+    }
+
+    // MARK: The cut under a snapshot
+
+    /// A database of a few hundred entries on a mapped storage, some pages
+    /// long, committed.
+    private static func filled(_ subject: StorageUnderTest) throws -> Database {
+        let database = try Database(creating: subject.storage, hashSize: 20)
+        try database.withTransaction { root in
+            let map = try HashMap<ReadWrite>(root)
+            for index in 0..<400 {
+                try map.put(
+                    .bytes(utf8("the value of entry \(index), longer than a slot")), forHash: hashInt("key-\(index)"))
+            }
+        }
+        return database
+    }
+
+    static let mappedKinds: [StorageKind] = [.mappedFile, .mappedBufferedFile]
+
+    /// The file is never cut below what a live snapshot reads through the
+    /// map: the cut is refused, nothing is changed, and the snapshot reads
+    /// its commit. A cut at or above the snapshot's size, as a rolled-back
+    /// transaction makes, goes through. When the snapshot has gone, so
+    /// does the cut below it.
+    @Test(arguments: mappedKinds)
+    func aCutBelowALiveSnapshotIsRefused(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let database = try Self.filled(subject)
+        let committed = try database.committedSize
+        #expect(committed > UInt64(3 * Self.page), "the database spans several segments")
+        let walk = try StructureWalk.describe(database.rootCursor.readOnly)
+        try subject.storage.flush()
+        let before = try subject.stored()
+
+        var snapshot: Snapshot? = try database.snapshot()
+        #expect(throws: XitDBError.snapshotStillMapped) { try subject.storage.truncate(to: 0) }
+        #expect(throws: XitDBError.snapshotStillMapped) { try subject.storage.truncate(to: committed - 1) }
+        #expect(try subject.stored() == before, "nothing was changed")
+        #expect(try subject.storage.length == committed)
+
+        // A transaction that rolls back cuts its tail, which lies above
+        // the snapshot.
+        #expect(throws: RolledBack.self) {
+            try database.withTransaction { root in
+                let map = try HashMap<ReadWrite>(root)
+                for index in 0..<200 {
+                    try map.put(
+                        .bytes(utf8("a value that is rolled back, \(index)")), forHash: hashInt("gone-\(index)"))
+                }
+                throw RolledBack()
+            }
+        }
+        #expect(try subject.storage.length == committed)
+        #expect(try StructureWalk.describe(try #require(snapshot).rootCursor) == walk)
+        #expect(try readBytes(try #require(snapshot).storage, at: 0, count: Int(committed)).count == Int(committed))
+
+        // A copy of the snapshot is a snapshot: the cut waits for both.
+        var copy = snapshot
+        snapshot = nil
+        #expect(throws: XitDBError.snapshotStillMapped) { try subject.storage.truncate(to: 0) }
+        #expect(try StructureWalk.describe(try #require(copy).rootCursor) == walk)
+        copy = nil
+
+        try subject.storage.truncate(to: 0)
+        #expect(try subject.storage.length == 0)
+    }
+
+    /// A sync from zero begins with a cut to nothing, so it is refused
+    /// while a snapshot of the database reads through the map: the replica
+    /// stays the database it was, its file as it was, and the snapshot
+    /// reads its commit. With the snapshot released the same sync goes
+    /// through. This is what the snapshot proof no longer shows on the
+    /// mapped kinds, where it releases its snapshots before such a sync.
+    @Test(arguments: mappedKinds)
+    func aSyncFromZeroIsRefusedUnderALiveSnapshot(kind: StorageKind) throws {
+        let sourceStorage = MemoryStorage()
+        let source = try Database(creating: sourceStorage, hashSize: 20)
+        try source.withTransaction { root in
+            let map = try HashMap<ReadWrite>(root)
+            for index in 0..<50 {
+                try map.put(.uint(UInt64(index)), forHash: hashInt("source-\(index)"))
+            }
+        }
+        let incoming = try source.readCommitted(from: 0, to: try source.committedSize)
+
+        let subject = try StorageUnderTest(kind)
+        let replica = try Self.filled(subject)
+        let walk = try StructureWalk.describe(replica.rootCursor.readOnly)
+        try subject.storage.flush()
+        let before = try subject.stored()
+        let fileID = replica.header.fileID
+
+        var snapshot: Snapshot? = try replica.snapshot()
+        #expect(throws: XitDBError.snapshotStillMapped) { try replica.applyReplicated(at: 0, bytes: incoming) }
+        try subject.storage.flush()
+        #expect(try subject.stored() == before, "the file is as it was")
+        #expect(replica.header.fileID == fileID, "the replica is the database it was")
+        #expect(try StructureWalk.describe(replica.rootCursor.readOnly) == walk)
+        #expect(try StructureWalk.describe(try #require(snapshot).rootCursor) == walk)
+
+        snapshot = nil
+        try replica.applyReplicated(at: 0, bytes: incoming)
+        try subject.storage.flush()
+        #expect(try subject.stored() == incoming)
+        #expect(
+            try StructureWalk.describe(replica.rootCursor.readOnly)
+                == StructureWalk.describe(source.rootCursor.readOnly))
+    }
+
+    // MARK: Snapshots
+
+    /// A snapshot of a mapped file holds the segments of its commit, all
+    /// mapped when it is taken, and reads the commit's bytes through them:
+    /// the same bytes the file holds, and nothing beyond the commit.
+    @Test(arguments: mappedKinds)
+    func aSnapshotReadsItsCommitThroughTheMap(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let database = try Self.filled(subject)
+        let committed = try database.committedSize
+        let snapshot = try database.snapshot()
+        guard case .file(_, _, let view) = snapshot.storage.source else {
+            Issue.record("a snapshot of a file storage reads a file")
+            return
+        }
+        let map = try #require(view, "the snapshot holds the map")
+        #expect(map.lease != nil)
+
+        // The view alone gives the whole commit: no part is left to a file
+        // call.
+        let room = Int(committed) + 64
+        var buffer = [UInt8](repeating: 0, count: room)
+        var span = buffer.mutableSpan
+        let read = map.read(into: &span, range: 0..<room, at: 0, limit: committed)
+        #expect(read == Int(committed))
+        try subject.storage.flush()
+        var stored = try subject.stored()
+        #expect(stored.count == Int(committed))
+        #expect(Array(buffer[..<read]) == stored)
+
+        // The writer goes on; the snapshot reads what it read, and nothing
+        // of what came after.
+        try database.withTransaction { root in
+            let more = try HashMap<ReadWrite>(root)
+            for index in 0..<300 {
+                try more.put(.uint(UInt64(index)), forHash: hashInt("later-\(index)"))
+            }
+        }
+        #expect(try database.committedSize > committed)
+        let through = try readBytes(snapshot.storage, at: 0, count: Int(committed) + 64)
+        #expect(through.count == Int(committed))
+        // All but the root header's committed size, which the later commit
+        // rewrote in the file and no snapshot reads from it.
+        let position = Int(snapshot.header.fileSizePosition)
+        var masked = through
+        for index in position..<(position + 8) {
+            masked[index] = 0
+            stored[index] = 0
+        }
+        #expect(masked == stored)
+        #expect(try readBytes(snapshot.storage, at: committed, count: 8) == [])
+    }
+
+    /// With the lock that the map needs, a file whose database was closed
+    /// while a snapshot of it lives cannot be opened again: the snapshot
+    /// keeps the descriptor open, and with it the lock. When the snapshot
+    /// has gone the file opens.
+    @Test func aSnapshotKeepsTheLockTheMapNeeds() throws {
+        let directory = try TemporaryDirectory()
+        let path = directory.path()
+        var snapshot: Snapshot?
+        do {
+            let storage = try BufferedFileStorage(
+                path: path, access: .create, durability: .none, lock: .exclusive, memoryMapped: true)
+            let database = try Database(creating: storage, hashSize: 20)
+            try database.withTransaction { root in
+                try HashMap<ReadWrite>(root).put(.uint(1), forHash: hashInt("one"))
+            }
+            snapshot = try database.snapshot()
+        }
+        #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK)) {
+            _ = try BufferedFileStorage(path: path, access: .readWrite, lock: .exclusive, memoryMapped: true)
+        }
+        #expect(snapshot != nil)
+        snapshot = nil
+        let again = try BufferedFileStorage(path: path, access: .readWrite, lock: .exclusive, memoryMapped: true)
+        let reopened = try Database(opening: again, hashSize: 20)
+        #expect(try HashMap<ReadOnly>(reopened.rootCursor.readOnly).cursor(forHash: hashInt("one"))?.readUInt64() == 1)
+    }
+}

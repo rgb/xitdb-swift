@@ -42,6 +42,17 @@ import Testing
                 durability: .none,
                 bufferLimit: 200
             )
+        case .mappedFile:
+            directory = try TemporaryDirectory()
+            storage = try FileStorage(
+                path: try #require(directory).path(), access: .create, durability: .none, lock: .exclusive,
+                memoryMapped: true, segmentSize: Platform.pageSize)
+        case .mappedBufferedFile:
+            directory = try TemporaryDirectory()
+            storage = BufferedFileStorage(
+                try FileStorage(
+                    path: try #require(directory).path(), access: .create, durability: .none, lock: .exclusive,
+                    memoryMapped: true, segmentSize: Platform.pageSize))
         }
         try writeBytes(storage, [1, 2, 3, 4], at: 0)
         return (storage, directory)

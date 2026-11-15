@@ -82,9 +82,21 @@ final class ScriptStorage {
             let path = try #require(directory).path()
             storage = try BufferedFileStorage(
                 path: path, access: readOnly ? .readOnly : .create, durability: .none, bufferLimit: 200)
+        case .mappedFile:
+            storage = try mappedFile(readOnly: readOnly)
+        case .mappedBufferedFile:
+            storage = BufferedFileStorage(try mappedFile(readOnly: readOnly))
         }
         open = storage
         return storage
+    }
+
+    /// The file opened to be read through a memory map, in segments of one
+    /// page, with the lock the map needs.
+    private func mappedFile(readOnly: Bool) throws -> FileStorage {
+        try FileStorage(
+            path: try #require(directory).path(), access: readOnly ? .readOnly : .create, durability: .none,
+            lock: readOnly ? .shared : .exclusive, memoryMapped: true, segmentSize: Platform.pageSize)
     }
 
     /// Ends the use of the storage, flushing it first as the Zig runner's
@@ -110,7 +122,7 @@ final class ScriptStorage {
                 memoryBytes.append(contentsOf: [UInt8](repeating: 0, count: end - memoryBytes.count))
             }
             memoryBytes.replaceSubrange(Int(offset)..<end, with: bytes)
-        case .file, .bufferedFile, .bufferedFileSmallWindow:
+        case .file, .bufferedFile, .bufferedFileSmallWindow, .mappedFile, .mappedBufferedFile:
             let file = try FileStorage(path: try #require(directory).path(), access: .create, durability: .none)
             try file.write(bytes.span, at: offset)
         }
@@ -128,7 +140,7 @@ final class ScriptStorage {
         switch kind {
         case .memory:
             memoryBytes = bytes
-        case .file, .bufferedFile, .bufferedFileSmallWindow:
+        case .file, .bufferedFile, .bufferedFileSmallWindow, .mappedFile, .mappedBufferedFile:
             let file = try FileStorage(path: try #require(directory).path(), access: .truncate, durability: .none)
             try file.write(bytes.span, at: 0)
         }
@@ -143,7 +155,7 @@ final class ScriptStorage {
                 throw UnknownInScript("raw_truncate to more than the file has")
             }
             memoryBytes.removeLast(memoryBytes.count - Int(length))
-        case .file, .bufferedFile, .bufferedFileSmallWindow:
+        case .file, .bufferedFile, .bufferedFileSmallWindow, .mappedFile, .mappedBufferedFile:
             let file = try FileStorage(path: try #require(directory).path(), access: .create, durability: .none)
             guard length <= (try file.length) else { throw UnknownInScript("raw_truncate to more than the file has") }
             try file.truncate(to: length)
@@ -155,7 +167,8 @@ final class ScriptStorage {
         try open?.flush()
         switch kind {
         case .memory: return memory?.bytes ?? memoryBytes
-        case .file, .bufferedFile, .bufferedFileSmallWindow: return try #require(directory).contents()
+        case .file, .bufferedFile, .bufferedFileSmallWindow, .mappedFile, .mappedBufferedFile:
+            return try #require(directory).contents()
         }
     }
 }
@@ -446,6 +459,15 @@ final class ScriptRunner {
     }
 
     /// A number: an integer, or `{"var": NAME}` with a name that holds one.
+    /// Whether an op is an `apply_replicated` that starts at 0, looked at
+    /// before it runs: its `start` may be a bound number, which is read
+    /// and not changed. An op whose `start` cannot be read is not one; the
+    /// run then says what is wrong with it.
+    func syncsFromZero(_ op: ScriptObject) -> Bool {
+        guard (try? op.string("op")) == "apply_replicated" else { return false }
+        return (try? number(op.fields["start"], "start")) == 0
+    }
+
     private func number(_ value: Any?, _ what: String) throws -> UInt64 {
         if let object = value as? [String: Any], object["var"] != nil {
             let reference = try ScriptObject(object, what)
@@ -681,6 +703,9 @@ final class ScriptRunner {
         case .immutableBytes: "ImmutableBytes"
         case .byteWriterOpen: "ByteWriterOpen"
         case .snapshotOverwritten: "SnapshotOverwritten"
+        // No script opens a storage with a memory map.
+        case .snapshotStillMapped: "SnapshotStillMapped"
+        case .memoryMapNeedsLock: "MemoryMapNeedsLock"
         case .subCollectionSnapshot: "SubCollectionSnapshot"
         case .structuralSlot: "StructuralSlot"
         case .poisonedTransaction: "PoisonedTransaction"
@@ -1549,7 +1574,9 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
         for (index, op) in ops.enumerated() {
             if let proof {
                 let opObject = try ScriptObject(op, "an op")
-                try proof.before(op: try opObject.string("op"), on: runner.currentName)
+                try proof.before(
+                    op: try opObject.string("op"), on: runner.currentName,
+                    syncsFromZero: runner.syncsFromZero(opObject))
             }
             runner.zeroSyncTarget = nil
             try runner.run(op, topLevel: true)

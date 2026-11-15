@@ -67,6 +67,12 @@ enum StorageKind: String, CaseIterable, CustomTestStringConvertible {
     /// A buffered file whose window is so small that most writes restart it
     /// or go around it.
     case bufferedFileSmallWindow
+    /// A file read through a memory map, in segments of one page, so that
+    /// reads cross from one segment to the next; with the exclusive lock
+    /// the map needs.
+    case mappedFile
+    /// A buffered file over such a file.
+    case mappedBufferedFile
 
     var testDescription: String { rawValue }
 }
@@ -102,6 +108,21 @@ struct StorageUnderTest {
             let directory = try TemporaryDirectory()
             storage = try BufferedFileStorage(
                 path: directory.path(), access: .create, durability: .none, bufferLimit: 200)
+            stored = { try directory.contents() }
+            path = directory.path()
+        case .mappedFile:
+            let directory = try TemporaryDirectory()
+            storage = try FileStorage(
+                path: directory.path(), access: .create, durability: .none, lock: .exclusive, memoryMapped: true,
+                segmentSize: Platform.pageSize)
+            stored = { try directory.contents() }
+            path = directory.path()
+        case .mappedBufferedFile:
+            let directory = try TemporaryDirectory()
+            storage = BufferedFileStorage(
+                try FileStorage(
+                    path: directory.path(), access: .create, durability: .none, lock: .exclusive,
+                    memoryMapped: true, segmentSize: Platform.pageSize))
             stored = { try directory.contents() }
             path = directory.path()
         }
