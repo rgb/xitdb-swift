@@ -8,7 +8,9 @@
 /// whose result has as many bytes as the database's hash size: they work
 /// on every database, and are the way in for a key that is a hash
 /// already. A keyed call is its call by hash with the key hashed, and
-/// writes nothing more. The two calls that take or
+/// writes nothing more, with one exception: a put or a put cursor given
+/// `storingKey: true` is two calls by hash in one walk, the one that
+/// stores the key and its own. The two calls that take or
 /// give a value as a type, the typed put and `value(forKey:as:)`, take a
 /// key and have no form by hash. Two keys with the same hash are the same
 /// key to the map.
@@ -16,11 +18,12 @@
 /// **The map does not keep its keys.** A hash cannot be turned back into
 /// its key, and a put stores the value alone, as in the original. To be
 /// able to read the keys of a map, for instance when iterating over it,
-/// store each key beside its value: give the keyed put `storingKey: true`
-/// (``put(_:forKey:storingKey:)-(WritableData,_,_)``), or call
-/// ``putKey(_:)``, or ``putKey(_:forHash:)-(_,Sequence<UInt8>)`` where the
-/// key to keep is not the bytes that were hashed. An entry whose key was
-/// not stored, read
+/// store each key beside its value: give `storingKey: true` to the keyed
+/// put (``put(_:forKey:storingKey:)-(WritableData,_,_)``) and to the put
+/// cursor (``putCursor(forKey:storingKey:)``), which are the two keyed
+/// calls that make an entry with a value, or call ``putKey(_:)``, or
+/// ``putKey(_:forHash:)-(_,Sequence<UInt8>)`` where the key to keep is
+/// not the bytes that were hashed. An entry whose key was not stored, read
 /// with ``Cursor/readEntry()``, has a key at an empty slot, which reads as
 /// no bytes and as `""`, while ``keyCursor(forKey:)`` gives `nil` for it:
 /// look at the slot's `isEmpty` before taking an entry's key for a name.
@@ -167,8 +170,9 @@ public struct HashMap<Access: CursorAccess> {
     }
 
     /// A cursor at the key stored beside the value of a key, or `nil` if the
-    /// map has no entry for it or no key was stored with it. A key is stored by
-    /// ``putKey(_:)`` and never by a put.
+    /// map has no entry for it or no key was stored with it. A key is stored
+    /// by a put or a put cursor given `storingKey: true`, by ``putKey(_:)``
+    /// or by ``putKey(_:forHash:)-(_,Sequence<UInt8>)``.
     ///
     /// The key is hashed by the hasher the database was given, and this is
     /// ``keyCursor(forHash:)-(Span<UInt8>)`` with that hash.
@@ -201,8 +205,9 @@ public struct HashMap<Access: CursorAccess> {
     }
 
     /// The slot of the key stored beside the value of a key, or `nil` if the
-    /// map has no entry for it or no key was stored with it. A key is stored by
-    /// ``putKey(_:)`` and never by a put.
+    /// map has no entry for it or no key was stored with it. A key is stored
+    /// by a put or a put cursor given `storingKey: true`, by ``putKey(_:)``
+    /// or by ``putKey(_:forHash:)-(_,Sequence<UInt8>)``.
     ///
     /// The key is hashed by the hasher the database was given, and this is
     /// ``keySlot(forHash:)-(Span<UInt8>)`` with that hash.
@@ -354,17 +359,19 @@ extension HashMap where Access == ReadWrite {
     /// one transaction where those two calls are two. A key that the entry
     /// has already is left as it is, as ``putKey(_:)`` leaves it.
     ///
-    /// The argument is given put by put, and the map does not remember it.
-    /// An entry put without it, among entries put with it, has no key and
-    /// nothing says so: iterating gives the entry like the others, and the
-    /// key of its ``Cursor/readEntry()`` is at an empty slot, which reads
-    /// as no bytes and as `""` and throws nothing, while
+    /// The argument is given call by call, and the map does not remember
+    /// it. An entry that is made without it has no key, and a later put
+    /// without it leaves it so, as it leaves a key that is there. Nothing
+    /// says that an entry has no key: iterating gives it like the others,
+    /// and the key of its ``Cursor/readEntry()`` is at an empty slot, which
+    /// reads as no bytes and as `""` and throws nothing, while
     /// ``keyCursor(forKey:)`` gives `nil` for it. A map whose keys are to
-    /// be listed wants the argument on every put. So does a file that
-    /// programs in the original's other ports write too: their keyed put
-    /// always stores the key, and a file written here without becomes one
-    /// where some entries have a key and some have none, though a read by
-    /// key works on both sides all the same.
+    /// be listed wants the argument on every call that can make an entry:
+    /// every put, and every ``putCursor(forKey:storingKey:)``. So does a
+    /// file that programs in the original's other ports write too: their
+    /// keyed put and put cursor always store the key, and a file written
+    /// here without becomes one where some entries have a key and some
+    /// have none, though a read by key works on both sides all the same.
     ///
     /// The key is hashed by the hasher the database was given.
     ///
@@ -415,23 +422,41 @@ extension HashMap where Access == ReadWrite {
     }
 
     /// A cursor at the value stored under a key, for writing it or for making a
-    /// collection there. The map gets an entry for the key if it has none, and
-    /// the key is not stored.
+    /// collection there. The map gets an entry for the key if it has none.
+    ///
+    /// **The key is not stored unless you ask.** Without `storingKey` this
+    /// is ``putCursor(forHash:)-(Span<UInt8>)`` with the key's hash, and an
+    /// entry it makes has no key. With it the key is stored beside the
+    /// value, if the entry has none, as ``putKey(_:)`` stores it, in the
+    /// one walk to the entry: the file is the one that ``putKey(_:)`` and
+    /// then this call leave inside one transaction, and the key is hashed
+    /// once. What ``put(_:forKey:storingKey:)-(WritableData,_,_)`` says of
+    /// an entry made without the argument holds for one made here.
     ///
     /// Use it in a transaction. On a collection at the root the call is a
     /// transaction of its own, committed by the time it returns, so a new entry
-    /// holds nothing and a write through the cursor throws
+    /// holds no value, and a write through the cursor throws
     /// ``XitDBError/expectedTxStart``.
     ///
-    /// The key is hashed by the hasher the database was given, and this is
-    /// ``putCursor(forHash:)-(Span<UInt8>)`` with that hash.
+    /// The key is hashed by the hasher the database was given.
     ///
-    /// - Parameter key: The key.
+    /// - Parameters:
+    ///   - key: The key.
+    ///   - storingKey: Whether the key is stored beside the value, if the
+    ///     entry has no key yet. `false` unless given.
     /// - Throws: ``XitDBError/noKeyHashing`` if the database was given no
     ///   hasher, before anything else is looked at, and what
     ///   ``putCursor(forHash:)-(Span<UInt8>)`` throws.
-    public func putCursor(forKey key: some KeyRepresentable) throws(XitDBError) -> Cursor<ReadWrite> {
-        try putCursor(forHash: try cursor.keyHash(of: key))
+    public func putCursor(
+        forKey key: some KeyRepresentable, storingKey: Bool = false
+    ) throws(XitDBError) -> Cursor<ReadWrite> {
+        guard storingKey else {
+            return try putCursor(forHash: try cursor.keyHash(of: key))
+        }
+        // The key's bytes are asked for once: they are hashed, and they
+        // are what is stored.
+        let stored = try cursor.keyHashAndData(of: key)
+        return try putCursor(storingKey: stored.data, forHash: stored.hash)
     }
 
     /// Stores a key beside the value under its hash, unless a key is there
@@ -458,8 +483,9 @@ extension HashMap where Access == ReadWrite {
     }
 
     /// Stores a key beside its value, unless a key is there already: the
-    /// explicit call that keeps a key readable, which no put makes. The map
-    /// gets an entry for the key if it has none.
+    /// call that stores a key and nothing else. A put or a put cursor given
+    /// `storingKey: true` stores it in the same walk as its own work. The
+    /// map gets an entry for the key if it has none.
     ///
     /// What is written is the key's bytes as a byte array, and with them the
     /// format tag of a ``Bytes`` key that has one. The key is hashed by the
@@ -638,6 +664,27 @@ extension HashMap where Access == ReadWrite {
     func putCursor(forHash hash: KeyHash) throws(XitDBError) -> Cursor<ReadWrite> {
         let path: InlineArray<1, PathPart> = [.hashMapGet(.value, hash)]
         return try cursor.writePath(path.span)
+    }
+
+    /// The put cursor that stores the key too, in one walk to the entry:
+    /// the key is written if the entry has none, and the cursor at the
+    /// value comes back. It writes what `putKey(_:forHash:)` and then
+    /// `putCursor(forHash:)` write.
+    func putCursor(storingKey key: WritableData, forHash hash: KeyHash) throws(XitDBError) -> Cursor<ReadWrite> {
+        let path: InlineArray<2, PathPart> = [.hashMapGet(.value, hash), .ctx]
+        // The key is written inside the callback, so it is not a part of
+        // the path: check it here, after the cursor's checks and before the
+        // entry is made, as a write part would be checked.
+        try cursor.checkWritable(path.span)
+        try key.checkIsValue()
+        // What the callback leaves in its cursor is the path's result: the
+        // value's slot, which the key's write does not touch.
+        return try cursor.writePath(
+            path.span,
+            typed: { (valueCursor: inout Cursor<ReadWrite>) throws(XitDBError) in
+                var keyCursor = try valueCursor.keyCursorBesideValue()
+                try keyCursor.writeIfEmpty(key)
+            })
     }
 
     /// The call by a hash the engine holds already: what the forms of `putKey`

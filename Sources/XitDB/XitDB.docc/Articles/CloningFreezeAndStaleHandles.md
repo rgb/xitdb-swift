@@ -106,7 +106,7 @@ After ``Database/freeze()``, every cursor and collection made before it in the t
 the transaction's body was given:
 
 - **A write through it is refused** with ``XitDBError/staleCursor``: a value, an append, a
-  ``HashMap/putCursor(forKey:)``, a byte array, and making a collection again from its cursor. The guard runs
+  ``HashMap/putCursor(forKey:storingKey:)``, a byte array, and making a collection again from its cursor. The guard runs
   before anything is written, so the transaction is not poisoned (see <doc:Transactions>) and goes on.
 - **A read through it works**, and reads what the handle points at, which the freeze keeps as it is. It does not see what
   fresh handles write afterwards, since they write copies.

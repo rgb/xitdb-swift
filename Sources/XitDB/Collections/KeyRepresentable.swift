@@ -65,10 +65,10 @@ extension KeyHashing {
     /// The hash of a key, as an array of ``size`` bytes: what a database
     /// that was given this hasher computes for the key.
     ///
-    /// A call that takes a key is its call by hash with this hash, so it is
-    /// what to give a `forHash:` call in order to reach the entry a keyed
-    /// call wrote, on a database opened without the hasher or where the
-    /// hash is kept and used again:
+    /// A call that takes a key reaches the entry that its call by hash
+    /// reaches with this hash, so it is what to give a `forHash:` call in
+    /// order to reach the entry a keyed call wrote, on a database opened
+    /// without the hasher or where the hash is kept and used again:
     ///
     /// ```swift
     /// let hash = SHA256.keyHash(of: "alice")
