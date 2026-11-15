@@ -767,7 +767,8 @@ final class ScriptRunner {
                 // op that called it raises it in turn. At the top level
                 // nothing is left to handle it.
                 if topLevel {
-                    throw ScriptFailure("the op '\(name)' raised \(raised), which nothing handles", unhandled: raised)
+                    throw ScriptFailure(
+                        "the op '\(name)' raised \(raised), which nothing handles: \(error)", unhandled: raised)
                 }
                 throw error
             }

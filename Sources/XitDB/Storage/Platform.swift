@@ -467,6 +467,79 @@ enum Platform {
         }
     #endif
 
+    // MARK: Replacing a file by another
+
+    /// The directory a path's last component lies in: what comes before
+    /// its last slash, `/` for a path directly under the root, and `.` for
+    /// a path with no slash in it.
+    static func directory(of path: String) -> String {
+        let bytes = Array(path.utf8)
+        guard let slash = bytes.lastIndex(of: UInt8(ascii: "/")) else { return "." }
+        if slash == 0 { return "/" }
+        return String(decoding: bytes[..<slash], as: UTF8.self)
+    }
+
+    /// Gives the file at `source` the name `destination`, in place of any
+    /// file that has it: one step, after which the name is the new file's
+    /// and before which it is the old one's. Whoever has the old file open
+    /// keeps it, with no name.
+    ///
+    /// The step is not on the disk until the directory is synced
+    /// (``syncDirectory(of:_:)``).
+    ///
+    /// - Throws: `storageFailure` with the error `rename` reported, or with
+    ///   `EINVAL` for a path that contains a NUL byte.
+    static func renameFile(_ source: String, to destination: String) throws(XitDBError) {
+        guard !source.utf8.contains(0), !destination.utf8.contains(0) else { throw .storageFailure(errno: EINVAL) }
+        while true {
+            // Safe: both paths are passed as C strings that `rename` only
+            // reads, and only during the call.
+            if unsafe rename(source, destination) == 0 { return }
+            let error = errno
+            if error != EINTR { throw .storageFailure(errno: error) }
+        }
+    }
+
+    /// Syncs the directory that `path`'s last component lies in, which is
+    /// what puts a file's new name, or its removal, on the disk.
+    ///
+    /// - Returns: Zero, or the error the directory's opening or its sync
+    ///   reported, `EINVAL` for a path that contains a NUL byte.
+    static func syncDirectory(of path: String, _ call: SyncCall) -> Int32 {
+        guard !path.utf8.contains(0) else { return EINVAL }
+        let directory = directory(of: path)
+        var descriptor: Int32 = -1
+        while descriptor < 0 {
+            // Safe: the path is passed as a C string that `open` only reads,
+            // and only during the call.
+            descriptor = unsafe open(directory, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+            if descriptor < 0 {
+                let error = errno
+                if error != EINTR { return error }
+            }
+        }
+        defer { _ = close(descriptor) }
+        return syncFile(descriptor, call)
+    }
+
+    /// Removes the name `path` from its directory.
+    ///
+    /// - Returns: Whether there was a file of that name.
+    /// - Throws: `storageFailure` with the error `unlink` reported, other
+    ///   than there being no such file, or with `EINVAL` for a path that
+    ///   contains a NUL byte.
+    static func removeFile(_ path: String) throws(XitDBError) -> Bool {
+        guard !path.utf8.contains(0) else { throw .storageFailure(errno: EINVAL) }
+        while true {
+            // Safe: the path is passed as a C string that `unlink` only
+            // reads, and only during the call.
+            if unsafe unlink(path) == 0 { return true }
+            let error = errno
+            if error == ENOENT { return false }
+            if error != EINTR { throw .storageFailure(errno: error) }
+        }
+    }
+
     /// Takes an advisory lock on the whole file without waiting for it.
     ///
     /// - Throws: `storageFailure` with the error `flock` reported, which is

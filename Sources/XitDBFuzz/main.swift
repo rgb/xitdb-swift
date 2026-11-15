@@ -7,6 +7,7 @@
 //     XitDBFuzz run <hashSize|v1> <from> <to> [targeted] [--progress <file>] [--mapped]
 //     XitDBFuzz save <hashSize|v1> <seed|good> [targeted] <path>
 //     XitDBFuzz check [--mapped] <file>...
+//     XitDBFuzz die <step> <file|buffered> <database> <bytes> [<write>]
 //
 // The sample is built in memory with hashes of `hashSize` bytes, in format
 // version 2, as every new database is; `v1` names the version 1 sample of
@@ -26,6 +27,10 @@
 // then give an error and never a read of a part of the file that is not
 // there, which is a signal.
 //
+// `die` is no part of the fuzzing: it is the writer that ends in the middle
+// of a full copy, for the tests of what such an end leaves behind
+// (`DyingWriter.swift`).
+//
 // Exits 2 on bad arguments, 1 when the sample cannot be built or a file
 // cannot be read or written, and 0 otherwise. A trap ends the process with
 // a signal, which is what the driver and the gate look for.
@@ -37,6 +42,7 @@ let usage = """
     usage: XitDBFuzz run <hashSize|v1> <from> <to> [targeted] [--progress <file>] [--mapped]
            XitDBFuzz save <hashSize|v1> <seed|good> [targeted] <path>
            XitDBFuzz check [--mapped] <file>...
+           XitDBFuzz die <new-file|mid-copy|before-rename|after-rename> <file|buffered> <database> <bytes> [<write>]
     """
 
 /// Prints `message` to standard error and exits with `status`.
@@ -219,6 +225,16 @@ case "save":
 case "check":
     guard !arguments.isEmpty else { fail(usage, status: 2) }
     check(arguments, mapped: mapped)
+case "die":
+    guard !mapped, arguments.count == 4 || arguments.count == 5, let step = DyingStep(rawValue: arguments[0]),
+        arguments[1] == "file" || arguments[1] == "buffered",
+        let midWrite = arguments.count == 5 ? Int(arguments[4]) : 5, midWrite > 0
+    else { fail(usage, status: 2) }
+    guard let bytes = FileManager.default.contents(atPath: arguments[3]) else {
+        fail("cannot read \(arguments[3])", status: 1)
+    }
+    dieInACopy(
+        at: step, buffered: arguments[1] == "buffered", path: arguments[2], bytes: [UInt8](bytes), midWrite: midWrite)
 default:
     fail(usage, status: 2)
 }

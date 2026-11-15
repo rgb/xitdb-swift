@@ -108,6 +108,15 @@ let package = Package(
             dependencies: ["XitDB", "XitDBHashing"],
             swiftSettings: languageSettings
         ),
+        // The tests that start another process, alone in a target and so in
+        // a process of their own: while a process is being started it holds
+        // its parent's open files for a moment, a locked one among them, and
+        // a test beside it that reopens a file with its lock can be refused.
+        .testTarget(
+            name: "XitDBProcessTests",
+            dependencies: ["XitDB"],
+            swiftSettings: languageSettings
+        ),
     ],
     swiftLanguageModes: [.v6]
 )

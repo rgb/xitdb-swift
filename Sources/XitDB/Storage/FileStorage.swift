@@ -119,6 +119,24 @@ package struct FileCalls {
     /// file.
     package var isLocal: (Int32) -> Bool = Platform.volumeIsLocal
 
+    /// Opens a file and returns its descriptor: the call that makes the
+    /// file a full copy is written into, beside the one it replaces.
+    package var open: (String, FileAccess) throws(XitDBError) -> Int32 = Platform.openFile
+
+    /// Takes an advisory lock on a file without waiting for it.
+    package var lock: (Int32, FileLock) throws(XitDBError) -> Void = Platform.lockFile
+
+    /// Gives a file another name, in place of any file that has it.
+    package var rename: (String, String) throws(XitDBError) -> Void = Platform.renameFile
+
+    /// Syncs the directory a path's last component lies in, and returns
+    /// zero or the error it reported.
+    package var syncDirectory: (String, SyncCall) -> Int32 = Platform.syncDirectory
+
+    /// Removes a name from its directory, and says whether there was a
+    /// file of that name.
+    package var remove: (String) throws(XitDBError) -> Bool = Platform.removeFile
+
     package init() {}
 }
 
