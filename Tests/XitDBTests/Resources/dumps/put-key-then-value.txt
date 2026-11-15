@@ -1,0 +1,19 @@
+xitdb file: 2211 bytes; version 2, hash size 20, hash id "sha1", file id c0f00000000000b1
+verify: 3 commits verify, the last ending at the file's end
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 1045, id 87838c236278d4a1, root hashMap
+  commit 2: ends at 2211, id 38b9b28d8cc6c68c, root hashMap
+note: the root is not a list of moments; it is dumped as it is
+moment 0: map (2 entries)
+  d25af6a2a05de768: counted map (5)
+    "alone, with a key too long for a slot" 652024c0d2e46a7b: uint 4
+    "alone" 1b05d637f0409cc9: uint 3
+    "short" a0f4ea7d91495df9: bytes 3 "two"
+    "a new key, too long for a slot" d280c62956ceae35: bytes 3 "new"
+    "a key too long for a slot" e350f779f3c1fefd: bytes 27 "the long key's second value"
+  68c46e84d76d2e7e: map (5 entries)
+    "alone, with a key too long for a slot" 652024c0d2e46a7b: uint 4
+    "alone" 1b05d637f0409cc9: uint 3
+    "short" a0f4ea7d91495df9: bytes 3 "two"
+    "a new key, too long for a slot" d280c62956ceae35: bytes 3 "new"
+    "a key too long for a slot" e350f779f3c1fefd: bytes 27 "the long key's second value"

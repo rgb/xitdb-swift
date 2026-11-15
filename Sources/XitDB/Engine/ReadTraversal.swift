@@ -163,6 +163,33 @@ extension DatabaseReader {
         if hash.count != Int(hashSize) { throw .invalidHashSize }
     }
 
+    // The layout of a hashed pair: its hash, then its key's slot, then its
+    // value's slot. Whatever goes from one of the three to another does it
+    // through the three functions here, so that the layout is written
+    // down once.
+
+    /// Where the key's slot of the pair at `pairPosition` is: after the
+    /// hash.
+    static func keySlotPosition(inPairAt pairPosition: UInt64, hashSize: UInt16) throws(XitDBError) -> UInt64 {
+        try pairPosition.offset(by: UInt64(hashSize))
+    }
+
+    /// Where the value's slot of a pair is, from where its key's slot is:
+    /// after it.
+    static func valueSlotPosition(afterKeySlotAt keyPosition: UInt64) throws(XitDBError) -> UInt64 {
+        try keyPosition.offset(by: Slot.byteCount)
+    }
+
+    /// Where the key's slot of a pair is, from where its value's slot is:
+    /// before it.
+    ///
+    /// - Throws: `endOfStream` for a position that no pair's value can be
+    ///   at, one with no room for a slot before it.
+    static func keySlotPosition(beforeValueSlotAt valuePosition: UInt64) throws(XitDBError) -> UInt64 {
+        guard valuePosition >= Slot.byteCount else { throw .endOfStream }
+        return valuePosition - Slot.byteCount
+    }
+
     /// The slot pointer for one of the slots of a hashed pair.
     static func pairSlotPointer(
         _ kind: HashMapSlotKind,
@@ -176,11 +203,23 @@ extension DatabaseReader {
         case .kvPair:
             return SlotPointer(position: trieSlotPosition, slot: trieSlot)
         case .key:
-            return SlotPointer(position: try pairPosition.offset(by: UInt64(hashSize)), slot: pair.keySlot)
+            let keyPosition = try keySlotPosition(inPairAt: pairPosition, hashSize: hashSize)
+            return SlotPointer(position: keyPosition, slot: pair.keySlot)
         case .value:
-            let keyPosition = try pairPosition.offset(by: UInt64(hashSize))
-            return SlotPointer(position: try keyPosition.offset(by: Slot.byteCount), slot: pair.valueSlot)
+            let keyPosition = try keySlotPosition(inPairAt: pairPosition, hashSize: hashSize)
+            return SlotPointer(position: try valueSlotPosition(afterKeySlotAt: keyPosition), slot: pair.valueSlot)
         }
+    }
+
+    /// The key's slot of the pair whose value's slot is at `valuePosition`,
+    /// as the storage holds it now: the other slot of an entry, for a walk
+    /// that arrived at its value and writes its key too.
+    ///
+    /// - Throws: `endOfStream` for a position with no room for a slot
+    ///   before it, and what reading the slot throws.
+    func keySlotPointer(besideValueSlotAt valuePosition: UInt64) throws(XitDBError) -> SlotPointer {
+        let keyPosition = try Self.keySlotPosition(beforeValueSlotAt: valuePosition)
+        return SlotPointer(position: keyPosition, slot: try slot(at: keyPosition))
     }
 
     func hashMapGet(_ slot: Slot, kind: HashMapSlotKind, hash: KeyHash) throws(XitDBError) -> SlotPointer {

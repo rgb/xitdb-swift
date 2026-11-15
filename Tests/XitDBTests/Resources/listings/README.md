@@ -11,9 +11,11 @@ listing. Six listings say that something could not be read, by the original's na
 the others.
 
 They were made with `dump` built from the conformance repository at cfbc254, whose `src/dump.zig` is the one at
-4d26fbd, the commit the fixtures are copied from, against the original at 89da8e7, with Zig 0.17.1. The four listings
-that the fixtures carry, under `fixtures/samples/haxy`, come out of the same build byte for byte. To make them again,
-from `Resources`:
+d2a80de, the commit the fixtures are copied from, against the original at 89da8e7, with Zig 0.17.1. The four listings
+that the fixtures carry, under `fixtures/samples/haxy`, come out of the same build byte for byte. The line for
+`valid/put-key-then-value.db`, the one fixture added since, was made on 2026-11-15 with the `dump` that repository had
+built on 2026-11-13, after that binary gave the digests here for four other files. To make them again, from
+`Resources`:
 
     for f in fixtures/inputs/*.db fixtures/valid/*.db; do
         dump "$f" > listing.txt 2> /dev/null

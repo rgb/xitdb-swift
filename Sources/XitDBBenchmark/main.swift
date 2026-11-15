@@ -494,6 +494,70 @@ func mapByKey(_ size: Int, kinds: [StorageKind]) -> Workload {
         })
 }
 
+/// The map of `map_by_key` with every key stored beside its value, in one
+/// of the two ways there are: by the one call, the keyed put given
+/// `storingKey: true`, or by `putKey` and then the keyed put, which hashes
+/// the key twice and walks to the entry twice. The two write the same
+/// file. Read against `map_by_key`, the write phase says what storing the
+/// keys costs in time, and the file's size what it costs in bytes. The
+/// read phase is the read by key, as there. The iterate phase is what the
+/// keys are stored for: it reads every entry's key as text and checks
+/// that it is the key the value was put under.
+func mapStoringKeys(byOneCall: Bool, _ size: Int, kinds: [StorageKind]) -> Workload {
+    Workload(
+        name: byOneCall ? "map_storing_key" : "map_put_key_then_put",
+        size: size, kinds: kinds, keyKind: .keys, keyCount: size,
+        prepare: { storage, _ in
+            try Database(
+                creating: storage.storage, hashing: Insecure.SHA1.self, hashID: "sha1", fileID: 0x0011_2233_4455_6677)
+        },
+        write: { _, keys, prepared in
+            let database = prepared as! Database
+            let strings = keys.strings
+            let history = try ArrayList<ReadWrite>(database.rootCursor)
+            try history.append(.slot(nil)) { cursor in
+                let map = try HashMap<ReadWrite>(cursor)
+                if byOneCall {
+                    for index in strings.indices {
+                        try map.put(.uint(UInt64(index)), forKey: strings[index], storingKey: true)
+                    }
+                } else {
+                    for index in strings.indices {
+                        try map.putKey(strings[index])
+                        try map.put(.uint(UInt64(index)), forKey: strings[index])
+                    }
+                }
+            }
+            return database
+        },
+        read: { reading, keys, _ in
+            let strings = keys.strings
+            let map = try HashMap<ReadOnly>(try lastMoment(reading))
+            for index in strings.indices {
+                guard try map.cursor(forKey: strings[index])?.readUInt64() == UInt64(index) else {
+                    throw BenchmarkFailure(description: "key-\(index) does not read back by its key")
+                }
+            }
+        },
+        iterate: { reading, keys, _ in
+            let strings = keys.strings
+            let map = try HashMap<ReadOnly>(try lastMoment(reading))
+            var iterator = try map.iterator()
+            var count = 0
+            while let entry = try iterator.next() {
+                let pair = try entry.readEntry()
+                let value = try pair.value.readUInt64()
+                guard value < UInt64(strings.count), try pair.key.read(String.self) == strings[Int(value)] else {
+                    throw BenchmarkFailure(description: "an entry's stored key is not the key it was put under")
+                }
+                count += 1
+            }
+            guard count == strings.count else {
+                throw BenchmarkFailure(description: "the iteration gave \(count) entries")
+            }
+        })
+}
+
 /// A key's bytes, asked for as a collection asks: through the protocol,
 /// from code that does not know the key's type.
 func keyBytes(of key: some KeyRepresentable) -> [UInt8] {
@@ -913,6 +977,8 @@ let workloads: [Workload] = [
     mapInsert(sized(10_000), kinds: [.file]),
     mapByHash(sized(100_000), kinds: [.memory, .bufferedFile]),
     mapByKey(sized(100_000), kinds: [.memory, .bufferedFile]),
+    mapStoringKeys(byOneCall: true, sized(100_000), kinds: [.memory, .bufferedFile]),
+    mapStoringKeys(byOneCall: false, sized(100_000), kinds: [.memory, .bufferedFile]),
     keyHashing(sized(100_000)),
     mapByHashSpan(sized(100_000), kinds: [.memory, .bufferedFile]),
     sortedByForm(.span, sized(100_000), kinds: [.memory, .bufferedFile]),

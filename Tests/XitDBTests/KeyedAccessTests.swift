@@ -34,7 +34,8 @@ protocol WritableMapUnderTest: MapUnderTest where Access == ReadWrite {
     init(_ cursor: Cursor<ReadWrite>) throws(XitDBError)
     static func reading(_ cursor: Cursor<ReadOnly>) throws(XitDBError) -> Reading
 
-    func put(_ value: WritableData, forKey key: some KeyRepresentable) throws(XitDBError)
+    func put(_ value: WritableData, forKey key: some KeyRepresentable, storingKey: Bool) throws(XitDBError)
+    func put(_ value: some StorableValue, forKey key: some KeyRepresentable, storingKey: Bool) throws(XitDBError)
     func putCursor(forKey key: some KeyRepresentable) throws(XitDBError) -> Cursor<ReadWrite>
     func putKey(_ key: some KeyRepresentable) throws(XitDBError)
     func putKeyCursor(forKey key: some KeyRepresentable) throws(XitDBError) -> Cursor<ReadWrite>
@@ -45,6 +46,14 @@ protocol WritableMapUnderTest: MapUnderTest where Access == ReadWrite {
     func putKey(_ key: WritableData, forHash hash: some Sequence<UInt8>) throws(XitDBError)
     func putKeyCursor(forHash hash: some Sequence<UInt8>) throws(XitDBError) -> Cursor<ReadWrite>
     func remove(forHash hash: some Sequence<UInt8>) throws(XitDBError) -> Bool
+}
+
+extension WritableMapUnderTest {
+    /// The put without the argument, which a requirement cannot default:
+    /// the maps' own put has `storingKey` as `false` unless given.
+    func put(_ value: WritableData, forKey key: some KeyRepresentable) throws(XitDBError) {
+        try put(value, forKey: key, storingKey: false)
+    }
 }
 
 extension HashMap: MapUnderTest {}

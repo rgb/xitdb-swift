@@ -16,9 +16,11 @@
 /// **The map does not keep its keys.** A hash cannot be turned back into
 /// its key, and a put stores the value alone, as in the original. To be
 /// able to read the keys of a map, for instance when iterating over it,
-/// store each key beside its value with ``putKey(_:)``, or with
-/// ``putKey(_:forHash:)-(_,Sequence<UInt8>)`` where the key to keep is not
-/// the bytes that were hashed. An entry whose key was not stored, read
+/// store each key beside its value: give the keyed put `storingKey: true`
+/// (``put(_:forKey:storingKey:)-(WritableData,_,_)``), or call
+/// ``putKey(_:)``, or ``putKey(_:forHash:)-(_,Sequence<UInt8>)`` where the
+/// key to keep is not the bytes that were hashed. An entry whose key was
+/// not stored, read
 /// with ``Cursor/readEntry()``, has a key at an empty slot, which reads as
 /// no bytes and as `""`, while ``keyCursor(forKey:)`` gives `nil` for it:
 /// look at the slot's `isEmpty` before taking an entry's key for a name.
@@ -340,22 +342,51 @@ extension HashMap where Access == ReadWrite {
 
     /// Stores a value under a key, in place of any value that was there.
     ///
-    /// **The key is not stored.** Its hash names the entry and nothing else of
-    /// it is written, as in the original, so the file holds what the same put
-    /// by hash writes. To read the map's keys back, store each with
-    /// ``putKey(_:)``.
+    /// **The key is not stored unless you ask.** Its hash names the entry
+    /// and nothing else of it is written, as in the original, so the file
+    /// holds what the same put by hash writes, and this is
+    /// ``put(_:forHash:)-(_,Span<UInt8>)`` with the key's hash.
     ///
-    /// The key is hashed by the hasher the database was given, and this is
-    /// ``put(_:forHash:)-(_,Span<UInt8>)`` with that hash.
+    /// With `storingKey` the key is stored beside the value, as
+    /// ``putKey(_:)`` stores it, in the one walk to the entry. The file is
+    /// the one that ``putKey(_:)`` and then this put leave inside one
+    /// transaction; the key is hashed once; and on a map at the root it is
+    /// one transaction where those two calls are two. A key that the entry
+    /// has already is left as it is, as ``putKey(_:)`` leaves it.
+    ///
+    /// The argument is given put by put, and the map does not remember it.
+    /// An entry put without it, among entries put with it, has no key and
+    /// nothing says so: iterating gives the entry like the others, and the
+    /// key of its ``Cursor/readEntry()`` is at an empty slot, which reads
+    /// as no bytes and as `""` and throws nothing, while
+    /// ``keyCursor(forKey:)`` gives `nil` for it. A map whose keys are to
+    /// be listed wants the argument on every put. So does a file that
+    /// programs in the original's other ports write too: their keyed put
+    /// always stores the key, and a file written here without becomes one
+    /// where some entries have a key and some have none, though a read by
+    /// key works on both sides all the same.
+    ///
+    /// The key is hashed by the hasher the database was given.
     ///
     /// - Parameters:
     ///   - value: The value.
     ///   - key: The key.
+    ///   - storingKey: Whether the key is stored beside the value, if the
+    ///     entry has no key yet. `false` unless given.
     /// - Throws: ``XitDBError/noKeyHashing`` if the database was given no
     ///   hasher, before anything else is looked at, and what
     ///   ``put(_:forHash:)-(_,Span<UInt8>)`` throws.
-    public func put(_ value: WritableData, forKey key: some KeyRepresentable) throws(XitDBError) {
-        try put(value, forHash: try cursor.keyHash(of: key))
+    public func put(
+        _ value: WritableData, forKey key: some KeyRepresentable, storingKey: Bool = false
+    ) throws(XitDBError) {
+        guard storingKey else {
+            try put(value, forHash: try cursor.keyHash(of: key))
+            return
+        }
+        // The key's bytes are asked for once: they are hashed, and they
+        // are what is stored.
+        let stored = try cursor.keyHashAndData(of: key)
+        try put(value, storingKey: stored.data, forHash: stored.hash)
     }
 
     /// A cursor at the value stored under a hash, for writing it or for
@@ -442,7 +473,10 @@ extension HashMap where Access == ReadWrite {
     ///   hasher, before anything else is looked at, and what
     ///   ``putKey(_:forHash:)-(_,Span<UInt8>)`` throws.
     public func putKey(_ key: some KeyRepresentable) throws(XitDBError) {
-        try putKey(key.keyData, forHash: try cursor.keyHash(of: key))
+        // The key's bytes are asked for once: they are hashed, and they
+        // are what is stored.
+        let stored = try cursor.keyHashAndData(of: key)
+        try putKey(stored.data, forHash: stored.hash)
     }
 
     /// A cursor at the key stored beside the value under a hash, for
@@ -579,6 +613,26 @@ extension HashMap where Access == ReadWrite {
         _ = try cursor.writePath(path.span)
     }
 
+    /// The put that stores the key too, in one walk to the entry: the key
+    /// is written if the entry has none, and then the value. It writes
+    /// what `putKey(_:forHash:)` and then `put(_:forHash:)` write.
+    func put(_ value: WritableData, storingKey key: WritableData, forHash hash: KeyHash) throws(XitDBError) {
+        let path: InlineArray<2, PathPart> = [.hashMapGet(.value, hash), .ctx]
+        // The key and the value are written inside the callback, so they
+        // are no parts of the path: both are checked here, after the
+        // cursor's checks and before the entry is made, as write parts are.
+        try cursor.checkWritable(path.span)
+        try key.checkIsValue()
+        try value.checkIsValue()
+        _ = try cursor.writePath(
+            path.span,
+            typed: { (valueCursor: inout Cursor<ReadWrite>) throws(XitDBError) in
+                var keyCursor = try valueCursor.keyCursorBesideValue()
+                try keyCursor.writeIfEmpty(key)
+                try valueCursor.write(value)
+            })
+    }
+
     /// The call by a hash the engine holds already: what the forms of
     /// `putCursor` by a `Span` and by a key both come to.
     func putCursor(forHash hash: KeyHash) throws(XitDBError) -> Cursor<ReadWrite> {
@@ -662,39 +716,88 @@ extension HashMap where Access == ReadWrite {
     /// The value writes itself where the put of ``WritableData`` writes
     /// its data, in the same transaction: a value of one of the library's
     /// types leaves the file that put leaves, and a type of your own
-    /// writes what it says, a collection included. The key is not stored.
+    /// writes what it says, a collection included. The key is not stored
+    /// unless `storingKey` asks, and then as the put of ``WritableData``
+    /// with that argument stores it: beside the value, if the entry has no
+    /// key yet, in the same walk.
     ///
     /// - Parameters:
     ///   - value: The value.
     ///   - key: The key.
+    ///   - storingKey: Whether the key is stored beside the value, if the
+    ///     entry has no key yet. `false` unless given.
     /// - Throws: ``XitDBError/noKeyHashing`` if the database was given no
     ///   hasher, before anything else is looked at; what the put of
     ///   ``WritableData`` throws; and what the value's own writing throws.
     ///   A value that fails once the map has made its entry poisons the
     ///   transaction, as any write that fails after it has written does.
     @inlinable
-    public func put(_ value: some StorableValue, forKey key: some KeyRepresentable) throws(XitDBError) {
+    public func put(
+        _ value: some StorableValue, forKey key: some KeyRepresentable, storingKey: Bool = false
+    ) throws(XitDBError) {
         // One of the library's own values is its data, and its typed write
         // is the write of that data. Where the caller's code knows the
         // value's type, the compiler settles which it is, and for the
         // library's six this call is that write and nothing else.
         if let data = WritableData(ownValue: value) {
-            try put(data, forKey: key)
+            try put(data, forKey: key, storingKey: storingKey)
             return
         }
-        try putWritingItself(value, forKey: key)
+        try putWritingItself(value, forKey: key, storingKey: storingKey)
     }
 
     /// The put of a value of the caller's own, which writes itself in the
     /// entry the map makes for the key.
     @usableFromInline
-    func putWritingItself(_ value: some StorableValue, forKey key: some KeyRepresentable) throws(XitDBError) {
-        let hash = try cursor.keyHash(of: key)
+    func putWritingItself(
+        _ value: some StorableValue, forKey key: some KeyRepresentable, storingKey: Bool
+    ) throws(XitDBError) {
+        // The key that is stored, if it is, from the bytes that are
+        // hashed: asked for once, and before the walk, so that nothing of
+        // the key is looked at once the entry exists.
+        let hash: KeyHash
+        let keyData: WritableData?
+        if storingKey {
+            let stored = try cursor.keyHashAndData(of: key)
+            hash = stored.hash
+            keyData = stored.data
+        } else {
+            hash = try cursor.keyHash(of: key)
+            keyData = nil
+        }
         let path: InlineArray<2, PathPart> = [.hashMapGet(.value, hash), .ctx]
         _ = try cursor.writePath(
             path.span,
             typed: { (valueCursor: inout Cursor<ReadWrite>) throws(XitDBError) in
+                // The value's cursor is the walk's own with the argument as
+                // without it, so the value writes itself as it always did;
+                // the key goes in first, if the entry has none.
+                if let keyData {
+                    var keyCursor = try valueCursor.keyCursorBesideValue()
+                    try keyCursor.writeIfEmpty(keyData)
+                }
                 try value.write(to: &valueCursor)
             })
+    }
+}
+
+extension Cursor where Access == ReadWrite {
+    /// A cursor at the key of the entry whose value this cursor is at: the
+    /// engine says where the key's slot is. The cursor is this one in
+    /// everything else: the same transaction, made at the same time.
+    ///
+    /// The put that stores the key walks to the value and takes the key
+    /// from there, not the other way round, so that the cursor a value
+    /// writes itself through is the walk's own: at the root that is the
+    /// transaction's cursor, the one that goes on after a freeze.
+    ///
+    /// - Throws: `cursorNotWritable` for a cursor with no position, which
+    ///   a walk to an entry's value never gives, and what the engine's
+    ///   reading of the key's slot throws.
+    func keyCursorBesideValue() throws(XitDBError) -> Cursor<ReadWrite> {
+        guard let valuePosition = slotPointer.position else { throw .cursorNotWritable }
+        var key = self
+        key.slotPointer = try engine.reader.keySlotPointer(besideValueSlotAt: valuePosition)
+        return key
     }
 }

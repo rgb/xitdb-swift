@@ -72,7 +72,7 @@ import XitDBHashing
                 atPath: fixtures.appendingPathComponent(folder).path)
             paths += names.filter { $0.hasSuffix(".db") }.sorted().map { "\(folder)/\($0)" }
         }
-        #expect(paths.count == 300)
+        #expect(paths.count == 301)
 
         var withErrors: [String] = []
         var withoutListing: [String] = []

@@ -95,10 +95,18 @@ extension KeyRepresentable {
     /// as a byte array, with the format tag of a ``Bytes`` key that has
     /// one.
     var keyData: WritableData {
+        keyData(of: keyBytes)
+    }
+
+    /// ``keyData`` from the key's bytes where they are in hand already, so
+    /// that a call which hashes the key and stores it asks for them once.
+    ///
+    /// - Parameter bytes: The key's ``keyBytes``.
+    func keyData(of bytes: [UInt8]) -> WritableData {
         if let tagged = self as? Bytes {
-            return .bytes(tagged.value, formatTag: tagged.formatTag)
+            return .bytes(bytes, formatTag: tagged.formatTag)
         }
-        return .bytes(keyBytes)
+        return .bytes(bytes)
     }
 }
 
@@ -108,5 +116,15 @@ extension Cursor {
     /// - Throws: `noKeyHashing` if the database was given none.
     func keyHash(of key: some KeyRepresentable) throws(XitDBError) -> KeyHash {
         try engine.keyHash(of: key.keyBytes)
+    }
+
+    /// The hash of a key and the key as the data that is stored beside a
+    /// value, from one asking for the key's bytes: what a put that stores
+    /// its key needs.
+    ///
+    /// - Throws: `noKeyHashing` if the database was given no hasher.
+    func keyHashAndData(of key: some KeyRepresentable) throws(XitDBError) -> (hash: KeyHash, data: WritableData) {
+        let bytes = key.keyBytes
+        return (try engine.keyHash(of: bytes), key.keyData(of: bytes))
     }
 }

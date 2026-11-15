@@ -116,6 +116,7 @@ f2f802b5ff07e39fc1636a58c432466f1eeedf8fb05d12fe6ca17662185ab842  valid/overwrit
 6282f85cb88b5237fa97466287f192f97e01ad0c29b9ea5b82438a7412b740ff  valid/overwriting-committed-bytes-sorted--port.db
 2fe8fa6e47d4a82d24473657004d3d49ac2f5cfaa0a6693f0a0619f6775b7fa4  valid/path-api-edges--port.db
 94b86d1fdd2563c7fdd8e82b0172f6bf221ff29a67e4e5721062ca30ccadb4c8  valid/path-api-edges-sorted--port.db
+d18e4f70017f85da81aaf3c5c5428734a643607deb3d0524dc99cbd228b08216  valid/put-key-then-value.db
 64ee40cf46e4072aa0c9ad695f3af7e19653aa0e37c22b6b7d584eb39d709968  valid/read-only-at-end.db
 413bf8e0676c609eabae3c87c162bd20f67d6f48b6d19f9011fb84b0e919690b  valid/read-only-leftovers.db
 9aab52e21d27af4f426e684563befa695df2b508848c89f019ac22ee1b0c8050  valid/read-only.db

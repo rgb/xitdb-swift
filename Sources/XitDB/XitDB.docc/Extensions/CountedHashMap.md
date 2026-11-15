@@ -41,8 +41,8 @@ A map has a key to give only where one was stored, with ``putKey(_:)``. See <doc
 
 A put stores the value under the key's hash, and not the key. See <doc:Hashing>.
 
-- ``put(_:forKey:)-(StorableValue,_)``
-- ``put(_:forKey:)-(WritableData,_)``
+- ``put(_:forKey:storingKey:)-(StorableValue,_,_)``
+- ``put(_:forKey:storingKey:)-(WritableData,_,_)``
 - ``putCursor(forKey:)``
 - ``putKey(_:)``
 - ``putKeyCursor(forKey:)``

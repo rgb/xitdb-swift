@@ -156,7 +156,7 @@ that reads as Swift. If you are coming from the original's documentation:
 | `list.getCursor(i)`, `list.getSlot(i)` | ``ArrayList/cursor(at:)``, ``ArrayList/slot(at:)`` |
 | `HashInt`, `hashInt(key)` | A hasher given to the database, ``Database/init(creating:hashing:hashID:fileID:)``; a hash by hand, ``KeyHashing/keyHash(of:)`` |
 | `map.getCursor(hash)`, `map.put(hash, data)` | ``HashMap/cursor(forHash:)-(Sequence<UInt8>)``, ``HashMap/put(_:forHash:)-(_,Sequence<UInt8>)`` |
-| `map.getCursor(hashInt(key))`, `map.put(hashInt(key), data)` | ``HashMap/cursor(forKey:)``, ``HashMap/put(_:forKey:)-(WritableData,_)``, or with a typed value ``HashMap/put(_:forKey:)-(StorableValue,_)`` |
+| `map.getCursor(hashInt(key))`, `map.put(hashInt(key), data)` | ``HashMap/cursor(forKey:)``, ``HashMap/put(_:forKey:storingKey:)-(WritableData,_,_)``, or with a typed value ``HashMap/put(_:forKey:storingKey:)-(StorableValue,_,_)`` |
 | `map.putKey(hash, data)` | ``HashMap/putKey(_:forHash:)-(_,Sequence<UInt8>)``, or by key ``HashMap/putKey(_:)`` |
 | `set.put(hash, data)`, `sorted_set.put(key)` | ``HashSet/insert(_:forHash:)-(_,Sequence<UInt8>)``, ``HashSet/insert(_:)``, ``SortedSet/insert(_:)-(KeyRepresentable)`` |
 | `list.concat(slot)`, `list.slice(offset, size)` | ``LinkedArrayList/append(contentsOf:)-(LinkedArrayList<CursorAccess>)``, ``LinkedArrayList/formSlice(offset:count:)`` |
