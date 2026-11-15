@@ -178,7 +178,7 @@ extension Database {
         let first = bytes.count
         bytes.append(contentsOf: repeatElement(0, count: Int(end - start)))
         var span = bytes.mutableSpan
-        let read = try storage.read(into: &span, range: first..<(first + Int(end - start)), at: start)
+        let read = try storage.readForStream(into: &span, range: first..<(first + Int(end - start)), at: start)
         guard read == Int(end - start) else { throw .endOfStream }
         if start == 0 {
             // the committed size that matches `end`, in place of the file's
@@ -462,7 +462,7 @@ extension Database {
         while position < end {
             var span = buffer.mutableSpan
             let chunk = Int(min(end - position, UInt64(Self.streamChunk)))
-            let read = try storage.read(into: &span, range: 0..<chunk, at: position)
+            let read = try storage.readForStream(into: &span, range: 0..<chunk, at: position)
             guard read == chunk else { throw .endOfStream }
             try XitDBError.carrying { try sink.write(buffer.span.extracting(0..<chunk)) }
             position += UInt64(chunk)

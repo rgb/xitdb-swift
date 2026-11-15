@@ -137,6 +137,15 @@ package struct FileCalls {
     /// file of that name.
     package var remove: (String) throws(XitDBError) -> Bool = Platform.removeFile
 
+    /// Tells the system how a segment of the map that was just made is
+    /// read, given its address and its length: in no order. Made once for
+    /// each segment; its answer is not looked at.
+    package var advise: (UInt, Int) -> Void = Platform.adviseRandom
+
+    /// Asks the system to bring a part of the map into memory ahead of its
+    /// reading, given its address and its length.
+    package var willNeed: (UInt, Int) -> Void = Platform.adviseWillNeed
+
     /// Gives a new open file what an old one has beyond its bytes: the
     /// permission bits and what else the system lets a process carry.
     package var carryAttributes: (Int32, Int32) throws(XitDBError) -> Void = {
@@ -305,6 +314,64 @@ public final class FileStorage: WritableStorage {
     /// Whether the engine is to tell this storage what it has verified:
     /// only a storage that reads through a map and cannot write.
     var takesItsLimitFromTheEngine: Bool { map != nil && isReadOnly }
+
+    // MARK: A read in file order
+
+    /// The ways the stream of committed bytes, which feeds a replica, can
+    /// read a file that is read through a map. The map is advised as read
+    /// in no order, and a read in file order through it would bring the
+    /// file in a page at a time; the stream is the one read the library
+    /// knows to be in file order, and is kept from paying for the advice.
+    ///
+    /// A switch for measuring: the benchmark turns it, the figures choose
+    /// one way, and the switch goes.
+    package enum StreamWay: Sendable {
+        /// Through the map, as any other read.
+        case map
+        /// By file calls, whose read-ahead follows the descriptor.
+        case fileCalls
+        /// Through the map, each stretch asked for ahead of its reading.
+        case willNeed
+    }
+
+    /// How the stream of committed bytes reads this file where it is read
+    /// through a map.
+    package var streamWay = StreamWay.fileCalls
+
+    /// A read of the stream of committed bytes: as
+    /// ``read(into:range:at:)``, but for where the bytes are taken from on
+    /// a file that is read through a map (``streamWay``).
+    func readForStream(
+        into buffer: inout MutableSpan<UInt8>, range: Range<Int>, at offset: UInt64
+    ) throws(XitDBError) -> Int {
+        guard map != nil else { return try read(into: &buffer, range: range, at: offset) }
+        switch streamWay {
+        case .map:
+            return try read(into: &buffer, range: range, at: offset)
+        case .fileCalls:
+            return try calls.read(descriptor.rawValue, &buffer, range, offset)
+        case .willNeed:
+            askForStretch(at: offset, count: range.count)
+            return try read(into: &buffer, range: range, at: offset)
+        }
+    }
+
+    /// Asks the system to bring the part of `count` bytes from `offset`
+    /// that the map may give into memory, segment by segment.
+    private func askForStretch(at offset: UInt64, count: Int) {
+        let limit = map!.limit
+        guard offset < limit, count > 0 else { return }
+        let end = offset + min(UInt64(count), limit - offset)
+        let size = UInt64(map!.view.segmentSize)
+        var position = offset
+        while position < end {
+            guard let segment = segment(at: Int(position / size)) else { return }
+            let local = Int(position % size)
+            let stretch = Int(min(end - position, size - UInt64(local)))
+            segment.willNeed(at: local, count: stretch, by: calls.willNeed)
+            position += UInt64(stretch)
+        }
+    }
 
     // MARK: Replacing the file
 
@@ -603,7 +670,7 @@ public final class FileStorage: WritableStorage {
         guard
             let segment = MappedSegment(
                 descriptor: descriptor.rawValue, offset: UInt64(index) * UInt64(size), length: size,
-                map: calls.map)
+                map: calls.map, advise: calls.advise)
         else {
             map!.refused = true
             return nil

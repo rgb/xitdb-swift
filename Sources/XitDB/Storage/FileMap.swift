@@ -36,12 +36,25 @@ final class MappedSegment: Sendable {
     ///   the address space is used up.
     init?(
         descriptor: Int32, offset: UInt64, length: Int,
-        map: (Int32, UInt64, Int) -> (address: UInt, error: Int32) = Platform.mapFile
+        map: (Int32, UInt64, Int) -> (address: UInt, error: Int32) = Platform.mapFile,
+        advise: (UInt, Int) -> Void = Platform.adviseRandom
     ) {
         let mapped = map(descriptor, offset, length)
         guard mapped.error == 0 else { return nil }
         address = mapped.address
         self.length = length
+        // once, for the whole of the mapping, right after it is made
+        advise(mapped.address, length)
+    }
+
+    /// Asks the system, through `call`, to bring `count` bytes of the
+    /// segment from `offset` into memory ahead of their reading. The range
+    /// is widened to whole pages and kept within the segment.
+    func willNeed(at offset: Int, count: Int, by call: (UInt, Int) -> Void) {
+        guard offset >= 0, count > 0, offset < length else { return }
+        let page = Platform.pageSize
+        let start = offset - offset % page
+        call(address + UInt(start), min(offset + count, length) - start)
     }
 
     deinit {

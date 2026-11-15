@@ -269,6 +269,20 @@ public final class BufferedFileStorage: WritableStorage {
         try file.resize(to: length)
     }
 
+    /// A read of the stream of committed bytes
+    /// (``FileStorage/readForStream(into:range:at:)``): what is committed
+    /// is in the file, before the window, and is read as the file reads a
+    /// stream; a read that reaches the window is an ordinary read.
+    func readForStream(
+        into buffer: inout MutableSpan<UInt8>, range: Range<Int>, at offset: UInt64
+    ) throws(XitDBError) -> Int {
+        let (end, overflow) = offset.addingReportingOverflow(UInt64(range.count))
+        if memory.count == 0 || (!overflow && end <= memoryPosition) {
+            return try file.readForStream(into: &buffer, range: range, at: offset)
+        }
+        return try read(into: &buffer, range: range, at: offset)
+    }
+
     // MARK: Replacing the file
 
     /// Whether a replacement of the file underneath has begun and not ended.

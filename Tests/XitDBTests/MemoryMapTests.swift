@@ -341,6 +341,110 @@ private struct RolledBack: Error {}
         #expect(counts.reads == 0, "the bytes after an overwrite in place are still read through the map")
     }
 
+    // MARK: The advice, and a read in file order
+
+    /// The system is told how the map is read once for each segment, right
+    /// after the segment is mapped and for the whole of it; not again when
+    /// the segment is read again, and not for a segment the system refused
+    /// to map.
+    @Test func eachSegmentIsAdvisedOnceWhenItIsMapped() throws {
+        let directory = try TemporaryDirectory()
+        let (file, counts) = try Self.mapped(directory)
+        let page = Self.page
+        final class Advised {
+            var lengths: [Int] = []
+            var addresses: Set<UInt> = []
+        }
+        let advised = Advised()
+        file.calls.advise = { (address: UInt, length: Int) in
+            advised.lengths.append(length)
+            advised.addresses.insert(address)
+            Platform.adviseRandom(address: address, length: length)
+        }
+        file.calls.map = { (descriptor: Int32, offset: UInt64, length: Int) in
+            counts.maps += 1
+            if offset >= UInt64(3 * page) { return (0, ENOMEM) }
+            return Platform.mapFile(descriptor, offset: offset, length: length)
+        }
+        let bytes = Self.pattern(5 * page)
+        try writeBytes(file, bytes, at: 0)
+        #expect(advised.lengths.isEmpty, "nothing is advised before anything is mapped")
+
+        #expect(try readBytes(file, at: UInt64(page + 3), count: 10) == Array(bytes[(page + 3)..<(page + 13)]))
+        #expect(advised.lengths == [page])
+        #expect(try Self.afterTheHeaders(file, 3 * page) == Array(bytes[Self.headers..<(3 * page)]))
+        #expect(advised.lengths == [page, page, page], "one advice for each segment, of the segment's length")
+        #expect(advised.addresses.count == 3)
+        #expect(try Self.afterTheHeaders(file, 3 * page) == Array(bytes[Self.headers..<(3 * page)]))
+        #expect(advised.lengths.count == 3, "a segment that is mapped is not advised again")
+
+        // the fourth segment is refused: no advice for it, and none after
+        #expect(try Self.afterTheHeaders(file, bytes.count) == Array(bytes[Self.headers...]))
+        #expect(counts.maps == 4)
+        #expect(advised.lengths.count == 3)
+    }
+
+    /// The stream of committed bytes gives the same bytes whichever way it
+    /// reads a mapped file: by file calls, which is its way, through the
+    /// map, or through the map with each stretch asked for ahead. Only the
+    /// last asks the system for anything, and only the first reads the
+    /// data by file calls.
+    @Test(arguments: mappedKinds)
+    func theStreamOfCommittedBytesReadsItsOwnWay(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let database = try Database(creating: subject.storage, hashSize: 20)
+        try database.withTransaction { root in
+            try HashMap<ReadWrite>(root).put(.bytes(Self.pattern(40 * Self.page)), forHash: hashInt("large"))
+        }
+        let file = try #require(
+            (subject.storage as? FileStorage) ?? (subject.storage as? BufferedFileStorage)?.file)
+        let counts = CallCounts()
+        final class Asked {
+            var stretches = 0
+        }
+        let asked = Asked()
+        file.calls.read = {
+            (descriptor: Int32, buffer: inout MutableSpan<UInt8>, range: Range<Int>, offset: UInt64)
+                throws(XitDBError) -> Int in
+            counts.reads += 1
+            return try Platform.readFile(descriptor, into: &buffer, range: range, at: offset)
+        }
+        file.calls.willNeed = { (address: UInt, length: Int) in
+            asked.stretches += 1
+            Platform.adviseWillNeed(address: address, length: length)
+        }
+        let size = try database.committedSize
+        let expected = try subject.stored()
+
+        /// The stream of the whole database from its first byte, through
+        /// a sink, which is how a replica's source sends it.
+        func stream() throws -> [UInt8] {
+            var sink = ArrayByteSink()
+            try database.readCommitted(from: 0, to: size, into: &sink)
+            return sink.bytes
+        }
+
+        #expect(file.streamWay == .fileCalls, "the stream's own way")
+        var reads = counts.reads
+        #expect(try stream() == expected)
+        let byFileCalls = counts.reads - reads
+        #expect(byFileCalls >= 3, "the headers, and the data in the stream's chunks")
+        #expect(asked.stretches == 0)
+        // the bytes read straight into an array go the same way
+        #expect(try database.readCommitted(from: 0, to: size) == expected)
+        #expect(asked.stretches == 0)
+
+        file.streamWay = .map
+        reads = counts.reads
+        #expect(try stream() == expected)
+        #expect(counts.reads - reads < byFileCalls, "through the map all but what starts in the headers")
+        #expect(asked.stretches == 0)
+
+        file.streamWay = .willNeed
+        #expect(try stream() == expected)
+        #expect(asked.stretches >= 1, "each stretch is asked for ahead of its reading")
+    }
+
     // MARK: The fallback
 
     /// A file on a volume that is not this machine's, as far as the system

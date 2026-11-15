@@ -305,6 +305,30 @@ enum Platform {
         return (address, 0)
     }
 
+    /// Tells the system that a mapped range is read in no order, as a
+    /// database is that is read by following pointers: a read of a page
+    /// that is not in memory then brings that page, and not its neighbours
+    /// with it. Left to itself the system brings neighbours, on Linux a
+    /// fixed stretch of some megabytes around the page, which a process
+    /// short of memory pays for with the pages it needs next.
+    ///
+    /// It is advice: a refusal changes nothing and is not reported.
+    static func adviseRandom(address: UInt, length: Int) {
+        // Safe: the range is one that `mapFile` returned, and the call
+        // reads and writes nothing through the pointer.
+        _ = unsafe madvise(UnsafeMutableRawPointer(bitPattern: address), length, MADV_RANDOM)
+    }
+
+    /// Asks the system to bring a part of a mapped range into memory ahead
+    /// of its reading, which is what a read in file order through a range
+    /// advised as read in no order would otherwise lack. Advice, as
+    /// ``adviseRandom(address:length:)`` is.
+    static func adviseWillNeed(address: UInt, length: Int) {
+        // Safe: the range lies within one that `mapFile` returned, and the
+        // call reads and writes nothing through the pointer.
+        _ = unsafe madvise(UnsafeMutableRawPointer(bitPattern: address), length, MADV_WILLNEED)
+    }
+
     /// Unmaps what ``mapFile(_:offset:length:)`` mapped.
     static func unmapFile(address: UInt, length: Int) {
         // Safe: the range is one that `mapFile` returned, unmapped once, by

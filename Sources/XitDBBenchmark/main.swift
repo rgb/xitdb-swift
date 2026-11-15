@@ -50,6 +50,10 @@
 // `--hash-cost` measures no database: what hashing a key costs, by each way
 // of computing it, for keys of three lengths (HashCost.swift).
 //
+// `--cold` runs none of the workloads: it is the two cold lines of the
+// memory map, a walk in file order and the stream of a whole file, each
+// read when none of the file's pages is in memory (ColdLines.swift).
+//
 // With `--kind <kind>` the workloads run on that kind of storage alone,
 // `memory`, `file` or `buffered_file`, and a workload that does not have
 // the kind prints nothing. The gate's count of instructions
@@ -1347,6 +1351,11 @@ let arguments: [String] = {
     arguments.removeAll { $0 == "--snapshot" || $0 == "--mapped" || $0 == "--map-at-commits" }
     return arguments
 }()
+if arguments.first == "--cold" {
+    // the two cold lines of the memory map (ColdLines.swift)
+    try runColdLines(Array(CommandLine.arguments.dropFirst().drop { $0 != "--cold" }.dropFirst()))
+    exit(0)
+}
 if arguments.first == "--hash-cost" {
     runHashCost()
     exit(0)

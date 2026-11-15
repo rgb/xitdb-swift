@@ -133,6 +133,20 @@ enum BuiltInStorage {
         }
     }
 
+    /// A read of the stream of committed bytes, which a file storage that
+    /// reads through a memory map takes its own way
+    /// (``FileStorage/readForStream(into:range:at:)``); an ordinary read on
+    /// every other storage.
+    func readForStream(
+        into buffer: inout MutableSpan<UInt8>, range: Range<Int>, at offset: UInt64
+    ) throws(XitDBError) -> Int {
+        switch self {
+        case .file(let storage): try storage.readForStream(into: &buffer, range: range, at: offset)
+        case .bufferedFile(let storage): try storage.readForStream(into: &buffer, range: range, at: offset)
+        case .memory, .custom, .snapshot: try read(into: &buffer, range: range, at: offset)
+        }
+    }
+
     /// The file storage that takes its memory map's limit from the engine,
     /// if this is one: a file storage that only reads and reads through a
     /// map (``FileStorage/committedBytesVerified(upTo:)``). The other kinds
