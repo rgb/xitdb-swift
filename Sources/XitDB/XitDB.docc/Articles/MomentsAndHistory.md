@@ -49,9 +49,9 @@ The value is the point of the pattern. ``ArrayList/slot(at:)`` with `-1` is the 
 it holds. None of that has been copied. In the first transaction there is no last element, the slot is `nil`,
 and `.slot(nil)` writes a slot set to nothing, which ``HashMap`` then makes into a new map.
 
-Copying happens as the body changes things. Making the read-write ``HashMap`` copies the first block of the map
-it was given, and each ``HashMap/put(_:forKey:storingKey:)-(StorableValue,_,_)`` copies the blocks on the way to the entry it changes. Everything else stays shared
-with earlier moments:
+Copying happens as the body changes things. Making the read-write ``HashMap`` copies the first block of the map it was
+given, and each ``HashMap/put(_:forKey:storingKey:)-(StorableValue,_,_)`` copies the blocks on the way to the entry it
+changes. Everything else stays shared with earlier moments:
 
 ![A history of three moments, each a map. The first holds apples at 120 and pears at 300. The second shares the pears with the first and has a new price for apples. The third shares the new price and has no pears.](history.svg)
 
@@ -165,10 +165,10 @@ let map = try HashMap<ReadWrite>(database.rootCursor)
 try map.put(UInt64(10), forKey: "price")
 ```
 
-Each ``HashMap/put(_:forKey:storingKey:)-(StorableValue,_,_)`` is then a transaction of its own, unless you group them with ``Database/withTransaction(_:)``. The
-bytes of earlier states are still in the file, with nothing in the database leading to them. The file still grows with
-every transaction until you compact it, by 160 bytes less per transaction in a short history because there is no list to
-copy, and 144 less for each level of a longer one.
+Each ``HashMap/put(_:forKey:storingKey:)-(StorableValue,_,_)`` is then a transaction of its own, unless you group them
+with ``Database/withTransaction(_:)``. The bytes of earlier states are still in the file, with nothing in the database
+leading to them. The file still grows with every transaction until you compact it, by 160 bytes less per transaction in
+a short history because there is no list to copy, and 144 less for each level of a longer one.
 
 ## See Also
 

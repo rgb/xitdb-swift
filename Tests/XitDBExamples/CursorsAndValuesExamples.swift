@@ -529,8 +529,7 @@ private struct FailingRecord: StorableValue {
 
     @Test func iteratingOverAMapGivesEntries() throws {
         let moment = try newMoment { moment in
-            try moment.putKey("name")
-            try moment.put("Alice", forKey: "name")
+            try moment.put("Alice", forKey: "name", storingKey: true)
             try moment.put(UInt64(25), forKey: "age")
         }
 

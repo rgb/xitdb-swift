@@ -27,9 +27,10 @@ for price: UInt64 in [10, 12, 15] {
 ```
 
 Three things in that code are not what you might assume. The database is given the hasher of its keys, `SHA256` from the
-package's `XitDBHashing`, and a put stores its value under the key's hash and not the key, as in the original: see
-<doc:Hashing>. A collection is a view of a slot, made from a cursor, and it comes in a read-only and a read-write form:
-see <doc:TheCollections>. And the file only grows until you compact it: see <doc:MomentsAndHistory> for what that costs.
+package's `XitDBHashing`, and a put stores its value under the key's hash and, unless it is given `storingKey: true`,
+not the key, which the original's put never stores: see <doc:Hashing>. A collection is a view of a slot, made from a
+cursor, and it comes in a read-only and a read-write form: see <doc:TheCollections>. And the file only grows until you
+compact it: see <doc:MomentsAndHistory> for what that costs.
 
 A database whose root header or last trailer is damaged does not open. Opening names the last commit that
 verifies, and one explicit call cuts the file back to it, which can lose the commits after it: see <doc:Recovery>.
