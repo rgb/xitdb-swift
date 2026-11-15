@@ -166,11 +166,15 @@ func onLargeStack(stackSize: Int = 64 << 20, _ body: @escaping @Sendable () thro
             self.body = body
         }
     }
-    var attributes = pthread_attr_t()
-    var code = pthread_attr_init(&attributes)
+    // Room for the attributes, and not `pthread_attr_t()`: on Linux that
+    // initializer belongs to a module of Dispatch's that no file can import,
+    // and the compiler refuses its use.
+    let attributes = UnsafeMutablePointer<pthread_attr_t>.allocate(capacity: 1)
+    defer { attributes.deallocate() }
+    var code = pthread_attr_init(attributes)
     guard code == 0 else { throw NoThreadForALargeStack(call: "pthread_attr_init", code: code) }
-    defer { _ = pthread_attr_destroy(&attributes) }
-    code = pthread_attr_setstacksize(&attributes, stackSize)
+    defer { _ = pthread_attr_destroy(attributes) }
+    code = pthread_attr_setstacksize(attributes, stackSize)
     guard code == 0 else { throw NoThreadForALargeStack(call: "pthread_attr_setstacksize", code: code) }
 
     let run = Run(body)
@@ -179,16 +183,16 @@ func onLargeStack(stackSize: Int = 64 << 20, _ body: @escaping @Sendable () thro
     #if canImport(Darwin)
         var thread: pthread_t?
         code = pthread_create(
-            &thread, &attributes,
+            &thread, attributes,
             { context in
                 let run = Unmanaged<Run>.fromOpaque(context).takeRetainedValue()
                 do { try run.body() } catch { run.error = error }
                 return nil
             }, context)
     #else
-        var thread = pthread_t()
+        var thread: pthread_t = 0
         code = pthread_create(
-            &thread, &attributes,
+            &thread, attributes,
             { context in
                 guard let context else { return nil }
                 let run = Unmanaged<Run>.fromOpaque(context).takeRetainedValue()

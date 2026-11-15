@@ -17,24 +17,21 @@ import Testing
         return depth == 0 ? Int(frame[0]) : descend(depth - 1) + Int(frame[1023] & 0)
     }
 
-    /// The size of the stack of the thread that asks.
-    private static func stackSizeOfThisThread() -> Int {
-        #if canImport(Darwin)
-            return pthread_get_stacksize_np(pthread_self())
-        #else
-            var attributes = pthread_attr_t()
-            guard pthread_getattr_np(pthread_self(), &attributes) == 0 else { return -1 }
-            defer { _ = pthread_attr_destroy(&attributes) }
-            var size = 0
-            guard pthread_attr_getstacksize(&attributes, &size) == 0 else { return -1 }
-            return size
-        #endif
-    }
+    #if canImport(Darwin)
+        /// The size of the stack of the thread that asks. Darwin answers
+        /// this; glibc's way of asking, `pthread_getattr_np`, is not among
+        /// the calls Swift is shown on Linux.
+        private static func stackSizeOfThisThread() -> Int {
+            pthread_get_stacksize_np(pthread_self())
+        }
+    #endif
 
-    /// The body runs on a thread whose stack is of the size asked for, 64
-    /// MiB unless said otherwise, and a recursion of sixteen thousand
-    /// frames of a kilobyte and more, which a thread's stack of half a
-    /// megabyte (macOS) or eight (Linux) does not hold, returns.
+    /// The body runs on the thread made for it, and a recursion sixteen
+    /// thousand calls deep with a kilobyte of locals in each, which in a
+    /// debug build is more stack than a thread is given unasked (half a
+    /// megabyte on macOS, eight on Linux), returns. Where the system says
+    /// how large a thread's stack is, the thread has the size asked for,
+    /// 64 MiB unless said otherwise.
     @Test func theBodyRunsOnTheLargeStack() throws {
         final class Seen: @unchecked Sendable {
             var stackSize = -1
@@ -42,15 +39,18 @@ import Testing
         }
         let seen = Seen()
         try onLargeStack {
-            seen.stackSize = Self.stackSizeOfThisThread()
+            #if canImport(Darwin)
+                seen.stackSize = Self.stackSizeOfThisThread()
+            #endif
             seen.reached = Self.descend(16 << 10)
         }
-        #expect(seen.stackSize >= 64 << 20)
         #expect(seen.reached == 1)
-
-        try onLargeStack(stackSize: 4 << 20) { seen.stackSize = Self.stackSizeOfThisThread() }
-        #expect(seen.stackSize >= 4 << 20)
-        #expect(seen.stackSize < 64 << 20)
+        #if canImport(Darwin)
+            #expect(seen.stackSize >= 64 << 20)
+            try onLargeStack(stackSize: 4 << 20) { seen.stackSize = Self.stackSizeOfThisThread() }
+            #expect(seen.stackSize >= 4 << 20)
+            #expect(seen.stackSize < 64 << 20)
+        #endif
     }
 
     /// What the body throws comes out of the call.

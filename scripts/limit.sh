@@ -7,10 +7,11 @@
 # Linux each of its threads by name and state. Then the run is killed with everything
 # below it, and the step fails.
 #
-# SwiftPM runs the tests in a process of its own, a helper on macOS and the test
-# bundle on Linux; ending `swift test` alone leaves that process behind with every
-# thread it had. It is below `swift test`, so it is killed with it, and
-# test_processes_left names any that is still there afterwards.
+# SwiftPM runs the tests in a process of its own, its helper on macOS
+# (swiftpm-testing-helper) and the tests' runner on Linux (XitDBTests-test-runner);
+# ending `swift test` alone leaves that process behind with every thread it had. It is
+# below `swift test`, so it is killed with it, and test_processes_left names any that
+# is still there afterwards.
 #
 # A limit is for the run and not for a build: each `swift test` in the gate is given
 # `--skip-build` after a build of its own, so that a cold build is not what runs out of
@@ -52,13 +53,14 @@ command_of() {
 }
 
 # The process that runs the tests of a run: below `swift test` it is SwiftPM's helper
-# on macOS and the test bundle on Linux; the simulator's is not below xcodebuild, and
-# is found by the test bundle in this package's derived data.
+# on macOS, or xctest with the bundle, and the tests' runner on Linux; the simulator's
+# is not below xcodebuild, and is found by the test bundle in this package's derived
+# data.
 test_process_of() {
     local pid
     for pid in $(descendants "$1"); do
         case "$(command_of "$pid")" in
-        *swiftpm-testing-helper* | *.xctest*)
+        *swiftpm-testing-helper* | *-test-runner* | *.xctest*)
             echo "$pid"
             return
             ;;
@@ -93,7 +95,7 @@ test_processes_left() {
         local pid
         for pid in /proc/[0-9]*; do
             case "$(tr '\0' ' ' <"$pid/cmdline" 2>/dev/null)" in
-            *"$PWD/"*.xctest*) echo "${pid#/proc/}" ;;
+            "$PWD/"*-test-runner* | *"$PWD/"*.xctest*) echo "${pid#/proc/}" ;;
             esac
         done
     fi

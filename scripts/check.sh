@@ -93,7 +93,10 @@ grep -q "^---- the test process" .build/without-end.txt || {
     echo "error: the run was ended without a look at its test process"
     exit 1
 }
-grep -q "aTestThatDoesNotEnd\|sleep\|^ *[0-9][0-9]* .* [RSD]$" .build/without-end.txt || {
+# what the look itself shows, between its two rules: the sleeping test in the sample,
+# or a thread with its state
+sed -n '/^---- the test process/,/^----$/p' .build/without-end.txt \
+    | grep -q "aTestThatDoesNotEnd\|sleepForTimeInterval\|^ *[0-9][0-9]* .* [RSD]$" || {
     echo "error: the look at the test process shows nothing of it"
     exit 1
 }
