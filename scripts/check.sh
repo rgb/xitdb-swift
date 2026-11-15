@@ -59,6 +59,67 @@ step "Debug build and tests"
 swift build "${strict[@]}"
 swift test --skip SnapshotProofTests "${strict[@]}"
 
+# On macOS the package is built for an iOS simulator now, and only run at the gate's end.
+# The simulator's tests build every target, the tools with the libraries, so a source
+# that does not compile for iOS, a tool's as much as a library's, would otherwise fail
+# the gate in its last step, after everything else had passed: a call that iOS's SDK
+# lacks, in the benchmark, once did. Built here it stops the gate in its first minutes.
+# The products stay in the derived data the last step uses, which finds them built and
+# runs them, so a passing gate builds them once.
+#
+# xcodebuild always uses the compiler that ships with Xcode. The workspace selects the
+# same one for `swift`, so the whole gate runs on one compiler; its version is printed
+# here so that a mismatch with the "Toolchain" step above would show.
+if [ "$platform" = Darwin ]; then
+    # xcodebuild keeps the package's resource bundles in its derived data and
+    # does not refresh them when Package.swift declares a new resource folder:
+    # a gate once passed every step and then failed on the simulator, whose
+    # test bundle lacked a folder the commit had added. The derived data is
+    # removed when Package.swift or the set of resource files differs from
+    # what the last passing gate saw, which a stamp records; a cold simulator
+    # step costs minutes more than a warm one, so it is not removed every time.
+    # POSIX tools only: a Mac with GNU coreutils first on its PATH, as the
+    # Actions runner has, reads `stat -f` as a file system query, and `cksum`
+    # prints the same on both.
+    stamp=.build/xcodebuild-stamp
+    current=$({
+        cat Package.swift
+        find Sources Tests -path '*/Resources/*' -type f -exec cksum {} + | LC_ALL=C sort
+    } | cksum | cut -d' ' -f1,2)
+    if [ ! -f "$stamp" ] || [ "$(cat "$stamp")" != "$current" ]; then
+        echo "Package.swift or the resources changed since the last passing gate: xcodebuild starts clean"
+        rm -rf .build/xcodebuild .build/xcodebuild-ios .build/xcodebuild-ios-tsan
+    fi
+
+    step "iOS simulator build"
+    xcrun swiftc --version
+    xcrun swiftc --version 2>&1 | grep -q "Swift version $expected_swift " || {
+        echo "error: xcodebuild would use another compiler than the gate: Swift $expected_swift expected"
+        exit 1
+    }
+    # `|| true` because the script runs under `set -e -o pipefail`: where no iPhone is
+    # listed, grep's status 1 is the pipeline's, the assignment fails with it, and the gate
+    # stopped here with nothing said instead of skipping. It also covers simctl failing.
+    simulator=$(xcrun simctl list devices available 2>/dev/null \
+        | grep -E '^ +iPhone [0-9]+ \(' | head -1 | sed -E 's/^ *(iPhone [0-9]+) .*/\1/') || true
+    # xcodebuild prints every compiler call; only the test summaries and the failures
+    # are kept (pipefail carries xcodebuild's own status through the pipe).
+    summary() { grep -E "Test run with|TEST (BUILD )?(SUCCEEDED|FAILED)|error:|✘ Test " || true; }
+    if [ -z "$simulator" ]; then
+        echo "skipped: no iPhone simulator is available on this machine"
+    else
+        echo "simulator: $simulator, $(xcrun simctl list runtimes 2>/dev/null | grep -E '^iOS' | head -1 | cut -d' ' -f1-2)"
+        xcodebuild build-for-testing \
+            -scheme xitdb-swift-Package \
+            -destination "platform=iOS Simulator,name=$simulator" \
+            -derivedDataPath .build/xcodebuild-ios \
+            -configuration Release \
+            ENABLE_TESTABILITY=YES \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES 2>&1 | summary
+        echo "ok"
+    fi
+fi
+
 # D35, item 4: an integer whose kind is not spelled does not compile, since `Int` is
 # not a value. A test target cannot hold code the compiler has to refuse, so two files
 # are type-checked against the library the debug build made: one that must compile,
@@ -211,37 +272,10 @@ swift package generate-documentation --target XitDB --warnings-as-errors
 swift package generate-documentation --target XitDBHashing --warnings-as-errors
 swift scripts/check-curation.swift
 
-# xcodebuild always uses the compiler that ships with Xcode. The workspace selects the
-# same one for `swift`, so the whole gate runs on one compiler; its version is printed
-# here so that a mismatch with the "Toolchain" step above would show. Only macOS has
-# Xcode; the Linux gate ends with the documentation build.
+# The rest needs Xcode, which only macOS has; the Linux gate ends with the documentation
+# build.
 if [ "$platform" = Darwin ]; then
-    # xcodebuild keeps the package's resource bundles in its derived data and
-    # does not refresh them when Package.swift declares a new resource folder:
-    # a gate once passed every step and then failed on the simulator, whose
-    # test bundle lacked a folder the commit had added. The derived data is
-    # removed when Package.swift or the set of resource files differs from
-    # what the last passing gate saw, which a stamp records; a cold simulator
-    # step costs minutes more than a warm one, so it is not removed every time.
-    # POSIX tools only: a Mac with GNU coreutils first on its PATH, as the
-    # Actions runner has, reads `stat -f` as a file system query, and `cksum`
-    # prints the same on both.
-    stamp=.build/xcodebuild-stamp
-    current=$({
-        cat Package.swift
-        find Sources Tests -path '*/Resources/*' -type f -exec cksum {} + | LC_ALL=C sort
-    } | cksum | cut -d' ' -f1,2)
-    if [ ! -f "$stamp" ] || [ "$(cat "$stamp")" != "$current" ]; then
-        echo "Package.swift or the resources changed since the last passing gate: xcodebuild starts clean"
-        rm -rf .build/xcodebuild .build/xcodebuild-ios .build/xcodebuild-ios-tsan
-    fi
-
     step "iOS compile check"
-    xcrun swiftc --version
-    xcrun swiftc --version 2>&1 | grep -q "Swift version $expected_swift " || {
-        echo "error: xcodebuild would use another compiler than the gate: Swift $expected_swift expected"
-        exit 1
-    }
     # The scheme is the library's. Xcode makes one scheme per product once a package has more
     # than one, and none named after the package, which is what this used before the benchmark
     # became the second product.
@@ -261,20 +295,13 @@ if [ "$platform" = Darwin ]; then
     # with every target and test target in it, and testability is switched on for the
     # release configuration so that the tests reach internal declarations as they do under
     # `swift test -c release`.
+    # The first of the two runs finds the scheme built: the simulator build above, early
+    # in the gate, built it in this configuration and this derived data.
     step "iOS simulator tests"
     simulator_start=$(date +%s)
-    # `|| true` because the script runs under `set -e -o pipefail`: where no iPhone is
-    # listed, grep's status 1 is the pipeline's, the assignment fails with it, and the gate
-    # stopped here with nothing said instead of skipping. It also covers simctl failing.
-    simulator=$(xcrun simctl list devices available 2>/dev/null \
-        | grep -E '^ +iPhone [0-9]+ \(' | head -1 | sed -E 's/^ *(iPhone [0-9]+) .*/\1/') || true
     if [ -z "$simulator" ]; then
         echo "skipped: no iPhone simulator is available on this machine"
     else
-        echo "simulator: $simulator, $(xcrun simctl list runtimes 2>/dev/null | grep -E '^iOS' | head -1 | cut -d' ' -f1-2)"
-        # xcodebuild prints every compiler call; only the test summaries and the failures
-        # are kept (pipefail carries xcodebuild's own status through the pipe).
-        summary() { grep -E "Test run with|TEST (SUCCEEDED|FAILED)|error:|✘ Test " || true; }
         xcodebuild test \
             -scheme xitdb-swift-Package \
             -destination "platform=iOS Simulator,name=$simulator" \
