@@ -379,12 +379,14 @@ extension HashMap where Access == ReadWrite {
     public func put(
         _ value: WritableData, forKey key: some KeyRepresentable, storingKey: Bool = false
     ) throws(XitDBError) {
-        let hash = try cursor.keyHash(of: key)
-        if storingKey {
-            try put(value, storingKey: key.keyData, forHash: hash)
-        } else {
-            try put(value, forHash: hash)
+        guard storingKey else {
+            try put(value, forHash: try cursor.keyHash(of: key))
+            return
         }
+        // The key's bytes are asked for once: they are hashed, and they
+        // are what is stored.
+        let stored = try cursor.keyHashAndData(of: key)
+        try put(value, storingKey: stored.data, forHash: stored.hash)
     }
 
     /// A cursor at the value stored under a hash, for writing it or for
@@ -471,7 +473,10 @@ extension HashMap where Access == ReadWrite {
     ///   hasher, before anything else is looked at, and what
     ///   ``putKey(_:forHash:)-(_,Span<UInt8>)`` throws.
     public func putKey(_ key: some KeyRepresentable) throws(XitDBError) {
-        try putKey(key.keyData, forHash: try cursor.keyHash(of: key))
+        // The key's bytes are asked for once: they are hashed, and they
+        // are what is stored.
+        let stored = try cursor.keyHashAndData(of: key)
+        try putKey(stored.data, forHash: stored.hash)
     }
 
     /// A cursor at the key stored beside the value under a hash, for
@@ -747,10 +752,19 @@ extension HashMap where Access == ReadWrite {
     func putWritingItself(
         _ value: some StorableValue, forKey key: some KeyRepresentable, storingKey: Bool
     ) throws(XitDBError) {
-        let hash = try cursor.keyHash(of: key)
-        // The key that is stored, if it is: made before the walk, so that
-        // nothing of the key is looked at once the entry exists.
-        let keyData: WritableData? = storingKey ? key.keyData : nil
+        // The key that is stored, if it is, from the bytes that are
+        // hashed: asked for once, and before the walk, so that nothing of
+        // the key is looked at once the entry exists.
+        let hash: KeyHash
+        let keyData: WritableData?
+        if storingKey {
+            let stored = try cursor.keyHashAndData(of: key)
+            hash = stored.hash
+            keyData = stored.data
+        } else {
+            hash = try cursor.keyHash(of: key)
+            keyData = nil
+        }
         let path: InlineArray<2, PathPart> = [.hashMapGet(.value, hash), .ctx]
         _ = try cursor.writePath(
             path.span,
@@ -768,25 +782,22 @@ extension HashMap where Access == ReadWrite {
 }
 
 extension Cursor where Access == ReadWrite {
-    /// A cursor at the key of the entry whose value this cursor is at.
-    ///
-    /// An entry of a hash map is its hash, its key's slot and its value's
-    /// slot, one after the other (`DatabaseReader.pairSlotPointer` has the
-    /// same arithmetic the other way), so the key is the slot before the
-    /// value. The cursor is this one in everything else: the same
-    /// transaction, made at the same time.
+    /// A cursor at the key of the entry whose value this cursor is at: the
+    /// engine says where the key's slot is. The cursor is this one in
+    /// everything else: the same transaction, made at the same time.
     ///
     /// The put that stores the key walks to the value and takes the key
     /// from there, not the other way round, so that the cursor a value
     /// writes itself through is the walk's own: at the root that is the
     /// transaction's cursor, the one that goes on after a freeze.
+    ///
+    /// - Throws: `cursorNotWritable` for a cursor with no position, which
+    ///   a walk to an entry's value never gives, and what the engine's
+    ///   reading of the key's slot throws.
     func keyCursorBesideValue() throws(XitDBError) -> Cursor<ReadWrite> {
-        guard let valuePosition = slotPointer.position, valuePosition >= Slot.byteCount else {
-            throw .cursorNotWritable
-        }
-        let keyPosition = valuePosition - Slot.byteCount
+        guard let valuePosition = slotPointer.position else { throw .cursorNotWritable }
         var key = self
-        key.slotPointer = SlotPointer(position: keyPosition, slot: try engine.reader.slot(at: keyPosition))
+        key.slotPointer = try engine.reader.keySlotPointer(besideValueSlotAt: valuePosition)
         return key
     }
 }

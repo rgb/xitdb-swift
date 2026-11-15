@@ -276,7 +276,10 @@ extension HashSet where Access == ReadWrite {
     ///   hasher, before anything else is looked at, and what
     ///   ``insert(_:forHash:)-(_,Span<UInt8>)`` throws.
     public func insert(_ key: some KeyRepresentable) throws(XitDBError) {
-        try insert(key.keyData, forHash: try cursor.keyHash(of: key))
+        // The key's bytes are asked for once: they are hashed, and they
+        // are the member that is stored.
+        let stored = try cursor.keyHashAndData(of: key)
+        try insert(stored.data, forHash: stored.hash)
     }
 
     /// A cursor at the key stored under a hash, for writing it. The set

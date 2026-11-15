@@ -117,6 +117,21 @@ private struct FreezesBetweenWrites: StorableValue, Equatable {
     }
 }
 
+/// A key that counts how often it is asked for its bytes.
+private final class CountedKey: KeyRepresentable {
+    let text: String
+    private(set) var asked = 0
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var keyBytes: [UInt8] {
+        asked += 1
+        return Array(text.utf8)
+    }
+}
+
 @Suite struct StoredKeyTests {
     /// Keys of each kind a key comes in, short and long.
     static let short = "a"
@@ -496,5 +511,114 @@ private struct FreezesBetweenWrites: StorableValue, Equatable {
         #expect(withoutKey == 1)
         #expect(try map.keyCursor(forKey: "forgotten") == nil)
         #expect(try map.cursor(forKey: "forgotten")?.readUInt64() == 3)
+    }
+
+    /// A put that stores its key asks the key for its bytes once: they are
+    /// hashed, and they are what is stored. Without the argument it is once
+    /// too, as it was. So it is for `putKey` and for a set's `insert`,
+    /// which hash the key and store it as well.
+    @Test func theKeyIsAskedForItsBytesOnce() throws {
+        let pair = try Pair()
+        try pair.one.withTransaction { root in
+            let map = try HashMap<ReadWrite>(try Pair.place(root))
+            let counted = try CountedHashMap<ReadWrite>(map.putCursor(forKey: "counted"))
+
+            let data = CountedKey("data")
+            try map.put(.uint(1), forKey: data, storingKey: true)
+            #expect(data.asked == 1)
+            let own = CountedKey("a value of the library's own")
+            try map.put("text", forKey: own, storingKey: true)
+            #expect(own.asked == 1)
+            let itself = CountedKey("a value that writes itself")
+            try map.put(Reading(place: "Oslo", degrees: -3), forKey: itself, storingKey: true)
+            #expect(itself.asked == 1)
+            let plain = CountedKey("without the argument")
+            try map.put(.uint(2), forKey: plain)
+            #expect(plain.asked == 1)
+
+            let countedData = CountedKey("data")
+            try counted.put(.uint(1), forKey: countedData, storingKey: true)
+            #expect(countedData.asked == 1)
+            let countedItself = CountedKey("a value that writes itself")
+            try counted.put(Reading(place: "Lima", degrees: 19), forKey: countedItself, storingKey: true)
+            #expect(countedItself.asked == 1)
+
+            let mapKey = CountedKey("put as a key")
+            try map.putKey(mapKey)
+            #expect(mapKey.asked == 1)
+            let countedMapKey = CountedKey("put as a key")
+            try counted.putKey(countedMapKey)
+            #expect(countedMapKey.asked == 1)
+            let set = try HashSet<ReadWrite>(map.putCursor(forKey: "set"))
+            let member = CountedKey("a member")
+            try set.insert(member)
+            #expect(member.asked == 1)
+            let countedSet = try CountedHashSet<ReadWrite>(map.putCursor(forKey: "counted set"))
+            let countedMember = CountedKey("a member")
+            try countedSet.insert(countedMember)
+            #expect(countedMember.asked == 1)
+            #expect(try map.keyCursor(forKey: "put as a key")?.readBytes() == Array("put as a key".utf8))
+            #expect(try counted.keyCursor(forKey: "put as a key")?.readBytes() == Array("put as a key".utf8))
+            #expect(try set.readOnly.cursor(forKey: "a member")?.readBytes() == Array("a member".utf8))
+            #expect(try countedSet.readOnly.cursor(forKey: "a member")?.readBytes() == Array("a member".utf8))
+            #expect(try countedSet.count == 1)
+
+            // What was hashed is what was stored.
+            #expect(try map.keyCursor(forKey: "data")?.readBytes() == Array("data".utf8))
+            #expect(
+                try map.keyCursor(forKey: "a value that writes itself")?.readBytes()
+                    == Array("a value that writes itself".utf8))
+            #expect(try counted.keyCursor(forKey: "data")?.readBytes() == Array("data".utf8))
+        }
+    }
+
+    /// The layout of an entry is the engine's, written down once: the hash,
+    /// the key's slot, the value's slot. From the pair to the key, from the
+    /// key to the value, and from the value back to the key.
+    @Test func theEngineLaysAnEntryOutBothWays() throws {
+        let hashSizes: [UInt16] = [1, 20, 32, 64]
+        let pairs: [UInt64] = [0, 12, 1 << 40]
+        for hashSize in hashSizes {
+            for pair in pairs {
+                let key = try DatabaseReader.keySlotPosition(inPairAt: pair, hashSize: hashSize)
+                let value = try DatabaseReader.valueSlotPosition(afterKeySlotAt: key)
+                #expect(key == pair + UInt64(hashSize))
+                #expect(value == key + Slot.byteCount)
+                #expect(try DatabaseReader.keySlotPosition(beforeValueSlotAt: value) == key)
+            }
+        }
+        #expect(try DatabaseReader.keySlotPosition(beforeValueSlotAt: Slot.byteCount) == 0)
+        // No pair's value is where there is no room for a key's slot before
+        // it, and no slot is beyond the last position.
+        #expect(throws: XitDBError.endOfStream) {
+            try DatabaseReader.keySlotPosition(beforeValueSlotAt: Slot.byteCount - 1)
+        }
+        let last = UInt64.max
+        #expect(throws: XitDBError.endOfStream) { try DatabaseReader.valueSlotPosition(afterKeySlotAt: last) }
+        #expect(throws: XitDBError.endOfStream) {
+            try DatabaseReader.keySlotPosition(inPairAt: last, hashSize: 20)
+        }
+    }
+
+    /// The key's slot the engine hands out beside a value's is the entry's
+    /// own, as the storage holds it; and a cursor with no position has no
+    /// entry to have a key beside.
+    @Test func theKeyBesideAValueIsTheEntrysOwn() throws {
+        let pair = try Pair()
+        try pair.one.withTransaction { root in
+            let map = try HashMap<ReadWrite>(try Pair.place(root))
+            try map.putKey("with a key")
+            let value = try map.putCursor(forKey: "with a key")
+            let key = try value.keyCursorBesideValue()
+            #expect(try key.slot == (try map.putKeyCursor(forKey: "with a key").slot))
+            #expect(try key.readOnly.readBytes() == Array("with a key".utf8))
+
+            let bare = try map.putCursor(forKey: "without")
+            #expect(try bare.keyCursorBesideValue().slot.isEmpty)
+
+            let nowhere = Cursor<ReadWrite>(
+                slotPointer: SlotPointer(position: nil, slot: Slot()), database: pair.one)
+            #expect(throws: XitDBError.cursorNotWritable) { try nowhere.keyCursorBesideValue() }
+        }
     }
 }
