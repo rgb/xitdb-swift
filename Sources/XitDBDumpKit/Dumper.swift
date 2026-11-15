@@ -162,9 +162,16 @@ package struct Dumper {
         }
         dump.header = header
         guard let history, let count = header.momentCount else {
-            // The root is not a history: dump it as one moment.
+            // The root is not a history: it is dumped as one moment, moment
+            // 0, and what the options say of a moment holds for it. A path
+            // starts below it; no other moment than it is there.
             dump.notes.append("the root is not a list of moments; it is dumped as it is")
-            dump.moments = [Dump.Moment(index: 0, root: node(root, path: "root", depth: 0))]
+            if let wanted = options.moment, wanted != 0, wanted != -1 {
+                dump.notes.append("there is no moment \(wanted): the root is not a list of moments")
+                dump.exitCode = max(dump.exitCode, 1)
+                return
+            }
+            dump.moments = [Dump.Moment(index: 0, root: node(below: root, label: "root"))]
             if dump.exitCode == 0, containsDamage(dump.moments[0].root) { dump.exitCode = 1 }
             return
         }
@@ -190,24 +197,11 @@ package struct Dumper {
                     Dump.Moment(index: index, root: Node(.unreadable, text: "moment \(index): \(error)")))
                 continue
             }
-            guard var cursor else {
+            guard let cursor else {
                 dump.moments.append(Dump.Moment(index: index, root: Node(.empty)))
                 continue
             }
-            var label = "moment \(index)"
-            var failed: Node?
-            for step in options.path {
-                switch descend(cursor, by: step) {
-                case .success(let next):
-                    cursor = next
-                    label += "/" + Self.describe(step)
-                case .failure(let error):
-                    failed = Node(.unreadable, text: "no such place: \(Self.describe(step)) (\(error))")
-                }
-                if failed != nil { break }
-            }
-            let node = failed ?? node(cursor, path: label, depth: 0)
-            dump.moments.append(Dump.Moment(index: index, root: node))
+            dump.moments.append(Dump.Moment(index: index, root: node(below: cursor, label: "moment \(index)")))
         }
         if budgetSpent {
             dump.notes.append(
@@ -218,6 +212,25 @@ package struct Dumper {
     }
 
     // MARK: Paths
+
+    /// The node at the options' path below `cursor`, or, where a step is not
+    /// there or does not fit what it is taken on, the node that says which.
+    /// `label` is what the place below `cursor` is called in the paths of
+    /// what is shared.
+    private mutating func node(below cursor: Cursor<ReadOnly>, label: String) -> Node {
+        var cursor = cursor
+        var label = label
+        for step in options.path {
+            switch descend(cursor, by: step) {
+            case .success(let next):
+                cursor = next
+                label += "/" + Self.describe(step)
+            case .failure(let error):
+                return Node(.unreadable, text: "no such place: \(Self.describe(step)) (\(error))")
+            }
+        }
+        return node(cursor, path: label, depth: 0)
+    }
 
     private enum StepFailure: Error, CustomStringConvertible {
         case missing

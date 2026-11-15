@@ -149,6 +149,112 @@ import XitDBHashing
         #expect(Self.dump(bytes, options).moments.first?.root.kind == .unreadable)
     }
 
+    /// A root that is not a list of moments is dumped as moment 0, and a
+    /// path starts below it as it does below a moment: by a key's name or
+    /// hash into a map, by an index into a list. A step that is not there,
+    /// or that does not fit what it is taken on, says so and is exit code 1.
+    /// The tool once dumped the whole root under a label that named the
+    /// path, and exited 0 for a path that does not exist.
+    @Test func aPathStartsBelowARootThatIsNotAHistory() throws {
+        func fixture(_ name: String) throws -> [UInt8] {
+            try Self.bytes(try Self.resources().appendingPathComponent("fixtures/valid/compact-roots--port.\(name).db"))
+        }
+        var options = DumpOptions()
+        options.hash = .sha1
+
+        // A hash map of "a" to 1 and "b" to some bytes.
+        let map = try fixture("t_map")
+        options.path = [.key("a")]
+        var dump = Self.dump(map, options)
+        #expect(dump.moments.map(\.index) == [0])
+        #expect(dump.moments.first?.root == Node(.uint, text: "1"))
+        #expect(dump.exitCode == 0)
+        #expect(Self.text(map, options).contains("\nmoment 0/a: uint 1\n"))
+        options.path = [.hash(Self.sha1("a"))]
+        #expect(Self.dump(map, options).moments.first?.root == Node(.uint, text: "1"))
+        options.path = [.key("nothing-there")]
+        dump = Self.dump(map, options)
+        #expect(dump.moments.first?.root.kind == .unreadable)
+        #expect(dump.exitCode == 1)
+        #expect(
+            Self.text(map, options).contains(
+                "\nmoment 0/nothing-there: unreadable: no such place: nothing-there (nothing there)\n"))
+        options.path = [.index(0)]
+        dump = Self.dump(map, options)
+        #expect(dump.moments.first?.root.kind == .unreadable, "an index into a map")
+        #expect(dump.exitCode == 1)
+
+        // A linked list of 0 and 1.
+        let linked = try fixture("s_linked")
+        options.path = [.index(1)]
+        dump = Self.dump(linked, options)
+        #expect(dump.moments.first?.root == Node(.uint, text: "1"))
+        #expect(dump.exitCode == 0)
+        #expect(Self.text(linked, options).contains("\nmoment 0/#1: uint 1\n"))
+        options.path = [.index(5)]
+        dump = Self.dump(linked, options)
+        #expect(dump.moments.first?.root.kind == .unreadable)
+        #expect(dump.exitCode == 1)
+        options.path = [.key("a")]
+        dump = Self.dump(linked, options)
+        #expect(dump.moments.first?.root.kind == .unreadable, "a key into a list")
+        #expect(dump.exitCode == 1)
+
+        // A sorted map of "a" to 1 and "b" to 2.
+        let sorted = try fixture("s_sorted")
+        options.path = [.key("b")]
+        dump = Self.dump(sorted, options)
+        #expect(dump.moments.first?.root == Node(.uint, text: "2"))
+        #expect(dump.exitCode == 0)
+        options.path = [.key("c")]
+        dump = Self.dump(sorted, options)
+        #expect(dump.moments.first?.root.kind == .unreadable)
+        #expect(dump.exitCode == 1)
+
+        // A number: there is nothing below it.
+        let float = try fixture("s_float")
+        for step in [DumpOptions.PathStep.index(0), .key("a")] {
+            options.path = [step]
+            dump = Self.dump(float, options)
+            #expect(dump.moments.first?.root.kind == .unreadable)
+            #expect(dump.exitCode == 1)
+        }
+
+        // Without a path the root is dumped whole, as before.
+        options.path = []
+        dump = Self.dump(map, options)
+        #expect(dump.moments.first?.root.children.count == 2)
+        #expect(dump.exitCode == 0)
+    }
+
+    /// Such a root is the one moment there is: asked for as moment 0 or as
+    /// the last it is dumped, and any other moment is not there, which is a
+    /// note and exit code 1, as it is for a history that has no such moment.
+    @Test func aRootThatIsNotAHistoryIsTheOneMoment() throws {
+        let map = try Self.bytes(
+            try Self.resources().appendingPathComponent("fixtures/valid/compact-roots--port.t_map.db"))
+        var options = DumpOptions()
+        options.hash = .sha1
+        for moment in [nil, 0, -1] as [Int?] {
+            options.moment = moment
+            let dump = Self.dump(map, options)
+            #expect(dump.moments.map(\.index) == [0], "\(String(describing: moment))")
+            #expect(dump.moments.first?.root.children.count == 2)
+            #expect(dump.exitCode == 0)
+        }
+        for moment in [3, 1, -2] {
+            options.moment = moment
+            let dump = Self.dump(map, options)
+            #expect(dump.moments.isEmpty, "\(moment)")
+            #expect(dump.notes.contains("there is no moment \(moment): the root is not a list of moments"))
+            #expect(dump.exitCode == 1)
+        }
+        // With every moment asked for, it is the one there is.
+        options.moment = nil
+        options.allMoments = true
+        #expect(Self.dump(map, options).moments.map(\.index) == [0])
+    }
+
     /// The names `--hash` takes are those of the hashes the package has:
     /// `sha256` and `sha1`. `siphash128` was one until SipHash-128 left the
     /// package with the store, and is refused now as any unknown name is:
