@@ -57,7 +57,7 @@ The package needs Swift 6.4 and macOS 26, iOS 26 or Linux. In your `Package.swif
 
 ```swift manifest
 dependencies: [
-    .package(url: "https://github.com/rgb/xitdb-swift", from: "0.5.0")
+    .package(url: "https://github.com/rgb/xitdb-swift", from: "0.5.1")
 ],
 targets: [
     .target(
