@@ -8,7 +8,8 @@
 #      taken on), a smoke run of the benchmark and the corruption fuzzer
 #      Every run of the tests has a time limit (scripts/limit.sh), and the limit is
 #      tried on a test planted to sleep.
-#   3. import check for Sources/XitDB
+#   3. import check for Sources/XitDB, and that only the tests' own target for it
+#      starts a process
 #   4. formatting check
 #   5. documentation build
 #   6. compile-only build for iOS, and the tests on an iOS simulator (on macOS)
@@ -308,6 +309,22 @@ cmp .build/fuzz-v1-sample.db Tests/XitDBTests/Resources/fixtures/inputs/v1-histo
 # library, and nothing else. The platform C library is imported in exactly one file,
 # behind `#if canImport` for Darwin, Glibc, Musl and Android. The documentation catalogue
 # holds no Swift file, so every Swift file under Sources/XitDB is the library's.
+# The tests that start another process have a test target of their own,
+# XitDBProcessTests, and so a process of their own to run in. While a process is being
+# started it holds the open files of the one that starts it for a moment, a locked one
+# among them, and a test beside it that closes a file and opens it again with its lock
+# is refused the lock: with such a test among the others the suite failed once in eight
+# runs, in a test that had nothing to do with it (Tests/XitDBProcessTests says how it
+# was found). So no test outside that target may start a process, by any of the calls
+# that do.
+step "Tests that start a process"
+if grep -rnE '(^|[^A-Za-z0-9_.])(Process\(\)|posix_spawnp?\(|fork\(\)|system\("|popen\()' Tests --include='*.swift' \
+    | grep -v '^Tests/XitDBProcessTests/'; then
+    echo "error: a test outside Tests/XitDBProcessTests starts a process"
+    exit 1
+fi
+echo "ok: only Tests/XitDBProcessTests does"
+
 step "Import check"
 find Sources/XitDB -name '*.swift' -exec awk '
     {
