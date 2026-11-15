@@ -7,8 +7,9 @@ import Testing
 /// snapshots, the fence under a sync from zero, and what a snapshot holds
 /// open. The gate runs this suite under the thread sanitizer as well.
 @Suite struct SnapshotConcurrencyTests {
-    /// The three storages a client has; the small window adds nothing here.
-    static let storageKinds: [StorageKind] = [.memory, .file, .bufferedFile]
+    /// The storages a client has, the two that read through a memory map
+    /// among them; the small window adds nothing here.
+    static let storageKinds: [StorageKind] = [.memory, .file, .bufferedFile, .mappedFile, .mappedBufferedFile]
 
     /// A database whose root map holds the same number under two keys at
     /// every commit, so that a reader can tell a consistent moment.
@@ -54,6 +55,7 @@ import Testing
         func publish(_ snapshot: Snapshot, _ number: UInt64) {
             published = Published(snapshot: snapshot, number: number)
         }
+        func withdraw() { published = nil }
         func finish() { done = true }
         func current() -> (Published?, Bool) { (published, done) }
     }
@@ -180,6 +182,100 @@ import Testing
         }
         #expect(refused > 0)
         #expect(refused > outcome.refused, "the fence did not trip for the snapshot held across the last sync")
+    }
+
+    /// On a storage that reads through a memory map a sync from zero is
+    /// refused while a snapshot lives, so the writer withdraws the snapshot
+    /// it published and tries until the readers have let go of theirs. No
+    /// reader ever sees the file change under a snapshot: every read gives
+    /// the snapshot's own number, and none is refused or fails, which the
+    /// fence's `snapshotOverwritten` would be. Under the thread sanitizer
+    /// this is also the readers copying from the map while the writer
+    /// writes the file.
+    @Test(arguments: [StorageKind.mappedFile, .mappedBufferedFile])
+    func aSyncFromZeroWaitsForTheReadersOfAMappedFile(kind: StorageKind) async throws {
+        let fixture = try Fixture(kind)
+        func replica(_ number: UInt64, padding: Int) throws -> [UInt8] {
+            let other = try Database(creating: MemoryStorage(), hashSize: 20)
+            func body(_ cursor: inout Cursor<ReadWrite>) throws {
+                let map = try HashMap<ReadWrite>(cursor)
+                try map.put(.bytes(Array(repeating: 0xAB, count: padding)), forHash: sha1("padding").bytes)
+                try map.put(.uint(number), forHash: sha1("first").bytes)
+                try map.put(.uint(number), forHash: sha1("second").bytes)
+            }
+            try other.withTransaction(body)
+            return try other.readCommitted(from: 0, to: try other.committedSize)
+        }
+        // Each longer than a segment of the tests' map, which is one page.
+        let page = Platform.pageSize
+        let replicas = [
+            try replica(1000, padding: page + 16), try replica(2000, padding: 2 * page + 300),
+            try replica(3000, padding: 3 * page + 1200),
+        ]
+        let latest = Latest()
+        await latest.publish(try fixture.database.snapshot(), 0)
+
+        /// One look of a reader at what is published. The snapshot it took
+        /// is let go of when this returns, before the reader yields.
+        @Sendable func look() async throws -> (wrong: Int, read: Int, done: Bool) {
+            let (published, done) = await latest.current()
+            guard let published else { return (0, 0, done) }
+            let (first, second) = try Self.pair(of: published.snapshot)
+            return (first != published.number || second != published.number ? 1 : 0, 1, done)
+        }
+
+        let outcome = try await withThrowingTaskGroup(of: (wrong: Int, read: Int).self) { group in
+            for _ in 0..<4 {
+                group.addTask {
+                    var wrong = 0
+                    var read = 0
+                    while true {
+                        let one = try await look()
+                        wrong += one.wrong
+                        read += one.read
+                        // Cancelled when the writer throws, as above.
+                        if one.done || Task.isCancelled { break }
+                        await Task.yield()
+                    }
+                    return (wrong, read)
+                }
+            }
+            var refused = 0
+            for round in 0..<40 {
+                let number = UInt64(1000 * (round % 3 + 1))
+                // Let the readers read what is published before it is
+                // taken away, so that some hold it when the sync is tried.
+                for _ in 0..<3 { await Task.yield() }
+                await latest.withdraw()
+                while true {
+                    do {
+                        try fixture.database.applyReplicated(at: 0, bytes: replicas[round % 3])
+                        break
+                    } catch XitDBError.snapshotStillMapped {
+                        refused += 1
+                        await Task.yield()
+                    }
+                }
+                await latest.publish(try fixture.database.snapshot(), number)
+            }
+            await latest.finish()
+            let readers = try await group.reduce((wrong: 0, read: 0)) {
+                (wrong: $0.wrong + $1.wrong, read: $0.read + $1.read)
+            }
+            return (wrong: readers.wrong, read: readers.read, refused: refused)
+        }
+        #expect(outcome.wrong == 0)
+        #expect(outcome.read > 0)
+
+        // Whatever the readers' timing, a sync from zero under a snapshot
+        // that is held is refused, and the snapshot reads its commit.
+        await latest.withdraw()
+        let held = try fixture.database.snapshot()
+        let number = try Self.pair(of: held)
+        #expect(throws: XitDBError.snapshotStillMapped) {
+            try fixture.database.applyReplicated(at: 0, bytes: replicas[0])
+        }
+        #expect(try Self.pair(of: held) == number)
     }
 
     /// How many of the process's descriptors are open on the file at
