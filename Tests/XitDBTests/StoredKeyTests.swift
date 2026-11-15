@@ -168,12 +168,15 @@ enum StoredKeyWriting: CaseIterable, CustomTestStringConvertible {
     case oneCall
     /// The put that stores its key, of a typed value.
     case oneTypedCall
+    /// The put cursor that stores its key, and a write through it.
+    case putCursorAndAWrite
 
     var testDescription: String {
         switch self {
         case .twoCalls: "putKey and then put"
         case .oneCall: "the one call"
         case .oneTypedCall: "the one call with a typed value"
+        case .putCursorAndAWrite: "the put cursor that stores its key, and a write through it"
         }
     }
 }
@@ -317,8 +320,9 @@ enum StoredKeyWriting: CaseIterable, CustomTestStringConvertible {
     }
 
     /// At the root every write is a transaction of its own: the one call is
-    /// one, where `putKey` and `put` are two. The file is the one that the
-    /// paths of those two calls leave when one transaction holds both.
+    /// one, where `putKey` and `put` are two. The file is the one that
+    /// those two calls leave when one transaction holds both, on a map
+    /// that exists.
     @Test func atTheRootItIsOneTransaction() throws {
         let pair = try Pair()
         let one = try HashMap<ReadWrite>(pair.one.rootCursor)
@@ -329,17 +333,13 @@ enum StoredKeyWriting: CaseIterable, CustomTestStringConvertible {
         try one.put(.uint(5), forKey: "root key", storingKey: true)
         #expect(pair.one.commitCount == before + 1)
 
-        // The same by the engine's paths in one transaction: the path of
-        // `putKey` and then the path of `put` by hash, each from the root
-        // as it is, which is where a write at the root starts. (A map made
-        // around the transaction's cursor would copy the map's first block
-        // into the transaction, which a write at the root does not.)
-        let hash = sha1("root key")
+        // The two calls in one transaction, on the map that exists: the
+        // same file. (Making the map at the root is a transaction of its
+        // own, which is why both sides made it first.)
         try pair.two.withTransaction { root in
-            _ = try root.writePath([.hashMapGet(.key, hash), .ctx]) { key in
-                try key.writeIfEmpty(.bytes(Array("root key".utf8)))
-            }
-            _ = try root.writePath([.hashMapGet(.value, hash), .write(.uint(5))])
+            let map = try HashMap<ReadWrite>(root)
+            try map.putKey("root key")
+            try map.put(.uint(5), forHash: Pair.hash("root key"))
         }
         #expect(pair.oneStorage.bytes == pair.twoStorage.bytes)
 
@@ -791,6 +791,9 @@ enum StoredKeyWriting: CaseIterable, CustomTestStringConvertible {
             case .text(let text): try map.put(text, forKey: step.key, storingKey: true)
             case .number(let number): try map.put(number, forKey: step.key, storingKey: true)
             }
+        case .putCursorAndAWrite:
+            var value = try map.putCursor(forKey: step.key, storingKey: true)
+            try value.write(step.value.data)
         }
     }
 
@@ -809,8 +812,9 @@ enum StoredKeyWriting: CaseIterable, CustomTestStringConvertible {
     /// script's two transactions are written through the collections, with
     /// the sidecar's commit IDs, in each of the library's ways: by the two
     /// calls in the script's order, by the one call that stores the key,
-    /// and by that call with a typed value. Each leaves the original's
-    /// file, byte for byte, on the map and on the counted map.
+    /// by that call with a typed value, and by the put cursor that stores
+    /// the key with a write through it. Each leaves the original's file,
+    /// byte for byte, on the map and on the counted map.
     ///
     /// The script has what the side-by-side tests above cannot hold
     /// against the original: an entry that has its key in a later
@@ -841,5 +845,212 @@ enum StoredKeyWriting: CaseIterable, CustomTestStringConvertible {
         }
         #expect(storage.bytes.count == expected.count)
         #expect(storage.bytes == expected)
+    }
+
+    // MARK: The put cursor
+
+    /// The put cursor that stores its key is `putKey` and then the put
+    /// cursor, in one walk: the same file, for a new entry whose key is a
+    /// record of its own and has a collection made on the cursor, for a
+    /// write through the cursor, for an entry that has its key, and for
+    /// one that was made without it.
+    func thePutCursorIsTheTwoCalls<Map: WritableMapUnderTest>(_: Map.Type) throws {
+        let pair = try Pair()
+        try pair.step(
+            "new entries: a collection made on the cursor, and a write through it",
+            one: { place in
+                let map = try Map(place)
+                let fruits = try ArrayList<ReadWrite>(try map.putCursor(forKey: Self.long, storingKey: true))
+                try fruits.append(.bytes(Array("an apple that is longer than a slot".utf8)))
+                var value = try map.putCursor(forKey: "a", storingKey: true)
+                try value.write(.bytes(Array(Self.otherLong.utf8)))
+                try map.put(.uint(7), forKey: "made without its key")
+            },
+            two: { place in
+                let map = try Map(place)
+                try map.putKey(Self.long)
+                let fruits = try ArrayList<ReadWrite>(try map.putCursor(forKey: Self.long, storingKey: false))
+                try fruits.append(.bytes(Array("an apple that is longer than a slot".utf8)))
+                try map.putKey("a")
+                var value = try map.putCursor(forKey: "a", storingKey: false)
+                try value.write(.bytes(Array(Self.otherLong.utf8)))
+                try map.put(.uint(7), forHash: Pair.hash("made without its key"))
+            })
+        try pair.step(
+            "a later transaction: the entries with their keys, the one without, and a new one",
+            one: { place in
+                let map = try Map(place)
+                let fruits = try ArrayList<ReadWrite>(try map.putCursor(forKey: Self.long, storingKey: true))
+                try fruits.append(.uint(2))
+                var value = try map.putCursor(forKey: "a", storingKey: true)
+                try value.write(.uint(3))
+                var later = try map.putCursor(forKey: "made without its key", storingKey: true)
+                try later.write(.uint(8))
+                var new = try map.putCursor(forKey: Self.tagged, storingKey: true)
+                try new.write(.uint(9))
+            },
+            two: { place in
+                let map = try Map(place)
+                try map.putKey(Self.long)
+                let fruits = try ArrayList<ReadWrite>(try map.putCursor(forKey: Self.long, storingKey: false))
+                try fruits.append(.uint(2))
+                try map.putKey("a")
+                var value = try map.putCursor(forKey: "a", storingKey: false)
+                try value.write(.uint(3))
+                try map.putKey("made without its key")
+                var later = try map.putCursor(forKey: "made without its key", storingKey: false)
+                try later.write(.uint(8))
+                try map.putKey(Self.tagged)
+                var new = try map.putCursor(forKey: Self.tagged, storingKey: false)
+                try new.write(.uint(9))
+            })
+        let map = try Map.reading(try pair.placeOfOne())
+        #expect(try map.keyCursor(forKey: Self.long)?.readBytes() == Array(Self.long.utf8))
+        #expect(try map.keyCursor(forKey: "a")?.readBytes() == Array("a".utf8))
+        #expect(try map.keyCursor(forKey: "made without its key")?.readBytes() == Array("made without its key".utf8))
+        #expect(try map.keyCursor(forKey: Self.tagged)?.readBytesWithFormatTag() == Self.tagged)
+        #expect(try map.cursor(forKey: "a")?.readUInt64() == 3)
+        #expect(try map.cursor(forKey: "made without its key")?.readUInt64() == 8)
+        let fruits = try ArrayList<ReadOnly>(try #require(try map.cursor(forKey: Self.long)))
+        #expect(try fruits.count == 2)
+    }
+
+    @Test func onAMapThePutCursorIsPutKeyAndThenThePutCursor() throws {
+        try thePutCursorIsTheTwoCalls(HashMap<ReadWrite>.self)
+    }
+
+    @Test func onACountedMapThePutCursorIsPutKeyAndThenThePutCursor() throws {
+        try thePutCursorIsTheTwoCalls(CountedHashMap<ReadWrite>.self)
+    }
+
+    /// Without the argument, and with `false`, the put cursor stores no
+    /// key, by calls on each map's own type, which is where the argument's
+    /// default is; and a key that is there is left by the put cursor that
+    /// stores its key.
+    @Test func thePutCursorStoresNoKeyUnlessAsked() throws {
+        let pair = try Pair()
+        try pair.one.withTransaction { root in
+            let top = try HashMap<ReadWrite>(try Pair.place(root))
+            let map = try HashMap<ReadWrite>(try top.putCursor(forKey: "map"))
+            let counted = try CountedHashMap<ReadWrite>(try top.putCursor(forKey: "counted", storingKey: false))
+            var plain = try map.putCursor(forKey: "plain")
+            try plain.write(.uint(1))
+            var given = try map.putCursor(forKey: "given as false", storingKey: false)
+            try given.write(.uint(2))
+            var countedPlain = try counted.putCursor(forKey: "plain")
+            try countedPlain.write(.uint(1))
+            var countedGiven = try counted.putCursor(forKey: "given as false", storingKey: false)
+            try countedGiven.write(.uint(2))
+            #expect(try counted.count == 2)
+
+            // The key kept under this hash is not the bytes that were
+            // hashed: the put cursor leaves it.
+            try map.putKey(.bytes(Array("the first".utf8)), forHash: Pair.hash("name"))
+            var name = try map.putCursor(forKey: "name", storingKey: true)
+            try name.write(.uint(3))
+            try counted.putKey(.bytes(Array("the first".utf8)), forHash: Pair.hash("name"))
+            var countedName = try counted.putCursor(forKey: "name", storingKey: true)
+            try countedName.write(.uint(3))
+            // The count moves where the entry is made, once.
+            _ = try counted.putCursor(forKey: "name", storingKey: true)
+            #expect(try counted.count == 3)
+        }
+        let top = try HashMap<ReadOnly>(try pair.placeOfOne())
+        #expect(try top.keyCursor(forKey: "map") == nil)
+        #expect(try top.keyCursor(forKey: "counted") == nil)
+        let map = try HashMap<ReadOnly>(try #require(try top.cursor(forKey: "map")))
+        let counted = try CountedHashMap<ReadOnly>(try #require(try top.cursor(forKey: "counted")))
+        for key in ["plain", "given as false"] {
+            #expect(try map.keyCursor(forKey: key) == nil, "\(key)")
+            #expect(try counted.keyCursor(forKey: key) == nil, "\(key)")
+        }
+        #expect(try map.keyCursor(forKey: "name")?.readBytes() == Array("the first".utf8))
+        #expect(try counted.keyCursor(forKey: "name")?.readBytes() == Array("the first".utf8))
+        #expect(try map.cursor(forKey: "name")?.readUInt64() == 3)
+        #expect(try counted.cursor(forKey: "name")?.readUInt64() == 3)
+    }
+
+    /// At the root the put cursor that stores its key is one transaction,
+    /// where `putKey` and the put cursor are two; the entry has its key
+    /// and no value, and a write through the cursor that comes back is
+    /// refused, as without the argument: the transaction is over.
+    @Test func atTheRootThePutCursorIsOneTransaction() throws {
+        let pair = try Pair()
+        let one = try HashMap<ReadWrite>(pair.one.rootCursor)
+        let two = try HashMap<ReadWrite>(pair.two.rootCursor)
+        #expect(pair.oneStorage.bytes == pair.twoStorage.bytes)
+
+        let before = pair.one.commitCount
+        var value = try one.putCursor(forKey: "root key", storingKey: true)
+        #expect(pair.one.commitCount == before + 1)
+        #expect(throws: XitDBError.expectedTxStart) { try value.write(.uint(1)) }
+        #expect(try one.readOnly.keyCursor(forKey: "root key")?.readBytes() == Array("root key".utf8))
+        #expect(try one.readOnly.slot(forKey: "root key") == nil, "the value was never written")
+
+        // The two calls in one transaction, on the map that exists: the
+        // same file.
+        try pair.two.withTransaction { root in
+            let map = try HashMap<ReadWrite>(root)
+            try map.putKey("root key")
+            _ = try map.putCursor(forKey: "root key")
+        }
+        #expect(pair.oneStorage.bytes == pair.twoStorage.bytes)
+
+        let commits = pair.two.commitCount
+        try two.putKey("another")
+        _ = try two.putCursor(forKey: "another")
+        #expect(pair.two.commitCount == commits + 2)
+    }
+
+    /// The put cursor that stores its key asks the key for its bytes once,
+    /// refuses what cannot be a key before anything is written, and lets
+    /// the cursor's checks come first.
+    @Test func thePutCursorAsksOnceAndRefusesFirst() throws {
+        let pair = try Pair()
+        var kept: HashMap<ReadWrite>?
+        try pair.one.withTransaction { root in
+            let map = try HashMap<ReadWrite>(try Pair.place(root))
+            let counted = try CountedHashMap<ReadWrite>(try map.putCursor(forKey: "counted"))
+            kept = map
+
+            let key = CountedKey("asked once")
+            _ = try map.putCursor(forKey: key, storingKey: true)
+            #expect(key.asked == 1)
+            let plain = CountedKey("without the argument")
+            _ = try map.putCursor(forKey: plain)
+            #expect(plain.asked == 1)
+            let countedKey = CountedKey("asked once")
+            _ = try counted.putCursor(forKey: countedKey, storingKey: true)
+            #expect(countedKey.asked == 1)
+            #expect(try map.keyCursor(forKey: "asked once")?.readBytes() == Array("asked once".utf8))
+            #expect(try counted.keyCursor(forKey: "asked once")?.readBytes() == Array("asked once".utf8))
+
+            // A key is bytes by every public way in; the walk underneath
+            // checks it all the same, before the entry is made.
+            let length = try pair.one.storage.length
+            let structural = WritableData.slot(Slot(value: 57, tag: .index))
+            #expect(throws: XitDBError.structuralSlot) {
+                try map.putCursor(storingKey: structural, forHash: sha1("no"))
+            }
+            #expect(throws: XitDBError.structuralSlot) {
+                try counted.putCursor(storingKey: structural, forHash: sha1("no"))
+            }
+            #expect(try pair.one.storage.length == length, "nothing written")
+            #expect(try map.cursor(forKey: "no") == nil)
+            #expect(try counted.count == 1)
+        }
+        // With no transaction open the cursor's refusal comes before the
+        // key's.
+        let map = try #require(kept)
+        #expect(throws: XitDBError.expectedTxStart) {
+            try map.putCursor(storingKey: .slot(Slot(value: 57, tag: .index)), forHash: sha1("no"))
+        }
+        #expect(throws: XitDBError.expectedTxStart) { try map.putCursor(forKey: "no", storingKey: true) }
+
+        let none = try Database(creating: MemoryStorage(), hashSize: 20)
+        try none.withTransaction { root in
+            let map = try HashMap<ReadWrite>(root)
+            #expect(throws: XitDBError.noKeyHashing) { try map.putCursor(forKey: "a", storingKey: true) }
+        }
     }
 }

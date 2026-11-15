@@ -36,7 +36,7 @@ protocol WritableMapUnderTest: MapUnderTest where Access == ReadWrite {
 
     func put(_ value: WritableData, forKey key: some KeyRepresentable, storingKey: Bool) throws(XitDBError)
     func put(_ value: some StorableValue, forKey key: some KeyRepresentable, storingKey: Bool) throws(XitDBError)
-    func putCursor(forKey key: some KeyRepresentable) throws(XitDBError) -> Cursor<ReadWrite>
+    func putCursor(forKey key: some KeyRepresentable, storingKey: Bool) throws(XitDBError) -> Cursor<ReadWrite>
     func putKey(_ key: some KeyRepresentable) throws(XitDBError)
     func putKeyCursor(forKey key: some KeyRepresentable) throws(XitDBError) -> Cursor<ReadWrite>
     func remove(forKey key: some KeyRepresentable) throws(XitDBError) -> Bool
@@ -53,6 +53,11 @@ extension WritableMapUnderTest {
     /// the maps' own put has `storingKey` as `false` unless given.
     func put(_ value: WritableData, forKey key: some KeyRepresentable) throws(XitDBError) {
         try put(value, forKey: key, storingKey: false)
+    }
+
+    /// The put cursor without the argument, likewise.
+    func putCursor(forKey key: some KeyRepresentable) throws(XitDBError) -> Cursor<ReadWrite> {
+        try putCursor(forKey: key, storingKey: false)
     }
 }
 

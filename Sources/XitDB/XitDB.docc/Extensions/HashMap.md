@@ -43,7 +43,7 @@ A put stores the value under the key's hash, and the key only when given `storin
 
 - ``put(_:forKey:storingKey:)-(StorableValue,_,_)``
 - ``put(_:forKey:storingKey:)-(WritableData,_,_)``
-- ``putCursor(forKey:)``
+- ``putCursor(forKey:storingKey:)``
 - ``putKey(_:)``
 - ``putKeyCursor(forKey:)``
 - ``remove(forKey:)``
