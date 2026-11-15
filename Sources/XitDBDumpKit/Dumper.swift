@@ -308,6 +308,11 @@ package struct Dumper {
                 case .countedHashMap: next = try CountedHashMap<ReadOnly>(cursor).cursor(forHash: hash)
                 case .hashSet: next = try HashSet<ReadOnly>(cursor).cursor(forHash: hash)
                 case .countedHashSet: next = try CountedHashSet<ReadOnly>(cursor).cursor(forHash: hash)
+                case .sortedMap, .sortedSet:
+                    // A sorted collection is ordered by its keys and keeps
+                    // no hashes: a hash names nothing in it, though it is a
+                    // map or a set.
+                    return .failure(.kind("a \(tag) has no hashes: it is reached by a key or a position"))
                 default: return .failure(.kind("not a map: \(tag)"))
                 }
                 guard let next else { return .failure(.missing) }

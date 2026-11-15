@@ -210,16 +210,21 @@ import Testing
         let subject = try Subject(kind)
         let database = try subject.damaged(bigEndianBytes(UInt64.max), at: subject.headerPtr)
         // A size that cannot grow is damage whatever the key: every put is
-        // reported, before the tree is written to (C4). A rank from the end
-        // is beyond the tree. Everything else works, removes counting down
-        // included.
+        // reported, before the tree is written to (C4). No file has room
+        // for that many entries, so every read is refused by the size, as
+        // `invalidCount`, before it reads the tree. The removes work,
+        // counting down: a write reads the header as it did.
         let failed = try failing(database)
-        #expect(
-            failed
-                == invalid([
-                    "put first", "put last", "put new first", "put new last", "get index -1", "get index 50",
-                    "iterate from index -1", "iterate from index 50",
-                ]))
+        var expected = invalid(["put first", "put last", "put new first", "put new last"])
+        for read in [
+            "get first", "get last", "get missing", "get index 0", "get index 24", "get index -1", "get index 50",
+            "rank first", "rank last", "rank missing", "iterate", "iterate from index 0", "iterate from index 24",
+            "iterate from index -1", "iterate from index 50", "iterate from first", "iterate from last",
+            "iterate from missing",
+        ] {
+            expected[read] = .invalidCount
+        }
+        #expect(failed == expected)
         // nothing is written by a put that is reported
         do {
             try database.withTransaction { cursor in

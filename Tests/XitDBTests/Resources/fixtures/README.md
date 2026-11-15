@@ -6,7 +6,7 @@ What the Swift port of xitdb has to do, byte for byte, as Zig shows it. This is 
 
 It was produced from:
 
-- conformance repository: commit `c398a24e59711ea869a26d084126b10c8520315c`
+- conformance repository: commit `d1a4e81db603a788e74d816a29435f385869cafb`
 - xitdb, the Zig original: commit `89da8e76f0dd82baefeadb656f0f734bf920be05`, or the one the manifest gives for that fixture as its `zig_commit`
 - Zig 0.17.1, with the runner `run` built in debug mode and using the `buffered_file` storage kind
 
@@ -32,8 +32,10 @@ It was produced from:
 - `inputs/<name>.db`: files that scripts start from, which `raw_load` puts in place of a database's file, and
   `inputs` in the manifest lists for each script. They aren't expected files, and they stay as they are when the
   fixtures follow another Zig commit. Those called `v1-*` are version 1 databases written by the original at
-  `6b93af1af3a260399fa0a0b1b268ded2cbf5eec5`, as nothing writes a new one any more. `tests/inputs/README.md` in
-  the conformance repository says where each came from and what's in it.
+  `6b93af1af3a260399fa0a0b1b268ded2cbf5eec5`, as nothing writes a new one any more. Those called `sorted-*` and
+  `linked-*` are clones that the freeze hazard, an undefined use, left with a header that disagrees with its tree,
+  made once by the original at `89da8e76f0dd82baefeadb656f0f734bf920be05`, and the scripts that load them only read
+  them. `tests/inputs/README.md` in the conformance repository says where each came from and what's in it.
 - `samples/<program>/<name>.db`: databases a program wrote through the original, with `<name>.txt`, what `dump` prints
   for each, which doesn't depend on where things are in the file, and the SHA-256 of each in `SHA256SUMS`. They're
   samples of real use, for a port's reading to be compared with the original's, and not byte-identity fixtures. Their

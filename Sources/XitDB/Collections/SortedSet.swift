@@ -131,7 +131,7 @@ public struct SortedSet<Access: CursorAccess> {
         try cursor.checkReadable()
         let slot = try cursor.resolved().slot
         if slot.tag == .none { return 0 }
-        let header = try cursor.engine.reader.sortedMapHeader(slot)
+        let header = try cursor.engine.reader.checkedSortedMapHeader(slot)
         let sortedKey = SortedKey(key)
         return try sortedKey.withBytes { (bytes: Span<UInt8>) throws(XitDBError) in
             try cursor.engine.reader.sortedRank(rootPtr: header.rootPtr, key: bytes)

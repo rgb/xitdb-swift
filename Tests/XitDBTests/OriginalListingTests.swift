@@ -72,7 +72,7 @@ import XitDBHashing
                 atPath: fixtures.appendingPathComponent(folder).path)
             paths += names.filter { $0.hasSuffix(".db") }.sorted().map { "\(folder)/\($0)" }
         }
-        #expect(paths.count == 301)
+        #expect(paths.count == 317)
 
         var withErrors: [String] = []
         var withoutListing: [String] = []
@@ -93,14 +93,28 @@ import XitDBHashing
         }
         #expect(withoutListing == ["valid/recovery-cut-during-creation-read-only.db"])
         #expect(digests.count == paths.count - withoutListing.count)
-        // the files in which the original cannot read something either
+        // The files in which the original cannot read something either.
+        // Five of the freeze hazard's eight clones are among them, as
+        // inputs and as the expected files they are byte for byte: a
+        // position that the size has and the tree does not is
+        // `InvalidBTreeNode` in both.
         #expect(
             withErrors == [
+                "inputs/linked-counts-above-leaves.db",
+                "inputs/linked-counts-below-leaves.db",
+                "inputs/linked-header-above-tree.db",
+                "inputs/sorted-counts-above-leaves.db",
+                "inputs/sorted-header-above-tree.db",
+                "valid/linked-counts-above-leaves.db",
+                "valid/linked-counts-below-leaves.db",
+                "valid/linked-header-above-tree.db",
                 "valid/recover-without-first-commit--port.before_the_data.db",
                 "valid/recover-without-first-commit--port.v1_before_the_data.db",
                 "valid/recover-without-first-commit--port.v1_cut.db",
                 "valid/recovery-cut-during-creation.db",
                 "valid/replicate-failed-first-sync.left_behind.db",
+                "valid/sorted-counts-above-leaves.db",
+                "valid/sorted-header-above-tree.db",
                 "valid/write-if-empty-emptied-slot.db",
             ])
     }

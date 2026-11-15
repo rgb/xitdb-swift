@@ -36,13 +36,14 @@ func walk<Access: CursorAccess>(_ cursor: Cursor<Access>, hashSize: Int, depth: 
     }
     guard let tag = try? cursor.slot.tag else { return }
 
-    // the elements an iterator gives, up to a bound, each walked while the
-    // budget lasts
+    // The elements an iterator gives, to its end, each walked while the
+    // budget lasts. The walk has no bound of its own on them: an iterator
+    // ends by itself on any file, since the blocks it enters are bounded
+    // by the file or by the elements it gives, and one that did not would
+    // be ended by the alarm, as a hang.
     func iterate(_ iterator: CollectionIterator?) {
         guard var iterator else { return }
-        var visited = 0
-        while visited < 5000, let element = try? iterator.next() {
-            visited += 1
+        while let element = try? iterator.next() {
             if budget > 0 {
                 walk(element, hashSize: hashSize, depth: depth + 1, budget: &budget)
             }

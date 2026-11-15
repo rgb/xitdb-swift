@@ -375,10 +375,10 @@ struct Compactor {
     ) throws(XitDBError) -> Frame {
         let frame = Frame(start: start, kind: kind, targetOffset: targetOffset, count: count, task: task)
         ensureRoom(for: frame)
-        let storage = source.storage
+        let source = source
         let wanted = frame.byteCount
         var span = blockBytes.mutableSpan
-        let read = try storage.read(into: &span, range: frame.start..<(frame.start + wanted), at: position)
+        let read = try source.readData(into: &span, range: frame.start..<(frame.start + wanted), at: position)
         guard read == wanted else { throw .endOfStream }
         if case .kvPair = kind {
             for index in 0..<count {
@@ -395,7 +395,7 @@ struct Compactor {
     private func nodeKind(at position: UInt64) throws(XitDBError) -> BTreeNodeKind {
         var buffer = InlineArray<2, UInt8>(repeating: 0)
         var span = buffer.mutableSpan
-        let read = try source.storage.read(into: &span, at: position)
+        let read = try source.readData(into: &span, at: position)
         return try TreeNodeHeader.decode(buffer.span.extracting(0..<read)).kind
     }
 
@@ -656,9 +656,10 @@ struct Compactor {
             blockBytes.replaceSubrange(
                 frame.start..<(frame.start + frame.byteCount), with: repeatElement(0, count: frame.byteCount))
             if used > 0 {
-                let storage = source.storage
+                let source = source
                 var span = blockBytes.mutableSpan
-                let read = try storage.read(into: &span, range: frame.start..<(frame.start + used * 9), at: blockPtr)
+                let read = try source.readData(
+                    into: &span, range: frame.start..<(frame.start + used * 9), at: blockPtr)
                 guard read == used * 9 else { throw .endOfStream }
             }
             return try settle(frame, stack: &stack, offsetMap: &offsetMap)

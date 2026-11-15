@@ -36,8 +36,8 @@ import Testing
     /// this test.
     @Test func everyScriptRuns() {
         let all = ConformanceFixture.all
-        #expect(all.count == 245)
-        #expect(all.filter { $0.mustPass }.count == 147)
+        #expect(all.count == 253)
+        #expect(all.filter { $0.mustPass }.count == 155)
         #expect(all.filter { !$0.mustPass }.count == 98)
 
         // the failing scripts whose description pins the engine error that
@@ -93,6 +93,14 @@ import Testing
         ("stream-short-overwritten", "finding 9: a short value streams from the cursor's own slot"),
         ("iterator-past-slice", "finding 26: an iterator stops at the size of a cut-down list"),
         ("stream-short-no-position", "finding 9: a short key of a sorted set streams from the cursor's own slot"),
+        (
+            "iterator-from-position-past-tree",
+            "the freeze hazard: an iterator from a position its tree does not have is refused"
+        ),
+        (
+            "iterator-from-key-past-size",
+            "the freeze hazard: an iterator from a key whose place is past the size gives nothing"
+        ),
     ]
 
     private func runs(_ script: String, on kind: StorageKind) throws -> Bool {

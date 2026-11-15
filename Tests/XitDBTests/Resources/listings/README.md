@@ -7,14 +7,17 @@ port and holds its digest to the one here, so what the port reads from each of t
 The listings themselves are eleven megabytes, so they are not kept.
 
 One file has no line: `valid/recovery-cut-during-creation-read-only.db` is a single byte, for which the tool prints no
-listing. Six listings say that something could not be read, by the original's name for the error, and are here like
-the others.
+listing. Sixteen listings say that something could not be read, by the original's name for the error, and are here like
+the others: ten of them are of five clones that the freeze hazard left, each as an input and as the expected file that
+is the input byte for byte, where a position that the size has and the tree does not is `InvalidBTreeNode`.
 
 They were made with `dump` built from the conformance repository at cfbc254, whose `src/dump.zig` is the one at
 d2a80de, the commit the fixtures are copied from, against the original at 89da8e7, with Zig 0.17.1. The four listings
 that the fixtures carry, under `fixtures/samples/haxy`, come out of the same build byte for byte. The line for
 `valid/put-key-then-value.db`, the one fixture added since, was made on 2026-11-15 with the `dump` that repository had
-built on 2026-11-13, after that binary gave the digests here for four other files. To make them again, from
+built on 2026-11-13, after that binary gave the digests here for four other files. The sixteen lines for the freeze
+hazard's clones, the fixtures of the conformance commit be73945, were made on 2026-11-15 with the same binary, in a
+run over every file that gave the digest already here for each of the other three hundred. To make them again, from
 `Resources`:
 
     for f in fixtures/inputs/*.db fixtures/valid/*.db; do

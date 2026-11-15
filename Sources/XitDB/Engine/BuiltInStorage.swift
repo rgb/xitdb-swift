@@ -52,7 +52,10 @@ enum BuiltInStorage {
 
     // MARK: ReadableStorage
 
-    /// ``ReadableStorage/read(into:range:at:)`` on the storage.
+    /// ``ReadableStorage/read(into:range:at:)`` on the storage. Always
+    /// compiled into its caller, so that a record read is one call, of the
+    /// storage's class: see ``DatabaseReader/bytes(at:)``.
+    @inline(__always)
     func read(into buffer: inout MutableSpan<UInt8>, range: Range<Int>, at offset: UInt64) throws(XitDBError) -> Int {
         switch self {
         case .memory(let storage): try storage.read(into: &buffer, range: range, at: offset)
@@ -64,7 +67,9 @@ enum BuiltInStorage {
     }
 
     /// ``ReadableStorage/read(into:at:)`` on the storage: a read into the
-    /// whole of `buffer`.
+    /// whole of `buffer`. Always compiled into its caller, as the read of
+    /// a part is.
+    @inline(__always)
     func read(into buffer: inout MutableSpan<UInt8>, at offset: UInt64) throws(XitDBError) -> Int {
         try read(into: &buffer, range: 0..<buffer.count, at: offset)
     }

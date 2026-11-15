@@ -73,8 +73,8 @@ extension DatabaseReader {
     ///
     /// - Throws: `invalidBTreeNode` if the rank is beyond the leaf it leads
     ///   to, if a branch has no children or a child is not a node, or if the
-    ///   tree is deeper than a tree can be; and the errors of reading a
-    ///   node.
+    ///   tree is deeper than a tree can be; `endOfStream` for a node before
+    ///   where data starts; and the errors of reading a node.
     func slotByRank<Node: RankedNode>(
         rootPtr: UInt64,
         rank: UInt64,
@@ -85,7 +85,9 @@ extension DatabaseReader {
         var rem = rank
         for _ in 0...BTree.maxHeight {
             var span = buffer.mutableSpan
-            let read = try storage.read(into: &span, at: nodePtr)
+            // nothing for a node before the data, which decodes as one cut
+            // short at its first byte
+            let read = try readData(into: &span, at: nodePtr)
             let bytes = buffer.span.extracting(0..<read)
             let header = try TreeNodeHeader.decode(bytes)
             try Node.validate(bytes, kind: header.kind)

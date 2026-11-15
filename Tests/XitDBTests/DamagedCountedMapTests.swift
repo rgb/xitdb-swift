@@ -96,8 +96,10 @@ import Testing
         let subject = try Subject(kind)
         let database = try subject.damaged(bigEndianBytes(UInt64.max), at: subject.countPtr)
         try inTransaction(database) { map in
-            // the count was copied into the transaction with the root block
-            #expect(try map.count == .max)
+            // The count was copied into the transaction with the root block.
+            // No file has room for that many entries: reading it is refused.
+            #expect(try database.reader.uint64(at: try map.slot.value) == .max)
+            #expect(throws: XitDBError.invalidCount) { try map.count }
             let length = try subject.subject.storage.length
             // A count that cannot grow is damage whatever the key: a put is
             // reported before the trie is written to, for a new key and for
@@ -111,10 +113,11 @@ import Testing
             // number
             #expect(try map.cursor(forHash: Subject.hash(0))?.readUInt64() == 0)
             #expect(try map.remove(forHash: Subject.hash(0)))
-            #expect(try map.count == .max - 1)
+            #expect(try database.reader.uint64(at: try map.slot.value) == UInt64.max - 1)
+            #expect(throws: XitDBError.invalidCount) { try map.count }
         }
         let reader = try committed(database)
-        #expect(try reader.count == .max)
+        #expect(throws: XitDBError.invalidCount) { try reader.count }
         #expect(try reader.cursor(forHash: Subject.hash(0))?.readUInt64() == 0)
     }
 
