@@ -17,7 +17,8 @@
 ///
 /// A linked array list's or a sorted map's blocks are tree nodes, which
 /// start with two bytes of kind and count that the walk skips. Their walks
-/// end after giving out as many elements as the collection has: every
+/// count the elements they give and end at the size the header has, or
+/// before it where the tree holds fewer (the last paragraph): every
 /// element is a slot that holds something, since an element of a linked
 /// array list that was never written is a placeholder set to nothing and
 /// marked full, and a sorted leaf's entries are packed at its start.
