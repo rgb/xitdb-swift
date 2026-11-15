@@ -617,6 +617,59 @@ enum Platform {
         }
     }
 
+    /// The path of the file itself that `path` leads to, every symbolic
+    /// link in it followed.
+    ///
+    /// - Throws: `storageFailure` with the error `realpath` reported, as
+    ///   for a path that leads nowhere, or with `EINVAL` for a path that
+    ///   contains a NUL byte.
+    static func realPath(_ path: String) throws(XitDBError) -> String {
+        guard !path.utf8.contains(0) else { throw .storageFailure(errno: EINVAL) }
+        // Safe: the path is passed as a C string that `realpath` only
+        // reads; with no buffer given it returns one of its own, which is
+        // read as a C string and freed here.
+        guard let resolved = unsafe realpath(path, nil) else { throw .storageFailure(errno: errno) }
+        defer { unsafe free(resolved) }
+        return unsafe String(cString: resolved)
+    }
+
+    /// Whether the name `path`, its symbolic links followed now, leads to
+    /// the file that `descriptor` has open: the same file on the same
+    /// volume. A path that leads to no file leads to another one.
+    ///
+    /// - Throws: `storageFailure` with the error the system reported for
+    ///   the open file or for the path, other than there being no file at
+    ///   the path, or with `EINVAL` for a path that contains a NUL byte.
+    static func leads(_ path: String, to descriptor: Int32) throws(XitDBError) -> Bool {
+        guard !path.utf8.contains(0) else { throw .storageFailure(errno: EINVAL) }
+        var open = stat()
+        while true {
+            // Safe: `fstat` writes one `stat` structure through the
+            // pointer.
+            if unsafe fstat(descriptor, &open) == 0 { break }
+            let error = errno
+            if error != EINTR { throw .storageFailure(errno: error) }
+        }
+        var named = stat()
+        while true {
+            // Safe: the path is passed as a C string that `stat` only
+            // reads, and it writes one `stat` structure through the
+            // pointer.
+            if unsafe stat(path, &named) == 0 { break }
+            let error = errno
+            if error == ENOENT || error == ENOTDIR { return false }
+            if error != EINTR { throw .storageFailure(errno: error) }
+        }
+        return open.st_dev == named.st_dev && open.st_ino == named.st_ino
+    }
+
+    /// Lets go of an advisory lock on an open file. A failure is ignored:
+    /// the lock goes with the last descriptor on the open file at the
+    /// latest.
+    static func unlockFile(_ descriptor: Int32) {
+        _ = flock(descriptor, LOCK_UN)
+    }
+
     /// Takes an advisory lock on the whole file without waiting for it.
     ///
     /// - Throws: `storageFailure` with the error `flock` reported, which is

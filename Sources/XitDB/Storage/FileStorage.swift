@@ -158,6 +158,12 @@ final class FileDescriptor: Sendable {
         self.rawValue = try Platform.openFile(path, access: access)
     }
 
+    /// Takes over a descriptor that is open already, which this owner
+    /// closes when it goes.
+    init(adopting rawValue: Int32) {
+        self.rawValue = rawValue
+    }
+
     deinit {
         Platform.closeFile(rawValue)
     }
@@ -186,7 +192,40 @@ final class FileDescriptor: Sendable {
 /// calls do, and the initialiser says what; ``isMemoryMapped`` says
 /// whether the map was had.
 public final class FileStorage: WritableStorage {
-    let descriptor: FileDescriptor
+    /// The open file. It is another one while a replacement is under way,
+    /// and from the replacement's end on: the new file's.
+    private(set) var descriptor: FileDescriptor
+
+    /// The path the storage was opened with, as it was given.
+    let path: String
+
+    /// The path of the file itself, every symbolic link in ``path``
+    /// followed once, when the storage opened it. A replacement gives this
+    /// name to the new file, so that a link stays a link.
+    let realPath: String
+
+    /// The lock the storage holds on its file, if it asked for one.
+    private let lock: FileLock?
+
+    /// What a replacement that has begun keeps of the file it is to
+    /// replace, until it ends one way or the other.
+    private var replacement: Replacement?
+
+    /// The file a replacement is to replace, as the storage had it: its
+    /// descriptor, its map, and what its snapshots were given.
+    private struct Replacement {
+        let old: FileDescriptor
+        let oldMap: FileMap?
+        let oldPinnedSize: UInt64
+        let oldCommittedSizePosition: UInt64
+        let oldFence: SnapshotFence
+        /// The new file's name until it is given the old one's.
+        let incomingPath: String
+    }
+
+    /// What is added to a file's path to name the new file that a full
+    /// copy is written into, beside the file it replaces.
+    static let incomingSuffix = ".incoming"
 
     /// The largest committed size that a snapshot of this storage reads up
     /// to. A write below it outside the root header's committed size, or a
@@ -266,6 +305,122 @@ public final class FileStorage: WritableStorage {
     /// Whether the engine is to tell this storage what it has verified:
     /// only a storage that reads through a map and cannot write.
     var takesItsLimitFromTheEngine: Bool { map != nil && isReadOnly }
+
+    // MARK: Replacing the file
+
+    /// Whether the path the storage was opened with, its symbolic links
+    /// followed now, still leads to the file the storage has open. It does
+    /// not once that file has been replaced by another under its name, as
+    /// a full copy by the file's writer replaces it, or removed, or once a
+    /// link in the path has been changed to lead elsewhere: opening the
+    /// path again would then give another file than this storage reads.
+    ///
+    /// - Throws: ``XitDBError/storageFailure(errno:)`` if the system cannot
+    ///   be asked about the open file or the path.
+    func leadsToItsFile() throws(XitDBError) -> Bool {
+        try Platform.leads(path, to: descriptor.rawValue)
+    }
+
+    /// Whether a replacement has begun and not ended.
+    var isReplacing: Bool { replacement != nil }
+
+    /// Begins the replacement of the file by a new one: a file beside it,
+    /// named with ``incomingSuffix``, is made, locked as this storage's
+    /// file is, given what the old file has beyond its bytes, the
+    /// permission bits first, and emptied; and from here on this storage
+    /// reads and writes the new file. The old file is untouched and keeps
+    /// its name, so that every other opener, and every snapshot taken
+    /// before, has the old file until ``commitReplacement()`` and after it.
+    ///
+    /// A file of that name left by a copy that did not end is removed
+    /// first: this storage holds the old file's lock, so nobody is writing
+    /// it.
+    ///
+    /// - Throws: ``XitDBError/storageFailure(errno:)`` if the storage cannot
+    ///   write, or if the new file cannot be made, locked, given the old
+    ///   file's attributes or emptied; nothing is begun then, and no file
+    ///   is left.
+    func beginReplacement() throws(XitDBError) {
+        precondition(replacement == nil, "a replacement of this file has begun already")
+        if isReadOnly { throw .storageFailure(errno: Platform.notOpenForWriting) }
+        let incomingPath = realPath + Self.incomingSuffix
+        _ = try calls.remove(incomingPath)
+        let incoming = FileDescriptor(adopting: try calls.open(incomingPath, .create))
+        do {
+            // The new file is locked before a byte is written to it, and
+            // while the old one's lock is held: across the rename the path
+            // never names a file without its writer's lock.
+            if let lock { try calls.lock(incoming.rawValue, lock) }
+            try calls.carryAttributes(descriptor.rawValue, incoming.rawValue)
+            try calls.setLength(incoming.rawValue, 0)
+        } catch {
+            _ = try? calls.remove(incomingPath)
+            throw error
+        }
+        replacement = Replacement(
+            old: descriptor, oldMap: map, oldPinnedSize: pinnedSize,
+            oldCommittedSizePosition: committedSizePosition, oldFence: fence, incomingPath: incomingPath)
+        descriptor = incoming
+        // The new file has a map of its own, with nothing known to be in
+        // it, and no snapshot reads it: the snapshots taken so far keep the
+        // old file's descriptor, segments and fence.
+        if map != nil {
+            map = FileMap(view: FileMapView(segmentSize: map!.view.segmentSize), limit: 0, writtenEnd: 0)
+        }
+        pinnedSize = 0
+        committedSizePosition = 0
+        fence = SnapshotFence()
+    }
+
+    /// Ends a replacement by giving the new file the old one's name. Call
+    /// it when the new file is whole and synced. Until the name is given,
+    /// the path is the old file's; from then on it is the new file's,
+    /// whatever fails afterwards. Then the directory is synced, as the
+    /// storage's durability asks, which is what puts the new name on the
+    /// disk, and the old file's lock is let go: whoever has the old file
+    /// open, a snapshot or another reader, goes on reading it, and nothing
+    /// cuts it any more.
+    ///
+    /// - Throws: ``XitDBError/storageFailure(errno:)`` if the name cannot be
+    ///   given, in which case the replacement is still under way and
+    ///   ``abandonReplacement()`` ends it; or if the directory cannot be
+    ///   synced, in which case the new file has the name all the same and
+    ///   the replacement has ended.
+    func commitReplacement() throws(XitDBError) {
+        guard let replacement else { return }
+        try calls.rename(replacement.incomingPath, realPath)
+        self.replacement = nil
+        defer {
+            if lock != nil { Platform.unlockFile(replacement.old.rawValue) }
+        }
+        let order = Self.syncOrder(durability, .afterRootHeader)
+        for index in order.indices {
+            guard let call = order[index] else { return }
+            let error = calls.syncDirectory(realPath, call)
+            if error == 0 { return }
+            let isLast = index + 1 == order.count || order[index + 1] == nil
+            if isLast || !Platform.isUnsupported(error) {
+                throw .storageFailure(errno: error)
+            }
+        }
+    }
+
+    /// Ends a replacement by going back to the old file, which is as it
+    /// was: this storage reads and writes it again, with its map and its
+    /// snapshots as they were, and the new file is removed. If the new
+    /// file cannot be removed it stays under its own name, where the next
+    /// replacement, or the next writer that opens the file with its lock,
+    /// removes it.
+    func abandonReplacement() {
+        guard let replacement else { return }
+        descriptor = replacement.old
+        map = replacement.oldMap
+        pinnedSize = replacement.oldPinnedSize
+        committedSizePosition = replacement.oldCommittedSizePosition
+        fence = replacement.oldFence
+        self.replacement = nil
+        _ = try? calls.remove(replacement.incomingPath)
+    }
 
     /// Whether the storage's reads go through a memory map.
     ///
@@ -370,6 +525,10 @@ public final class FileStorage: WritableStorage {
         self.descriptor = try FileDescriptor(opening: path, access: access)
         self.access = access
         self.durability = durability
+        self.path = path
+        self.lock = lock
+        // The file is there now, so its own path can be asked for.
+        self.realPath = try Platform.realPath(path)
         // If either of these throws, the descriptor is closed as the storage
         // goes. The file is emptied only after the lock is held.
         if let lock {
@@ -379,6 +538,14 @@ public final class FileStorage: WritableStorage {
             try Platform.setFileLength(descriptor.rawValue, 0)
         }
         self.calls = calls
+        // What a full copy that did not end left beside the file: this
+        // storage is the file's writer and holds the lock that says so, so
+        // nobody is writing that file, and it is removed. An opener without
+        // the lock leaves it alone. If it cannot be removed it stays, and
+        // the next full copy says why.
+        if case .exclusive? = lock, !isReadOnly {
+            _ = try? calls.remove(realPath + Self.incomingSuffix)
+        }
         if memoryMapped, calls.isLocal(descriptor.rawValue) {
             // A writer holds the lock, so what is in the file now stays
             // there until this storage cuts it. A reader holds none: what

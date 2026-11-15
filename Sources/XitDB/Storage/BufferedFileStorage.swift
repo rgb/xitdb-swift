@@ -269,6 +269,47 @@ public final class BufferedFileStorage: WritableStorage {
         try file.resize(to: length)
     }
 
+    // MARK: Replacing the file
+
+    /// Whether a replacement of the file underneath has begun and not ended.
+    var isReplacing: Bool { file.isReplacing }
+
+    /// Whether the path the file was opened with still leads to it
+    /// (``FileStorage/leadsToItsFile()``).
+    func leadsToItsFile() throws(XitDBError) -> Bool {
+        try file.leadsToItsFile()
+    }
+
+    /// Begins the replacement of the file underneath by a new one
+    /// (``FileStorage/beginReplacement()``). What the window holds was to go
+    /// into the old file past its last commit: it is thrown away, as a cut
+    /// of the file to nothing throws it away, and the old file does not
+    /// get it.
+    func beginReplacement() throws(XitDBError) {
+        try file.beginReplacement()
+        memory.removeAll()
+        memoryPosition = 0
+        fileLength = nil
+    }
+
+    /// Ends a replacement by giving the new file the old one's name
+    /// (``FileStorage/commitReplacement()``), with the window written out
+    /// first.
+    func commitReplacement() throws(XitDBError) {
+        try flush()
+        try file.commitReplacement()
+    }
+
+    /// Ends a replacement by going back to the old file
+    /// (``FileStorage/abandonReplacement()``). What the window holds was to
+    /// go into the new file, and is thrown away with it.
+    func abandonReplacement() {
+        memory.removeAll()
+        memoryPosition = 0
+        fileLength = nil
+        file.abandonReplacement()
+    }
+
     /// Writes the buffered bytes to the file and empties the buffer.
     ///
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if writing fails. The
