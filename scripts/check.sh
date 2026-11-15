@@ -69,9 +69,28 @@ scripts/must-not-compile.sh
 # The snapshot concurrency suite under the thread sanitizer, in a build of its
 # own: a race in a snapshot's read half would be a wrong read that no plain run
 # shows. The sanitizer slows the suite a great deal, so only that suite runs.
+#
+# On macOS the sanitizer is told not to put names to the addresses of a report.
+# Left to do so it hangs: with a race planted in this suite the step printed
+# nothing and never ended, at no load, so a real race would have been a gate
+# that does not finish. With symbolize=0 the same race is three reports and a
+# failed step in seconds. A report then gives places as offsets in the test
+# binary, such as (XitDBTests:arm64+0xc4bd68), which atos names:
+#     atos -o .build/tsan/out/Products/Debug/XitDBTests.xctest/Contents/MacOS/XitDBTests \
+#         -arch arm64 -l 0x0 0xc4bd68
+# On Linux the sanitizer names the places itself and ends, and so does the
+# simulator's sanitizer run further down, which fails by itself on a race:
+# both are left as they are.
 step "Thread sanitizer: snapshot concurrency"
-swift test --sanitize=thread --scratch-path .build/tsan \
+sanitized=(
+    swift test --sanitize=thread --scratch-path .build/tsan
     --filter "SnapshotConcurrencyTests|tasksReadOneSnapshotWhileTheWriterCommits" "${strict[@]}"
+)
+if [ "$platform" = Darwin ]; then
+    TSAN_OPTIONS="${TSAN_OPTIONS:+$TSAN_OPTIONS }symbolize=0" "${sanitized[@]}"
+else
+    "${sanitized[@]}"
+fi
 
 # The plain release build is what a client compiles. `swift test` then rebuilds the
 # library with testing enabled so that the tests can reach internal declarations.
