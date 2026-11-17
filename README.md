@@ -53,7 +53,8 @@ It builds for macOS 26, iOS 26 and Linux, and is tested on macOS, on Linux and o
 
 ## Adding the dependency
 
-The package needs Swift 6.4 and macOS 26, iOS 26 or Linux. In your `Package.swift`:
+The package needs Swift 6.4 and macOS 26, iOS 26 or Linux, which it supports and is tested on, iOS on a simulator. Other
+platforms the toolchain may build it for are neither declared in the manifest nor tested. In your `Package.swift`:
 
 ```swift manifest
 dependencies: [
@@ -68,6 +69,8 @@ targets: [
         ])
 ]
 ```
+
+Until 1.0 a minor release, such as 0.6.0, may change source, and `from:` takes it: the release's notes say what changed.
 
 ## A first look
 
@@ -147,6 +150,12 @@ stored, as in the original: a map of names that must be listed stores each with 
 and to every put cursor, such as the two that make `"fruits"` and `"people"`. A number says which of the format's kinds
 it is, as it does in the original: `UInt64(25)` is the unsigned integer, and `put(25, forKey: "age")` does not compile.
 `"sha2"` is the label in the header that says which hash it is, for whoever reads the file next.
+
+The example's storage has the default durability, `full`: a commit waits for the disk twice, the second time until the
+drive has flushed, and on Linux both times, so that a commit that has returned is there after a power loss. That is why
+a small commit took about 4.3 ms, where one that does not sync took about 0.008 ms, in the [table of durability
+levels](Sources/XitDB/XitDB.docc/Articles/Transactions.md#durability), which was measured on one machine and gives the
+other levels.
 
 Run it twice and the second run opens the file, adds a second moment, and the first stays readable with
 `history.cursor(at: 0)`.

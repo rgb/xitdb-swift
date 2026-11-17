@@ -17,8 +17,9 @@ original does not; and it recovers, when asked, a file the original cannot open.
 write, and where an operation had already written, the transaction can no longer commit. So it narrows which sequences of
 operations the port accepts and leaves the files alone: the port reads every file the original writes. Two of the differences
 change the bytes of operations that are valid in both: the operations after a join in the same transaction, and
-``Cursor/writeIfEmpty(_:)``. Each of those was made in a branch of the original first, and the port's files are compared with
-that branch's.
+``Cursor/writeIfEmpty(_:)``. For each, the port's authors changed the original the same way, on a branch of their own, which the
+original does not have, and these two are the places where the port's files match byte for byte that branch's and not the
+original's.
 
 ### Where the original lets data be damaged
 
@@ -32,6 +33,12 @@ that branch's.
   collection included, and freezes after a join rather than before it. What is allowed is making a collection, or writing a
   value, through the cursor the transaction's body was given, or another cursor at its slot, which is the way on: see
   <doc:CloningFreezeAndStaleHandles>.
+  - **The original README's note on freezing globally** holds a map across a freeze. Its cloning example says the cursor's
+    freeze can be replaced by `cursor.db.freeze()`, called before `putCursor` makes the cities cursor, and the example makes
+    that cursor through the map it made before the freeze. The original gives the four cities and two big cities it expects and
+    damages nothing, and the port refuses that `putCursor` all the same, with ``XitDBError/staleCursor``, as it does every write
+    through a handle made before a freeze. Make the map again after the freeze, from the cursor the body was given, and the port
+    gives the same lists.
 - **A cursor from a transaction that did not commit.** In the original, a read through it gets whatever the next transaction wrote
   at the same offsets. The port refuses the read with ``XitDBError/staleCursor``.
 - **An operation that fails partway.** In the original, a body that catches the error commits what the operation had already

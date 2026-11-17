@@ -85,6 +85,42 @@ import XitDBHashing
         #expect(try count("big-cities", in: history) == 2)
     }
 
+    /// The original README's note on its cloning example: freeze globally,
+    /// before `putCursor` makes the cities cursor. Followed as written, the
+    /// cursor is made through the map made before the freeze, which the port
+    /// refuses; with the map made again from the body's cursor it gives what
+    /// the original gives, four cities and two big cities. ("Where the port
+    /// differs from the original")
+    @Test func theOriginalsNoteOnFreezingGlobally() throws {
+        let storage = MemoryStorage()
+        let database = try Database(creating: storage, hashing: SHA256.self)
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
+
+        try history.append(.slot(try history.slot(at: -1))) { cursor in
+            let moment = try HashMap<ReadWrite>(cursor)
+            let bigCities = try ArrayList<ReadWrite>(moment.putCursor(forKey: "big-cities"))
+            try bigCities.append("New York, NY")
+            try bigCities.append("Los Angeles, CA")
+
+            try cursor.database.freeze()
+
+            // As written: the map was made before the freeze. The refusal writes nothing.
+            let length = try storage.length
+            #expect(throws: XitDBError.staleCursor) { try moment.putCursor(forKey: "cities") }
+            #expect(try storage.length == length)
+
+            // The map again, from the cursor the body was given.
+            var citiesCursor = try HashMap<ReadWrite>(cursor).putCursor(forKey: "cities")
+            try citiesCursor.write(.slot(try bigCities.slot))
+            let cities = try ArrayList<ReadWrite>(citiesCursor)
+            try cities.append("Charleston, SC")
+            try cities.append("Louisville, KY")
+        }
+
+        #expect(try count("cities", in: history) == 4)
+        #expect(try count("big-cities", in: history) == 2)
+    }
+
     @Test func whatAFreezeDoesToTheHandlesYouHold() throws {
         let (database, history) = try historyWithFruits()
 
