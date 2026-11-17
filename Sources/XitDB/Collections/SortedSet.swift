@@ -335,3 +335,6 @@ extension SortedSet {
         self.cursor = cursor
     }
 }
+
+@available(*, unavailable, message: "a sorted set stays with its database's thread or task; send a snapshot")
+extension SortedSet: Sendable {}

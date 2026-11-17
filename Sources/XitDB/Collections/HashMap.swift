@@ -848,3 +848,6 @@ extension Cursor where Access == ReadWrite {
         return key
     }
 }
+
+@available(*, unavailable, message: "a hash map stays with its database's thread or task; send a snapshot")
+extension HashMap: Sendable {}

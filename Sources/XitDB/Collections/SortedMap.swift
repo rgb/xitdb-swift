@@ -496,3 +496,6 @@ extension SortedMap where Access == ReadWrite {
             })
     }
 }
+
+@available(*, unavailable, message: "a sorted map stays with its database's thread or task; send a snapshot")
+extension SortedMap: Sendable {}

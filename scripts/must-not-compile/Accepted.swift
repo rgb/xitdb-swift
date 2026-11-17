@@ -60,3 +60,15 @@ func accepted(
     try cursor.write(Bytes([1, 2], formatTag: "tg"))
     _ = try map.value(forKey: "name", as: String.self)
 }
+
+// The other half of `RefusedSendable.swift`: what is sent in place of a
+// database, a cursor or a collection, with the same helper.
+
+func sent<Value: Sendable & ~Copyable>(_ value: borrowing Value) {}
+
+func acceptedToSend(snapshot: Snapshot, header: DatabaseHeader, slot: Slot, error: XitDBError) {
+    sent(snapshot)
+    sent(header)
+    sent(slot)
+    sent(error)
+}

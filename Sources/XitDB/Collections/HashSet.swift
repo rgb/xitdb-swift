@@ -432,3 +432,6 @@ extension HashSet where Access == ReadWrite {
         return true
     }
 }
+
+@available(*, unavailable, message: "a hash set stays with its database's thread or task; send a snapshot")
+extension HashSet: Sendable {}

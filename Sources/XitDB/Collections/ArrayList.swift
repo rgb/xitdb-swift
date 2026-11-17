@@ -409,3 +409,6 @@ extension ArrayList where Access == ReadWrite {
             })
     }
 }
+
+@available(*, unavailable, message: "an array list stays with its database's thread or task; send a snapshot")
+extension ArrayList: Sendable {}

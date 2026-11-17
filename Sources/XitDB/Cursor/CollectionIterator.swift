@@ -131,3 +131,6 @@ extension Cursor {
         )
     }
 }
+
+@available(*, unavailable, message: "an iterator stays with its database's thread or task; send a snapshot")
+extension CollectionIterator: Sendable {}

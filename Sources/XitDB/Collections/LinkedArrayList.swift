@@ -546,3 +546,6 @@ extension LinkedArrayList where Access == ReadWrite {
             })
     }
 }
+
+@available(*, unavailable, message: "a linked array list stays with its database's thread or task; send a snapshot")
+extension LinkedArrayList: Sendable {}

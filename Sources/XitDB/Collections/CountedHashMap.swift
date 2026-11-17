@@ -845,3 +845,6 @@ extension CountedHashMap where Access == ReadWrite {
             })
     }
 }
+
+@available(*, unavailable, message: "a counted hash map stays with its database's thread or task; send a snapshot")
+extension CountedHashMap: Sendable {}

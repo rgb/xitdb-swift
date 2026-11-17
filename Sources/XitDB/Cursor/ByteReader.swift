@@ -182,3 +182,6 @@ extension Cursor {
         }
     }
 }
+
+@available(*, unavailable, message: "a byte reader stays with its database's thread or task; send the bytes")
+extension ByteReader: Sendable {}

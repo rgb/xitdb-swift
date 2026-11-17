@@ -450,3 +450,6 @@ extension CountedHashSet where Access == ReadWrite {
         return true
     }
 }
+
+@available(*, unavailable, message: "a counted hash set stays with its database's thread or task; send a snapshot")
+extension CountedHashSet: Sendable {}

@@ -876,3 +876,12 @@ extension Cursor where Access == ReadWrite {
         engine
     }
 }
+
+@available(*, unavailable, message: "a cursor stays with its database's thread or task; send a snapshot")
+extension Cursor: Sendable {}
+
+@available(*, unavailable, message: "an entry holds cursors of its database; read from it and send what you read")
+extension Entry: Sendable {}
+
+@available(*, unavailable, message: "a byte writer stays with its transaction's thread or task")
+extension ByteWriter: Sendable {}

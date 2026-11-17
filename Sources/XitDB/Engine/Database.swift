@@ -854,3 +854,6 @@ package final class RandomSource {
         generator.next()
     }
 }
+
+@available(*, unavailable, message: "a database is used from one thread or task at a time; send a snapshot of it")
+extension Database: Sendable {}
