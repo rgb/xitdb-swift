@@ -39,9 +39,7 @@ private struct GivenUp: Error {}
         return try ArrayList<ReadOnly>(list).count
     }
 
-    /// Appends `count` elements to the list, each append reading the list's
-    /// count and holding it against the storage, so that the reader comes
-    /// to know the storage at the length these appends make it.
+    /// Appends `count` elements to the list.
     private static func append(_ count: Int, _ cursor: inout Cursor<ReadWrite>) throws {
         let list = try cursor.writePath([.hashMapGet(.value, sha1("list")), .arrayListInit])
         for index in 0..<count {
@@ -61,6 +59,11 @@ private struct GivenUp: Error {}
         #expect(throws: GivenUp.self) {
             try database.withTransaction { cursor in
                 try Self.append(400, &cursor)
+                // the list's count is read here, in the transaction, and
+                // held against the storage as long as it is now: this is
+                // where the reader comes to know the long length
+                let list = try #require(try cursor.readPath([.hashMapGet(.value, sha1("list"))]))
+                #expect(try ArrayList<ReadOnly>(list).count == 401)
                 long = try subject.storage.length
                 throw GivenUp()
             }
