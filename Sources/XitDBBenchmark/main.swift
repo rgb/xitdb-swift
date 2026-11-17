@@ -509,6 +509,41 @@ func mapByHash(_ size: Int, kinds: [StorageKind]) -> Workload {
     }
 }
 
+/// The map of `map_by_hash` asked for as many keys that are not in it: a
+/// lookup that finds nothing, which the library reports as `nil`. Read
+/// against `map_by_hash`'s read, the difference is what a miss costs over a
+/// hit. The keys are twice the map's: the first half are written, the
+/// second half asked for.
+func mapByHashMissing(_ size: Int, kinds: [StorageKind]) -> Workload {
+    Workload(name: "map_by_hash_missing", size: size, kinds: kinds, keyKind: .keys, keyCount: 2 * size) {
+        database, keys in
+        let hashes = keys.hashBytes
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
+        try history.append(.slot(nil)) { cursor in
+            let map = try HashMap<ReadWrite>(cursor)
+            for index in 0..<size {
+                try map.put(.uint(UInt64(index)), forHash: hashes[index])
+            }
+        }
+    } read: { reading, keys in
+        let hashes = keys.hashBytes
+        let map = try HashMap<ReadOnly>(try lastMoment(reading))
+        for index in size..<(2 * size) {
+            guard try map.cursor(forHash: hashes[index]) == nil else {
+                throw BenchmarkFailure(description: "key-\(index) was never put and is found")
+            }
+        }
+    } iterate: { reading, _ in
+        let map = try HashMap<ReadOnly>(try lastMoment(reading))
+        var iterator = try map.iterator()
+        var count = 0
+        while try iterator.next() != nil { count += 1 }
+        guard count == size else {
+            throw BenchmarkFailure(description: "the map holds \(count) entries, not \(size)")
+        }
+    }
+}
+
 /// The same map written and read by its keys, on a database that was
 /// given SHA-1: each put and each get hashes its key on the clock. Read
 /// against `map_by_hash`, the difference is what a keyed call costs over
@@ -1029,6 +1064,7 @@ let workloads: [Workload] = [
     mapInsert(sized(100_000), kinds: [.memory, .bufferedFile]),
     mapInsert(sized(10_000), kinds: [.file]),
     mapByHash(sized(100_000), kinds: [.memory, .bufferedFile]),
+    mapByHashMissing(sized(100_000), kinds: [.memory, .bufferedFile]),
     mapByKey(sized(100_000), kinds: [.memory, .bufferedFile]),
     mapStoringKeys(byOneCall: true, sized(100_000), kinds: [.memory, .bufferedFile]),
     mapStoringKeys(byOneCall: false, sized(100_000), kinds: [.memory, .bufferedFile]),
