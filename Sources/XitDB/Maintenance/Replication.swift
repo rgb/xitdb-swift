@@ -157,7 +157,7 @@ extension Database {
             let header = self.header
             try stream(from: 0, to: header.fileSizePosition, into: &sink)
             let bytes = InlineArray<8, UInt8> { (output: inout OutputSpan<UInt8>) in output.appendBigEndian(end) }
-            try XitDBError.carrying { try sink.write(bytes.span) }
+            try XitDBError.carryingAll { try sink.write(bytes.span) }
             try stream(from: header.dataStart, to: end, into: &sink)
         } else {
             try stream(from: start, to: end, into: &sink)
@@ -358,7 +358,7 @@ extension Database {
                 buffer.removeLast(buffer.count - Int(unread))
             }
             var span = buffer.mutableSpan
-            let read = try XitDBError.carrying { try source.read(into: &span) }
+            let read = try XitDBError.carryingAll { try source.read(into: &span) }
             guard read > 0, read <= buffer.count else { throw .endOfStream }
             // The last block is as long as what remains, and whole when
             // all of that has arrived.
@@ -480,7 +480,7 @@ extension Database {
                 buffer.removeLast(buffer.count - (count - taken.count))
             }
             var span = buffer.mutableSpan
-            let read = try XitDBError.carrying { try source.read(into: &span) }
+            let read = try XitDBError.carryingAll { try source.read(into: &span) }
             guard read > 0, read <= buffer.count else { throw .endOfStream }
             taken.append(contentsOf: buffer[0..<read])
         }
@@ -539,7 +539,7 @@ extension Database {
             let chunk = Int(min(end - position, UInt64(Self.streamChunk)))
             let read = try storage.readForStream(into: &span, range: 0..<chunk, at: position)
             guard read == chunk else { throw .endOfStream }
-            try XitDBError.carrying { try sink.write(buffer.span.extracting(0..<chunk)) }
+            try XitDBError.carryingAll { try sink.write(buffer.span.extracting(0..<chunk)) }
             position += UInt64(chunk)
         }
     }

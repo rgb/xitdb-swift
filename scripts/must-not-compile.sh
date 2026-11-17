@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # What must not compile. A test target cannot hold code the compiler has to
-# refuse, so this type-checks three files against the library the debug build
+# refuse, so this type-checks four files against the library the debug build
 # made:
 #
 #   scripts/must-not-compile/Accepted.swift   must type-check
@@ -18,12 +18,22 @@
 #                                             error; and the types it names
 #                                             must be the ones the library
 #                                             marks, no more and no fewer
+#   scripts/must-not-compile/RefusedUntyped.swift
+#                                             must be refused on every line
+#                                             marked "// must not compile:
+#                                             untyped", with the compiler's
+#                                             words for an error that is not
+#                                             the one declared, and have no
+#                                             other error
 #
 # The message is the one the library gives its unavailable `Int: StorableValue`,
 # read from the source, so that the check follows the text if it is reworded;
 # the compiler's framing around it is not matched. `Accepted.swift` goes first
 # and the same way: if the library is not found or a flag is wrong, that fails
-# the step, and nothing is taken for a refusal.
+# the step, and nothing is taken for a refusal. The third file's message is the
+# compiler's own, since the library has none to give there: a compiler that
+# words it otherwise fails the step, which is then the moment to read what it
+# says.
 #
 # Run it after `swift build` (the gate does). It type-checks and builds nothing.
 
@@ -119,3 +129,29 @@ if [ "$named" != "$known" ]; then
     fail "the types $sendable sends are not the types the library marks as not to be sent"
 fi
 echo "ok: $(printf '%s\n' "$marked" | wc -l | tr -d ' ') lines refused, each with the message of its type, $(printf '%s\n' "$known" | wc -l | tr -d ' ') types that must not be sent"
+
+# The calls that take a closure of the caller's throw `any Error`, and a
+# function that declares the library's error cannot make them bare: each
+# marked line is refused with the compiler's words for that, and nothing else
+# is refused. The same calls through `XitDBError.carrying` are in the accepted
+# file, which compiled above.
+untyped=scripts/must-not-compile/RefusedUntyped.swift
+words="thrown expression type 'any Error' cannot be converted to error type 'XitDBError'"
+if output=$(swiftc "${flags[@]}" "$untyped" 2>&1); then
+    fail "$untyped compiled: the compiler refused nothing in it"
+fi
+ours=$(printf '%s\n' "$output" | grep -F "$words" | sed -n 's/^[^:]*RefusedUntyped\.swift:\([0-9]*\):[0-9]*: error: .*/\1/p' | sort -n -u)
+others=$(printf '%s\n' "$output" | grep -E 'RefusedUntyped\.swift:[0-9]+:[0-9]+: error: ' | grep -v -F "$words" || true)
+marked=$(grep -n '// must not compile: untyped$' "$untyped" | cut -d: -f1 | sort -n -u)
+[ -n "$marked" ] || fail "$untyped marks no line"
+if [ -n "$others" ]; then
+    echo "$others"
+    fail "$untyped is refused for another reason than the one it is here for"
+fi
+if [ "$ours" != "$marked" ]; then
+    echo "marked:  $(echo $marked)"
+    echo "refused: $(echo $ours)"
+    fail "the lines marked in $untyped are not the lines the compiler refused with \"$words\""
+fi
+grep -q 'XitDBError\.carrying' "$accepted" || fail "$accepted makes no call through XitDBError.carrying"
+echo "ok: $(echo "$marked" | wc -l | tr -d ' ') calls that take a closure refused bare where the library's error is declared, and accepted through the adapter"

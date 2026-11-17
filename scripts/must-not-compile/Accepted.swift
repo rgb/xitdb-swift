@@ -61,6 +61,30 @@ func accepted(
     _ = try map.value(forKey: "name", as: String.self)
 }
 
+// The other half of `RefusedUntyped.swift`: the four calls that take a
+// closure of the caller's, made where the library's error is declared,
+// through `XitDBError.carrying`. No error is spelled on any closure; a
+// closure of one expression, one of several statements with a result, and
+// several calls under one adapter all compile.
+
+struct AcceptedOwnError: Error {}
+
+func acceptedThroughTheAdapter(
+    database: Database, list: ArrayList<ReadWrite>, linked: LinkedArrayList<ReadWrite>, cursor: inout Cursor<ReadWrite>
+) throws(XitDBError) {
+    try XitDBError.carrying { try database.withTransaction { root in _ = root } }
+    let count = try XitDBError.carrying {
+        try list.append(.uint(1)) { element in _ = element }
+        try linked.append(.uint(1)) { element in
+            _ = element
+            if try list.count > 5 { throw AcceptedOwnError() }
+        }
+        return try list.count
+    }
+    _ = count
+    try XitDBError.carrying { try cursor.writeBytes { writer in try writer.write([1, 2, 3]) } }
+}
+
 // The other half of `RefusedSendable.swift`: what is sent in place of a
 // database, a cursor or a collection, with the same helper.
 

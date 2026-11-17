@@ -666,6 +666,11 @@ extension Cursor where Access == ReadWrite {
     /// ``XitDBError/byteWriterOpen``, since the record being filled would fall
     /// below the freeze.
     ///
+    /// The call throws `any Error`, since what `body` throws comes out as
+    /// itself. Where the library's error is declared, with
+    /// `throws(XitDBError)`, make the call inside
+    /// ``XitDBError/carrying(_:)``.
+    ///
     /// - Parameters:
     ///   - formatTag: A format tag to store with the bytes, or `nil` for
     ///     none. `body` can also set it, through the writer.
@@ -852,6 +857,11 @@ extension Database {
     ///
     /// The result may be ignored: a transaction is often run for its writes
     /// alone, with a body whose one expression happens to have a value.
+    ///
+    /// The call throws `any Error`, since what `body` throws comes out as
+    /// itself. Where the library's error is declared, with
+    /// `throws(XitDBError)`, make the call inside
+    /// ``XitDBError/carrying(_:)``.
     ///
     /// - Parameter body: Does the writing, through the cursor it is given.
     /// - Throws: ``XitDBError/nestedTopLevelWrite`` if a transaction is

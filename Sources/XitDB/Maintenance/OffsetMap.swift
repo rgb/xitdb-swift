@@ -25,17 +25,17 @@ public protocol OffsetMap {
 extension OffsetMap {
     /// `reset`, with the map's own error carried as `callerError`.
     mutating func clear() throws(XitDBError) {
-        try XitDBError.carrying { try reset() }
+        try XitDBError.carryingAll { try reset() }
     }
 
     /// `get`, with the map's own error carried as `callerError`.
     mutating func lookup(_ sourceOffset: UInt64) throws(XitDBError) -> UInt64? {
-        try XitDBError.carrying { try get(sourceOffset) }
+        try XitDBError.carryingAll { try get(sourceOffset) }
     }
 
     /// `put`, with the map's own error carried as `callerError`.
     mutating func record(_ sourceOffset: UInt64, _ targetOffset: UInt64) throws(XitDBError) {
-        try XitDBError.carrying { try put(sourceOffset, targetOffset) }
+        try XitDBError.carryingAll { try put(sourceOffset, targetOffset) }
     }
 }
 

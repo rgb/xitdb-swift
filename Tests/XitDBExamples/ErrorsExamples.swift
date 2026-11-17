@@ -176,6 +176,43 @@ import XitDBHashing
         }
     }
 
+    @Test func aCallThatTakesAClosureWhereTheLibrarysErrorIsDeclared() throws {
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
+
+        struct Refused: Error {}
+
+        func record(_ visits: UInt64, in database: Database) throws(XitDBError) {
+            try XitDBError.carrying {
+                try database.withTransaction { root in
+                    guard visits > 0 else { throw Refused() }
+                    try HashMap(root).put(visits, forKey: "visits")
+                }
+            }
+        }
+
+        var refused = false
+        do {
+            try record(0, in: database)
+        } catch .callerError(let carried) where carried is Refused {
+            refused = true
+        }
+        #expect(refused)
+        #expect(try database.rootCursor.slot.isEmpty)
+
+        try record(3, in: database)
+        #expect(try HashMap(database.rootCursor.readOnly).value(forKey: "visits", as: UInt64.self) == 3)
+
+        // An error of the library's comes out as itself: here a map asked
+        // for at a root that the transaction above left a map, read as a
+        // list.
+        func count(in database: Database) throws(XitDBError) -> UInt64 {
+            try XitDBError.carrying {
+                try database.withTransaction { root in try ArrayList(root).count }
+            }
+        }
+        #expect(throws: XitDBError.unexpectedTag) { try count(in: database) }
+    }
+
     /// The article's list of what `invalidHashSize` covers, and the errors
     /// it says come from the data.
     @Test func theUsesOfInvalidHashSize() throws {

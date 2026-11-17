@@ -260,6 +260,11 @@ extension LinkedArrayList where Access == ReadWrite {
     /// The result may be ignored: the call is often made for its writes
     /// alone, with a body whose one expression happens to have a value.
     ///
+    /// The call throws `any Error`, since what `body` throws comes out as
+    /// itself. Where the library's error is declared, with
+    /// `throws(XitDBError)`, make the call inside
+    /// ``XitDBError/carrying(_:)``.
+    ///
     /// - Parameters:
     ///   - value: The value to write before `body` runs.
     ///   - body: Given a cursor at the new element.

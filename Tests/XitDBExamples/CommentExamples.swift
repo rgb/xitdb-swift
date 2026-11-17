@@ -133,4 +133,29 @@ private enum ByteSum: KeyHashing {
             #expect(hash.count == 32)
         }
     }
+
+    /// `XitDBError.carrying(_:)`: a function that declares the library's
+    /// error makes a transaction inside the adapter, with no error spelled
+    /// on a closure, and is given the library's own error as itself.
+    @Test func aTransactionWhereTheLibrarysErrorIsDeclared() throws {
+        func addVisit(to database: Database) throws(XitDBError) {
+            try XitDBError.carrying {
+                try database.withTransaction { root in
+                    let map = try HashMap(root)
+                    let visits = try map.value(forKey: "visits", as: UInt64.self) ?? 0
+                    try map.put(visits + 1, forKey: "visits")
+                }
+            }
+        }
+
+        let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
+        try addVisit(to: database)
+        try addVisit(to: database)
+        #expect(try HashMap(database.rootCursor.readOnly).value(forKey: "visits", as: UInt64.self) == 2)
+
+        // A database with no hasher cannot hash the key: the library's
+        // error, as itself and not carried.
+        let unhashed = try Database(creating: MemoryStorage(), hashSize: 32)
+        #expect(throws: XitDBError.noKeyHashing) { try addVisit(to: unhashed) }
+    }
 }

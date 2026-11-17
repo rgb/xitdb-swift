@@ -225,10 +225,13 @@ public enum XitDBError: Error, Sendable {
     ///   NUL byte.
     case storageFailure(errno: Int32)
 
-    /// A type of the caller's threw: a ``ByteSink``, a ``ByteSource`` or an
-    /// ``OffsetMap`` that XitDB was calling. The error is carried as it was
-    /// thrown. An error from a closure of the caller's is not carried: it
-    /// comes out of the call as itself.
+    /// An error of the caller's own, carried as it was thrown. Either a
+    /// type of the caller's threw it while XitDB was calling it, a
+    /// ``ByteSink``, a ``ByteSource`` or an ``OffsetMap``; or it was thrown
+    /// inside ``carrying(_:)``, which is how code that declares
+    /// `throws(XitDBError)` makes a call that takes a closure. Such a call
+    /// carries nothing itself: an error from its closure comes out of it
+    /// as itself.
     case callerError(any Error)
 
     /// A count recorded in the file disagrees with what it counts.
@@ -441,9 +444,64 @@ extension XitDBError: Equatable {
 }
 
 extension XitDBError {
-    /// Runs `body`, which calls a type of the caller's, and carries whatever
-    /// it throws as ``callerError(_:)``.
-    static func carrying<Result>(_ body: () throws -> Result) throws(XitDBError) -> Result {
+    /// Runs `body` and throws only ``XitDBError``: an error of the library's
+    /// comes out as itself, and anything else `body` throws comes out
+    /// carried, as ``callerError(_:)``.
+    ///
+    /// It is for code that declares `throws(XitDBError)` and makes a call
+    /// that takes a closure of the caller's: ``Database/withTransaction(_:)``,
+    /// an append that takes a body, a cursor's `writeBytes`. Those calls
+    /// throw `any Error`, because they pass on whatever the closure throws,
+    /// as it was thrown, and so a typed context cannot make them bare. With
+    /// this it can, and no error has to be spelled on any closure:
+    ///
+    /// ```swift
+    /// func addVisit(to database: Database) throws(XitDBError) {
+    ///     try XitDBError.carrying {
+    ///         try database.withTransaction { root in
+    ///             let map = try HashMap(root)
+    ///             let visits = try map.value(forKey: "visits", as: UInt64.self) ?? 0
+    ///             try map.put(visits + 1, forKey: "visits")
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// The calls themselves are unchanged: without this, an error of the
+    /// closure's comes out of them as itself, as it does from any Swift
+    /// call that takes a throwing closure. Carrying is what is asked for
+    /// here, and happens here, in sight.
+    ///
+    /// What a caller could get wrong: an error of the caller's own that
+    /// leaves through this call is no longer itself. A `catch` for its type
+    /// further out never matches; match ``callerError(_:)`` and look at
+    /// what it carries. A ``callerError(_:)`` thrown inside comes out as it
+    /// is, once, not carried again.
+    ///
+    /// It costs some thirty instructions a call where nothing is thrown,
+    /// and about doubles the cost of an error that is, which is some six
+    /// hundred instructions to begin with.
+    ///
+    /// - Parameter body: Anything that throws.
+    /// - Returns: What `body` returns.
+    /// - Throws: The ``XitDBError`` that `body` throws, as it is; and
+    ///   ``callerError(_:)`` carrying any other error that `body` throws.
+    public static func carrying<Result>(_ body: () throws -> Result) throws(XitDBError) -> Result {
+        do {
+            return try body()
+        } catch let error as XitDBError {
+            throw error
+        } catch {
+            throw .callerError(error)
+        }
+    }
+
+    /// Runs `body`, which calls a type of the caller's (a sink, a source, an
+    /// offset map), and carries whatever it throws as ``callerError(_:)``,
+    /// an ``XitDBError`` among them: what such a type throws is the
+    /// caller's, whatever its type, and is not to be taken for an error the
+    /// library met itself.
+    static func carryingAll<Result>(_ body: () throws -> Result) throws(XitDBError) -> Result {
         do {
             return try body()
         } catch {

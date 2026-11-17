@@ -7,7 +7,9 @@ What can go wrong, grouped by whose it is.
 The package throws one type, ``XitDBError``. Methods that run no closure of yours declare it, as `throws(XitDBError)`, so
 their errors arrive typed. Methods that run a closure of yours, such as ``Database/withTransaction(_:)``, throw `any Error`,
 because they also pass on whatever your closure throws, as it was thrown. ``Entry/withHash(_:)`` throws exactly what its
-closure throws. Each case's own documentation says when it is thrown; this article says which of them to expect where.
+closure throws. Code of yours that declares `throws(XitDBError)` makes such a call inside ``XitDBError/carrying(_:)``:
+see "Your own types" below. Each case's own documentation says when it is thrown; this article says which of them to
+expect where.
 
 No bytes in a file can stop your program: damage that the code comes across is an error. That is not the same as noticing all
 damage. Only the trailer that ends a commit is checksummed, and the data is not, so a changed byte in a value can read back as a
@@ -84,8 +86,38 @@ do {
 }
 ```
 
-An error from a closure is not carried: it comes out of the call as itself. A ``StorableValue`` of your own throws an
-``XitDBError``, as its two requirements declare.
+An error from a closure is not carried by the call the closure is given to: it comes out of the call as itself, which is why
+the four calls that take one throw `any Error`: ``Database/withTransaction(_:)``, the append of an ``ArrayList`` and of a
+``LinkedArrayList`` that takes a body, and a cursor's `writeBytes`. A function that declares `throws(XitDBError)` cannot
+make those calls bare, and the compiler says so at the call. It makes them inside ``XitDBError/carrying(_:)``, with no
+error spelled on any closure. Here `database` has a hash map at its root:
+
+```swift
+struct Refused: Error {}
+
+func record(_ visits: UInt64, in database: Database) throws(XitDBError) {
+    try XitDBError.carrying {
+        try database.withTransaction { root in
+            guard visits > 0 else { throw Refused() }
+            try HashMap(root).put(visits, forKey: "visits")
+        }
+    }
+}
+
+var refused = false
+do {
+    try record(0, in: database)
+} catch .callerError(let carried) where carried is Refused {
+    refused = true
+}
+```
+
+Inside it an error of the library's comes out as itself, so a `catch` for ``XitDBError/keyNotFound`` matches as it did;
+anything else comes out as ``XitDBError/callerError(_:)``, with your error inside it. That is the thing to get right: once
+it has left through ``XitDBError/carrying(_:)``, an error of your own is no longer itself, and a `catch` for its type
+further out never matches. Carrying happens only there, where you wrote it; the calls themselves carry nothing.
+
+A ``StorableValue`` of your own throws an ``XitDBError``, as its two requirements declare.
 
 ### Cases you will not see
 
