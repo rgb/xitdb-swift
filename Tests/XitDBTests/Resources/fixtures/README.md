@@ -6,7 +6,7 @@ What the Swift port of xitdb has to do, byte for byte, as Zig shows it. This is 
 
 It was produced from:
 
-- conformance repository: commit `d1a4e81db603a788e74d816a29435f385869cafb`
+- conformance repository: commit `3e3335a4fe844aa2e4fef847ec9eb0484ed0bd1a`
 - xitdb, the Zig original: commit `89da8e76f0dd82baefeadb656f0f734bf920be05`, or the one the manifest gives for that fixture as its `zig_commit`
 - Zig 0.17.1, with the runner `run` built in debug mode and using the `buffered_file` storage kind
 
@@ -19,7 +19,10 @@ It was produced from:
   reached. `features` says which of these it uses: `reopen` (closing and reopening), `raw_file` (writing to the
   file directly while it's closed), `read_only` (opening it read-only, which the memory storage kind can't do),
   `iterators` (`iterator` and `next`), `rank`, `byte_stream` (`read_stream`), `byte_buffers`
-  (`read_bytes_into`, and `max_size` on `read_bytes`) and `inputs` (`raw_load`).
+  (`read_bytes_into`, and `max_size` on `read_bytes`) and `inputs` (`raw_load`). And `cut_short_copy`: a sync at
+  0 that fails once it has begun to write, and what comes after it, which goes by what a copy in place leaves, a
+  database without a first commit. A storage that replaces the file on a full copy, as the port's file storages do,
+  leaves the database as it was instead, so a runner leaves these scripts out there (`SCRIPT-FORMAT.md` section 10).
 - `valid/<name>.json`: a script that passes, with `<name>.db`, the file Zig wrote, and `<name>.db.sidecar.json`, its
   committed sizes and commit IDs. Those called `<name>--port` are the port's versions of scripts that pin what it
   refuses. Those called `safe-*` come from the generator with `--port-safe`. Those called `gen-<seed>`, `reads-<seed>`, `compact-<seed>` and `replica-<seed>` come from the generator `gen`, and

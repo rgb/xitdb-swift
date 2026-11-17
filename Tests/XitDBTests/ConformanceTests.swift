@@ -36,8 +36,8 @@ import Testing
     /// kind.
     @Test func everyScriptRuns() {
         let all = ConformanceFixture.all
-        #expect(all.count == 253)
-        #expect(all.filter { $0.mustPass }.count == 155)
+        #expect(all.count == 254)
+        #expect(all.filter { $0.mustPass }.count == 156)
         #expect(all.filter { !$0.mustPass }.count == 98)
 
         // the failing scripts whose description pins the engine error that
@@ -79,12 +79,13 @@ import Testing
         ).mapValues { $0.map(\.0).sorted() }
         let files: [StorageKind] = [.file, .bufferedFile, .bufferedFileSmallWindow, .mappedFile, .mappedBufferedFile]
         #expect(Set(leftOut.keys) == Set(StorageKind.allCases))
+        // on a file a full copy cut short leaves the old database: the
+        // scripts the manifest marks for that, which are these three
+        let marked = all.filter { $0.features.contains(ConformanceFixture.cutShortCopy) }.map(\.name).sorted()
+        #expect(
+            marked == ["recover-without-first-commit--port", "replicate-copy-cut-short", "replicate-failed-first-sync"])
         for kind in files {
-            // on a file a full copy cut short leaves the old database
-            #expect(
-                leftOut[kind] == [
-                    "recover-without-first-commit--port", "replicate-copy-cut-short", "replicate-failed-first-sync",
-                ], "\(kind)")
+            #expect(leftOut[kind] == marked, "\(kind)")
         }
 
         // not applicable to the memory storage, which has no read-only mode

@@ -1480,29 +1480,24 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
         }
     }()
 
-    /// The fixtures that pin what a full copy cut short leaves behind. The
-    /// original leaves a database without a first commit, and so does this
-    /// implementation where the copy is made in place: in memory, and in a
-    /// storage of the caller's own. On a file the copy is written into a
-    /// new file, and a copy cut short leaves the old database (decision
-    /// D55). So these scripts run where the copy is in place, which among
-    /// the kinds here is memory; what a copy cut short leaves on a file is
-    /// held by `FileCopyFailureTests` and `DyingWriterTests`.
-    ///
-    /// A LIST OF NAMES, WHICH IS TO GO: the conformance repository marks
-    /// these fixtures in its manifest (`cut_short_copy`). When the fixtures
-    /// are copied again from a commit that has the mark, this list goes and
-    /// ``runs(on:)`` asks the manifest.
-    static let pinningACopyCutShort: Set<String> = [
-        "replicate-copy-cut-short", "recover-without-first-commit--port", "replicate-failed-first-sync",
-    ]
+    /// The manifest's mark for a script that pins what a full copy cut
+    /// short leaves behind, and goes on from it. The original leaves a
+    /// database without a first commit, and so does this implementation
+    /// where the copy is made in place: in memory, and in a storage of the
+    /// caller's own. On a file the copy is written into a new file, and a
+    /// copy cut short leaves the old database (decision D55). So a script
+    /// with the mark runs where the copy is in place, which among the
+    /// kinds here is memory; what a copy cut short leaves on a file is held
+    /// by `FileCopyFailureTests` and `DyingWriterTests`.
+    static let cutShortCopy = "cut_short_copy"
 
-    /// Whether this script applies to a storage of `kind`.
+    /// Whether this script applies to a storage of `kind`, by what the
+    /// manifest says of it.
     func runs(on kind: StorageKind) -> Bool {
         // The memory storage has no read-only mode, in Zig or here.
         if kind == .memory, features.contains("read_only") { return false }
         // Every kind but memory is a file, which a full copy replaces.
-        if kind != .memory, Self.pinningACopyCutShort.contains(name) { return false }
+        if kind != .memory, features.contains(Self.cutShortCopy) { return false }
         return true
     }
 
