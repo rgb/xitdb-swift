@@ -50,8 +50,9 @@ by hand.
 ### Which hash
 
 The hasher's size is the database's hash size, written in its header when the database is created, from 1 to 65,535
-bytes. A replica has the size of its source. Each entry of a map stores its hash, and takes that many bytes and eighteen
-more.
+bytes. No program built on the original can open a database whose hashes are longer than 8,191 bytes: the original takes
+a hash as an integer type as wide as the hash, and Zig's integer types stop at 65,535 bits. A replica has the size of
+its source. Each entry of a map stores its hash, and takes that many bytes and eighteen more.
 
 | Bytes | Hash | When |
 |---|---|---|

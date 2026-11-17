@@ -160,9 +160,11 @@ let writer = try BufferedFileStorage(
 ```
 
 A ``FileLock`` is never waited for. If it cannot be had at once, opening fails with ``XitDBError/storageFailure(errno:)`` carrying
-`EWOULDBLOCK`, and you decide whether to try again. It is advisory, so it keeps out only those who ask for one too. A reader
-need not ask: it does not get in the writer's way, and it gets a consistent view without one. A reader that takes a
-``FileLock/shared`` lock does keep the writer out.
+`EWOULDBLOCK`, and you decide whether to try again. It is advisory, so it keeps out only those who ask for one too. A reader need
+not ask: it does not get in the writer's way, and it gets a consistent view without one. A reader that takes a ``FileLock/shared``
+lock does keep the writer out, and holds that lock until its storage and the last snapshot of a database in it have gone. A writer
+of this package that asks for its lock is refused while any reader holds one; one that waits for its lock, as the writer in the
+original's README does, stands still for as long as any reader holds one.
 
 No lock is taken unless you ask for one. Holding a lock on a file in a shared container while an iOS app is suspended gets the app
 terminated, so that decision is left to you, and a snapshot kept alive holds the lock too. Elsewhere on iOS a lock between processes

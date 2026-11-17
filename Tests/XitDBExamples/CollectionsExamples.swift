@@ -46,6 +46,24 @@ import XitDBHashing
         #expect(try empty.committedSize > before)
     }
 
+    /// "A collection is a view you make from a cursor": a copy of it is a
+    /// second view, and writes the same list.
+    @Test func aCopyOfACollectionWritesTheSameSlot() throws {
+        let database = try Database(creating: MemoryStorage(), hashSize: 32)
+        try database.withTransaction { cursor in
+            let list = try ArrayList<ReadWrite>(cursor)
+            let copy = list
+            try list.append(UInt64(1))
+            try copy.append(UInt64(2))
+            #expect(try list.count == 2)
+            #expect(try copy.count == 2)
+        }
+        let list = try ArrayList<ReadOnly>(database.rootCursor)
+        #expect(try list.count == 2)
+        #expect(try list.value(at: 0, as: UInt64.self) == 1)
+        #expect(try list.value(at: 1, as: UInt64.self) == 2)
+    }
+
     @Test func theTwoFormsOfACollection() throws {
         let database = try Database(creating: MemoryStorage(), hashing: SHA256.self)
 

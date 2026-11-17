@@ -24,6 +24,13 @@ Each task, or each process, opens a storage and a database of its own: <doc:Stor
 takes. A database in memory has no file to share. Its ``MemoryStorage`` belongs to one thread or task at a time, as the
 database does; other tasks read it through a snapshot.
 
+Every call does its work on the thread that makes it, and returns when the work is done: nothing in the package is `async`. A
+commit to a file at the default durability, ``Durability/full``, waits for the disk twice, which took about 4.3 ms for a small
+commit in the table of durability levels (<doc:Transactions#Durability>), and its thread waits with it. On the main actor the
+interface stops for that long, and an actor that has no executor of its own runs on the threads that all tasks share, and holds
+one of them through each commit. So a writer wants a thread of its own: an actor with an executor of its own, or a thread that
+runs only the writer.
+
 ### Snapshots
 
 ``Database/snapshot()`` takes a ``Snapshot`` of the last commit: its committed size and its root, read and verified
@@ -34,7 +41,8 @@ snapshot carries the hasher of its database, so what is made from it reads by ke
 ``SnapshotDatabase``, and everything made from a snapshot, belongs to the task that made it, as a ``Database`` does. Two
 tasks reading one snapshot share nothing but the snapshot.
 
-Here a database in memory is written on the main actor, and a task reads the commit it was handed:
+Here a database in memory, which has no disk to wait for, is written on the main actor, and a task reads the commit it was
+handed:
 
 ```swift
 // The writer, on the main actor, hands the last commit to a reader.
