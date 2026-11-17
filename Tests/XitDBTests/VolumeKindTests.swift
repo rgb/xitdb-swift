@@ -32,13 +32,13 @@ import Testing
     /// path: the root's, the export's, the passed-through folder's, and one
     /// whose numbers are too large for the old twenty bits.
     @Test func theKindIsTheOneOfTheMountWithTheFilesDevice() {
-        #expect(Platform.fileSystemKind(device: device(259, 2), path: nil, mounts: Self.mounts) == "ext4")
-        #expect(Platform.fileSystemKind(device: device(0, 52), path: "/elsewhere/x", mounts: Self.mounts) == "nfs4")
-        #expect(Platform.fileSystemKind(device: device(0, 61), path: nil, mounts: Self.mounts) == "fuseblk")
+        #expect(Platform.fileSystemKind(device: device(259, 2), path: nil, mounts: Self.mounts) == .other("ext4"))
+        #expect(Platform.fileSystemKind(device: device(0, 52), path: "/elsewhere/x", mounts: Self.mounts) == .nfs)
+        #expect(Platform.fileSystemKind(device: device(0, 61), path: nil, mounts: Self.mounts) == .fuse)
         // the line with several optional fields before its hyphen
-        #expect(Platform.fileSystemKind(device: device(0, 44), path: nil, mounts: Self.mounts) == "btrfs")
+        #expect(Platform.fileSystemKind(device: device(0, 44), path: nil, mounts: Self.mounts) == .other("btrfs"))
         let large = "7 1 4660:1193046 / /big rw - xfs /dev/big rw"
-        #expect(Platform.fileSystemKind(device: device(4660, 1_193_046), path: nil, mounts: large) == "xfs")
+        #expect(Platform.fileSystemKind(device: device(4660, 1_193_046), path: nil, mounts: large) == .other("xfs"))
     }
 
     /// Where no mount has the file's device number, as for a file of a
@@ -47,20 +47,22 @@ import Testing
     /// under `/home`.
     @Test func withNoSuchDeviceTheKindIsTheOneOfTheMountThePathIsUnder() {
         let unlisted = device(0, 99)
-        #expect(Platform.fileSystemKind(device: unlisted, path: "/home/user/test.db", mounts: Self.mounts) == "btrfs")
-        #expect(
-            Platform.fileSystemKind(device: unlisted, path: "/home/scratch/test.db", mounts: Self.mounts) == "tmpfs")
-        #expect(Platform.fileSystemKind(device: unlisted, path: "/home", mounts: Self.mounts) == "btrfs")
-        #expect(Platform.fileSystemKind(device: unlisted, path: "/homework/test.db", mounts: Self.mounts) == "ext4")
-        #expect(Platform.fileSystemKind(device: unlisted, path: "/var/lib/test.db", mounts: Self.mounts) == "ext4")
-        // a mount point that the list writes with escapes
-        #expect(
-            Platform.fileSystemKind(device: unlisted, path: "/mnt/with a space/test.db", mounts: Self.mounts)
-                == "fuse.sshfs")
+        /// The kind of the mount that the path is under, in the list above.
+        func kind(of path: String, in mounts: String = Self.mounts) -> FileSystemKind? {
+            Platform.fileSystemKind(device: unlisted, path: path, mounts: mounts)
+        }
+        #expect(kind(of: "/home/user/test.db") == .other("btrfs"))
+        #expect(kind(of: "/home/scratch/test.db") == .other("tmpfs"))
+        #expect(kind(of: "/home") == .other("btrfs"))
+        #expect(kind(of: "/homework/test.db") == .other("ext4"))
+        #expect(kind(of: "/var/lib/test.db") == .other("ext4"))
+        // a mount point that the list writes with escapes; its kind is
+        // FUSE with the name of the program behind it
+        #expect(kind(of: "/mnt/with a space/test.db") == .fuse)
         // a later mount over the same place is the one that is there
         let covered = Self.mounts + "\n160 28 0:80 / /work rw - ext4 /dev/sdc1 rw"
-        #expect(Platform.fileSystemKind(device: unlisted, path: "/work/test.db", mounts: Self.mounts) == "fuseblk")
-        #expect(Platform.fileSystemKind(device: unlisted, path: "/work/test.db", mounts: covered) == "ext4")
+        #expect(kind(of: "/work/test.db") == .fuse)
+        #expect(kind(of: "/work/test.db", in: covered) == .other("ext4"))
     }
 
     /// Nothing is learnt where neither the device nor the path is found: no
@@ -80,23 +82,42 @@ import Testing
         // and the device still decides for a file that has lost its name
         #expect(
             Platform.fileSystemKind(device: device(0, 44), path: "/home/user/test.db (deleted)", mounts: Self.mounts)
-                == "btrfs")
+                == .other("btrfs"))
     }
 
     /// The kinds that are another machine's or passed through from
-    /// elsewhere are not this machine's own; FUSE in every form is among
-    /// them, with its subtypes and as a block device.
-    @Test func theKindsThatAreNotMapped() {
-        for kind in [
-            "nfs", "nfs4", "cifs", "smb", "smbfs", "smb2", "smb3", "9p", "fuse", "fuseblk", "fuse.sshfs",
-            "fuse.gvfsd-fuse",
-            "virtiofs", "ceph", "afs", "lustre", "gfs2",
-        ] {
-            #expect(Platform.isRemoteFileSystem(kind), "\(kind)")
+    /// elsewhere are not this machine's own, and each is a case: the
+    /// system's words for them, with every name Linux has had for SMB and
+    /// FUSE in every form, with its subtypes and as a block device, are
+    /// read into those cases, and every one of them is remote.
+    @Test func theKindsThatAreNotMappedAreCasesOfTheirOwn() {
+        let named: [(word: String, kind: FileSystemKind)] = [
+            ("nfs", .nfs), ("nfs4", .nfs), ("cifs", .smb), ("smb", .smb), ("smbfs", .smb), ("smb2", .smb),
+            ("smb3", .smb), ("9p", .plan9), ("fuse", .fuse), ("fuseblk", .fuse), ("fuse.sshfs", .fuse),
+            ("fuse.gvfsd-fuse", .fuse), ("virtiofs", .virtiofs), ("ceph", .ceph), ("afs", .afs), ("lustre", .lustre),
+            ("gfs2", .gfs2),
+        ]
+        for (word, kind) in named {
+            #expect(FileSystemKind(linuxName: word) == kind, "\(word)")
+            #expect(kind.isRemote, "\(word)")
         }
-        for kind in ["ext4", "btrfs", "xfs", "overlay", "tmpfs", "zfs", "f2fs", "fusectl", "apfs", ""] {
-            #expect(!Platform.isRemoteFileSystem(kind), "\(kind)")
+        // the nine cases, each reached by a word
+        #expect(Set(named.map(\.kind)).count == 9)
+    }
+
+    /// A word the library does not know is in the case for the rest, with
+    /// the word kept, and is treated as this machine's own, as it was when
+    /// words were compared: the common local kinds, one that only begins
+    /// as FUSE's name does, Apple's, no word at all, and a word in another
+    /// case of letters, which is another word.
+    @Test func anyOtherKindKeepsItsWordAndIsThisMachinesOwn() {
+        for word in ["ext4", "btrfs", "xfs", "overlay", "tmpfs", "zfs", "f2fs", "fusectl", "apfs", "", "NFS", "fuse_x"]
+        {
+            let kind = FileSystemKind(linuxName: word)
+            #expect(kind == .other(word), "\(word)")
+            #expect(!kind.isRemote, "\(word)")
         }
+        #expect(FileSystemKind.other("ext4") != .other("btrfs"))
     }
 
     #if os(Linux)
@@ -116,7 +137,7 @@ import Testing
             let kind = try #require(
                 Platform.fileSystemKind(device: device.uint64Value, path: directory.path(), mounts: mounts),
                 "no mount found for \(directory.path())")
-            #expect(Platform.volumeIsLocal(descriptor.rawValue) == !Platform.isRemoteFileSystem(kind), "\(kind)")
+            #expect(Platform.volumeIsLocal(descriptor.rawValue) == !kind.isRemote, "\(kind)")
         }
     #endif
 }

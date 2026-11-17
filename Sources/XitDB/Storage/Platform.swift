@@ -384,8 +384,8 @@ enum Platform {
     /// Whether an open file is on a volume of this machine, as far as the
     /// system says: the mount's local flag on Apple platforms, and on Linux
     /// a kind of file system that is not one of the network and
-    /// passed-through ones. A file whose volume cannot be asked is not
-    /// local.
+    /// passed-through ones (``FileSystemKind/isRemote``). A file whose
+    /// volume cannot be asked is not local.
     ///
     /// A file that is not local is not read through a memory map: what the
     /// other side of such a mount does to the file is not ours to know.
@@ -417,7 +417,7 @@ enum Platform {
             let kind = fileSystemKind(
                 device: UInt64(status.st_dev), path: pathOfOpenFile(descriptor), mounts: mounts)
             guard let kind else { return false }
-            return !isRemoteFileSystem(kind)
+            return !kind.isRemote
         #endif
     }
 
@@ -433,20 +433,21 @@ enum Platform {
     /// ext4 /dev/root rw`: the third field is the device, the fifth the
     /// mount point, with a space, a tab, a newline and a backslash written
     /// as a backslash and three octal digits, and the kind follows the
-    /// lone hyphen.
-    static func fileSystemKind(device: UInt64, path: String?, mounts: String) -> String? {
+    /// lone hyphen. That word is made a ``FileSystemKind`` here, and is
+    /// not compared as a word anywhere.
+    static func fileSystemKind(device: UInt64, path: String?, mounts: String) -> FileSystemKind? {
         // the numbers as glibc packs them into a device number
         let major = ((device >> 32) & 0xFFFF_F000) | ((device >> 8) & 0xFFF)
         let minor = ((device >> 12) & 0xFFFF_FF00) | (device & 0xFF)
         let wanted = "\(major):\(minor)"
         let path = path.flatMap { $0.hasSuffix(" (deleted)") ? nil : $0 }
-        var byDevice: String?
-        var byPath: (length: Int, kind: String)?
+        var byDevice: FileSystemKind?
+        var byPath: (length: Int, kind: FileSystemKind)?
         for line in mounts.split(separator: "\n") {
             let fields = line.split(separator: " ")
             guard fields.count >= 7, let hyphen = fields.dropFirst(6).firstIndex(of: "-"), hyphen + 1 < fields.count
             else { continue }
-            let kind = String(fields[hyphen + 1])
+            let kind = FileSystemKind(linuxName: String(fields[hyphen + 1]))
             if fields[2] == wanted { byDevice = kind }
             if let path {
                 let mountPoint = unescapedMountPoint(fields[4])
@@ -481,18 +482,6 @@ enum Platform {
             }
         }
         return String(decoding: plain, as: UTF8.self)
-    }
-
-    /// Whether a kind of file system, by the name Linux has for it, is
-    /// another machine's or is passed through from somewhere else: NFS, SMB
-    /// in its forms, 9p, FUSE in every form (which a container's mounted
-    /// folder is), virtiofs, Ceph, AFS, Lustre and GFS2.
-    static func isRemoteFileSystem(_ kind: String) -> Bool {
-        let remote: Set<String> = [
-            "nfs", "nfs4", "cifs", "smb", "smbfs", "smb2", "smb3", "9p", "fuse", "fuseblk", "virtiofs", "ceph", "afs",
-            "lustre", "gfs2",
-        ]
-        return remote.contains(kind) || kind.hasPrefix("fuse.")
     }
 
     #if !canImport(Darwin)
