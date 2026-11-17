@@ -230,20 +230,34 @@ if [ -f "$suite/two-processes.sh" ] && [ -x "$suite_driver" ] && [ -x "$suite_re
     fi
     echo "the suite at $suite: $suite_commit"
     # The suite's writer and its own reader are built by the suite's scripts and lie
-    # where they were left, so they can be older than the commit the suite is at: a
-    # writer built before a change to the test is not that change's writer. The gate
-    # cannot build them (it writes nothing into the suite), so it says how their times
-    # stand to the commit's, aloud where either is the older.
-    suite_time=$(git -C "$suite" log -1 --format=%ct 2>/dev/null || true)
+    # where they were left, so they can be of another commit than the one the suite is
+    # at. A file's time says nothing of that: a build whose inputs have not changed
+    # leaves the file as it was, so its time trails a commit that touched something
+    # else. So each program is asked what it was built from, which it answers with
+    # --version since the suite's 4ccfc3c ("... conformance <commit>"), and the commit
+    # it names is held against the suite's: the same, said in a word; another, said
+    # aloud with both. A program that names none is from an older suite, and for it
+    # alone the file's time is given, as a hint and no more. The gate builds neither (it
+    # writes nothing into the suite) and goes on either way: what it prints is the
+    # record of what the port's reader was held against.
+    suite_head=$(git -C "$suite" rev-parse HEAD 2>/dev/null || true)
     for built in "$suite_driver" "$suite_reader"; do
-        if [ "$platform" = Darwin ]; then built_time=$(stat -f %m "$built"); else built_time=$(stat -c %Y "$built"); fi
-        if [ -z "$suite_time" ]; then
-            echo "  $built: the suite's commit has no time to hold it against"
-        elif [ "$built_time" -lt "$suite_time" ]; then
-            echo "  NOTE: $built was built $(((suite_time - built_time) / 60)) minutes BEFORE the suite's commit,"
-            echo "        and may not be that commit's: build it again with the suite's own script"
+        said=$("$built" --version 2>/dev/null || true)
+        named=$(printf '%s\n' "$said" | sed -n 's/.*conformance \([0-9a-f]\{40\}\).*/\1/p' | head -1)
+        if [ -n "$named" ] && [ "$named" = "$suite_head" ]; then
+            echo "  $built: built from the suite's commit, the same"
+        elif [ -n "$named" ]; then
+            echo "  NOTE: $built says it was built from the suite's commit $(printf '%.7s' "$named"),"
+            echo "        and the suite is at $suite_commit: it is ANOTHER COMMIT'S program"
         else
-            echo "  $built: built $(((built_time - suite_time) / 60)) minutes after the suite's commit"
+            if [ "$platform" = Darwin ]; then built_time=$(stat -f %m "$built"); else built_time=$(stat -c %Y "$built"); fi
+            suite_time=$(git -C "$suite" log -1 --format=%ct 2>/dev/null || true)
+            echo "  $built does not say what it was built from, as one from before the suite's 4ccfc3c does not."
+            if [ -n "$suite_time" ] && [ "$built_time" -lt "$suite_time" ]; then
+                echo "        A hint and no more: its file is $(((suite_time - built_time) / 60)) minutes older than the suite's commit."
+            elif [ -n "$suite_time" ]; then
+                echo "        A hint and no more: its file is $(((built_time - suite_time) / 60)) minutes younger than the suite's commit."
+            fi
         fi
     done
     rm -rf .build/two-processes
