@@ -11,20 +11,56 @@ closure throws. Code of yours that declares `throws(XitDBError)` makes such a ca
 see "Your own types" below. Each case's own documentation says when it is thrown; this article says which of them to
 expect where.
 
+An error says three more things about itself.
+
+Its ``XitDBError/code`` is its case without what the case carries, a ``XitDBError/Code``: a value to compare, to count by
+and to keep, where the error itself cannot be a dictionary's key, since one case carries any error at all. The code's raw
+value is the case's own name, the same for every error of the case, and it is what code logs, counts by, sends and pins.
+It changes only if a case is renamed, which a release's notes would say. `XitDBError.Code(rawValue:)` is the way back from
+a word, `nil` for a word that names no case, and `XitDBError.Code.allCases` is every code. A code names a case and is not a
+number: the number a system gives a failure is what ``XitDBError/storageFailure(errno:)`` carries. Where the original has
+an error of the same meaning under a name of its own, ``XitDBError/Code/originalName`` is that name. Here `files` are the
+bytes of three files that are not databases:
+
+```swift
+var met: [XitDBError.Code: Int] = [:]
+var log: [String] = []
+for bytes in files {
+    do {
+        _ = try Database(opening: MemoryStorage(bytes: bytes))
+    } catch {
+        met[error.code, default: 0] += 1
+        log.append("\(error.code.rawValue): \(error)")
+    }
+}
+```
+
+Its ``XitDBError/description`` is a line a person can read, which is what `print` and string interpolation give, as in the
+log's lines above: lower case and no full stop, so that it reads on after your own words, as in
+`"could not open the library: \(error)"`. The words may change in any version, so code never compares, parses or stores
+them: that is the code's raw value's work. In a debugger, and from `String(reflecting:)`, an error is the code's raw value
+with what the case carries, `storageFailure(errno: 28)`.
+
+Its ``XitDBError/kind`` says whose it is, one ``XitDBError/Kind`` for each of the four headings below, for a program that
+treats the errors of a kind alike. It is the code's ``XitDBError/Code/kind``. A case has one kind, by its commoner meaning;
+where a case has a second meaning under another heading, the text below says so and the kind does not.
+
 No bytes in a file can stop your program: damage that the code comes across is an error. That is not the same as noticing all
 damage. Only the trailer that ends a commit is checksummed, and the data is not, so a changed byte in a value can read back as a
 wrong value with no error at all.
 
 ### Your program
 
-These mean the code asked for something it should not have. Most are worth fixing, not catching:
+These mean the code asked for something it should not have, and their ``XitDBError/kind`` is
+``XitDBError/Kind/program``. Most are worth fixing, not catching:
 ``XitDBError/unexpectedTag``, ``XitDBError/indexOutOfRange``, ``XitDBError/keyNotFound``, ``XitDBError/invalidHashSize``,
 ``XitDBError/noKeyHashing``, ``XitDBError/invalidUTF8``, ``XitDBError/expectedTxStart``,
 ``XitDBError/nestedTopLevelWrite``, ``XitDBError/cursorNotWritable``, ``XitDBError/staleCursor``,
 ``XitDBError/snapshotOverwritten``, ``XitDBError/subCollectionSnapshot``, ``XitDBError/byteWriterOpen``,
 ``XitDBError/structuralSlot``, ``XitDBError/poisonedTransaction``, ``XitDBError/streamTooLong``,
 ``XitDBError/unexpectedWriterPosition``, ``XitDBError/storageNotEmpty``, ``XitDBError/targetNotEmpty``,
-``XitDBError/emptyLastMoment``, ``XitDBError/invalidRange`` and ``XitDBError/invalidLength``.
+``XitDBError/emptyLastMoment``, ``XitDBError/invalidRange``, ``XitDBError/invalidLength`` and
+``XitDBError/memoryMapNeedsLock``.
 
 ``XitDBError/invalidHashSize`` is the one error for a hash size, as it is in the original: a hasher or a stated size
 that is not the file's when it is opened or recovered, a size no database can have, or a storage that holds an
@@ -37,14 +73,15 @@ catches those where it reads.
 
 ### The file
 
-These mean the bytes are not what they should be. Catch them where you open a file you did not write, or where a file might have
-been damaged: ``XitDBError/invalidDatabase``, ``XitDBError/untrustedRootHeader(lastVerified:)``, ``XitDBError/invalidVersion``,
+These mean the bytes are not what they should be, and their ``XitDBError/kind`` is ``XitDBError/Kind/file``. Catch them
+where you open a file you did not write, or where a file might have been damaged: ``XitDBError/invalidDatabase``, ``XitDBError/untrustedRootHeader(lastVerified:)``, ``XitDBError/invalidVersion``,
 ``XitDBError/truncatedDatabase``, ``XitDBError/endOfStream``, ``XitDBError/invalidEnumTag``, ``XitDBError/invalidBTreeNode``,
 ``XitDBError/invalidBTreeNodeKind``, ``XitDBError/invalidCount``, ``XitDBError/keyOffsetExceeded`` and
 ``XitDBError/maxShiftExceeded``. The last seven, which a read of the data gives, are to be read as one thing: damage is reported
-by whichever check comes across it first, so the case says where the damage was met and not what it is. From such a read,
-``XitDBError/unexpectedTag`` means the same, beside its meaning above; and ``XitDBError/endOfStream`` is also a ``ByteSource``
-of yours that ran out, or a whole buffer read from a `ByteReader` with fewer bytes left than it holds.
+by whichever check comes across it first, so the case says where the damage was met and not what it is.
+
+From such a read, ``XitDBError/unexpectedTag`` means the same, beside its meaning above; and ``XitDBError/endOfStream`` is
+also a ``ByteSource`` of yours that ran out, or a whole buffer read from a `ByteReader` with fewer bytes left than it holds.
 
 Four of them come also from what a read is held to (see <doc:DifferencesFromTheOriginal>): ``XitDBError/invalidCount``,
 otherwise a write's error, from a size or a count the file has no room for; ``XitDBError/endOfStream`` from a read that would
@@ -62,14 +99,16 @@ the end of the last commit that verifies, and leaves the decision to recover to 
 ``XitDBError/storageFailure(errno:)`` is the system's refusal, or the one the system would have made, with its error
 number: a memory storage that has to grow asks the system for the memory first, and reports a refusal this way, with
 `ENOMEM`. ``XitDBError/maxSizeExceeded`` is a write that would pass a memory storage's limit, which is the machine's
-physical memory where none was named, or what an array can hold if it has none. A transaction that fails this way rolls back like any other. The exception is the second sync of a
-commit, which comes after the root header has been rewritten. If that one fails, the call throws, and the commit stands,
-but it may not survive a crash or a power loss.
+physical memory where none was named, or what an array can hold if it has none. Their ``XitDBError/kind`` is
+``XitDBError/Kind/storage``. A transaction that fails this way rolls back like any other. The exception is the second
+sync of a commit, which comes after the root header has been rewritten. If that one fails, the call throws, and the commit
+stands, but it may not survive a crash or a power loss.
 
 ### Your own types
 
-``XitDBError/callerError(_:)`` carries an error thrown by a ``ByteSink``, a ``ByteSource`` or an ``OffsetMap`` of yours, as it
-was thrown. Here is a sink whose connection drops, used with `source`, a database with something in it:
+``XitDBError/callerError(_:)``, whose ``XitDBError/kind`` is ``XitDBError/Kind/caller``, carries an error thrown by a
+``ByteSink``, a ``ByteSource`` or an ``OffsetMap`` of yours, as it was thrown. Here is a sink whose connection drops, used
+with `source`, a database with something in it:
 
 ```swift
 struct ConnectionLost: Error {}
@@ -112,19 +151,27 @@ do {
 }
 ```
 
-Inside it an error of the library's comes out as itself, so a `catch` for ``XitDBError/keyNotFound`` matches as it did;
-anything else comes out as ``XitDBError/callerError(_:)``, with your error inside it. That is the thing to get right: once
-it has left through ``XitDBError/carrying(_:)``, an error of your own is no longer itself, and a `catch` for its type
-further out never matches. Carrying happens only there, where you wrote it; the calls themselves carry nothing.
+Two ``XitDBError/callerError(_:)`` are equal when the errors they carry are of the same type and, where that type is
+equatable, equal by its own `==`. A type that is not equatable is told from another type and not from itself: two errors
+of it are equal whatever they hold. So a test that expects one carried error and not another of the same type makes the
+type `Equatable`, or matches the case and looks at what it carries. Nothing is compared by what it prints.
+
+Inside ``XitDBError/carrying(_:)`` an error of the library's comes out as itself, so a `catch` for
+``XitDBError/keyNotFound`` matches as it did; anything else comes out as ``XitDBError/callerError(_:)``, with your error
+inside it. That is the thing to get right: once it has left through ``XitDBError/carrying(_:)``, an error of your own is
+no longer itself, and a `catch` for its type further out never matches. Carrying happens only there, where you wrote it;
+the calls themselves carry nothing.
 
 A ``StorableValue`` of your own throws an ``XitDBError``, as its two requirements declare.
 
 ### Cases you will not see
 
 ``XitDBError/writeNotAllowed``, ``XitDBError/pathPartMustBeAtEnd`` and ``XitDBError/notImplemented`` are raised only by the
-package-level path API, and ``XitDBError/immutableBytes`` is a second check under ``XitDBError/staleCursor`` and
-``XitDBError/byteWriterOpen``, which refuse every public route to it first. A `switch` over ``XitDBError`` still has to handle
-them, so give it a `default` and keep it: new cases may be added in minor versions.
+package-level path API, and ``XitDBError/immutableBytes`` is a second check under two others, which refuse every public
+route to it first. Their ``XitDBError/kind`` is ``XitDBError/Kind/program``, since a program is what would have asked.
+
+The two others are ``XitDBError/staleCursor`` and ``XitDBError/byteWriterOpen``. A `switch` over ``XitDBError`` still has
+to handle the four, so give it a `default` and keep it: new cases may be added in minor versions.
 
 ### What does stop the program
 

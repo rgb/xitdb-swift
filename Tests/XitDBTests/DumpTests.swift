@@ -441,6 +441,27 @@ import XitDBHashing
 
     /// `--verify` lists the commits; a truncated file shows what recovery
     /// would open and says so; `--moment` picks a moment; `--limit` cuts.
+
+    /// The listing's word for an error is the case's own name, which is
+    /// its code's raw value, and after it what the case carries. It is, to
+    /// the letter, what the listing wrote when it wrote whatever the error
+    /// printed, so no pinned listing moved; and it is no longer what the
+    /// error prints, which is a sentence for a person.
+    @Test func anErrorIsWrittenByItsCodeAndWhatItCarries() {
+        #expect(Dumper.word(for: .invalidEnumTag) == "invalidEnumTag")
+        #expect(Dumper.word(for: .storageFailure(errno: 5)) == "storageFailure(errno: 5)")
+        #expect(Dumper.word(for: .untrustedRootHeader(lastVerified: 57)) == "untrustedRootHeader(lastVerified: 57)")
+        for row in ErrorDescriptionTests.table {
+            if case .callerError = row.error {
+                // nothing the kit calls takes a type of the caller's
+                #expect(Dumper.word(for: row.error) == "callerError")
+            } else {
+                #expect(Dumper.word(for: row.error) == row.name)
+                #expect(Dumper.word(for: row.error) != row.error.description)
+            }
+        }
+    }
+
     @Test func verifyReportsTheCommitsAndTheDamage() throws {
         let fixtures = try Self.resources().appendingPathComponent("fixtures/valid")
         let whole = try Self.bytes(fixtures.appendingPathComponent("worked-example.db"))

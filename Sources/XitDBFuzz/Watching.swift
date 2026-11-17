@@ -43,22 +43,22 @@ let watchKinds: [String: (buffered: Bool, reading: FileReading)] = [
 func watch(buffered: Bool, reading: FileReading, path: String) {
     alarm(20)
     let storage: any WritableStorage
-    let still: () throws -> Bool
+    let still: () throws(XitDBError) -> Bool
     let isMapped: Bool
     do {
         if buffered {
             let opened = try BufferedFileStorage(path: path, access: .readOnly, reading: reading)
             storage = opened
-            still = { try opened.isStillAtPath }
+            still = { () throws(XitDBError) in try opened.isStillAtPath }
             isMapped = opened.isMemoryMapped
         } else {
             let opened = try FileStorage(path: path, access: .readOnly, reading: reading)
             storage = opened
-            still = { try opened.isStillAtPath }
+            still = { () throws(XitDBError) in try opened.isStillAtPath }
             isMapped = opened.isMemoryMapped
         }
     } catch {
-        fail("XitDBFuzz: cannot open \(path): \(error)", status: 1)
+        fail("XitDBFuzz: cannot open \(path): \(error.description)", status: 1)
     }
     say("open")
     while let line = readLine() {
@@ -67,7 +67,9 @@ func watch(buffered: Bool, reading: FileReading, path: String) {
             do {
                 say(try still() ? "true" : "false")
             } catch {
-                say("error \(error)")
+                // The case's own name, by its code: a line a test reads is
+                // never what an error prints.
+                say("error \(error.code.rawValue)")
             }
         case "mapped":
             say(isMapped ? "true" : "false")
@@ -78,7 +80,9 @@ func watch(buffered: Bool, reading: FileReading, path: String) {
                 let count = try storage.read(into: &span, range: 0..<16, at: 0)
                 say(bytes[..<count].map { String(format: "%02x", $0) }.joined())
             } catch {
-                say("error \(error)")
+                // The case's own name, by its code: a line a test reads is
+                // never what an error prints.
+                say("error \(error.code.rawValue)")
             }
         case "quit":
             exit(0)

@@ -58,12 +58,20 @@ import XitDBHashing
         Array("k\(number < 10 ? "0" : "")\(number)".utf8)
     }
 
+    /// An error as the table writes it: the case's own name, which is its
+    /// code's raw value. The table is words, and a word for an error is
+    /// never what the error prints.
+    private static func word(for error: any Error) -> String {
+        guard let error = error as? XitDBError else { return "an error that is not the library's" }
+        return error.code.rawValue
+    }
+
     /// What a read gives, as text: its result, or the error's name.
     private static func outcome(_ read: () throws -> String) -> String {
         do {
             return try read()
         } catch {
-            return "\(error)"
+            return word(for: error)
         }
     }
 
@@ -78,7 +86,7 @@ import XitDBHashing
                 given.append(try text(entry))
             }
         } catch {
-            return given.isEmpty ? "\(error)" : "\(given.count) and then \(error): \(runs(given))"
+            return given.isEmpty ? word(for: error) : "\(given.count) and then \(word(for: error)): \(runs(given))"
         }
         return given.isEmpty ? "none and an end" : "\(given.count) and an end: \(runs(given))"
     }
@@ -121,7 +129,7 @@ import XitDBHashing
                 given += 1
             }
         } catch {
-            return given == 0 ? "\(error)" : "\(given) and then \(error)"
+            return given == 0 ? word(for: error) : "\(given) and then \(word(for: error))"
         }
         return "\(given)"
     }
@@ -303,6 +311,26 @@ import XitDBHashing
         case .linkedArrayList: committed = Self.reads(of: try LinkedArrayList<ReadOnly>(copy))
         }
         return (writes + inTransaction, writes + committed)
+    }
+
+    /// The table names errors in words. Each such word is taken back to a
+    /// case through `XitDBError.Code(rawValue:)`: one that names no case
+    /// fails here, whatever the reads give. A word for an error is one
+    /// written as a case is, with a capital inside it; the table's other
+    /// words are keys, numbers and plain English.
+    @Test func everyErrorTheTableNamesIsACaseOfTheLibrarys() {
+        var named: Set<XitDBError.Code> = []
+        for (name, lines) in Self.table {
+            for line in lines {
+                for word in line.split(whereSeparator: { !$0.isLetter && !$0.isNumber }) {
+                    guard word.first?.isLowercase == true, word.contains(where: \.isUppercase) else { continue }
+                    let code = XitDBError.Code(rawValue: String(word))
+                    #expect(code != nil, "\(word), in \(name): \(line)")
+                    if let code { named.insert(code) }
+                }
+            }
+        }
+        #expect(named == [.invalidBTreeNode])
     }
 
     @Test(arguments: Collection.allCases, Order.allCases)

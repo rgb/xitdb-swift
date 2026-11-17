@@ -17,8 +17,12 @@
 /// and ``memoryMapNeedsLock``.
 ///
 /// Two errors are equal when they are the same case with the same values.
-/// Two ``callerError(_:)`` are equal when their descriptions are, since a
-/// caller's error need not be equatable.
+/// Two ``callerError(_:)`` are equal when the errors they carry are of the
+/// same type and, where that type is equatable, equal by its own `==`;
+/// where it is not, being of the same type is enough, since a caller's
+/// error need not be equatable and an error has to equal itself. An
+/// error's ``code`` is its case without the values, and can be a
+/// dictionary's key.
 ///
 /// **A damaged file is one thing.** Damage is reported by whichever check
 /// comes across it first, so the case says where the damage was met and
@@ -371,8 +375,12 @@ public enum XitDBError: Error, Sendable {
 
 extension XitDBError: Equatable {
     /// Whether two errors are the same case with the same values. Two
-    /// ``callerError(_:)`` are equal when the errors they carry have the
-    /// same description.
+    /// ``callerError(_:)`` are equal when the errors they carry are of
+    /// the same type and, where that type is equatable, equal by its own
+    /// `==`. Where the type is not equatable, the same type is enough: two
+    /// errors of a type that cannot be compared are taken for equal, so
+    /// make the type equatable if its values are to tell them apart.
+    /// Nothing is compared by what it prints.
     ///
     /// The comparison goes by the case, and costs a few instructions. It
     /// went by the cases' descriptions once, which cost a lookup that
@@ -381,7 +389,7 @@ extension XitDBError: Equatable {
     public static func == (left: XitDBError, right: XitDBError) -> Bool {
         switch (left, right) {
         case (.callerError(let leftError), .callerError(let rightError)):
-            String(describing: leftError) == String(describing: rightError)
+            sameCarried(leftError, rightError)
         case (.storageFailure(let leftErrno), .storageFailure(let rightErrno)):
             leftErrno == rightErrno
         case (.untrustedRootHeader(let leftPosition), .untrustedRootHeader(let rightPosition)):
@@ -393,9 +401,27 @@ extension XitDBError: Equatable {
         }
     }
 
+    /// Whether two errors a caller's type threw are the same: of one
+    /// type, and equal by that type's `==` where it has one.
+    private static func sameCarried(_ left: any Error, _ right: any Error) -> Bool {
+        guard type(of: left) == type(of: right) else { return false }
+        guard let left = left as? any Equatable else { return true }
+        return isEqual(left, right)
+    }
+
+    /// `left == right`, where `right` is of `left`'s type.
+    private static func isEqual<Value: Equatable>(_ left: Value, _ right: any Error) -> Bool {
+        guard let right = right as? Value else { return false }
+        return left == right
+    }
+
     /// A number for the error's case, whatever the case carries. The
     /// switch names every case and has no default, so that a case added to
     /// the enumeration does not compile until it has a number here.
+    ///
+    /// The ``code`` names the same cases, and the equality could go by it.
+    /// It goes by this number because that counted fewer instructions: by
+    /// the code, a lookup that finds nothing took five more.
     private var caseNumber: Int {
         switch self {
         case .unexpectedTag: 0

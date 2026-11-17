@@ -151,9 +151,43 @@ import XitDBHashing
         }
     }
 
-    @Test func twoCallerErrorsCompareByDescription() {
+    @Test func errorsCountedAndLoggedByTheirCode() throws {
+        let files: [[UInt8]] = [Array(repeating: 0, count: 100), [1, 2, 3], Array(try newDatabaseBytes()[..<10])]
+
+        var met: [XitDBError.Code: Int] = [:]
+        var log: [String] = []
+        for bytes in files {
+            do {
+                _ = try Database(opening: MemoryStorage(bytes: bytes))
+            } catch {
+                met[error.code, default: 0] += 1
+                log.append("\(error.code.rawValue): \(error)")
+            }
+        }
+        #expect(met == [.invalidDatabase: 1, .endOfStream: 2])
+        #expect(log.first == "invalidDatabase: the data is not a valid xitdb database")
+        #expect(log.last == "endOfStream: the data ended before a complete value could be read")
+
+        // The way back from a word, and the original's name for a code.
+        #expect(XitDBError.Code(rawValue: "endOfStream") == .endOfStream)
+        #expect(XitDBError.Code(rawValue: "no such case") == nil)
+        #expect(XitDBError.Code.allCases.count == 41)
+        #expect(XitDBError.Code.endOfStream.originalName == "EndOfStream")
+        #expect(XitDBError.Code.staleCursor.originalName == nil)
+        #expect(XitDBError.storageFailure(errno: 28).code == .storageFailure)
+        #expect(XitDBError.endOfStream.kind == .file)
+        #expect(XitDBError.Code.endOfStream.kind == .file)
+    }
+
+    @Test func twoCallerErrorsCompareByTypeAndByTheirOwnEquality() {
         struct Failed: Error {}
+        struct Refused: Error, Equatable {
+            let attempt: Int
+        }
         #expect(XitDBError.callerError(Failed()) == XitDBError.callerError(Failed()))
+        #expect(XitDBError.callerError(Failed()) != XitDBError.callerError(Refused(attempt: 1)))
+        #expect(XitDBError.callerError(Refused(attempt: 1)) == XitDBError.callerError(Refused(attempt: 1)))
+        #expect(XitDBError.callerError(Refused(attempt: 1)) != XitDBError.callerError(Refused(attempt: 2)))
         #expect(XitDBError.storageFailure(errno: 2) != XitDBError.storageFailure(errno: 3))
     }
 

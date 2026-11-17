@@ -55,39 +55,52 @@ func fail(_ message: String, status: Int32) -> Never {
     exit(status)
 }
 
-/// An error's name in the port's own words: the case's name, without what
-/// it carries.
+/// What the reader itself finds wrong, beside the library's errors.
+enum ReaderError: String, Error {
+    /// A kind that is to read through a memory map was not given one.
+    case notReadThroughAMap
+    /// The history at the root has no moment.
+    case noMoment
+    /// The last moment lacks one of the three keys.
+    case noSuchKey
+}
+
+/// An error's name in the reader's own words, which is what the suite's
+/// format asks for after `error`: for the library's error the case's own
+/// name, which is its code's raw value, and for the reader's own its name
+/// above. That is by design. The line is read by the suite's driver and
+/// shown to a person, and a name that code writes is never what an error
+/// prints: the library's description is a sentence for a person, whose
+/// words may change.
 func name(of error: any Error) -> String {
-    let text = String(describing: error)
-    return String(text.prefix { $0 != "(" && $0 != " " })
+    if let error = error as? XitDBError { return error.code.rawValue }
+    if let error = error as? ReaderError { return error.rawValue }
+    return "unknownError"
 }
 
 /// The file at `path` opened to be read, with no lock, as the kind says.
 func open(_ kind: (name: String, buffered: Bool, reading: FileReading), _ path: String) throws -> any WritableStorage {
-    struct NotReadThroughAMap: Error {}
     if kind.buffered {
         let storage = try BufferedFileStorage(path: path, access: .readOnly, reading: kind.reading)
-        guard storage.isMemoryMapped == (kind.reading != .fileCalls) else { throw NotReadThroughAMap() }
+        guard storage.isMemoryMapped == (kind.reading != .fileCalls) else { throw ReaderError.notReadThroughAMap }
         return storage
     }
     let storage = try FileStorage(path: path, access: .readOnly, reading: kind.reading)
-    guard storage.isMemoryMapped == (kind.reading != .fileCalls) else { throw NotReadThroughAMap() }
+    guard storage.isMemoryMapped == (kind.reading != .fileCalls) else { throw ReaderError.notReadThroughAMap }
     return storage
 }
 
 /// The state the database is in: everything read through one cursor at the
 /// root's last moment.
 func state(of database: Database) throws -> String {
-    struct NoMoment: Error {}
-    struct NoSuchKey: Error {}
     guard let moment = try ArrayList<ReadOnly>(database.rootCursor.readOnly).cursor(at: -1) else {
-        throw NoMoment()
+        throw ReaderError.noMoment
     }
     let map = try HashMap<ReadOnly>(moment)
     guard
         let number = try map.cursor(forKey: "n"), let blob = try map.cursor(forKey: "blob"),
         let items = try map.cursor(forKey: "items")
-    else { throw NoSuchKey() }
+    else { throw ReaderError.noSuchKey }
     let n = try number.read(UInt64.self)
     let digest = SHA256.keyHash(of: try blob.readBytes())
     let hex = digest.map { byte in

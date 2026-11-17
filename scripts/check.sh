@@ -434,6 +434,26 @@ for library in Darwin Glibc Musl Android; do
 done
 echo "ok"
 
+# What a machine reads or a pin holds is never what an error prints. The dump's listing
+# is pinned and compared byte for byte, and the `error` lines of the conformance reader
+# and of the watching reader are read by a test or a script: in those sources no error
+# is interpolated bare and nothing is turned into text by String(describing:) or
+# String(reflecting:). An error's word there is its code's raw value, written out, and a
+# message to a person writes `error.description` in full, so that the search need not
+# tell the two apart. Elsewhere the same spelling is a message to a person, which no
+# search can tell from a line that is parsed: there the rule is held by review, and by
+# the tests comparing cases and codes.
+printed=$(grep -nE 'String\((describing|reflecting):|\\\(([A-Za-z_]*[Ee]rror|failure)\)' \
+    Sources/XitDBDumpKit/*.swift Sources/XitDBDump/*.swift Sources/XitDBConformanceReader/*.swift \
+    Sources/XitDBFuzz/Watching.swift || true)
+if [ -n "$printed" ]; then
+    echo "$printed"
+    echo "error: an error is printed where a machine reads it: write its code's raw value, or"
+    echo "       error.description in full where the line is for a person"
+    exit 1
+fi
+echo "ok: no error is printed in the dump tool, its kit or the two readers"
+
 step "Formatting check"
 swift format lint --strict --recursive --parallel Package.swift Sources Tests
 echo "ok"

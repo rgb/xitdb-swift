@@ -45,7 +45,7 @@ package struct Dumper {
         do {
             fileSize = try storage.length
         } catch {
-            dump.notes.append("the storage's length could not be read: \(error)")
+            dump.notes.append("the storage's length could not be read: \(Self.word(for: error))")
             dump.exitCode = 2
             return dump
         }
@@ -71,7 +71,7 @@ package struct Dumper {
             do {
                 database = try Database.recover(copy)
             } catch {
-                dump.notes.append("recovery does not open it either: \(error)")
+                dump.notes.append("recovery does not open it either: \(Self.word(for: error))")
                 dump.exitCode = 2
                 return dump
             }
@@ -88,7 +88,7 @@ package struct Dumper {
                 dump.exitCode = 1
                 return dump
             }
-            dump.notes.append("not an xitdb file that opens: \(error)")
+            dump.notes.append("not an xitdb file that opens: \(Self.word(for: error))")
             dump.exitCode = 2
             return dump
         }
@@ -201,7 +201,8 @@ package struct Dumper {
                 cursor = try history.cursor(at: index)
             } catch {
                 dump.moments.append(
-                    Dump.Moment(index: index, root: Node(.unreadable, text: "moment \(index): \(error)")))
+                    Dump.Moment(
+                        index: index, root: Node(.unreadable, text: "moment \(index): \(Self.word(for: error))")))
                 continue
             }
             guard let cursor else {
@@ -237,8 +238,8 @@ package struct Dumper {
             case .success(let next):
                 cursor = next
                 label += "/" + Self.describe(step)
-            case .failure(let error):
-                return Node(.unreadable, text: "no such place: \(Self.describe(step)) (\(error))")
+            case .failure(let failure):
+                return Node(.unreadable, text: "no such place: \(Self.describe(step)) (\(failure.description))")
             }
         }
         return node(cursor, path: label, depth: 0)
@@ -252,7 +253,7 @@ package struct Dumper {
             switch self {
             case .missing: "nothing there"
             case .kind(let what): what
-            case .read(let error): "\(error)"
+            case .read(let error): Dumper.word(for: error)
             }
         }
     }
@@ -320,6 +321,19 @@ package struct Dumper {
             }
         } catch {
             return .failure(.read(error))
+        }
+    }
+
+    /// An error as the listing writes it: the case's name, which is its
+    /// code's raw value, and after it what the case carries, so that a
+    /// reader keeps a position or a system's number. The listing is a
+    /// format, pinned and compared byte for byte, so its word for an error
+    /// is never what the error prints: neither of its descriptions.
+    package static func word(for error: XitDBError) -> String {
+        switch error {
+        case .storageFailure(let errno): "\(error.code.rawValue)(errno: \(errno))"
+        case .untrustedRootHeader(let lastVerified): "\(error.code.rawValue)(lastVerified: \(lastVerified))"
+        default: error.code.rawValue
         }
     }
 
@@ -403,7 +417,7 @@ package struct Dumper {
         do {
             slot = try cursor.slot
         } catch {
-            return (Node(.unreadable, text: "the slot could not be read: \(error)"), [])
+            return (Node(.unreadable, text: "the slot could not be read: \(Self.word(for: error))"), [])
         }
         if Self.pointsAtCollection(slot.tag) {
             if let before = seen[slot.value] {
@@ -463,7 +477,7 @@ package struct Dumper {
                 return (Node(.unreadable, text: "an index block where a value should be"), [])
             }
         } catch {
-            return (Node(.unreadable, text: "\(slot.tag) could not be read: \(error)"), [])
+            return (Node(.unreadable, text: "\(slot.tag) could not be read: \(Self.word(for: error))"), [])
         }
     }
 
@@ -520,7 +534,9 @@ package struct Dumper {
             } catch {
                 pending.append(
                     Pending(
-                        cursor: nil, ready: Node(.unreadable, text: "element \(index) could not be read: \(error)"),
+                        cursor: nil,
+                        ready: Node(
+                            .unreadable, text: "element \(index) could not be read: \(Self.word(for: error))"),
                         child: child, path: childPath))
             }
         }
@@ -561,7 +577,7 @@ package struct Dumper {
             do {
                 next = try iterator.next()
             } catch {
-                note("the iteration failed: \(error)")
+                note("the iteration failed: \(Self.word(for: error))")
                 break
             }
             guard let next else { break }
@@ -588,7 +604,7 @@ package struct Dumper {
                 pending.append(self.pending(for: try next.readEntry(), sorted: sorted, path: path))
             } catch {
                 let what = elementTag.map { "a \($0) where an entry should be" } ?? "an entry that could not be read"
-                note("\(what): \(error)")
+                note("\(what): \(Self.word(for: error))")
             }
         }
         node.count = count ?? UInt64(shown)
@@ -646,7 +662,7 @@ package struct Dumper {
                     "\(fileSize - last) bytes after the last good commit, which ends at \(last), do not verify")
             }
         } catch {
-            dump.notes.append("the commits could not be verified: \(error)")
+            dump.notes.append("the commits could not be verified: \(Self.word(for: error))")
         }
     }
 

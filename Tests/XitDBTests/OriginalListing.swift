@@ -81,9 +81,14 @@ struct OriginalListing {
     }
 
     /// The name the original has for an error, as the conformance scripts
-    /// expect it.
+    /// expect it. Everything a listing reads throws the library's error;
+    /// another is a failure, and is given a word that no listing has, not
+    /// whatever it prints.
     private static func name(of error: any Error) -> String {
-        guard let error = error as? XitDBError else { return "\(error)" }
+        guard let error = error as? XitDBError else {
+            Issue.record("an error that is not the library's, in a listing")
+            return "NotTheLibrarysError"
+        }
         return ScriptRunner.name(of: error)
     }
 

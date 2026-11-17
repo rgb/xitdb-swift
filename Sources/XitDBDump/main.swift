@@ -131,7 +131,7 @@ let storage: FileStorage
 do {
     storage = try FileStorage(path: file, access: .readOnly, durability: .none)
 } catch {
-    fail("cannot open \(file): \(error)")
+    fail("cannot open \(file): \(error.description)")
 }
 var dumper = Dumper(options: options)
 let dump = dumper.dump(storage)

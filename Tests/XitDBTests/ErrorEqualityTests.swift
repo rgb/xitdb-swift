@@ -12,9 +12,25 @@ import Testing
 /// is held here is that a comparison written case by case is right for
 /// every case.
 @Suite struct ErrorEqualityTests {
-    /// An error a caller's type throws, for ``XitDBError/callerError(_:)``.
-    private struct Thrown: Error, CustomStringConvertible {
+    /// An error a caller's type throws, for ``XitDBError/callerError(_:)``:
+    /// one that can be compared.
+    private struct Thrown: Error, Equatable, CustomStringConvertible {
         let description: String
+    }
+
+    /// One that cannot be compared, and one more that prints as it does.
+    private struct Opaque: Error, CustomStringConvertible {
+        let number: Int
+        var description: String { "opaque" }
+    }
+    private struct OtherOpaque: Error, CustomStringConvertible {
+        var description: String { "opaque" }
+    }
+
+    /// One whose own equality is not that of its stored values.
+    private struct ByParity: Error, Equatable {
+        let number: Int
+        static func == (left: ByParity, right: ByParity) -> Bool { left.number % 2 == right.number % 2 }
     }
 
     /// One error of each case. The switch below fails to compile when a
@@ -62,8 +78,7 @@ import Testing
 
     /// A case that carries a value is equal where the values are: a
     /// storage's failure by its error number, an untrusted root header by
-    /// the position it names, and a caller's error by its description, as
-    /// before.
+    /// the position it names, and a caller's error by what it carries.
     @Test func aCaseWithAValueIsEqualWhereTheValuesAre() {
         #expect(XitDBError.storageFailure(errno: 5) == .storageFailure(errno: 5))
         #expect(XitDBError.storageFailure(errno: 5) != .storageFailure(errno: 28))
@@ -74,6 +89,42 @@ import Testing
         // a value that another case's would equal does not make the cases equal
         #expect(XitDBError.storageFailure(errno: 57) != .untrustedRootHeader(lastVerified: 57))
         #expect(XitDBError.callerError(Thrown(description: "keyNotFound")) != .keyNotFound)
+    }
+
+    /// Two carried errors are equal when they are of the same type and,
+    /// where that type is equatable, equal by its own `==`. Nothing goes
+    /// by what an error prints: it went by the carried errors'
+    /// descriptions once, which made two errors of different types equal
+    /// when they printed the same, and two of one type unequal when a
+    /// description carried something that is no part of the value.
+    @Test func twoCarriedErrorsAreEqualByTheirTypeAndTheirOwnEquality() {
+        // Equatable: by its own `==`, which need not be that of its stored values.
+        #expect(XitDBError.callerError(Thrown(description: "one")) == .callerError(Thrown(description: "one")))
+        #expect(XitDBError.callerError(Thrown(description: "one")) != .callerError(Thrown(description: "two")))
+        #expect(XitDBError.callerError(ByParity(number: 2)) == .callerError(ByParity(number: 4)))
+        #expect(XitDBError.callerError(ByParity(number: 2)) != .callerError(ByParity(number: 3)))
+
+        // Not equatable: the same type is enough, so that an error equals
+        // itself; its values do not tell two apart.
+        let opaque = XitDBError.callerError(Opaque(number: 1))
+        #expect(opaque == opaque)
+        #expect(XitDBError.callerError(Opaque(number: 1)) == .callerError(Opaque(number: 2)))
+
+        // Another type is another error, though it prints the same.
+        #expect("\(Opaque(number: 1))" == "\(OtherOpaque())")
+        #expect(XitDBError.callerError(Opaque(number: 1)) != .callerError(OtherOpaque()))
+        #expect(XitDBError.callerError(OtherOpaque()) != .callerError(Opaque(number: 1)))
+        // An equatable type against one that is not, either way round.
+        #expect(XitDBError.callerError(Thrown(description: "opaque")) != .callerError(OtherOpaque()))
+        #expect(XitDBError.callerError(OtherOpaque()) != .callerError(Thrown(description: "opaque")))
+
+        // One of the library's own that a type of the caller's threw is
+        // compared as the library's errors are.
+        #expect(XitDBError.callerError(XitDBError.keyNotFound) == .callerError(XitDBError.keyNotFound))
+        #expect(XitDBError.callerError(XitDBError.keyNotFound) != .callerError(XitDBError.indexOutOfRange))
+        #expect(
+            XitDBError.callerError(XitDBError.storageFailure(errno: 5))
+                != .callerError(XitDBError.storageFailure(errno: 28)))
     }
 
     /// What the library does with the comparison: a lookup that finds
