@@ -231,22 +231,21 @@ case "check":
     guard !arguments.isEmpty else { fail(usage, status: 2) }
     check(arguments, mapped: mapped)
 case "die":
-    let kinds = ["file", "buffered", "mapped-file", "mapped-buffered"]
     guard !mapped, arguments.count == 4 || arguments.count == 5, let step = DyingStep(rawValue: arguments[0]),
-        kinds.contains(arguments[1]),
+        let kind = DyingKind(rawValue: arguments[1]),
         let midWrite = arguments.count == 5 ? Int(arguments[4]) : 5, midWrite > 0
     else { fail(usage, status: 2) }
     guard let bytes = FileManager.default.contents(atPath: arguments[3]) else {
         fail("cannot read \(arguments[3])", status: 1)
     }
     dieInACopy(
-        at: step, buffered: arguments[1].hasSuffix("buffered"), mapped: arguments[1].hasPrefix("mapped"),
+        at: step, buffered: kind.buffered, mapped: kind.mapped,
         path: arguments[2], bytes: [UInt8](bytes), midWrite: midWrite)
 case "watch":
-    guard !mapped, arguments.count == 2, let kind = watchKinds[arguments[0]] else {
+    guard !mapped, arguments.count == 2, let kind = WatchKind(rawValue: arguments[0]) else {
         fail(usage, status: 2)
     }
-    watch(buffered: kind.buffered, reading: kind.reading, path: arguments[1])
+    watch(kind, path: arguments[1])
 default:
     fail(usage, status: 2)
 }

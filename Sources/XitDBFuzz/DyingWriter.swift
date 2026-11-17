@@ -36,6 +36,30 @@ enum DyingStep: String {
     case afterRename = "after-rename"
 }
 
+/// The storage a dying writer writes through, each by the word the command
+/// line has for it.
+enum DyingKind: String, CaseIterable {
+    case file, buffered
+    case mappedFile = "mapped-file"
+    case mappedBuffered = "mapped-buffered"
+
+    /// Whether the storage is the buffered one.
+    var buffered: Bool {
+        switch self {
+        case .file, .mappedFile: false
+        case .buffered, .mappedBuffered: true
+        }
+    }
+
+    /// Whether the storage reads through a memory map.
+    var mapped: Bool {
+        switch self {
+        case .file, .buffered: false
+        case .mappedFile, .mappedBuffered: true
+        }
+    }
+}
+
 /// The status a writer ends with when it dies at its step.
 let diedAtItsStep: Int32 = 86
 

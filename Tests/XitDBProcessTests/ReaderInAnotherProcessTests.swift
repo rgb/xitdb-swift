@@ -84,7 +84,7 @@ struct ReaderEnded: Error, CustomStringConvertible {
             }
 
             deinit {
-                try? questions.fileHandleForWriting.write(contentsOf: Data("quit\n".utf8))
+                try? questions.fileHandleForWriting.write(contentsOf: Data((Question.quit.rawValue + "\n").utf8))
                 try? questions.fileHandleForWriting.close()
                 process.waitUntilExit()
             }
@@ -104,15 +104,21 @@ struct ReaderEnded: Error, CustomStringConvertible {
                 }
             }
 
+            /// What a test asks the tool, a word to a line: the tool's own
+            /// words for its questions.
+            private enum Question: String {
+                case still, mapped, read, quit
+            }
+
             /// What the tool answers to a line.
-            private func ask(_ question: String) throws -> String {
-                try questions.fileHandleForWriting.write(contentsOf: Data((question + "\n").utf8))
-                return try line(for: question)
+            private func ask(_ question: Question) throws -> String {
+                try questions.fileHandleForWriting.write(contentsOf: Data((question.rawValue + "\n").utf8))
+                return try line(for: question.rawValue)
             }
 
             /// The reader's storage's `isStillAtPath`.
             func isStillAtPath() throws -> Bool {
-                let answer = try ask("still")
+                let answer = try ask(.still)
                 guard answer == "true" || answer == "false" else {
                     throw ReaderSaidSomethingElse(expected: "true or false", said: answer)
                 }
@@ -122,12 +128,12 @@ struct ReaderEnded: Error, CustomStringConvertible {
             /// The file's first sixteen bytes as the reader's storage reads
             /// them, in hexadecimal.
             func read() throws -> String {
-                try ask("read")
+                try ask(.read)
             }
 
             /// The reader's storage's `isMemoryMapped`.
             func isMemoryMapped() throws -> Bool {
-                let answer = try ask("mapped")
+                let answer = try ask(.mapped)
                 guard answer == "true" || answer == "false" else {
                     throw ReaderSaidSomethingElse(expected: "true or false", said: answer)
                 }

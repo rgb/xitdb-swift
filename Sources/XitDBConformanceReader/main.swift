@@ -32,15 +32,33 @@ import Foundation
 import XitDB
 import XitDBHashing
 
-/// The port's kinds of file storage, in the reader's own words.
-let kinds: [(name: String, buffered: Bool, reading: FileReading)] = [
-    ("file", false, .fileCalls),
-    ("buffered", true, .fileCalls),
-    ("file-map", false, .memoryMap),
-    ("file-map-read-ahead", false, .memoryMapReadAhead),
-    ("buffered-map", true, .memoryMap),
-    ("buffered-map-read-ahead", true, .memoryMapReadAhead),
-]
+/// The port's kinds of file storage, each by the reader's own word for it,
+/// in the order `--kinds` prints them: the two file storages, each read by
+/// file calls and through a memory map in either of its two ways.
+enum Kind: String, CaseIterable {
+    case file, buffered
+    case fileMap = "file-map"
+    case fileMapReadAhead = "file-map-read-ahead"
+    case bufferedMap = "buffered-map"
+    case bufferedMapReadAhead = "buffered-map-read-ahead"
+
+    /// Whether the storage is the buffered one.
+    var buffered: Bool {
+        switch self {
+        case .file, .fileMap, .fileMapReadAhead: false
+        case .buffered, .bufferedMap, .bufferedMapReadAhead: true
+        }
+    }
+
+    /// How the storage reads its file.
+    var reading: FileReading {
+        switch self {
+        case .file, .buffered: .fileCalls
+        case .fileMap, .bufferedMap: .memoryMap
+        case .fileMapReadAhead, .bufferedMapReadAhead: .memoryMapReadAhead
+        }
+    }
+}
 
 /// Prints a line and flushes it: the suite reads each answer before it
 /// asks again.
@@ -79,7 +97,7 @@ func name(of error: any Error) -> String {
 }
 
 /// The file at `path` opened to be read, with no lock, as the kind says.
-func open(_ kind: (name: String, buffered: Bool, reading: FileReading), _ path: String) throws -> any WritableStorage {
+func open(_ kind: Kind, _ path: String) throws -> any WritableStorage {
     if kind.buffered {
         let storage = try BufferedFileStorage(path: path, access: .readOnly, reading: kind.reading)
         guard storage.isMemoryMapped == (kind.reading != .fileCalls) else { throw ReaderError.notReadThroughAMap }
@@ -113,10 +131,10 @@ func state(of database: Database) throws -> String {
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 if arguments == ["--kinds"] {
-    for kind in kinds { say(kind.name) }
+    for kind in Kind.allCases { say(kind.rawValue) }
     exit(0)
 }
-guard arguments.count == 2, let kind = kinds.first(where: { $0.name == arguments[0] }) else {
+guard arguments.count == 2, let kind = Kind(rawValue: arguments[0]) else {
     fail("usage: XitDBConformanceReader --kinds\n       XitDBConformanceReader <kind> <file>", status: 2)
 }
 

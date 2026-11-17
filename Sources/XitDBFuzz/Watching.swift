@@ -31,28 +31,61 @@
 import Foundation
 import XitDB
 
-/// The kinds a watching reader opens, with how each reads its file.
-let watchKinds: [String: (buffered: Bool, reading: FileReading)] = [
-    "file": (false, .fileCalls), "buffered": (true, .fileCalls),
-    "file-map": (false, .memoryMap), "file-map-read-ahead": (false, .memoryMapReadAhead),
-    "buffered-map": (true, .memoryMap), "buffered-map-read-ahead": (true, .memoryMapReadAhead),
-]
+/// The kinds of file storage a watching reader opens, each by the word the
+/// command line has for it: the two file storages, each read by file calls
+/// and through a memory map in either of its two ways.
+enum WatchKind: String, CaseIterable {
+    case file, buffered
+    case fileMap = "file-map"
+    case fileMapReadAhead = "file-map-read-ahead"
+    case bufferedMap = "buffered-map"
+    case bufferedMapReadAhead = "buffered-map-read-ahead"
+
+    /// Whether the storage is the buffered one.
+    var buffered: Bool {
+        switch self {
+        case .file, .fileMap, .fileMapReadAhead: false
+        case .buffered, .bufferedMap, .bufferedMapReadAhead: true
+        }
+    }
+
+    /// How the storage reads its file.
+    var reading: FileReading {
+        switch self {
+        case .file, .buffered: .fileCalls
+        case .fileMap, .bufferedMap: .memoryMap
+        case .fileMapReadAhead, .bufferedMapReadAhead: .memoryMapReadAhead
+        }
+    }
+}
+
+/// What a test asks a watching reader, a word to a line.
+enum WatchQuestion: String {
+    /// Whether the storage's file is still the one its path names.
+    case still
+    /// Whether the storage reads through a memory map.
+    case mapped
+    /// The file's first sixteen bytes, as the storage reads them.
+    case read
+    /// To end.
+    case quit
+}
 
 /// Answers the lines of a test about the file at `path`, read through a
 /// storage of the kind named.
-func watch(buffered: Bool, reading: FileReading, path: String) {
+func watch(_ kind: WatchKind, path: String) {
     alarm(20)
     let storage: any WritableStorage
     let still: () throws(XitDBError) -> Bool
     let isMapped: Bool
     do {
-        if buffered {
-            let opened = try BufferedFileStorage(path: path, access: .readOnly, reading: reading)
+        if kind.buffered {
+            let opened = try BufferedFileStorage(path: path, access: .readOnly, reading: kind.reading)
             storage = opened
             still = { () throws(XitDBError) in try opened.isStillAtPath }
             isMapped = opened.isMemoryMapped
         } else {
-            let opened = try FileStorage(path: path, access: .readOnly, reading: reading)
+            let opened = try FileStorage(path: path, access: .readOnly, reading: kind.reading)
             storage = opened
             still = { () throws(XitDBError) in try opened.isStillAtPath }
             isMapped = opened.isMemoryMapped
@@ -62,8 +95,12 @@ func watch(buffered: Bool, reading: FileReading, path: String) {
     }
     say("open")
     while let line = readLine() {
-        switch line {
-        case "still":
+        guard let question = WatchQuestion(rawValue: line) else {
+            say("unknown \(line)")
+            continue
+        }
+        switch question {
+        case .still:
             do {
                 say(try still() ? "true" : "false")
             } catch {
@@ -71,9 +108,9 @@ func watch(buffered: Bool, reading: FileReading, path: String) {
                 // never what an error prints.
                 say("error \(error.code.rawValue)")
             }
-        case "mapped":
+        case .mapped:
             say(isMapped ? "true" : "false")
-        case "read":
+        case .read:
             do {
                 var bytes = [UInt8](repeating: 0, count: 16)
                 var span = bytes.mutableSpan
@@ -84,10 +121,8 @@ func watch(buffered: Bool, reading: FileReading, path: String) {
                 // never what an error prints.
                 say("error \(error.code.rawValue)")
             }
-        case "quit":
+        case .quit:
             exit(0)
-        default:
-            say("unknown \(line)")
         }
     }
 }
