@@ -21,12 +21,19 @@ private struct RolledBack: Error {}
 @Suite struct MemoryMapTests {
     static let page = Platform.pageSize
 
+    /// The two ways of reading through a memory map. They differ in what
+    /// the system is told and in nothing the library does, so the tests of
+    /// what is read through the map and what is not run on both.
+    static let maps: [FileReading] = [.memoryMap, .memoryMapReadAhead]
+
     /// A file storage that reads through a map of segments of one page,
     /// with its calls counted.
-    private static func mapped(_ directory: TemporaryDirectory) throws -> (FileStorage, CallCounts) {
+    private static func mapped(
+        _ directory: TemporaryDirectory, _ reading: FileReading = .memoryMap
+    ) throws -> (FileStorage, CallCounts) {
         let file = try readThroughTheMap(
             try FileStorage(
-                path: directory.path(), access: .create, durability: .none, lock: .exclusive, memoryMapped: true,
+                path: directory.path(), access: .create, durability: .none, lock: .exclusive, reading: reading,
                 segmentSize: page), at: directory.path())
         let counts = CallCounts()
         file.calls.read = {
@@ -69,33 +76,35 @@ private struct RolledBack: Error {}
         let path = directory.path()
         let writable: [FileAccess] = [.readWrite, .create, .truncate]
         for access in writable {
-            #expect(throws: XitDBError.memoryMapNeedsLock, "\(access), no lock") {
-                _ = try FileStorage(path: path, access: access, memoryMapped: true)
-            }
-            #expect(throws: XitDBError.memoryMapNeedsLock, "\(access), a shared lock") {
-                _ = try FileStorage(path: path, access: access, lock: .shared, memoryMapped: true)
-            }
-            #expect(throws: XitDBError.memoryMapNeedsLock, "\(access), buffered, no lock") {
-                _ = try BufferedFileStorage(path: path, access: access, memoryMapped: true)
+            for reading in Self.maps {
+                #expect(throws: XitDBError.memoryMapNeedsLock, "\(access), \(reading), no lock") {
+                    _ = try FileStorage(path: path, access: access, reading: reading)
+                }
+                #expect(throws: XitDBError.memoryMapNeedsLock, "\(access), \(reading), a shared lock") {
+                    _ = try FileStorage(path: path, access: access, lock: .shared, reading: reading)
+                }
+                #expect(throws: XitDBError.memoryMapNeedsLock, "\(access), \(reading), buffered, no lock") {
+                    _ = try BufferedFileStorage(path: path, access: access, reading: reading)
+                }
             }
         }
         #expect(!FileManager.default.fileExists(atPath: path), "refused before the file was opened")
 
         do {
-            let writer = try FileStorage(path: path, access: .create, lock: .exclusive, memoryMapped: true)
+            let writer = try FileStorage(path: path, access: .create, lock: .exclusive, reading: .memoryMap)
             #expect(writer.isMemoryMapped)
             try writeBytes(writer, Self.pattern(2 * Self.page), at: 0)
 
             // A reader with no lock, beside the writer that holds the
             // exclusive one: it is not refused, is mapped, and reads.
-            #expect(throws: Never.self) { _ = try FileStorage(path: path, access: .readOnly, memoryMapped: true) }
+            #expect(throws: Never.self) { _ = try FileStorage(path: path, access: .readOnly, reading: .memoryMap) }
             #expect(throws: Never.self) {
-                _ = try BufferedFileStorage(path: path, access: .readOnly, memoryMapped: true)
+                _ = try BufferedFileStorage(path: path, access: .readOnly, reading: .memoryMap)
             }
-            let unlocked = try FileStorage(path: path, access: .readOnly, memoryMapped: true)
+            let unlocked = try FileStorage(path: path, access: .readOnly, reading: .memoryMap)
             #expect(unlocked.isMemoryMapped)
             #expect(try readBytes(unlocked, at: 0, count: 3) == Array(Self.pattern(3)))
-            let buffered = try BufferedFileStorage(path: path, access: .readOnly, memoryMapped: true)
+            let buffered = try BufferedFileStorage(path: path, access: .readOnly, reading: .memoryMap)
             #expect(buffered.isMemoryMapped)
             #expect(try readBytes(buffered, at: 0, count: 3) == Array(Self.pattern(3)))
             withExtendedLifetime(writer) {}
@@ -106,7 +115,7 @@ private struct RolledBack: Error {}
         do {
             let directory = try TemporaryDirectory()
             #expect(FileManager.default.createFile(atPath: directory.path(), contents: Data([1, 2, 3])))
-            let shared = try FileStorage(path: directory.path(), access: .readOnly, lock: .shared, memoryMapped: true)
+            let shared = try FileStorage(path: directory.path(), access: .readOnly, lock: .shared, reading: .memoryMap)
             #expect(shared.isMemoryMapped)
             #expect(try readBytes(shared, at: 0, count: 3) == [1, 2, 3])
         }
@@ -114,7 +123,7 @@ private struct RolledBack: Error {}
             let directory = try TemporaryDirectory()
             #expect(FileManager.default.createFile(atPath: directory.path(), contents: Data([1, 2, 3])))
             let exclusive = try BufferedFileStorage(
-                path: directory.path(), access: .readOnly, lock: .exclusive, memoryMapped: true)
+                path: directory.path(), access: .readOnly, lock: .exclusive, reading: .memoryMap)
             #expect(exclusive.isMemoryMapped)
             #expect(try readBytes(exclusive, at: 0, count: 3) == [1, 2, 3])
         }
@@ -129,9 +138,10 @@ private struct RolledBack: Error {}
     /// the storage wrote, across the segments' boundaries, with no file
     /// call; anything at or beyond the end by a file call, which is what
     /// says that nothing is there.
-    @Test func onlyBytesKnownToBeInTheFileAreReadThroughTheMap() throws {
+    @Test(arguments: maps)
+    func onlyBytesKnownToBeInTheFileAreReadThroughTheMap(reading: FileReading) throws {
         let directory = try TemporaryDirectory()
-        let (file, counts) = try Self.mapped(directory)
+        let (file, counts) = try Self.mapped(directory, reading)
         let page = Self.page
         let bytes = Self.pattern(3 * page + 100)
         try writeBytes(file, bytes, at: 0)
@@ -159,9 +169,10 @@ private struct RolledBack: Error {}
     /// afterwards, which reads nothing. Without that the read would be of a
     /// mapped page beyond the end of the file, and end the process. When
     /// the file has grown again the same segment gives what is there now.
-    @Test func aCutLowersTheLimitFirst() throws {
+    @Test(arguments: maps)
+    func aCutLowersTheLimitFirst(reading: FileReading) throws {
         let directory = try TemporaryDirectory()
-        let (file, counts) = try Self.mapped(directory)
+        let (file, counts) = try Self.mapped(directory, reading)
         let page = Self.page
         let bytes = Self.pattern(4 * page)
         try writeBytes(file, bytes, at: 0)
@@ -191,9 +202,10 @@ private struct RolledBack: Error {}
     /// With the switch that lets the limit follow commits only, what is
     /// written is read by file calls until the commit's second sync, and
     /// through the map from then on. Either way the bytes are the same.
-    @Test func withTheLimitAtCommitsAWriteIsReadByFileCallUntilTheCommit() throws {
+    @Test(arguments: maps)
+    func withTheLimitAtCommitsAWriteIsReadByFileCallUntilTheCommit(reading: FileReading) throws {
         let directory = try TemporaryDirectory()
-        let (file, counts) = try Self.mapped(directory)
+        let (file, counts) = try Self.mapped(directory, reading)
         file.mapsCommittedBytesOnly = true
         let page = Self.page
         let bytes = Self.pattern(2 * page + 7)
@@ -232,7 +244,7 @@ private struct RolledBack: Error {}
         }
         let file = try readThroughTheMap(
             try FileStorage(
-                path: directory.path(), access: .readWrite, durability: .none, lock: .exclusive, memoryMapped: true,
+                path: directory.path(), access: .readWrite, durability: .none, lock: .exclusive, reading: .memoryMap,
                 segmentSize: page, calls: calls), at: directory.path())
         #expect(try Self.afterTheHeaders(file, bytes.count) == Array(bytes[Self.headers...]))
         #expect(try readBytes(file, at: UInt64(page + 1), count: page) == Array(bytes[(page + 1)..<(2 * page + 1)]))
@@ -242,9 +254,10 @@ private struct RolledBack: Error {}
     /// The two headers are read by a file call always, by a writer too: a
     /// read that starts in them is a file call for all of it, and one that
     /// starts right after them is none.
-    @Test func theHeadersAreReadByAFileCall() throws {
+    @Test(arguments: maps)
+    func theHeadersAreReadByAFileCall(reading: FileReading) throws {
         let directory = try TemporaryDirectory()
-        let (file, counts) = try Self.mapped(directory)
+        let (file, counts) = try Self.mapped(directory, reading)
         let bytes = Self.pattern(2 * Self.page)
         try writeBytes(file, bytes, at: 0)
         #expect(try readBytes(file, at: 0, count: 20) == Array(bytes[..<20]))
@@ -294,7 +307,7 @@ private struct RolledBack: Error {}
         }
         let file = try readThroughTheMap(
             try FileStorage(
-                path: directory.path(), access: .readOnly, durability: .none, lock: .shared, memoryMapped: true,
+                path: directory.path(), access: .readOnly, durability: .none, lock: .shared, reading: .memoryMap,
                 segmentSize: page, calls: calls), at: directory.path())
         var onDisk = try directory.contents()
         let end = Int(committed)
@@ -340,9 +353,10 @@ private struct RolledBack: Error {}
     /// A write below the end, in place, leaves the limit where it was: what
     /// lies after it is still read through the map, and what was written
     /// is what the map gives.
-    @Test func aWriteInPlaceLeavesTheLimit() throws {
+    @Test(arguments: maps)
+    func aWriteInPlaceLeavesTheLimit(reading: FileReading) throws {
         let directory = try TemporaryDirectory()
-        let (file, counts) = try Self.mapped(directory)
+        let (file, counts) = try Self.mapped(directory, reading)
         let page = Self.page
         var bytes = Self.pattern(3 * page)
         try writeBytes(file, bytes, at: 0)
@@ -399,6 +413,54 @@ private struct RolledBack: Error {}
         #expect(try Self.afterTheHeaders(file, bytes.count) == Array(bytes[Self.headers...]))
         #expect(counts.maps == 4)
         #expect(advised.lengths.count == 3)
+    }
+
+    /// A map that is left to the system's own reading ahead is told
+    /// nothing: the call that advises is never made, for any segment, and
+    /// the file is read through the map all the same.
+    @Test func aMapLeftToTheSystemsReadingAheadIsToldNothing() throws {
+        let directory = try TemporaryDirectory()
+        let (file, counts) = try Self.mapped(directory, .memoryMapReadAhead)
+        final class Advised {
+            var calls = 0
+        }
+        let advised = Advised()
+        file.calls.advise = { (_: UInt, _: Int) in advised.calls += 1 }
+        let bytes = Self.pattern(5 * Self.page)
+        try writeBytes(file, bytes, at: 0)
+        #expect(try Self.afterTheHeaders(file, bytes.count) == Array(bytes[Self.headers...]))
+        #expect(counts.maps == 5, "each segment was mapped")
+        #expect(counts.reads == 0, "and read through the map")
+        #expect(advised.calls == 0, "and the system was told nothing")
+        #expect(file.isMemoryMapped)
+        #expect(file.reading == .memoryMapReadAhead)
+    }
+
+    /// A storage says how it was asked to read its file, for its life, on
+    /// both file storages: by file calls unless told otherwise; and what
+    /// was asked is not whether the map was had, which a file on a volume
+    /// that is not mapped shows.
+    @Test func aStorageSaysHowItWasAskedToReadItsFile() throws {
+        let directory = try TemporaryDirectory()
+        #expect(FileManager.default.createFile(atPath: directory.path(), contents: Data([1, 2, 3])))
+        #expect(try FileStorage(path: directory.path(), access: .readOnly).reading == .fileCalls)
+        #expect(try BufferedFileStorage(path: directory.path(), access: .readOnly).reading == .fileCalls)
+        for reading in [FileReading.fileCalls, .memoryMap, .memoryMapReadAhead] {
+            let file = try FileStorage(path: directory.path(), access: .readOnly, reading: reading)
+            #expect(file.reading == reading)
+            #expect(file.isMemoryMapped == (reading != .fileCalls), "\(reading)")
+            let buffered = try BufferedFileStorage(path: directory.path(), access: .readOnly, reading: reading)
+            #expect(buffered.reading == reading)
+            #expect(buffered.isMemoryMapped == (reading != .fileCalls), "\(reading)")
+        }
+        var calls = FileCalls()
+        calls.isLocal = { _ in false }
+        for reading in Self.maps {
+            let file = try FileStorage(
+                path: directory.path(), access: .readOnly, reading: reading, segmentSize: Self.page, calls: calls)
+            #expect(file.reading == reading, "what was asked")
+            #expect(!file.isMemoryMapped, "is not what was had")
+        }
     }
 
     /// The stream of committed bytes, which feeds a replica, reads a mapped
@@ -491,7 +553,7 @@ private struct RolledBack: Error {}
             return Platform.mapFile(descriptor, offset: offset, length: length)
         }
         let file = try FileStorage(
-            path: directory.path(), access: .create, durability: .none, lock: .exclusive, memoryMapped: true,
+            path: directory.path(), access: .create, durability: .none, lock: .exclusive, reading: .memoryMap,
             segmentSize: Self.page, calls: calls)
         #expect(!file.isMemoryMapped)
         let bytes = Self.pattern(2 * Self.page)
@@ -503,7 +565,7 @@ private struct RolledBack: Error {}
         // A snapshot of a database in it has no map either.
         let other = try TemporaryDirectory()
         let storage = try FileStorage(
-            path: other.path(), access: .create, durability: .none, lock: .exclusive, memoryMapped: true,
+            path: other.path(), access: .create, durability: .none, lock: .exclusive, reading: .memoryMap,
             segmentSize: Self.page, calls: calls)
         let database = try Database(creating: storage, hashSize: 20)
         try database.withTransaction { root in
@@ -561,9 +623,10 @@ private struct RolledBack: Error {}
     /// what follows it; what is mapped goes on being read through the map.
     /// The property says "partly" from then on, and no further segment is
     /// asked for.
-    @Test func aSegmentTheSystemRefusesIsReadByFileCall() throws {
+    @Test(arguments: maps)
+    func aSegmentTheSystemRefusesIsReadByFileCall(reading: FileReading) throws {
         let directory = try TemporaryDirectory()
-        let (file, counts) = try Self.mapped(directory)
+        let (file, counts) = try Self.mapped(directory, reading)
         let page = Self.page
         file.calls.map = { (descriptor: Int32, offset: UInt64, length: Int) in
             counts.maps += 1

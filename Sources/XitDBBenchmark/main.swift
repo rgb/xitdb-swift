@@ -132,7 +132,7 @@ final class RunStorage {
                 .appendingPathComponent("xitdb-benchmark-\(UUID().uuidString).db").path
             self.path = path
             let file = try FileStorage(
-                path: path, access: .truncate, durability: .none, lock: .exclusive, memoryMapped: true)
+                path: path, access: .truncate, durability: .none, lock: .exclusive, reading: .memoryMap)
             // A line that says "mapped" must be one: on a volume the
             // library does not map the storage would read by file calls.
             guard file.isMemoryMapped else {

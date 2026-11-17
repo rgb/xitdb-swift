@@ -308,11 +308,14 @@ private func run(_ task: ColdTask) throws -> ColdRun {
     }
     var result = ColdRun(line: task.line, advised: task.advised, before: before)
 
-    let file = try FileStorage(path: task.path, access: .readOnly, lock: .shared, memoryMapped: true)
+    // with the advice, the map as it is read unless told otherwise; without
+    // it, the map left to the system's own reading ahead
+    let file = try FileStorage(
+        path: task.path, access: .readOnly, lock: .shared,
+        reading: task.advised ? .memoryMap : .memoryMapReadAhead)
     guard file.isMemoryMapped else {
         throw BenchmarkFailure(description: "the file at \(task.path) is on a volume that is not read through a map")
     }
-    if !task.advised { file.calls.advise = { (_: UInt, _: Int) in } }
     let database = try Database(opening: file, hashSize: 20)
     result.fileSize = try file.length
     let last: InlineArray<1, PathPart> = [.arrayListGet(-1)]

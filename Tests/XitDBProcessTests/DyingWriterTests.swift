@@ -177,7 +177,7 @@ private struct Piecewise: ByteSource {
         _ kind: Kind, at path: String, calls: FileCalls = FileCalls()
     ) throws -> any WritableStorage {
         let file = try FileStorage(
-            path: path, access: .readWrite, lock: .exclusive, memoryMapped: kind.isMapped,
+            path: path, access: .readWrite, lock: .exclusive, reading: kind.isMapped ? .memoryMap : .fileCalls,
             segmentSize: Int(getpagesize()), calls: calls)
         if kind.isMapped, !file.isMemoryMapped { throw NotReadThroughTheMap(path: path) }
         return kind.isBuffered ? BufferedFileStorage(file) : file

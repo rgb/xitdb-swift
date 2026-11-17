@@ -91,7 +91,7 @@ func dieInACopy(
     }
     do {
         let file = try FileStorage(
-            path: path, access: .readWrite, lock: .exclusive, memoryMapped: mapped,
+            path: path, access: .readWrite, lock: .exclusive, reading: mapped ? .memoryMap : .fileCalls,
             segmentSize: FileStorage.defaultSegmentSize, calls: calls)
         let database: Database
         if buffered {

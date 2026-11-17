@@ -146,7 +146,7 @@ struct StorageUnderTest {
             let directory = try TemporaryDirectory()
             storage = try readThroughTheMap(
                 try FileStorage(
-                    path: directory.path(), access: .create, durability: .none, lock: .exclusive, memoryMapped: true,
+                    path: directory.path(), access: .create, durability: .none, lock: .exclusive, reading: .memoryMap,
                     segmentSize: Platform.pageSize), at: directory.path())
             stored = { try directory.contents() }
             path = directory.path()
@@ -156,7 +156,7 @@ struct StorageUnderTest {
                 try readThroughTheMap(
                     try FileStorage(
                         path: directory.path(), access: .create, durability: .none, lock: .exclusive,
-                        memoryMapped: true, segmentSize: Platform.pageSize), at: directory.path()))
+                        reading: .memoryMap, segmentSize: Platform.pageSize), at: directory.path()))
             stored = { try directory.contents() }
             path = directory.path()
         }

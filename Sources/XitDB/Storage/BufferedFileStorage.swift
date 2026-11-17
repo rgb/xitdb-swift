@@ -48,7 +48,7 @@ public final class BufferedFileStorage: WritableStorage {
     /// Puts a buffer in front of a file storage. Package-level: the tests
     /// use it to put their own calls on the file, and the benchmark to
     /// count them; a client opens the file through
-    /// ``init(path:access:durability:lock:memoryMapped:bufferLimit:)``, so that nothing
+    /// ``init(path:access:durability:lock:reading:bufferLimit:)``, so that nothing
     /// else can write through it.
     ///
     /// - Parameters:
@@ -69,9 +69,10 @@ public final class BufferedFileStorage: WritableStorage {
     ///     create or empty it.
     ///   - durability: How far to go to put a commit on the disk.
     ///   - lock: An advisory lock to take on the file, or `nil` for none.
-    ///   - memoryMapped: Whether to read the file through a memory map, as
-    ///     ``FileStorage/init(path:access:durability:lock:memoryMapped:)``
-    ///     says, with what that asks of the file and of the lock. What the
+    ///   - reading: How the file is read, by file calls or through a
+    ///     memory map, as
+    ///     ``FileStorage/init(path:access:durability:lock:reading:)``
+    ///     says, with what a map asks of the file and of the lock. What the
     ///     buffer holds is read from the buffer either way.
     ///   - bufferLimit: The most bytes to hold before flushing.
     /// - Throws: ``XitDBError/memoryMapNeedsLock`` if the map is asked for
@@ -85,14 +86,20 @@ public final class BufferedFileStorage: WritableStorage {
         access: FileAccess,
         durability: Durability = .full,
         lock: FileLock? = nil,
-        memoryMapped: Bool = false,
+        reading: FileReading = .fileCalls,
         bufferLimit: UInt64 = BufferedFileStorage.defaultBufferLimit
     ) throws(XitDBError) {
         self.init(
             try FileStorage(
-                path: path, access: access, durability: durability, lock: lock, memoryMapped: memoryMapped),
+                path: path, access: access, durability: durability, lock: lock, reading: reading),
             bufferLimit: bufferLimit
         )
+    }
+
+    /// How the storage was asked to read its file: ``FileStorage/reading``
+    /// of the file storage underneath.
+    public var reading: FileReading {
+        file.reading
     }
 
     /// Whether the storage's reads of the file go through a memory map:

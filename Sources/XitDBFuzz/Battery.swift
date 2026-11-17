@@ -24,7 +24,7 @@ struct BatteryPlace {
         guard let directory else { return MemoryStorage(bytes: bytes) }
         let path = directory + "/source.db"
         guard put(bytes, at: path) else { return nil }
-        return try? FileStorage(path: path, access: .readOnly, durability: .none, lock: .shared, memoryMapped: true)
+        return try? FileStorage(path: path, access: .readOnly, durability: .none, lock: .shared, reading: .memoryMap)
     }
 
     /// A storage that holds `bytes` and may grow by `room` bytes and no
@@ -35,7 +35,7 @@ struct BatteryPlace {
         let path = directory + "/" + name
         guard put(bytes, at: path),
             let file = try? FileStorage(
-                path: path, access: .readWrite, durability: .none, lock: .exclusive, memoryMapped: true)
+                path: path, access: .readWrite, durability: .none, lock: .exclusive, reading: .memoryMap)
         else { return nil }
         // A file has no largest size of its own: a damaged count must not
         // fill the disk, so the calls that make the file longer refuse

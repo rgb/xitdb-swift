@@ -129,7 +129,9 @@ struct ReaderEnded: Error, CustomStringConvertible {
         /// This process's writer on the file at `path`, with the exclusive
         /// lock, asked for the memory map or not.
         private static func writer(at path: String, mapped: Bool) throws -> FileStorage {
-            try FileStorage(path: path, access: .readWrite, durability: .none, lock: .exclusive, memoryMapped: mapped)
+            try FileStorage(
+                path: path, access: .readWrite, durability: .none, lock: .exclusive,
+                reading: mapped ? .memoryMap : .fileCalls)
         }
 
         /// Writes the new file's bytes through the writer, at the start.

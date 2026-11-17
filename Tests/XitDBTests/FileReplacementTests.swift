@@ -62,7 +62,8 @@ import Testing
     ) throws -> Writer {
         var file = try FileStorage(
             path: path, access: .readWrite, durability: durability, lock: lock,
-            memoryMapped: kind.isMapped && lock == .exclusive, segmentSize: Platform.pageSize, calls: calls)
+            reading: kind.isMapped && lock == .exclusive ? .memoryMap : .fileCalls, segmentSize: Platform.pageSize,
+            calls: calls)
         if kind.isMapped, lock == .exclusive { file = try readThroughTheMap(file, at: path) }
         return Writer(storage: kind.isBuffered ? BufferedFileStorage(file) : file, file: file)
     }

@@ -234,7 +234,8 @@ import Testing
         let mapped = kind == .mappedFile || kind == .mappedBufferedFile
         func writer(_ access: FileAccess) throws -> any WritableStorage {
             let file = try FileStorage(
-                path: path, access: access, durability: .none, lock: .exclusive, memoryMapped: mapped,
+                path: path, access: access, durability: .none, lock: .exclusive,
+                reading: mapped ? .memoryMap : .fileCalls,
                 segmentSize: Platform.pageSize)
             return kind == .bufferedFile || kind == .mappedBufferedFile ? BufferedFileStorage(file) : file
         }

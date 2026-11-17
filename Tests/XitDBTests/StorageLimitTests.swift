@@ -47,7 +47,7 @@ import Testing
             let path = try #require(directory).path()
             storage = try readThroughTheMap(
                 try FileStorage(
-                    path: path, access: .create, durability: .none, lock: .exclusive, memoryMapped: true,
+                    path: path, access: .create, durability: .none, lock: .exclusive, reading: .memoryMap,
                     segmentSize: Platform.pageSize), at: path)
         case .mappedBufferedFile:
             directory = try TemporaryDirectory()
@@ -55,7 +55,7 @@ import Testing
             storage = BufferedFileStorage(
                 try readThroughTheMap(
                     try FileStorage(
-                        path: path, access: .create, durability: .none, lock: .exclusive, memoryMapped: true,
+                        path: path, access: .create, durability: .none, lock: .exclusive, reading: .memoryMap,
                         segmentSize: Platform.pageSize), at: path))
         }
         try writeBytes(storage, [1, 2, 3, 4], at: 0)

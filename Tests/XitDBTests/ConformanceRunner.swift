@@ -99,7 +99,7 @@ final class ScriptStorage {
         return try readThroughTheMap(
             try FileStorage(
                 path: path, access: readOnly ? .readOnly : .create, durability: .none,
-                lock: readOnly ? nil : .exclusive, memoryMapped: true, segmentSize: Platform.pageSize), at: path)
+                lock: readOnly ? nil : .exclusive, reading: .memoryMap, segmentSize: Platform.pageSize), at: path)
     }
 
     /// Ends the use of the storage, flushing it first as the Zig runner's

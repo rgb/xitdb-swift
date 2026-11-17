@@ -89,6 +89,43 @@ public enum FileLock: Sendable {
     case exclusive
 }
 
+/// How a file storage reads its file.
+///
+/// It is said when the storage is opened and holds for the storage's life.
+/// Writes are file writes whichever it is, and what is read is the same.
+///
+/// The two that read through a memory map differ in what the system is
+/// told, and neither suits every program. A database is read by following
+/// pointers, and a system left to itself answers a read of a page that is
+/// not in memory by bringing the pages around it too, megabytes of them on
+/// some machines. A process that may hold less memory than its file pays
+/// for those with the pages it needs next, and its reads by key fall to a
+/// fraction of their rate. ``memoryMap`` tells the system that the file is
+/// read in no order, which keeps it from that; the price is a read in file
+/// order while the file's pages are not in memory, a walk of a large
+/// collection or a compaction, which then brings the file in a page at a
+/// time and takes several times as long. ``memoryMapReadAhead`` leaves the
+/// system to read ahead: right for a database that fits in memory and is
+/// walked, and wrong for one that does not fit.
+public enum FileReading: Sendable, Hashable {
+    /// By file calls: every read is a system call. The default, and the
+    /// way that asks nothing of the file or of its volume.
+    case fileCalls
+
+    /// Through a memory map that the system is told is read in no order:
+    /// a read is a copy from memory that the system keeps for the file.
+    /// The map to take unless the database is known to fit in memory and
+    /// to be read in file order.
+    case memoryMap
+
+    /// Through a memory map that is left to the system's own reading
+    /// ahead, with nothing told to the system.
+    case memoryMapReadAhead
+
+    /// Whether the file is to be read through a memory map.
+    var isThroughAMap: Bool { self != .fileCalls }
+}
+
 /// The system calls a file storage makes, which tests replace to watch
 /// them or to make them fail, and the benchmark replaces to count them.
 package struct FileCalls {
@@ -196,7 +233,8 @@ final class FileDescriptor: Sendable {
 /// that fails, or a process that ends in the middle of one, leaves the
 /// database that was there; a snapshot taken before reads the old file on.
 ///
-/// Opened with `memoryMapped: true`, the storage reads through a memory
+/// Opened with ``FileReading/memoryMap`` or
+/// ``FileReading/memoryMapReadAhead``, the storage reads through a memory
 /// map of the file: a read is then a copy from memory that the system
 /// keeps for the file, where it is a system call otherwise, and readers on
 /// several threads, which read through snapshots, no longer wait for one
@@ -509,8 +547,8 @@ public final class FileStorage: WritableStorage {
 
     /// Whether the storage's reads go through a memory map.
     ///
-    /// It is `true` only while all of this holds: the map was asked for
-    /// when the storage was opened, the file is on a volume the library
+    /// It is `true` only while all of this holds: a map was asked for when
+    /// the storage was opened (``reading``), the file is on a volume the library
     /// maps, and the system has refused no part of the map so far. A file
     /// on a volume that is not this machine's, as far as the system says,
     /// is read by file calls though the map was asked for, and this is
@@ -530,6 +568,13 @@ public final class FileStorage: WritableStorage {
     /// How far the storage goes to put a commit on the disk.
     public let durability: Durability
 
+    /// How the storage was asked to read its file, which holds for its
+    /// life. A storage that was asked for either of the two memory maps is
+    /// a mapped storage in everything the library says of one, the lock it
+    /// needs to write among it, whether or not the map was had:
+    /// ``isMemoryMapped`` says that.
+    public let reading: FileReading
+
     /// The system calls the storage makes. Tests replace them to see which
     /// sync calls a durability level makes, and to make a write fail the way
     /// a full disk would; the benchmark counts them.
@@ -546,10 +591,11 @@ public final class FileStorage: WritableStorage {
     ///     Holding a lock on a file in a shared container while an iOS app is
     ///     suspended gets the app terminated, which is why none is taken
     ///     unless asked for.
-    ///   - memoryMapped: Whether to read the file through a memory map,
-    ///     which makes a read a copy from memory where it is a system call
-    ///     otherwise. Writes are file writes either way. A storage that
-    ///     can write needs ``FileLock/exclusive`` for it, which says that
+    ///   - reading: How the file is read: by file calls, or through a
+    ///     memory map, which makes a read a copy from memory where it is a
+    ///     system call otherwise, in either of the two ways ``FileReading``
+    ///     says. Writes are file writes either way. A storage that can
+    ///     write needs ``FileLock/exclusive`` for a map, which says that
     ///     it is the file's one writer; one opened with
     ///     ``FileAccess/readOnly`` needs no lock, and reads through the
     ///     map only what is committed. See ``isMemoryMapped`` for whether
@@ -580,10 +626,10 @@ public final class FileStorage: WritableStorage {
         access: FileAccess,
         durability: Durability = .full,
         lock: FileLock? = nil,
-        memoryMapped: Bool = false
+        reading: FileReading = .fileCalls
     ) throws(XitDBError) {
         try self.init(
-            path: path, access: access, durability: durability, lock: lock, memoryMapped: memoryMapped,
+            path: path, access: access, durability: durability, lock: lock, reading: reading,
             segmentSize: FileStorage.defaultSegmentSize)
     }
 
@@ -600,11 +646,11 @@ public final class FileStorage: WritableStorage {
         access: FileAccess,
         durability: Durability = .full,
         lock: FileLock? = nil,
-        memoryMapped: Bool,
+        reading: FileReading,
         segmentSize: Int,
         calls: FileCalls = FileCalls()
     ) throws(XitDBError) {
-        if memoryMapped {
+        if reading.isThroughAMap {
             // With the map the lock says "I am the writer": two writers
             // that read through maps end each other's process. A storage
             // that only reads needs none: it reads through the map only
@@ -617,6 +663,7 @@ public final class FileStorage: WritableStorage {
         self.descriptor = try FileDescriptor(opening: path, access: access)
         self.access = access
         self.durability = durability
+        self.reading = reading
         self.path = path
         self.lock = lock
         // The file is there now, so its own path can be asked for.
@@ -638,7 +685,7 @@ public final class FileStorage: WritableStorage {
         if case .exclusive? = lock, !isReadOnly {
             _ = try? calls.remove(realPath + Self.incomingSuffix)
         }
-        if memoryMapped, calls.isLocal(descriptor.rawValue) {
+        if reading.isThroughAMap, calls.isLocal(descriptor.rawValue) {
             // A writer holds the lock, so what is in the file now stays
             // there until this storage cuts it. A reader holds none: what
             // lies past the last commit may be cut by the file's writer, so
@@ -691,7 +738,10 @@ public final class FileStorage: WritableStorage {
         guard
             let segment = MappedSegment(
                 descriptor: descriptor.rawValue, offset: UInt64(index) * UInt64(size), length: size,
-                map: calls.map, advise: calls.advise)
+                map: calls.map,
+                // told to the system only where the map was asked for as
+                // read in no order; otherwise nothing is told at all
+                advise: reading == .memoryMap ? calls.advise : { (_: UInt, _: Int) in })
         else {
             map!.refused = true
             return nil

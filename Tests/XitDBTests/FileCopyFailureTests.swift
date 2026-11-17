@@ -180,7 +180,7 @@ final class CountedFileCalls {
     private static func writer(_ kind: StorageKind, at path: String, calls: FileCalls) throws -> any WritableStorage {
         let mapped = kind == .mappedFile || kind == .mappedBufferedFile
         var file = try FileStorage(
-            path: path, access: .readWrite, lock: .exclusive, memoryMapped: mapped,
+            path: path, access: .readWrite, lock: .exclusive, reading: mapped ? .memoryMap : .fileCalls,
             segmentSize: Platform.pageSize, calls: calls)
         if mapped { file = try readThroughTheMap(file, at: path) }
         return kind == .bufferedFile || kind == .mappedBufferedFile ? BufferedFileStorage(file) : file
