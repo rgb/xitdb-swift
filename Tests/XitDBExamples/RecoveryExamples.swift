@@ -166,14 +166,31 @@ import XitDBHashing
         #expect(storage.bytes == notADatabase)
     }
 
-    @Test func recoveringOnASoundRootHeaderCommitsAnUnfinishedTransaction() throws {
+    @Test func recoveringOnASoundRootHeaderKeepsToItUnlessAskedOtherwise() throws {
         let (good, after) = try threeMoments()
         // A process that died after the third commit's trailer and before its root header.
         var died = good
         died.replaceSubrange(24..<32, with: after[1][24..<32])
 
         #expect(try moments(Database(opening: MemoryStorage(bytes: died))) == 2)
-        #expect(try moments(Database.recover(MemoryStorage(bytes: died))) == 3)
+        let kept = MemoryStorage(bytes: died)
+        #expect(try moments(Database.recover(kept)) == 2)
+        #expect(kept.bytes == after[1])
+        #expect(try moments(Database.recover(MemoryStorage(bytes: died), ignoringRootHeader: true)) == 3)
+    }
+
+    @Test func recoveringAReadOnlyFileWhoseRootHeaderIsSound() throws {
+        let (good, after) = try threeMoments()
+        var died = good
+        died.replaceSubrange(24..<32, with: after[1][24..<32])
+        let scratch = ScratchDirectory()
+        defer { scratch.remove() }
+        let path = scratch.path("main.db")
+        let writer = try FileStorage(path: path, access: .create)
+        try writer.write(died.span, at: 0)
+        let reader = try FileStorage(path: path, access: .readOnly)
+        #expect(try moments(Database.recover(reader)) == 2)
+        #expect(try Data(contentsOf: URL(fileURLWithPath: path)) == Data(died))
     }
 
     @Test func recoveringAReadOnlyFile() throws {

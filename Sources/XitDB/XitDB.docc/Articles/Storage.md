@@ -91,7 +91,7 @@ A creation or a copy that did not finish leaves a storage that is neither empty 
 while creating a database leaves its header and nothing committed. Opening refuses that with ``XitDBError/endOfStream``,
 ``XitDBError/invalidDatabase`` or, where the first commit's trailer is whole,
 ``XitDBError/untrustedRootHeader(lastVerified:)``, so the pattern above gets one of those errors. Creating accepts it, for
-the same hash size, and creates over it; where the trailer is whole, ``Database/recover(_:)`` finishes the creation instead.
+the same hash size, and creates over it; where the trailer is whole, ``Database/recover(_:ignoringRootHeader:)`` finishes the creation instead.
 A sync from 0 that did not finish leaves a database without a first commit. If that is longer than a new database, it opens,
 for the next sync to replace, as <doc:Replication> says; if not, as when a copy from a ``ByteSource`` stopped within its
 first 4,096 bytes of data, which leaves the headers alone, it is taken for a creation that did not finish.

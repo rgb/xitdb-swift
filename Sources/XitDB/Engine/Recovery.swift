@@ -122,16 +122,43 @@ extension Database {
     /// says what opening does with a root header it cannot trust and what
     /// recovering can lose.
     ///
-    /// The scan goes by the trailers alone, not by the root header. On a
-    /// storage whose root header is sound this still cuts to the last
-    /// trailer that verifies: usually the one the root header names, and
-    /// only the root header is rewritten; but a transaction whose trailer
-    /// reached the storage and whose root header did not, as a process that
-    /// died between the two leaves, lies past the committed size with a
-    /// trailer that verifies, and this call commits it.
+    /// **A root header that is sound is the commit.** Where the root
+    /// header's committed size ends at a trailer that verifies, as opening
+    /// checks it, the database is recovered to that commit and nothing past
+    /// it is adopted: what lies beyond is cut off, the root header is left
+    /// as it is and nothing is written. That is where the original commits:
+    /// the root header is written after the data is synced, so the commit it
+    /// names is one whose data reached the storage. A trailer past it says
+    /// less than it seems to. Its checksum covers the trailer and not the
+    /// data before it, so after a power loss a trailer can verify whose
+    /// data never arrived, and a database recovered to it opens and reads
+    /// as damaged, or as empty.
     ///
-    /// - Parameter storage: Where the database's bytes are. It must be
-    ///   writable; the database becomes the only writer to it.
+    /// With `ignoringRootHeader` the scan goes by the trailers alone, as it
+    /// does where the root header cannot be trusted: on a storage whose
+    /// root header is sound, a transaction whose trailer reached the
+    /// storage and whose root header did not, as a process that died
+    /// between the two leaves, is then committed. Ask for it only when you
+    /// know that the data before that trailer is there: after a process's
+    /// death on a machine that kept running, and not after a power loss.
+    ///
+    /// A root header that names a trailer which verifies, and whose root
+    /// slot has a tag this version does not know, is not gone past either:
+    /// the call throws ``XitDBError/invalidEnumTag``, as opening does, and
+    /// cuts nothing. Such a trailer is not damage. It was written so, by a
+    /// version of the format that knows more than this one, and this call
+    /// neither goes on to a later trailer unasked nor cuts back before
+    /// it, which would destroy what that version wrote. With
+    /// `ignoringRootHeader` it goes to the last trailer that verifies,
+    /// and refuses that one the same way if its tag is unknown.
+    ///
+    /// - Parameters:
+    ///   - storage: Where the database's bytes are. It must be writable
+    ///     where the root header has to be written; the database becomes
+    ///     the only writer to it.
+    ///   - ignoringRootHeader: Whether to recover to the last trailer that
+    ///     verifies even where the root header is sound and names an
+    ///     earlier commit.
     /// - Returns: The recovered database, open.
     /// - Throws: ``XitDBError/invalidDatabase`` if the storage is empty or
     ///   does not start with a database header, or holds no trailer that
@@ -140,19 +167,25 @@ extension Database {
     ///   format's version is one this implementation does not read;
     ///   ``XitDBError/endOfStream`` if the storage is too short to hold a
     ///   header, or ends before its length said; ``XitDBError/invalidEnumTag``
-    ///   if the trailer found has a root slot whose tag is unknown;
-    ///   ``XitDBError/storageFailure(errno:)`` if the storage fails, which
-    ///   a storage opened read-only does at the root header's write; and
-    ///   what ``init(opening:hashSize:)`` throws, which the storage this
-    ///   call has just written does not raise.
-    public static func recover(_ storage: any WritableStorage) throws(XitDBError) -> Database {
-        try recover(storage, random: RandomSource(SystemRandomNumberGenerator()))
+    ///   if the trailer recovered to has a root slot whose tag is unknown,
+    ///   the one a sound root header names included, which is not gone
+    ///   past either; ``XitDBError/storageFailure(errno:)`` if the storage
+    ///   fails, which a file storage opened read-only does at the root
+    ///   header's write, where the root header has to be written: one whose
+    ///   root header is sound it opens, with nothing cut; and what
+    ///   ``init(opening:hashSize:)`` throws, which the storage this call
+    ///   has just checked or written does not raise.
+    public static func recover(
+        _ storage: any WritableStorage, ignoringRootHeader: Bool = false
+    ) throws(XitDBError) -> Database {
+        try recover(
+            storage, random: RandomSource(SystemRandomNumberGenerator()), ignoringRootHeader: ignoringRootHeader)
     }
 
     /// Recovers a database whose root header cannot be trusted, and opens
     /// it with the hasher of its keys.
     ///
-    /// This is ``recover(_:)``, with everything said there, for a database
+    /// This is ``recover(_:ignoringRootHeader:)``, with everything said there, for a database
     /// that is opened with ``init(opening:hashing:)``: the database it
     /// returns holds the hasher. The hasher's size is checked against the
     /// header first, so a hasher of another size is refused before
@@ -163,52 +196,89 @@ extension Database {
     ///     the database becomes the only writer to it.
     ///   - hashing: The hash function of the database's keys. Its
     ///     ``KeyHashing/size`` must be the database's hash size.
+    ///   - ignoringRootHeader: Whether to recover to the last trailer that
+    ///     verifies even where the root header is sound and names an
+    ///     earlier commit.
     /// - Returns: The recovered database, open.
     /// - Throws: ``XitDBError/invalidHashSize`` if the database's hash size
     ///   is not the hasher's, in which case the storage is left as it was,
-    ///   and what ``recover(_:)`` throws.
-    public static func recover(_ storage: any WritableStorage, hashing: (some KeyHashing).Type)
-        throws(XitDBError) -> Database
-    {
-        try recover(storage, random: RandomSource(SystemRandomNumberGenerator()), hasher: KeyHasher(hashing))
+    ///   and what ``recover(_:ignoringRootHeader:)`` throws.
+    public static func recover(
+        _ storage: any WritableStorage, hashing: (some KeyHashing).Type, ignoringRootHeader: Bool = false
+    ) throws(XitDBError) -> Database {
+        try recover(
+            storage, random: RandomSource(SystemRandomNumberGenerator()), hasher: KeyHasher(hashing),
+            ignoringRootHeader: ignoringRootHeader)
     }
 
     /// Recovers a database with a given source of randomness for the
     /// recovered database's commit IDs. The recovery itself draws nothing.
-    package static func recover(_ storage: any WritableStorage, random: any RandomNumberGenerator)
-        throws(XitDBError) -> Database
-    {
-        try recover(storage, random: RandomSource(random))
+    package static func recover(
+        _ storage: any WritableStorage, random: any RandomNumberGenerator, ignoringRootHeader: Bool = false
+    ) throws(XitDBError) -> Database {
+        try recover(storage, random: RandomSource(random), ignoringRootHeader: ignoringRootHeader)
     }
 
     /// Recovers a database whose recovered database draws its commit IDs
     /// from a source another database draws from, and holds the hasher
     /// given, if any.
     ///
-    /// - Throws: What ``recover(_:)`` throws, and `invalidHashSize`,
-    ///   before anything is cut, if the database's hash size is not the
-    ///   hasher's.
-    package static func recover(_ storage: any WritableStorage, random: RandomSource, hasher: KeyHasher? = nil)
-        throws(XitDBError) -> Database
-    {
+    /// - Throws: What ``recover(_:ignoringRootHeader:)`` throws, and
+    ///   `invalidHashSize`, before anything is cut, if the database's hash
+    ///   size is not the hasher's.
+    package static func recover(
+        _ storage: any WritableStorage, random: RandomSource, hasher: KeyHasher? = nil,
+        ignoringRootHeader: Bool = false
+    ) throws(XitDBError) -> Database {
         let header = try DatabaseHeader(reading: storage)
         if let hasher, Int(header.hashSize) != hasher.size { throw .invalidHashSize }
         let reader = DatabaseReader(storage: BuiltInStorage(storage), identity: DatabaseIdentity(header: header))
-        guard let lastVerified = try reader.lastVerifiedCommitEnd() else { throw .invalidDatabase }
+
+        // A root header that is sound, as opening checks it, names the
+        // commit: its data was synced before the root header was written.
+        // Nothing past it is adopted unless the caller asks for the
+        // trailers alone. One that names a trailer which verifies and
+        // whose root slot has a tag this implementation does not know is
+        // refused here, as opening refuses it, and not gone past: a
+        // trailer that verifies was written so, by a writer that knows
+        // more than this version, and is not damage. Nothing is cut back
+        // before such a trailer either, here or below, which would
+        // destroy what a newer version wrote.
+        let named: UInt64?
+        if ignoringRootHeader {
+            named = nil
+        } else {
+            do {
+                named = try reader.rootHeader().fileSize
+            } catch .invalidDatabase, .truncatedDatabase, .endOfStream {
+                named = nil
+            }
+        }
+        let commit: UInt64
+        if let named {
+            commit = named
+        } else {
+            guard let lastVerified = try reader.lastVerifiedCommitEnd() else { throw .invalidDatabase }
+            commit = lastVerified
+        }
         // The trailer's root slot must be one this implementation reads,
         // before anything is cut.
-        _ = try reader.rootTrailer(endingAt: lastVerified)
+        _ = try reader.rootTrailer(endingAt: commit)
 
-        if try storage.length > lastVerified {
-            try storage.truncate(to: lastVerified)
+        if try storage.length > commit {
+            try storage.truncate(to: commit)
         }
-        let committedSize = InlineArray<8, UInt8> { (output: inout OutputSpan<UInt8>) in
-            output.appendBigEndian(lastVerified)
+        if named == nil {
+            let committedSize = InlineArray<8, UInt8> { (output: inout OutputSpan<UInt8>) in
+                output.appendBigEndian(commit)
+            }
+            try storage.write(committedSize.span, at: header.fileSizePosition)
+            // The data was synced by the commit that wrote it, where the
+            // root header named that commit once; for a trailer the root
+            // header never named, that is the caller's to know. This is
+            // the commit's second sync, for the root header.
+            try storage.sync(.afterRootHeader)
         }
-        try storage.write(committedSize.span, at: header.fileSizePosition)
-        // The data was synced by the commit that wrote it. This is the
-        // commit's second sync, for the root header.
-        try storage.sync(.afterRootHeader)
         return try Database(opening: storage, hashSize: nil, random: random, hasher: hasher)
     }
 }

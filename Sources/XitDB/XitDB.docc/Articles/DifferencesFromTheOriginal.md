@@ -120,7 +120,7 @@ read as it is, with no error, and what is answered from it can be wrong.
   header can be ahead of its data. The port's ``Durability`` uses `F_BARRIERFSYNC` and `F_FULLFSYNC`: see <doc:Transactions>.
 - **A file whose root header or last trailer is damaged** does not open in the original, even though every commit before it is
   intact. The port's opening names the end of the last commit that verifies, with
-  ``XitDBError/untrustedRootHeader(lastVerified:)``, and ``Database/recover(_:)`` cuts the file back to it, which can lose a
+  ``XitDBError/untrustedRootHeader(lastVerified:)``, and ``Database/recover(_:ignoringRootHeader:)`` cuts the file back to it, which can lose a
   commit and is never done without being asked: see <doc:Recovery>. In the original a committed size of zero is not damage: it is
   a database without a first commit, which a creation or a full copy that did not finish leaves. The port opens such a full
   copy, and creates over such a creation, which its opening refuses: see <doc:Storage>.

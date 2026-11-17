@@ -10,10 +10,10 @@ A database given a hasher takes keys; one given a hash size alone takes hashes. 
 
 - ``init(opening:hashing:)``
 - ``init(creating:hashing:hashID:fileID:)``
-- ``recover(_:hashing:)``
+- ``recover(_:hashing:ignoringRootHeader:)``
 - ``init(opening:hashSize:)``
 - ``init(creating:hashSize:hashID:fileID:)``
-- ``recover(_:)``
+- ``recover(_:ignoringRootHeader:)``
 - ``header``
 
 ### Reading and writing

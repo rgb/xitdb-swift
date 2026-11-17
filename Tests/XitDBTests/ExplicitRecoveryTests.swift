@@ -312,32 +312,182 @@ import Testing
         }
     }
 
-    /// Recovery goes by the trailers alone, not by the root header. On a
-    /// database whose root header is sound it rewrites only the root
-    /// header, for the commit it already names. A transaction whose trailer
-    /// reached the storage and whose root header did not, as a process
-    /// that died between the two leaves it, lies past the committed size
-    /// with a trailer that verifies: opening reads as of the root header,
-    /// and recovery commits the transaction.
-    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
-    func recoveryGoesByTheTrailersAlone(kind: StorageKind, version: FormatVersion) throws {
-        let subject = try Self.makeSubject(kind, version)
-        let faulty = FaultInjectingStorage(subject.storage.storage)
-        let recovered = try Database.recover(faulty, random: FixedRandom([Self.nextCommitID]))
-        #expect(faulty.writeCount == 1)
-        #expect(faulty.syncCount == 1)
-        #expect(firstDifference(try subject.stored(), subject.after[3]) == nil)
-        try Self.expectCommit(recovered, 3)
+    /// The storage's bytes as a power loss can leave them, by the first
+    /// client's review of 0.5.1 (its probe S10): commit 2's root header,
+    /// which is sound, and after commit 2 the trailer of commit 3 with
+    /// zeros where commit 3's data was. A trailer's checksum covers the
+    /// trailer and not the data before it, so the trailer verifies.
+    static func leaveATrailerWhoseDataNeverArrived(_ subject: Subject) throws {
+        let dataEnd = subject.end(3) - UInt64(RootTrailer.byteCount)
+        try subject.write([UInt8](repeating: 0, count: Int(dataEnd - subject.end(2))), at: subject.end(2))
+        try setTheRootHeaderBack(subject, to: 2)
+    }
 
-        // commit 2's root header, with commit 3's bytes after it
-        let sizePosition = Int(subject.header.fileSizePosition)
-        try subject.write(Array(subject.after[2][sizePosition..<(sizePosition + 8)]), at: UInt64(sizePosition))
+    /// Replaces commit n's trailer with one whose root slot has a tag no
+    /// version knows (0x7F), under a checksum that matches where it is: a
+    /// trailer that verifies and that this implementation cannot read.
+    static func giveAnUnknownRootSlot(_ subject: Subject, toCommit n: Int) throws {
+        let position = subject.end(n) - UInt64(RootTrailer.byteCount)
+        let body: [UInt8] = [0x7F] + zeros(8) + bigEndianBytes(commitIDs[n - 1])
+        let covered = bigEndianBytes(subject.header.fileID) + bigEndianBytes(position) + body
+        try subject.write(body + bigEndianBytes(CRC64XZ.checksum(of: covered.span)), at: position)
+    }
+
+    /// Writes commit n's committed size into the root header, and leaves
+    /// whatever lies after commit n as it is.
+    static func setTheRootHeaderBack(_ subject: Subject, to n: Int) throws {
+        let position = Int(subject.header.fileSizePosition)
+        try subject.write(Array(subject.after[n][position..<(position + 8)]), at: UInt64(position))
+    }
+
+    /// A root header that is sound is the commit, and recovery adopts
+    /// nothing past it. The reviewer's file opens as of commit 2; recovered,
+    /// it is commit 2 to the byte, with what lay past it cut off and nothing
+    /// written, and the database goes on from there. (Before, recovery went
+    /// by the trailers alone: it committed the trailer whose data never
+    /// arrived, and the file that had opened with its moments read as a
+    /// database with none.)
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func aSoundRootHeaderIsTheCommitAndRecoveryAdoptsNothingPastIt(kind: StorageKind, version: FormatVersion) throws {
+        let subject = try Self.makeSubject(kind, version)
+        try Self.leaveATrailerWhoseDataNeverArrived(subject)
         let opened = try subject.open()
         #expect(try opened.committedSize == subject.end(2))
         try Self.expectCommit(opened, 2)
-        let adopted = try subject.recover()
+
+        let faulty = FaultInjectingStorage(subject.storage.storage)
+        let recovered = try Database.recover(faulty, random: FixedRandom([Self.nextCommitID]))
+        #expect(faulty.writeCount == 0)
+        #expect(faulty.syncCount == 0)
+        #expect(try recovered.committedSize == subject.end(2))
+        #expect(firstDifference(try subject.stored(), subject.after[2]) == nil)
+        try Self.expectCommit(recovered, 2)
+
+        try Self.commit(recovered, 3)
+        try Self.expectCommit(recovered, 3)
+    }
+
+    /// The same on a root header that names the last trailer, which is
+    /// every sound database that nothing was left behind in: recovering it
+    /// writes nothing, syncs nothing and leaves it as it was.
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func recoveringASoundDatabaseWritesNothing(kind: StorageKind, version: FormatVersion) throws {
+        let subject = try Self.makeSubject(kind, version)
+        let faulty = FaultInjectingStorage(subject.storage.storage)
+        let recovered = try Database.recover(faulty, random: FixedRandom([Self.nextCommitID]))
+        #expect(faulty.writeCount == 0)
+        #expect(faulty.syncCount == 0)
+        #expect(firstDifference(try subject.stored(), subject.after[3]) == nil)
+        try Self.expectCommit(recovered, 3)
+    }
+
+    /// Going by the trailers alone is asked for. A transaction whose
+    /// trailer reached the storage and whose root header did not, as a
+    /// process that died between the two leaves it on a machine that kept
+    /// running, lies past the committed size, whole: opening reads as of
+    /// the root header, recovery keeps to it, and recovery told to ignore
+    /// the root header commits the transaction, with the one write and the
+    /// one sync of a root header.
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func recoveryGoesByTheTrailersAloneWhenAskedTo(kind: StorageKind, version: FormatVersion) throws {
+        let subject = try Self.makeSubject(kind, version)
+        try Self.setTheRootHeaderBack(subject, to: 2)
+        let opened = try subject.open()
+        #expect(try opened.committedSize == subject.end(2))
+        try Self.expectCommit(opened, 2)
+
+        let faulty = FaultInjectingStorage(subject.storage.storage)
+        let adopted = try Database.recover(
+            faulty, random: FixedRandom([Self.nextCommitID]), ignoringRootHeader: true)
+        #expect(faulty.writeCount == 1)
+        #expect(faulty.syncCount == 1)
         #expect(try adopted.committedSize == subject.end(3))
         #expect(firstDifference(try subject.stored(), subject.after[3]) == nil)
         try Self.expectCommit(adopted, 3)
+    }
+
+    /// Why it has to be asked for: told to ignore the root header on the
+    /// reviewer's file, recovery commits the trailer whose data never
+    /// arrived, and what had opened as commit 2 no longer reads as any
+    /// commit of the three.
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func ignoringTheRootHeaderCommitsATrailerWhoseDataNeverArrived(kind: StorageKind, version: FormatVersion) throws {
+        let subject = try Self.makeSubject(kind, version)
+        try Self.leaveATrailerWhoseDataNeverArrived(subject)
+
+        let adopted = try Database.recover(
+            subject.storage.storage, random: FixedRandom([Self.nextCommitID]), ignoringRootHeader: true)
+        #expect(try adopted.committedSize == subject.end(3))
+        let moments = try? adopted.rootCursor.count
+        #expect(moments != 2 && moments != 3)
+    }
+
+    /// A root header that names a trailer which verifies and whose root
+    /// slot has a tag this implementation does not know is not gone past
+    /// either: opening refuses the file with the tag's error, recovery
+    /// refuses it with the same and cuts nothing, though a later trailer
+    /// verifies; and recovery told to ignore the root header goes to that
+    /// later trailer. Such a trailer is not damage: a writer that knows
+    /// more than this version wrote it so.
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func aRootHeaderThatNamesAnUnknownRootSlotIsNotGonePast(kind: StorageKind, version: FormatVersion) throws {
+        let subject = try Self.makeSubject(kind, version)
+        try Self.giveAnUnknownRootSlot(subject, toCommit: 2)
+        try Self.setTheRootHeaderBack(subject, to: 2)
+        let damaged = try subject.stored()
+
+        #expect(throws: XitDBError.invalidEnumTag) { try subject.open() }
+        #expect(throws: XitDBError.invalidEnumTag) { try subject.recover() }
+        #expect(firstDifference(try subject.stored(), damaged) == nil)
+
+        let adopted = try Database.recover(
+            subject.storage.storage, random: FixedRandom([Self.nextCommitID]), ignoringRootHeader: true)
+        #expect(try adopted.committedSize == subject.end(3))
+        try Self.expectCommit(adopted, 3)
+    }
+
+    /// Nor is anything cut back before a trailer that verifies with an
+    /// unknown root slot, which would destroy what a newer version wrote:
+    /// where it is the last trailer, recovery refuses the file whether the
+    /// root header names it, cannot be trusted, or is ignored, and the
+    /// storage is as it was.
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func nothingIsCutBackBeforeAnUnknownRootSlot(kind: StorageKind, version: FormatVersion) throws {
+        let subject = try Self.makeSubject(kind, version)
+        try Self.giveAnUnknownRootSlot(subject, toCommit: 3)
+        let named = try subject.stored()
+        #expect(throws: XitDBError.invalidEnumTag) { try subject.open() }
+        #expect(throws: XitDBError.invalidEnumTag) { try subject.recover() }
+        #expect(throws: XitDBError.invalidEnumTag) {
+            try Database.recover(subject.storage.storage, ignoringRootHeader: true)
+        }
+        #expect(firstDifference(try subject.stored(), named) == nil)
+
+        // and with a root header that cannot be trusted
+        try subject.write(bigEndianBytes(subject.end(3) + 1), at: subject.header.fileSizePosition)
+        let untrusted = try subject.stored()
+        #expect(throws: XitDBError.invalidEnumTag) { try subject.recover() }
+        #expect(throws: XitDBError.invalidEnumTag) {
+            try Database.recover(subject.storage.storage, ignoringRootHeader: true)
+        }
+        #expect(firstDifference(try subject.stored(), untrusted) == nil)
+    }
+
+    /// Where the root header cannot be trusted there is nothing to keep
+    /// to, and the argument changes nothing: both ways cut back to the
+    /// last trailer that verifies and leave the same bytes.
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func onAnUntrustedRootHeaderTheArgumentChangesNothing(kind: StorageKind, version: FormatVersion) throws {
+        for ignoring in [false, true] {
+            let subject = try Self.makeSubject(kind, version)
+            try subject.write(bigEndianBytes(subject.end(3) + 1), at: subject.header.fileSizePosition)
+            let faulty = FaultInjectingStorage(subject.storage.storage)
+            let recovered = try Database.recover(
+                faulty, random: FixedRandom([Self.nextCommitID]), ignoringRootHeader: ignoring)
+            #expect(faulty.writeCount == 1, "ignoring: \(ignoring)")
+            #expect(faulty.syncCount == 1, "ignoring: \(ignoring)")
+            #expect(firstDifference(try subject.stored(), subject.after[3]) == nil, "ignoring: \(ignoring)")
+            try Self.expectCommit(recovered, 3, "ignoring: \(ignoring)")
+        }
     }
 }

@@ -86,7 +86,7 @@ public enum XitDBError: Error, Sendable {
     /// Opening or recovering: the size stated with `hashSize:`, or the
     /// size of the hasher given with `hashing:`, is not the one the file
     /// records. It is checked once the header has been read and before
-    /// anything else is, by ``Database/recover(_:hashing:)`` before it
+    /// anything else is, by ``Database/recover(_:hashing:ignoringRootHeader:)`` before it
     /// cuts anything. Creating: the size, or the hasher's, is 0 or more
     /// than 65535, or the storage holds what an unfinished creation of a
     /// database with another hash size left, which is left as it is. A
@@ -342,7 +342,7 @@ public enum XitDBError: Error, Sendable {
     /// size is past the end of the file, smaller than a database can be, or
     /// does not end at a trailer whose checksum verifies. `lastVerified` is
     /// the position after the last trailer that does verify, scanning back
-    /// from the end; ``Database/recover(_:)`` cuts the file there.
+    /// from the end; ``Database/recover(_:ignoringRootHeader:)`` cuts the file there.
     ///
     /// A committed size of zero in a file longer than a new database is not
     /// refused: it is a full copy that did not finish, which opens.

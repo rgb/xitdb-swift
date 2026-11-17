@@ -160,7 +160,7 @@ root header, each once all of it has arrived, as the original does, so it leaves
 that stops within the first 4,096 bytes after the headers leaves the headers alone. The replica's
 ``Database/replicaState`` is a size of zero and a checksum of zero, to which the source answers 0, so the next sync replaces
 it; everything else on it throws ``XitDBError/invalidDatabase`` until then. What was written may still hold the source's
-earlier commits whole, and ``Database/recover(_:)`` keeps the last of them, after which the source sends only the rest: see <doc:Recovery>. A
+earlier commits whole, and ``Database/recover(_:ignoringRootHeader:)`` keeps the last of them, after which the source sends only the rest: see <doc:Recovery>. A
 file can hold such a database too, written by the original or by a version of this package up to 0.5.1, which copied onto
 files in place. Opened, such a file opens if it is longer than a new database; one no longer than that, such as the headers
 alone, is taken for a creation that did not finish, which opening refuses and creating builds over (see <doc:Storage>).

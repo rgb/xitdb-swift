@@ -402,6 +402,27 @@ private func unfinishedCreation(of database: [UInt8]) -> [UInt8] {
         try Self.expectHashes(database, as: Insecure.SHA1.self)
     }
 
+    /// Recovering with a hasher keeps to a root header that is sound, as
+    /// recovering does, and goes by the trailers alone when it is asked to.
+    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    func recoveringWithAHasherKeepsToASoundRootHeaderUnlessAskedNotTo(kind: StorageKind, version: FormatVersion) throws
+    {
+        let kept = try ExplicitRecoveryTests.makeSubject(kind, version)
+        try ExplicitRecoveryTests.setTheRootHeaderBack(kept, to: 2)
+        let database = try Database.recover(kept.storage.storage, hashing: Insecure.SHA1.self)
+        #expect(try kept.stored() == kept.after[2])
+        try ExplicitRecoveryTests.expectCommit(database, 2)
+        try Self.expectHashes(database, as: Insecure.SHA1.self)
+
+        let asked = try ExplicitRecoveryTests.makeSubject(kind, version)
+        try ExplicitRecoveryTests.setTheRootHeaderBack(asked, to: 2)
+        let adopted = try Database.recover(
+            asked.storage.storage, hashing: Insecure.SHA1.self, ignoringRootHeader: true)
+        #expect(try asked.stored() == asked.after[3])
+        try ExplicitRecoveryTests.expectCommit(adopted, 3)
+        try Self.expectHashes(adopted, as: Insecure.SHA1.self)
+    }
+
     /// A hasher of another size is refused before anything is cut: the
     /// damaged storage is as it was, bytes past the last commit included.
     @Test(arguments: StorageKind.allCases, FormatVersion.allCases)

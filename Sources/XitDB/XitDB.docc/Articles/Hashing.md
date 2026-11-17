@@ -67,7 +67,7 @@ power can make two collide on purpose.
 
 ``Database/init(opening:hashing:)`` checks the hasher's size against the header's, once the header is read and before
 anything else is, and refuses another with ``XitDBError/invalidHashSize``, the original's one error for it.
-``Database/recover(_:hashing:)`` checks it before it cuts anything. Nothing else is checked. The header's hash ID is not
+``Database/recover(_:hashing:ignoringRootHeader:)`` checks it before it cuts anything. Nothing else is checked. The header's hash ID is not
 compared with the hasher, and the hasher gives none: created with one and no `hashID:`, a database has a hash ID of
 zeros. So a file opened with the wrong hasher of the right size opens, and its keyed lookups find nothing.
 

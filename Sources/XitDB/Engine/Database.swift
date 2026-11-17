@@ -118,7 +118,7 @@ public final class Database {
     /// trusted, because its committed size is past the end of the storage,
     /// smaller than a database can be, or not at a trailer whose checksum
     /// verifies, is refused with the position after the last trailer that
-    /// does verify; ``recover(_:)`` cuts the storage back to it. Nothing is
+    /// does verify; ``recover(_:ignoringRootHeader:)`` cuts the storage back to it. Nothing is
     /// dropped by opening.
     ///
     /// **A full copy that did not finish opens.** When a sync from 0
@@ -133,7 +133,7 @@ public final class Database {
     /// throws ``XitDBError/invalidDatabase``: ``committedSize``, every read
     /// and write through ``rootCursor``, ``snapshot()``,
     /// ``replicationStart(for:)``, reading committed bytes, a sync from
-    /// anywhere but 0, and compaction from it or into it. ``recover(_:)``,
+    /// anywhere but 0, and compaction from it or into it. ``recover(_:ignoringRootHeader:)``,
     /// instead of opening, cuts such a storage back to the last commit of
     /// the source that arrived whole.
     ///
@@ -150,7 +150,7 @@ public final class Database {
     /// ``init(creating:hashSize:hashID:fileID:)`` accepts it and creates
     /// over it, with a new file ID unless one is given; where the first
     /// commit's trailer is whole, which
-    /// ``XitDBError/untrustedRootHeader(lastVerified:)`` says, ``recover(_:)``
+    /// ``XitDBError/untrustedRootHeader(lastVerified:)`` says, ``recover(_:ignoringRootHeader:)``
     /// finishes the creation with the file ID the storage has.
     ///
     /// - Throws: ``XitDBError/invalidDatabase`` if the storage is empty or

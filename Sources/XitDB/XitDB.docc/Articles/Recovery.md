@@ -10,8 +10,8 @@ with a trailer of 25 bytes, whose checksum covers the file's ID, the trailer's o
 ID. So a trailer that verifies is the end of a commit of this file, written where it is.
 
 Opening reads the header, then the root header, and checks that the committed size ends at a trailer that verifies. It writes
-nothing. A root header that fails the check is refused, and ``Database/recover(_:)`` is the one call that does anything about
-it. That call cuts a database back to an earlier commit of its own, which can lose the commits after it.
+nothing. A root header that fails the check is refused, and ``Database/recover(_:ignoringRootHeader:)`` is the one call that
+does anything about it. That call cuts a database back to an earlier commit of its own, which can lose the commits after it.
 
 ### What a root header can be
 
@@ -26,9 +26,10 @@ and 639, 1,027 and 1,415 (one moment each).
   as nothing else is wrong.
 - **Zero.** A committed size of zero is not taken for damage. A file longer than a new database whose size is zero opens,
   whatever left it so, as a database without a first commit, in which nothing can be read: that is what a full copy that did
-  not finish can leave (see the last section). If it happens to a database that had commits, ``Database/recover(_:)`` takes it
-  back to the last one that verifies, and `xitdb-dump` says where that is: see <doc:ReadingAFileWithXitdbDump>. A file no
-  longer than a new database whose size is zero is a creation that did not finish, which opening refuses: see <doc:Storage>.
+  not finish can leave (see the last section). If it happens to a database that had commits,
+  ``Database/recover(_:ignoringRootHeader:)`` takes it back to the last one that verifies, and `xitdb-dump` says where that
+  is: see <doc:ReadingAFileWithXitdbDump>. A file no longer than a new database whose size is zero is a creation that did not
+  finish, which opening refuses: see <doc:Storage>.
 - **Pointing at a damaged trailer**, or past the end of a file that was cut short. Opening throws the same error, and
   `lastVerified` is the end of the commit before: 1,027.
 - **In a file with no commit to go back to.** If the file does not start with a database's header, or no trailer in it verifies,
@@ -41,10 +42,11 @@ without an error and reads back wrong. Recovery does not help there, and nothing
 
 ### Recovering
 
-``Database/recover(_:)`` scans the storage back from its end for the last trailer that verifies, cuts the storage off
-after it, writes that commit's end as the committed size, syncs, and opens the database.
-``Database/recover(_:hashing:)`` does the same and opens it with a hasher, as ``Database/init(opening:hashing:)`` does;
-it checks the hasher's size first, and refuses another with ``XitDBError/invalidHashSize`` before it cuts anything:
+On a root header that opening refused, ``Database/recover(_:ignoringRootHeader:)`` scans the storage back from its end for
+the last trailer that verifies, cuts the storage off after it, writes that commit's end as the committed size, syncs, and opens
+the database. ``Database/recover(_:hashing:ignoringRootHeader:)`` does the same and opens it with a hasher, as
+``Database/init(opening:hashing:)`` does; it checks the hasher's size first, and refuses another with
+``XitDBError/invalidHashSize`` before it cuts anything:
 
 ```swift
 func openOrRecover(_ storage: any WritableStorage) throws(XitDBError) -> Database {
@@ -66,12 +68,25 @@ What to know before calling it:
 - **It can lose a commit.** Everything after the last trailer that verifies is discarded: a commit whose trailer was damaged, and
   whatever followed. If those bytes might be wanted, copy the file first. Opening never drops anything; the bytes stay as they
   are until you call this.
-- **It goes by the trailers, not the root header.** Called on a file whose root header is sound, it still cuts to the last trailer
-  that verifies. Usually that is the one the root header names. But a process that died after a transaction's trailer and before
-  its root header leaves a complete transaction past the committed size, and recovering commits it: a file that opens with two
-  moments recovers to three. So call it only after opening has refused the file.
-- **It needs to write.** On a storage opened read-only it fails with ``XitDBError/storageFailure(errno:)``, `EBADF`, at the write
-  of the root header, and the file is as it was.
+- **A sound root header is the commit.** Called on a file whose root header is sound, it opens the database at the commit the
+  root header names, cuts off what lies past it, and writes nothing. It does not go on to a later trailer, even one that
+  verifies. A trailer's checksum covers the trailer and not the data before it, so after a power loss a trailer can be in the
+  file whose data never arrived; the root header, which a commit writes only once its data is synced, is what says that a
+  commit is whole.
+- **Going by the trailers alone has to be asked for.** A process that died after a transaction's trailer and before its root
+  header, on a machine that kept running, leaves a complete transaction past the committed size. Recovering with
+  `ignoringRootHeader: true` commits it: a file that opens with two moments recovers to three. Ask for it only when you know
+  that the data before that trailer is there. After a power loss you do not, and a file recovered that way can open without an
+  error and read as damaged, or as a database with nothing in it.
+- **It does not go past a commit it cannot read, either.** A root header that names a trailer which verifies, and whose root
+  slot has a tag this version does not know, is refused with ``XitDBError/invalidEnumTag``, as opening refuses it, and nothing
+  is cut. A trailer that verifies was written so, by a version of the format that knows more than this one. It is not damage,
+  and recovering neither goes on to a later trailer unasked nor cuts back before it, which would destroy what the newer
+  version wrote. With `ignoringRootHeader: true` it goes to the last trailer that verifies, and refuses that one the same way
+  if its tag is unknown.
+- **It needs to write where the root header has to be mended.** On a storage opened read-only it then fails with
+  ``XitDBError/storageFailure(errno:)``, `EBADF`, at the write of the root header, and the file is as it was. A read-only file
+  whose root header is sound it opens as opening does, with nothing cut.
 - **It refuses a file with no commit to go back to**, with ``XitDBError/invalidDatabase``, or ``XitDBError/endOfStream`` if the
   storage is too short for a header, and leaves the storage as it was.
 
@@ -79,8 +94,9 @@ What to know before calling it:
 
 A commit writes its data and its trailer, syncs, rewrites the root header, and syncs again. At ``Durability/full`` and
 ``Durability/ordered``, the first sync keeps the data ahead of the root header, so after a power loss the root header names a
-commit that reached the disk, or an earlier one. What can still happen is a root header whose own write was torn, which opening
-refuses and recovering repairs, keeping the commit whose trailer made it.
+commit that reached the disk, or an earlier one. A later transaction's trailer can lie past it, with its data or without:
+opening reads as of the root header, and recovering keeps to it. What can still happen is a root header whose own write was
+torn, which opening refuses and recovering repairs, keeping the commit whose trailer made it.
 
 Without that order, the root header can reach the disk ahead of the commit it names. That is ``Durability/none``, and a volume
 on which the storage has to settle for plain `fsync` on macOS. If the trailer it names did not arrive, opening refuses the file,
@@ -120,7 +136,7 @@ that ran the sync can still take the next one from 0, and after a restart so can
 
 ## See Also
 
-- ``Database/recover(_:)``
+- ``Database/recover(_:ignoringRootHeader:)``
 - ``XitDBError/untrustedRootHeader(lastVerified:)``
 - <doc:Errors>
 - <doc:Storage>

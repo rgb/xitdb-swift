@@ -174,7 +174,7 @@ does not support one gets the next best.
 
 The table has one hole, at every level. A power loss in the middle of rewriting the committed size can leave it
 unreadable. Such a file does not open, although its commits are intact behind it: opening refuses it with
-``XitDBError/untrustedRootHeader(lastVerified:)``, and ``Database/recover(_:)`` repairs it. See <doc:Recovery>, which also
+``XitDBError/untrustedRootHeader(lastVerified:)``, and ``Database/recover(_:ignoringRootHeader:)`` repairs it. See <doc:Recovery>, which also
 says what recovering can keep at ``Durability/none``.
 
 None of the levels matters if only the process crashes: what has been written is in the operating system's hands
