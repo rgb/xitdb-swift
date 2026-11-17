@@ -356,6 +356,11 @@ extension XitDBError: Equatable {
     /// Whether two errors are the same case with the same values. Two
     /// ``callerError(_:)`` are equal when the errors they carry have the
     /// same description.
+    ///
+    /// The comparison goes by the case, and costs a few instructions. It
+    /// went by the cases' descriptions once, which cost a lookup that
+    /// found nothing seven times what one that found its key cost: the
+    /// library compares errors to turn "not found" into `nil`.
     public static func == (left: XitDBError, right: XitDBError) -> Bool {
         switch (left, right) {
         case (.callerError(let leftError), .callerError(let rightError)):
@@ -364,12 +369,59 @@ extension XitDBError: Equatable {
             leftErrno == rightErrno
         case (.untrustedRootHeader(let leftPosition), .untrustedRootHeader(let rightPosition)):
             leftPosition == rightPosition
-        case (.callerError, _), (_, .callerError), (.storageFailure, _), (_, .storageFailure),
-            (.untrustedRootHeader, _), (_, .untrustedRootHeader):
-            false
         default:
-            // The cases without values: the same case is the same error.
-            String(describing: left) == String(describing: right)
+            // Two cases without values are equal when they are the same
+            // case; a case with a value is not equal to another case.
+            left.caseNumber == right.caseNumber
+        }
+    }
+
+    /// A number for the error's case, whatever the case carries. The
+    /// switch names every case and has no default, so that a case added to
+    /// the enumeration does not compile until it has a number here.
+    private var caseNumber: Int {
+        switch self {
+        case .unexpectedTag: 0
+        case .keyNotFound: 1
+        case .indexOutOfRange: 2
+        case .writeNotAllowed: 3
+        case .cursorNotWritable: 4
+        case .expectedTxStart: 5
+        case .nestedTopLevelWrite: 6
+        case .invalidDatabase: 7
+        case .invalidVersion: 8
+        case .invalidHashSize: 9
+        case .truncatedDatabase: 10
+        case .invalidEnumTag: 11
+        case .invalidBTreeNode: 12
+        case .invalidBTreeNodeKind: 13
+        case .invalidRange: 14
+        case .invalidLength: 15
+        case .targetNotEmpty: 16
+        case .emptyLastMoment: 17
+        case .storageNotEmpty: 18
+        case .keyOffsetExceeded: 19
+        case .maxShiftExceeded: 20
+        case .maxSizeExceeded: 21
+        case .streamTooLong: 22
+        case .endOfStream: 23
+        case .unexpectedWriterPosition: 24
+        case .pathPartMustBeAtEnd: 25
+        case .notImplemented: 26
+        case .storageFailure: 27
+        case .callerError: 28
+        case .invalidCount: 29
+        case .staleCursor: 30
+        case .immutableBytes: 31
+        case .byteWriterOpen: 32
+        case .snapshotOverwritten: 33
+        case .memoryMapNeedsLock: 34
+        case .subCollectionSnapshot: 35
+        case .structuralSlot: 36
+        case .poisonedTransaction: 37
+        case .noKeyHashing: 38
+        case .invalidUTF8: 39
+        case .untrustedRootHeader: 40
         }
     }
 }
