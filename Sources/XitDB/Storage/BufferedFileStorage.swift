@@ -227,10 +227,6 @@ public final class BufferedFileStorage: WritableStorage {
             memoryPosition = offset
         }
 
-        if fileLength == nil {
-            fileLength = try file.length
-        }
-
         if offset >= memoryPosition && offset - memoryPosition + count <= bufferLimit {
             // into the buffer
             try memory.write(bytes, at: offset - memoryPosition)
@@ -242,6 +238,14 @@ public final class BufferedFileStorage: WritableStorage {
                 try flush()
             }
             try writeToFile(bytes, at: offset)
+        }
+
+        // The file's length is cached only after a write that succeeded, as
+        // the original does since `9e83ab5`: a write that fails may leave
+        // nothing to flush, and then nothing would clear a length cached
+        // before it.
+        if fileLength == nil {
+            fileLength = try file.length
         }
     }
 

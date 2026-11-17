@@ -224,6 +224,49 @@ import Testing
         #expect(try storage.length == 20)
     }
 
+    // MARK: The cached length (the original's `9e83ab5`)
+
+    /// The file's length is cached after a write that succeeded, and not
+    /// before it. A write that starts before the window and reaches into
+    /// it goes to the file, after a flush of the window; both forget the
+    /// length, and the write then takes it again from the file. (Cached
+    /// before the write, as the original did until `9e83ab5`, the length
+    /// was forgotten by that flush and the write ended with none.)
+    @Test func theLengthIsCachedAfterAWriteThatSucceeded() throws {
+        try writeBytes(storage, [1, 2, 3, 4], at: 0)
+        try storage.flush()
+        try writeBytes(storage, [5, 6, 7, 8], at: 4)
+        #expect(storage.memoryPosition == 4)
+        #expect(storage.fileLength == 4)
+
+        try writeBytes(storage, [9, 9, 9, 9], at: 2)
+        #expect(try onDisk() == [1, 2, 9, 9, 9, 9, 7, 8])
+        #expect(storage.fileLength == 8)
+        #expect(try storage.length == 8)
+        #expect(try everything() == [1, 2, 9, 9, 9, 9, 7, 8])
+    }
+
+    /// A write that fails caches no length: what the original's change is
+    /// for, since a write that fails may leave nothing to flush, and then
+    /// nothing would clear a length cached before it. The port's write to
+    /// the file forgets the length before it writes, so this held before
+    /// the statements were put in the original's order too; it is here so
+    /// that it goes on holding.
+    @Test func aWriteThatFailsCachesNoLength() throws {
+        try writeBytes(storage, [1, 2, 3, 4], at: 0)
+        try storage.flush()
+        try writeBytes(storage, [5, 6, 7, 8], at: 4)
+        #expect(storage.fileLength == 4)
+
+        storage.file.calls.write = { (_: Int32, _: Span<UInt8>, _: UInt64) throws(XitDBError) in
+            throw .storageFailure(errno: EIO)
+        }
+        #expect(throws: XitDBError.storageFailure(errno: EIO)) { try writeBytes(storage, [9, 9, 9, 9], at: 2) }
+        #expect(storage.fileLength == nil)
+        storage.file.calls.write = FileCalls().write
+        #expect(try storage.length == 8)
+    }
+
     // MARK: setLength
 
     @Test func truncationInsideTheWindowShortensIt() throws {
