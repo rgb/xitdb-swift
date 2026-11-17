@@ -25,7 +25,8 @@ struct OriginalListing {
     private var ancestors: [Slot] = []
 
     /// Where the original's tool stops without a listing: a file too short
-    /// to have a database header, or one that does not start as a database.
+    /// to have a database header, one that does not start as a database,
+    /// or one that cannot be opened, with the tool's own words for which.
     struct NoListing: Error, Equatable {
         let reason: String
     }
@@ -38,8 +39,10 @@ struct OriginalListing {
     /// init: a file cut during its creation opens as a database without a
     /// first commit, whose root cannot be read, and is listed as that.
     ///
-    /// - Throws: ``NoListing`` where the tool prints none, and what opening
-    ///   the database throws; a database that opens always has a listing.
+    /// - Throws: ``NoListing`` where the tool prints none, a file that
+    ///   cannot be opened among them: the tool opens before it prints, so
+    ///   such a file has no header lines either. A database that opens
+    ///   always has a listing.
     static func listing(ofFileAt path: String) throws -> OriginalListing {
         let bytes = [UInt8](try Data(contentsOf: URL(fileURLWithPath: path)))
         guard bytes.count >= 20 else { throw NoListing(reason: "too short to be a database") }
@@ -58,7 +61,12 @@ struct OriginalListing {
         }
         listing.text += "\nfile id: \(Self.hex(bytes[12..<20]))\n"
         let storage = try FileStorage(path: path, access: .readOnly)
-        let database = try Database(storage: storage, hashSize: hashSize)
+        let database: Database
+        do {
+            database = try Database(storage: storage, hashSize: hashSize)
+        } catch {
+            throw NoListing(reason: "the file can't be opened: \(Self.name(of: error))")
+        }
         listing.printRoot(database.rootCursor.readOnly)
         return listing
     }

@@ -5,8 +5,9 @@ So they aren't in `tests/valid/` or the fixtures, and `run` refuses to run a scr
 `--allow-port-differences`.
 
 Each has two scripts, which differ only in what they expect. `<name>.zig.json` says what the Zig original does, and
-`<name>.port.json` says what the port does, which for all but `iterator-past-slice` and `iterator-from-key-past-size` is also what the branch with the fixes
-does so far. On the Zig original the
+`<name>.port.json` says what the port does, which for all but `iterator-past-slice` and `iterator-from-key-past-size` is also what this team's own branch with the
+fixes does so far: `fix-findings-v3` on the fork `rgb/xitdb` (https://github.com/rgb/xitdb/tree/fix-findings-v3), which the
+original doesn't have. On the Zig original the
 first passes and the second fails, and `check.sh` holds it to that, so it notices if the original changes.
 `second-zig.sh` reports which of the two each Zig checkout does.
 

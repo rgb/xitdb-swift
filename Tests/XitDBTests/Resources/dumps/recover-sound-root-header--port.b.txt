@@ -1,0 +1,6 @@
+xitdb file: 433 bytes; version 2, hash size 20, hash id "sha1", file id 00000000000000a2; 1 moment
+verify: 2 commits verify, the last ending at the file's end
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 433, id 01900ff8e450fc21, root arrayList
+moment 0: map (1 entry)
+  a2ab1959c1c3bfa2: uint 1

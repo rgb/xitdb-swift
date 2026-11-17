@@ -44,7 +44,7 @@ import XitDBHashing
     /// `Resources/dumps`, which `scripts/pin-dumps.sh` writes.
     @Test func everyFixtureDumpsAsPinned() throws {
         let fixtures = try Self.files("fixtures/valid", suffix: ".db")
-        #expect(fixtures.count == 323)
+        #expect(fixtures.count == 341)
         let dumps = try Self.resources().appendingPathComponent("dumps")
         for fixture in fixtures {
             let name = fixture.deletingPathExtension().lastPathComponent
@@ -545,7 +545,7 @@ import XitDBHashing
             if commits.count == 1 { withOneCommit.append(name) }
             checked += 1
         }
-        #expect(checked == 159, "every fixture with a sidecar but the one that ends on one byte")
+        #expect(checked == 161, "every fixture with a sidecar but the one that ends on one byte")
         #expect(
             fromInputs.sorted() == [
                 "linked-counts-above-leaves", "linked-counts-above-leaves-writes", "linked-counts-below-leaves",
@@ -558,13 +558,16 @@ import XitDBHashing
                 "version-1-write",
             ])
         // Every other script commits after its database's first commit.
-        // These three end on a database that has only that one: two
+        // These five end on a database that has only that one: two
         // recoveries that cut back to it, of a file cut during its creation
-        // and of one a copy left without a first commit, and a version 1
-        // input cut during creation.
+        // and of one a copy left without a first commit; a version 1 input
+        // cut during creation; and the two scripts of the recovery that
+        // keeps to a sound root header, whose own database is left new and
+        // whose cases are in databases beside it.
         #expect(
             withOneCommit.sorted() == [
-                "recover-cut-during-creation--port", "recover-without-first-commit--port",
+                "recover-cut-during-creation--port", "recover-sound-root-header--port",
+                "recover-sound-root-header-version-1--port", "recover-without-first-commit--port",
                 "recovery-cut-during-creation",
             ])
 

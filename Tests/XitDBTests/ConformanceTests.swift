@@ -82,7 +82,7 @@ import Testing
         }
         #expect(held.subtracting(named).sorted() == [], "files in the folder that nothing names")
         #expect(named.subtracting(held).sorted() == [], "files that are named and are not in the folder")
-        #expect(held.count == 767)
+        #expect(held.count == 789)
     }
 
     /// The manifest was read and every script in it runs, on every storage
@@ -91,8 +91,8 @@ import Testing
     /// kind.
     @Test func everyScriptRuns() {
         let all = ConformanceFixture.all
-        #expect(all.count == 258)
-        #expect(all.filter { $0.mustPass }.count == 160)
+        #expect(all.count == 260)
+        #expect(all.filter { $0.mustPass }.count == 162)
         #expect(all.filter { !$0.mustPass }.count == 98)
 
         // the failing scripts whose description pins the engine error that

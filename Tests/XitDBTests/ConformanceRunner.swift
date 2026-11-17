@@ -1323,11 +1323,15 @@ final class ScriptRunner {
         case "recover":
             // The port's recovery: the database must be closed, and it is
             // open afterwards. No commit ID: the call draws nothing.
-            try op.allow("op", "note", "expect_error")
+            // `ignoring_root_header` is the suite's word for the
+            // argument that goes by the trailers alone where the root
+            // header is sound.
+            try op.allow("op", "note", "expect_error", "ignoring_root_header")
             if database != nil { throw ScriptFailure("recover while the database is open") }
+            let ignoringRootHeader = try op.bool("ignoring_root_header", default: false)
             let opened = try storage.openStorage(readOnly: false)
             do {
-                database = try Database.recover(opened, random: random)
+                database = try Database.recover(opened, random: random, ignoringRootHeader: ignoringRootHeader)
             } catch {
                 // A failed recovery leaves the database closed, as a failed
                 // reopen does.

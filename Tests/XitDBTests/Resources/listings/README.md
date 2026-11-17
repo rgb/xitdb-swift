@@ -6,8 +6,10 @@ text that does not depend on where anything is in the file. `OriginalListingTest
 port and holds its digest to the one here, so what the port reads from each of these files is what the original reads.
 The listings themselves are eleven megabytes, so they are not kept.
 
-One file has no line: `valid/recovery-cut-during-creation-read-only.db` is a single byte, for which the tool prints no
-listing. Thirty-four listings say that something could not be read, by the original's name for the error, and are here
+Five files have no line, because the tool prints no listing for them: `valid/recovery-cut-during-creation-read-only.db`
+is a single byte, "too short to be a database"; and the four `c2` files of `recover-sound-root-header--port` and its
+version 1 twin have a root header that names a trailer whose root slot has a tag no version knows, which the original
+does not open ("the file can't be opened: InvalidEnumTag"), and nor does the port. Thirty-four listings say that something could not be read, by the original's name for the error, and are here
 like the others: ten of them are of five clones that the freeze hazard left, each as an input and as the expected file
 that is the input byte for byte, where a position that the size has and the tree does not is `InvalidBTreeNode`, and
 eighteen are of the files that the writes through three of those clones leave, which hold the clone still.
@@ -23,11 +25,16 @@ with the fixtures of the conformance commit 40ed434 (four new ones for `recover-
 and three gone for `recover-without-first-commit--port`, which that commit split) were made on 2026-11-17 with the
 same binary, in a run over every file that gave the digest already here for each of the other 312. The nineteen lines
 for the files that the fixtures of the conformance commit 0aa572e added (the writes through three of the freeze hazard's
-clones, and `concat-stale-slot--port`) were made on 2026-11-17 with the `dump` that repository had built that day at
-15:37, the minute its checkout of the original moved to 274418f, in a run over every file that gave the digest already
-here for each of the other 317; that the binary reads through the original at 274418f is taken from that time and not
-shown otherwise, and the port prints the same nineteen listings. Eighteen of them say that something could not be read.
-To make them again, from `Resources`:
+clones, and `concat-stale-slot--port`) were made on 2026-11-17 with the `dump` that repository had built that day, in a
+run over every file that gave the digest already here for each of the other 317. Eighteen of them say that something
+could not be read.
+
+Since the conformance commit 62ef163 the tool says which commits it was built from. The whole file was made again on
+2026-11-17 with a `dump` that says of itself, by `dump --version`, `xitdb 274418f6ac1c37bccbe7e8e6f212dc123bca4843,
+conformance 9bc6a94f02b89cd2bf5be9cf268374a398128fd7`: the original at 274418f, and the conformance repository two
+commits past 62ef163, with the same `src/dump.zig` and the same fixtures. Each of the 336 lines that were here came
+out the same, so every line of this file is what the original at 274418f reads; and fourteen are new, for the
+databases of the two `recover-sound-root-header` scripts that open. To make them again, from `Resources`:
 
     for f in fixtures/inputs/*.db fixtures/valid/*.db; do
         dump "$f" > listing.txt 2> /dev/null

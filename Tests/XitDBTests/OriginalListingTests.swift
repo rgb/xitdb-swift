@@ -23,12 +23,10 @@ import XitDBHashing
 /// fixtures' manifest names as `zig_commit`), run it on every `.db` under
 /// `fixtures/valid` and `fixtures/inputs`, and write the SHA-256 of what
 /// each prints; the loop is in `Resources/listings/README.md`. The ones
-/// here are from `dump` built at conformance `cfbc254`, whose
-/// `src/dump.zig` is the one at `4d26fbd`, against the original at
-/// `89da8e7`, with Zig 0.17.1; all but the lines added since, of which
-/// that README says how each lot was made, the last being the nineteen
-/// for the fixtures of the conformance commit `0aa572e`, which follow the
-/// original at `274418f`.
+/// here were made again whole for the fixtures of the conformance commit
+/// `62ef163`, with a `dump` that says by `dump --version` which commits
+/// it was built from: the original at `274418f`. Every line that was
+/// there before came out the same; that README has the history.
 ///
 /// The four samples under `fixtures/samples/haxy` come with their listings,
 /// and `ClientAcceptanceTests` compares those line for line.
@@ -61,9 +59,11 @@ import XitDBHashing
     }
 
     /// Every `.db` under `fixtures/valid` and `fixtures/inputs` has a
-    /// digest, but the one file the original's tool has no listing for: a
-    /// single byte, too short to have a header, for which the port has none
-    /// either. The files in which something cannot be read are among them:
+    /// digest, but the five files the original's tool has no listing for,
+    /// for which the port has none either, by the tool's own words for
+    /// each: a single byte, too short to have a header, and four that
+    /// neither opens. The files in which something cannot be read are
+    /// among those that have one:
     /// what cannot be read prints as the original's name for the error, so
     /// the two agree on that as well.
     @Test func everyExpectedFileAndInputReadsAsTheOriginalReadsIt() throws {
@@ -75,8 +75,21 @@ import XitDBHashing
                 atPath: fixtures.appendingPathComponent(folder).path)
             paths += names.filter { $0.hasSuffix(".db") }.sorted().map { "\(folder)/\($0)" }
         }
-        #expect(paths.count == 337)
+        #expect(paths.count == 355)
 
+        // The files the original's tool prints no listing for, with what it
+        // says instead: a single byte, and the four in which the root header
+        // names a trailer whose root slot has a tag no version knows, which
+        // neither the original nor the port opens (the fixtures of the
+        // conformance commit 62ef163).
+        let unopened = "the file can't be opened: InvalidEnumTag"
+        let noListing = [
+            "valid/recovery-cut-during-creation-read-only.db": "too short to be a database",
+            "valid/recover-sound-root-header--port.c2.db": unopened,
+            "valid/recover-sound-root-header--port.c2_ignoring.db": unopened,
+            "valid/recover-sound-root-header-version-1--port.c2.db": unopened,
+            "valid/recover-sound-root-header-version-1--port.c2_ignoring.db": unopened,
+        ]
         var withErrors: [String] = []
         var withoutListing: [String] = []
         for path in paths {
@@ -85,7 +98,8 @@ import XitDBHashing
             do {
                 listing = try OriginalListing.listing(ofFileAt: file)
             } catch let error as OriginalListing.NoListing {
-                #expect(error.reason == "too short to be a database", "\(path)")
+                // The tool's own words, on its standard error, for each.
+                #expect(error.reason == (noListing[path] ?? "a listing"), "\(path)")
                 #expect(digests[path] == nil, "\(path)")
                 withoutListing.append(path)
                 continue
@@ -94,7 +108,7 @@ import XitDBHashing
             #expect(Self.sha256(listing.text) == expected, "the port's listing of \(path) is not the original's")
             if listing.errors > 0 { withErrors.append(path) }
         }
-        #expect(withoutListing == ["valid/recovery-cut-during-creation-read-only.db"])
+        #expect(withoutListing == noListing.keys.sorted())
         #expect(digests.count == paths.count - withoutListing.count)
         // The files in which the original cannot read something either.
         // Five of the freeze hazard's eight clones are among them, as

@@ -1,0 +1,9 @@
+xitdb file: 919 bytes; version 2, hash size 20, hash id "sha1", file id 00000000000000a5; 2 moments
+verify: 3 commits verify, the last ending at the file's end
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 433, id ff365479fabfa61d, root arrayList
+  commit 2: ends at 919, id 160fc6ef85c612e9, root arrayList
+moment 1: map (3 entries)
+  bfeb734d2eb5d091: bytes 64 "a value long enough to be bytes and not short bytes, in commit B"
+  a2ab1959c1c3bfa2: uint 1
+  b532a5440dd8422d: uint 3
