@@ -35,7 +35,7 @@ struct ColdMachine {
             let mounts = Mount.all()
             if let mount = Mount.holding(real, in: mounts) {
                 lines.append(
-                    "file system: \(mount.kind) on \(mount.source), mounted at \(mount.mountPoint), "
+                    "file system: \(mount.kind.word) on \(mount.source), mounted at \(mount.mountPoint), "
                         + "device \(mount.device)")
                 lines.append("reading ahead: \(Self.readAhead(mount))")
             } else {
@@ -89,9 +89,45 @@ struct ColdMachine {
             /// The folder of the file system that is mounted.
             let root: String
             let mountPoint: String
-            let kind: String
+            let kind: Kind
             let source: String
             let options: String
+
+            /// A mount's kind of file system, as far as this report tells
+            /// kinds apart: the three it looks further into, and every
+            /// other with the system's own word, which the report prints.
+            enum Kind: Equatable {
+                /// btrfs, whose read-ahead is under the volume and not
+                /// under a device number.
+                case btrfs
+                /// A control group's files of the first version.
+                case cgroup
+                /// The control groups' one tree of the second version.
+                case cgroup2
+                case other(String)
+
+                /// The kind the system's word names, as its list of mounts
+                /// writes it: the one place the word is read.
+                init(word: String) {
+                    self =
+                        switch word {
+                        case "btrfs": .btrfs
+                        case "cgroup": .cgroup
+                        case "cgroup2": .cgroup2
+                        default: .other(word)
+                        }
+                }
+
+                /// The system's word for the kind, for the report.
+                var word: String {
+                    switch self {
+                    case .btrfs: "btrfs"
+                    case .cgroup: "cgroup"
+                    case .cgroup2: "cgroup2"
+                    case .other(let word): word
+                    }
+                }
+            }
 
             /// The system's list, or nothing if it cannot be read.
             static func all() -> [Mount] {
@@ -105,7 +141,7 @@ struct ColdMachine {
                     guard left.count >= 6, right.count >= 2 else { return nil }
                     return Mount(
                         device: String(left[2]), root: unescaped(left[3]), mountPoint: unescaped(left[4]),
-                        kind: String(right[0]), source: String(right[1]),
+                        kind: Kind(word: String(right[0])), source: String(right[1]),
                         options: String(left[5]) + (right.count > 2 ? "," + right[2] : ""))
                 }
             }
@@ -157,7 +193,7 @@ struct ColdMachine {
                 ? URL(fileURLWithPath: mount.source).resolvingSymlinksInPath().lastPathComponent : nil
             // the file system's: under its device number, or for btrfs, which
             // makes a number of its own, under the volume that has the device
-            if !look("the file system", "/sys/class/bdi/\(mount.device)/read_ahead_kb"), mount.kind == "btrfs",
+            if !look("the file system", "/sys/class/bdi/\(mount.device)/read_ahead_kb"), mount.kind == .btrfs,
                 let name
             {
                 for volume in entries("/sys/fs/btrfs")
@@ -200,8 +236,8 @@ struct ColdMachine {
                 let file = unified ? "memory.max" : "memory.limit_in_bytes"
                 let mount = mounts.first { mount in
                     unified
-                        ? mount.kind == "cgroup2"
-                        : mount.kind == "cgroup" && mount.options.split(separator: ",").contains("memory")
+                        ? mount.kind == .cgroup2
+                        : mount.kind == .cgroup && mount.options.split(separator: ",").contains("memory")
                 }
                 guard let mount else {
                     looked.append("no mount of the \(unified ? "unified" : "memory") control groups")

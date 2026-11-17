@@ -1100,15 +1100,21 @@ func median(_ values: [Double]) -> Double {
     values.sorted()[values.count / 2]
 }
 
+/// The three phases of a workload, each by the word the output and the
+/// command line have for it.
+enum Phase: String, CaseIterable {
+    case write, read, iterate
+}
+
 /// One line for a phase: the run of median time, with its counts where
 /// there are any.
 func report(
-    _ workload: Workload, _ phase: String, _ kind: StorageKind, _ runs: [Measurement], _ fileSize: UInt64
+    _ workload: Workload, _ phase: Phase, _ kind: StorageKind, _ runs: [Measurement], _ fileSize: UInt64
 ) {
     let middle = runs.sorted { $0.milliseconds < $1.milliseconds }[runs.count / 2]
     var line = String(
         format: #"{"workload": "%@", "phase": "%@", "kind": "%@", "n": %ld, "median_ms": %.6f, "file_size": %llu"#,
-        workload.name, phase, kind.rawValue, workload.size, middle.milliseconds, fileSize
+        workload.name, phase.rawValue, kind.rawValue, workload.size, middle.milliseconds, fileSize
     )
     if let instructions = middle.instructions, let cycles = middle.cycles {
         line += String(format: #", "instructions": %llu, "cycles": %llu"#, instructions, cycles)
@@ -1178,9 +1184,9 @@ func run(_ workload: Workload) throws {
                 fileSize = size
             }
         }
-        report(workload, "write", kind, writes, fileSize)
-        report(workload, "read", kind, reads, fileSize)
-        report(workload, "iterate", kind, iterates, fileSize)
+        report(workload, .write, kind, writes, fileSize)
+        report(workload, .read, kind, reads, fileSize)
+        report(workload, .iterate, kind, iterates, fileSize)
     }
 }
 
@@ -1223,9 +1229,9 @@ final class IOCounts {
         }
     }
 
-    func report(_ workload: Workload, _ phase: String, _ kind: StorageKind) {
+    func report(_ workload: Workload, _ phase: Phase, _ kind: StorageKind) {
         print(
-            "counts \(workload.name) \(phase) \(kind.rawValue): pread \(preadCalls) calls \(preadBytes) bytes, "
+            "counts \(workload.name) \(phase.rawValue) \(kind.rawValue): pread \(preadCalls) calls \(preadBytes) bytes, "
                 + "pwrite \(pwriteCalls) calls \(pwriteBytes) bytes, fstat \(fstatCalls), ftruncate \(ftruncateCalls)")
         preadCalls = 0
         preadBytes = 0
@@ -1247,16 +1253,16 @@ func runCounting(_ workload: Workload, _ kind: StorageKind) throws {
     let prepared = try workload.prepare(storage, keys)
     counts.install(on: file)
     let database = try workload.write(storage, keys, prepared)
-    counts.report(workload, "write", kind)
+    counts.report(workload, .write, kind)
     try workload.afterWrite(database, prepared)
     try workload.beforeRead(database, prepared)
     counts.install(on: file)
     try workload.read(Reading(database), keys, prepared)
-    counts.report(workload, "read", kind)
+    counts.report(workload, .read, kind)
     try workload.afterRead(database, prepared)
     counts.install(on: file)
     try workload.iterate(Reading(database), keys, prepared)
-    counts.report(workload, "iterate", kind)
+    counts.report(workload, .iterate, kind)
 }
 
 /// One phase of one workload timed at every sixteen-byte position of the
@@ -1269,7 +1275,7 @@ func runCounting(_ workload: Workload, _ kind: StorageKind) throws {
 /// are run as a page has positions; they reach every position when a frame
 /// is an odd number of sixteen bytes, so the one of the two recursions that
 /// is so is found first, by where a marker lands.
-func stackSweep(_ workload: Workload, _ kind: StorageKind, phase: String, passes: Int) throws {
+func stackSweep(_ workload: Workload, _ kind: StorageKind, phase: Phase, passes: Int) throws {
     let page = UInt(getpagesize())
     let levels = Int(page / 16)
     /// How far one level of a recursion moves the stack.
@@ -1297,7 +1303,7 @@ func stackSweep(_ workload: Workload, _ kind: StorageKind, phase: String, passes
     var offsets = [UInt](repeating: 0, count: levels)
     // The read and iterate phases read one database, written before.
     var written: (database: Database, prepared: Any, storage: RunStorage)?
-    if phase != "write" {
+    if phase != .write {
         let storage = try RunStorage(kind)
         let prepared = try workload.prepare(storage, keys)
         written = (try workload.write(storage, keys, prepared), prepared, storage)
@@ -1306,8 +1312,8 @@ func stackSweep(_ workload: Workload, _ kind: StorageKind, phase: String, passes
         for level in 0..<levels {
             var time = 0.0
             if let written {
-                if phase == "read" { try workload.beforeRead(written.database, written.prepared) }
-                let run = phase == "read" ? workload.read : workload.iterate
+                if phase == .read { try workload.beforeRead(written.database, written.prepared) }
+                let run = phase == .read ? workload.read : workload.iterate
                 try atStackDepth(level, byLongerFrames: byLongerFrames) {
                     offsets[level] = stackMarker() % page
                     time = try milliseconds { try run(Reading(written.database), keys, written.prepared) }
@@ -1340,7 +1346,8 @@ func stackSweep(_ workload: Workload, _ kind: StorageKind, phase: String, passes
         String(
             format: #"{"workload": "%@", "phase": "%@", "kind": "%@", "positions": %ld, "frame_bytes": %lu, "#
                 + #""median_ms": %.6f, "least_ms": %.6f, "most_ms": %.6f, "above_5_percent": %ld}"#,
-            workload.name, phase, kind.rawValue, reached, frames[odd], middle, best.min() ?? 0, best.max() ?? 0,
+            workload.name, phase.rawValue, kind.rawValue, reached, frames[odd], middle, best.min() ?? 0,
+            best.max() ?? 0,
             above))
 }
 
@@ -1348,22 +1355,23 @@ func stackSweep(_ workload: Workload, _ kind: StorageKind, phase: String, passes
 /// often it ran and how long a run took on average. The write phase starts
 /// from a new, empty database each time, as it does when it is measured. The
 /// read phase reads one database that is written first.
-func runRepeatedly(_ workload: Workload, _ kind: StorageKind, phase: String, seconds: Double) throws {
+func runRepeatedly(_ workload: Workload, _ kind: StorageKind, phase: Phase, seconds: Double) throws {
     let keys = Keys(workload.keyKind, count: workload.keyCount)
     let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(seconds * 1_000_000_000)
     var runs = 0
     var total = 0.0
-    if phase == "read" || phase == "iterate" {
+    switch phase {
+    case .read, .iterate:
         let storage = try RunStorage(kind)
         let prepared = try workload.prepare(storage, keys)
         let database = try workload.write(storage, keys, prepared)
-        let run = phase == "read" ? workload.read : workload.iterate
+        let run = phase == .read ? workload.read : workload.iterate
         while DispatchTime.now().uptimeNanoseconds < deadline {
-            if phase == "read" { try workload.beforeRead(database, prepared) }
+            if phase == .read { try workload.beforeRead(database, prepared) }
             total += try milliseconds { try run(Reading(database), keys, prepared) }
             runs += 1
         }
-    } else {
+    case .write:
         while DispatchTime.now().uptimeNanoseconds < deadline {
             let storage = try RunStorage(kind)
             let prepared = try workload.prepare(storage, keys)
@@ -1373,7 +1381,7 @@ func runRepeatedly(_ workload: Workload, _ kind: StorageKind, phase: String, sec
     }
     let line = String(
         format: #"{"workload": "%@", "phase": "%@", "kind": "%@", "n": %ld, "runs": %ld, "mean_ms": %.3f}"#,
-        workload.name, phase, kind.rawValue, workload.size, runs, total / Double(max(runs, 1))
+        workload.name, phase.rawValue, kind.rawValue, workload.size, runs, total / Double(max(runs, 1))
     )
     print(line)
 }
@@ -1425,24 +1433,24 @@ if arguments.first == "--stack-sweep" {
         arguments.count == 4 || arguments.count == 5,
         let kind = StorageKind(rawValue: arguments[2]),
         let workload = workloads.first(where: { $0.name == arguments[1] && runs($0, on: kind) }),
-        ["write", "read", "iterate"].contains(arguments[3]),
+        let phase = Phase(rawValue: arguments[3]),
         let passes = arguments.count == 5 ? Int(arguments[4]) : 3, passes > 0
     else {
         throw BenchmarkFailure(
             description: "usage: --stack-sweep <workload> <kind> <write|read|iterate> [passes]")
     }
-    try stackSweep(workload, kind, phase: arguments[3], passes: passes)
+    try stackSweep(workload, kind, phase: phase, passes: passes)
 } else if arguments.first == "--repeat" {
     guard
         arguments.count == 5,
         let seconds = Double(arguments[1]),
         let kind = StorageKind(rawValue: arguments[3]),
         let workload = workloads.first(where: { $0.name == arguments[2] && runs($0, on: kind) }),
-        ["write", "read", "iterate"].contains(arguments[4])
+        let phase = Phase(rawValue: arguments[4])
     else {
         throw BenchmarkFailure(description: "usage: --repeat <seconds> <workload> <kind> <write|read|iterate>")
     }
-    try runRepeatedly(workload, kind, phase: arguments[4], seconds: seconds)
+    try runRepeatedly(workload, kind, phase: phase, seconds: seconds)
 } else {
     for workload in workloads where arguments.isEmpty || arguments.contains(workload.name) {
         try run(workload)
