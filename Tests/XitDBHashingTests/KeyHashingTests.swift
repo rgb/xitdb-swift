@@ -28,6 +28,21 @@ struct KeyHashingTests {
         #expect(hex(hash) == "522b276a356bdf39013dfabea2cd43e141ecc9e8")
     }
 
+    /// Each hasher has a second name, for a file that also imports
+    /// CryptoKit, whose types have the first: the same type under it, not
+    /// another, so the same size and the same hash of a key.
+    @Test func theSecondNamesAreTheSameTypes() {
+        #expect(SHA256KeyHashing.self == SHA256.self)
+        #expect(SHA1KeyHashing.self == Insecure.SHA1.self)
+        #expect(SHA256KeyHashing.size == 32)
+        #expect(SHA1KeyHashing.size == 20)
+        #expect(SHA256KeyHashing.keyHash(of: Self.key) == SHA256.keyHash(of: Self.key))
+        #expect(SHA1KeyHashing.keyHash(of: Self.key) == Insecure.SHA1.keyHash(of: Self.key))
+        #expect(hex(SHA1KeyHashing.keyHash(of: "alice")) == "522b276a356bdf39013dfabea2cd43e141ecc9e8")
+        let chosen: [any KeyHashing.Type] = [SHA256KeyHashing.self, SHA1KeyHashing.self]
+        #expect(chosen.map { $0.size } == [32, 20])
+    }
+
     /// A hasher chosen at run time is called as the type is: its size and
     /// `keyHash(of:)` through `any KeyHashing.Type`.
     @Test func aHasherChosenAtRunTime() {

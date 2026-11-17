@@ -39,7 +39,8 @@ public import XitDB
 /// `SHA256.hash(data:)` is CryptoKit's. Where nothing tells the two apart
 /// it does not compile: in a type annotation, a type alias, an extension,
 /// or `let hasher = SHA256.self`. `XitDBHashing.SHA256` and
-/// `CryptoKit.SHA256` always say which.
+/// `CryptoKit.SHA256` always say which, and ``SHA256KeyHashing`` is this
+/// type under a name CryptoKit does not have.
 public enum SHA256: KeyHashing {
     /// 32: the number of bytes in a hash.
     public static var size: Int { 32 }
@@ -63,7 +64,8 @@ public enum SHA256: KeyHashing {
 /// modules a bare `Insecure.SHA1` is this module's where the code around it
 /// can use no other, as in `hashing: Insecure.SHA1.self` and
 /// `Insecure.SHA1.keyHash(of:)`, and does not compile where nothing tells
-/// the two apart; `XitDBHashing.Insecure` always says which.
+/// the two apart; `XitDBHashing.Insecure` always says which, and
+/// ``SHA1KeyHashing`` is its SHA-1 under a name CryptoKit does not have.
 public enum Insecure {
     /// SHA-1 (FIPS 180-4).
     ///
@@ -86,3 +88,24 @@ public enum Insecure {
         }
     }
 }
+
+/// ``SHA256`` under a name that CryptoKit does not have, for a file that
+/// imports both modules.
+///
+/// It is the same type, not another: `SHA256KeyHashing.self` is
+/// `SHA256.self`, and a database is given either. The name says what the
+/// type is, a `KeyHashing`, and so can stand where a bare `SHA256` does
+/// not compile beside CryptoKit's, because nothing there tells the two
+/// apart: a type annotation, a type alias, an extension, or
+/// `let hasher = SHA256KeyHashing.self`.
+public typealias SHA256KeyHashing = SHA256
+
+/// ``Insecure/SHA1`` under a name that CryptoKit does not have, for a file
+/// that imports both modules.
+///
+/// It is the same type, not another, and no safer for the shorter name:
+/// SHA-1 is insecure against collisions, which is why the type is in
+/// ``Insecure``, and the alias leaves the namespace's word out of the name
+/// and not out of the fact. Use it for files whose keys were hashed with
+/// SHA-1; anything new should use ``SHA256KeyHashing``, or ``SHA256``.
+public typealias SHA1KeyHashing = Insecure.SHA1

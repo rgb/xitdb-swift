@@ -41,7 +41,15 @@ The module hashes keys and offers nothing more: a digest of data for its own sak
 CryptoKit has types named `SHA256` and `Insecure` as well. In a file that imports both modules a bare `SHA256` is
 whichever one the code around it can use, `SHA256.keyHash(of:)` this module's and `SHA256.hash(data:)` CryptoKit's, and
 does not compile where nothing tells them apart, as in a type annotation or `let hasher = SHA256.self`.
-`XitDBHashing.SHA256` and `CryptoKit.SHA256` always say which.
+`XitDBHashing.SHA256` and `CryptoKit.SHA256` always say which. So that a file with both need not write the module's
+name, each hasher has a second name that CryptoKit does not have: ``SHA256KeyHashing`` is ``SHA256`` and
+``SHA1KeyHashing`` is ``Insecure/SHA1``, the same types, the second no less insecure for the shorter name:
+
+```swift
+let hasher = SHA256KeyHashing.self
+let database = try Database(creating: MemoryStorage(), hashing: hasher)
+let old = try Database(creating: MemoryStorage(), hashing: SHA1KeyHashing.self, hashID: "sha1")
+```
 
 ### Where the hashes are computed
 
@@ -63,3 +71,8 @@ has one of a single byte; a SHA-512 that you already have, or a hash of your key
 
 - ``SHA256``
 - ``Insecure``
+
+### The hashers' names beside CryptoKit
+
+- ``SHA256KeyHashing``
+- ``SHA1KeyHashing``
