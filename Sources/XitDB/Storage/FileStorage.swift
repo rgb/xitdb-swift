@@ -548,7 +548,7 @@ public final class FileStorage: WritableStorage {
     /// Whether the storage's reads go through a memory map.
     ///
     /// It is `true` only while all of this holds: a map was asked for when
-    /// the storage was opened (``reading``), the file is on a volume the library
+    /// the storage was opened (``requestedReading``), the file is on a volume the library
     /// maps, and the system has refused no part of the map so far. A file
     /// on a volume that is not this machine's, as far as the system says,
     /// is read by file calls though the map was asked for, and this is
@@ -573,7 +573,7 @@ public final class FileStorage: WritableStorage {
     /// a mapped storage in everything the library says of one, the lock it
     /// needs to write among it, whether or not the map was had:
     /// ``isMemoryMapped`` says that.
-    public let reading: FileReading
+    public let requestedReading: FileReading
 
     /// The system calls the storage makes. Tests replace them to see which
     /// sync calls a durability level makes, and to make a write fail the way
@@ -663,7 +663,7 @@ public final class FileStorage: WritableStorage {
         self.descriptor = try FileDescriptor(opening: path, access: access)
         self.access = access
         self.durability = durability
-        self.reading = reading
+        self.requestedReading = reading
         self.path = path
         self.lock = lock
         // The file is there now, so its own path can be asked for.
@@ -741,7 +741,7 @@ public final class FileStorage: WritableStorage {
                 map: calls.map,
                 // told to the system only where the map was asked for as
                 // read in no order; otherwise nothing is told at all
-                advise: reading == .memoryMap ? calls.advise : { (_: UInt, _: Int) in })
+                advise: requestedReading == .memoryMap ? calls.advise : { (_: UInt, _: Int) in })
         else {
             map!.refused = true
             return nil

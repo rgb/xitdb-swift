@@ -96,10 +96,11 @@ public final class BufferedFileStorage: WritableStorage {
         )
     }
 
-    /// How the storage was asked to read its file: ``FileStorage/reading``
+    /// How the storage was asked to read its file:
+    /// ``FileStorage/requestedReading``
     /// of the file storage underneath.
-    public var reading: FileReading {
-        file.reading
+    public var requestedReading: FileReading {
+        file.requestedReading
     }
 
     /// Whether the storage's reads of the file go through a memory map:

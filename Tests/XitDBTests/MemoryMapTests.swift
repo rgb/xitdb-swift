@@ -433,7 +433,7 @@ private struct RolledBack: Error {}
         #expect(counts.reads == 0, "and read through the map")
         #expect(advised.calls == 0, "and the system was told nothing")
         #expect(file.isMemoryMapped)
-        #expect(file.reading == .memoryMapReadAhead)
+        #expect(file.requestedReading == .memoryMapReadAhead)
     }
 
     /// A storage says how it was asked to read its file, for its life, on
@@ -443,14 +443,14 @@ private struct RolledBack: Error {}
     @Test func aStorageSaysHowItWasAskedToReadItsFile() throws {
         let directory = try TemporaryDirectory()
         #expect(FileManager.default.createFile(atPath: directory.path(), contents: Data([1, 2, 3])))
-        #expect(try FileStorage(path: directory.path(), access: .readOnly).reading == .fileCalls)
-        #expect(try BufferedFileStorage(path: directory.path(), access: .readOnly).reading == .fileCalls)
+        #expect(try FileStorage(path: directory.path(), access: .readOnly).requestedReading == .fileCalls)
+        #expect(try BufferedFileStorage(path: directory.path(), access: .readOnly).requestedReading == .fileCalls)
         for reading in [FileReading.fileCalls, .memoryMap, .memoryMapReadAhead] {
             let file = try FileStorage(path: directory.path(), access: .readOnly, reading: reading)
-            #expect(file.reading == reading)
+            #expect(file.requestedReading == reading)
             #expect(file.isMemoryMapped == (reading != .fileCalls), "\(reading)")
             let buffered = try BufferedFileStorage(path: directory.path(), access: .readOnly, reading: reading)
-            #expect(buffered.reading == reading)
+            #expect(buffered.requestedReading == reading)
             #expect(buffered.isMemoryMapped == (reading != .fileCalls), "\(reading)")
         }
         var calls = FileCalls()
@@ -458,7 +458,7 @@ private struct RolledBack: Error {}
         for reading in Self.maps {
             let file = try FileStorage(
                 path: directory.path(), access: .readOnly, reading: reading, segmentSize: Self.page, calls: calls)
-            #expect(file.reading == reading, "what was asked")
+            #expect(file.requestedReading == reading, "what was asked")
             #expect(!file.isMemoryMapped, "is not what was had")
         }
     }
