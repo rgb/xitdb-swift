@@ -12,14 +12,15 @@ they do with the original: they check that a runner catches what is wrong.
 
 The second rule is that where the original's behaviour looks wrong, the port does what is correct. The differences are of four
 kinds: the port refuses with an error, or decides differently, what would damage data in the original; it gives an error or a
-sensible result where the original crashes or disagrees with itself; it holds a read to what the file can hold, which the
-original does not; and it recovers, when asked, a file the original cannot open. A refusal reaches no file: it comes before the
-write, and where an operation had already written, the transaction can no longer commit. So it narrows which sequences of
-operations the port accepts and leaves the files alone: the port reads every file the original writes. Two of the differences
-change the bytes of operations that are valid in both: the operations after a join in the same transaction, and
-``Cursor/writeIfEmpty(_:)``. For each, the port's authors changed the original the same way, on a branch of their own, which the
-original does not have, and these two are the places where the port's files match byte for byte that branch's and not the
-original's.
+sensible result where the original crashes or disagrees with itself, and goes past limits the original has; it holds a read to
+what the file can hold, which the original does not; and on the disk it syncs and locks in its own way, and recovers, when
+asked, a file the original cannot open. A refusal reaches no file: it comes before the write, and where an operation had already
+written, the transaction can no longer commit. So it narrows which sequences of operations the port accepts and leaves the files
+alone: the port reads every file the original writes. Two of the differences change the bytes of operations that are valid in
+both: the operations after a join in the same transaction, and ``Cursor/writeIfEmpty(_:)``. For each, the port's authors changed
+the original the same way, on a branch of their own, which the original does not have, and these two are the places where the
+port's files match byte for byte that branch's and not the original's. That branch is `fix-findings-v2` of the fork
+[`rgb/xitdb`](https://github.com/rgb/xitdb/tree/fix-findings-v2), at `bd6abc3`, on `89da8e7`.
 
 ### Where the original lets data be damaged
 
@@ -71,6 +72,9 @@ original's.
 - **The key and value slots of a hashed entry** are read without checking their tags in the original. The port checks them.
 - **With 64-byte hashes**, the original's depth counter overflows at 64 levels. The port goes as deep as the hash allows, and then
   throws ``XitDBError/keyOffsetExceeded``.
+- **Hashes longer than 8,191 bytes** cannot be named in the original, which takes a hash as an integer type as wide as the hash,
+  and Zig's integer types stop at 65,535 bits. The port creates and opens databases with hashes of up to 65,535 bytes, and no
+  program built on the original can open one whose hashes are longer than 8,191: see <doc:Hashing>.
 - **A slot set to nothing, read as bytes**, gives an empty value from one of the original's calls and `EndOfStream` from the other.
   The port gives no bytes from both.
 - **A slot set to nothing, streamed,** gives `UnexpectedTag` in the original. The port gives an empty stream.
@@ -131,6 +135,11 @@ read as it is, with no error, and what is answered from it can be wrong.
   commit and is never done without being asked: see <doc:Recovery>. In the original a committed size of zero is not damage: it is
   a database without a first commit, which a creation or a full copy that did not finish leaves. The port opens such a full
   copy, and creates over such a creation, which its opening refuses: see <doc:Storage>.
+- **A lock is never waited for.** The original takes no lock itself, and the writer in its README takes an exclusive one with
+  Zig's `File.lock`, which waits while another process holds one that conflicts. A ``FileLock`` is had at once or not at all:
+  when it cannot be, opening fails with ``XitDBError/storageFailure(errno:)`` carrying `EWOULDBLOCK`. Both are `flock` locks, so
+  each side's keeps out the other's, and a reader's ``FileLock/shared`` lock stands the README's writer still while it is held:
+  see <doc:Storage>.
 
 ### The same as the original
 

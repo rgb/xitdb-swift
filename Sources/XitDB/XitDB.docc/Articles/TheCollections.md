@@ -5,7 +5,7 @@ The eight collections, when to use which, and what they have in common at the ca
 ## Overview
 
 A database is a tree of collections. An element of a list and a value of a map can be anything, another collection
-included. A collection is a value you make from a cursor, and it reads and writes the slot that cursor is at.
+included. A collection is a view you make from a cursor, and it reads and writes the slot that cursor is at.
 
 Unless one makes its own, the examples are in a database given `SHA256` as the hasher of its keys (see <doc:Hashing>).
 They force-unwrap a lookup where the value was just written; real code handles the `nil` that means it is not there.
