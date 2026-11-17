@@ -39,7 +39,10 @@ Its ``XitDBError/description`` is a line a person can read, which is what `print
 log's lines above: lower case and no full stop, so that it reads on after your own words, as in
 `"could not open the library: \(error)"`. The words may change in any version, so code never compares, parses or stores
 them: that is the code's raw value's work. In a debugger, and from `String(reflecting:)`, an error is the code's raw value
-with what the case carries, `storageFailure(errno: 28)`.
+with what the case carries, `storageFailure(errno: 28)`. A failed expectation of Swift Testing shows a value by its
+description, so it shows an error by its line; a test target that would sooner see the case gives ``XitDBError`` a
+conformance to Swift Testing's `CustomTestStringConvertible` whose `testDescription` is the error's `debugDescription`
+(marked `@retroactive`, the type being another package's), as this package's own tests do.
 
 Its ``XitDBError/kind`` says whose it is, one ``XitDBError/Kind`` for each of the four headings below, for a program that
 treats the errors of a kind alike. It is the code's ``XitDBError/Code/kind``. A case has one kind, by its commoner meaning;

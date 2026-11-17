@@ -46,10 +46,14 @@ test of two processes with the port's reader, where the suite is beside the pack
 concurrency suite under the thread sanitizer; the release build; the instruction counts of the in-memory
 lines against their figures (compared on macOS, on the toolchain the figures were taken on); the release
 tests; a smoke run of the benchmark and the corruption fuzzer; the step that keeps tests that start a process
-in their own target; the import check; the formatting check; the documentation build (DocC); and on macOS a
+in their own target; the import check, which also holds the search for an error printed where a program reads
+it; the formatting check; the documentation build (DocC); and on macOS a
 compile-only build for iOS and the tests on an iOS simulator. It runs on macOS and on Linux, and stops at the
-first failure. On macOS it needs Xcode's toolchain, which the workspace's `.swift-version` selects. "Tests
-pass" means this script ran and passed at the reported commit. To reformat:
+first failure. On macOS it needs Xcode's toolchain, which the workspace's `.swift-version` selects. From a Mac
+the Linux side is `scripts/linux-gate.sh`: the gate in the gate's image on a fresh copy of the working tree, or
+of a commit named to it, with the conformance suite mounted to be read only where it is beside the package with
+its writer and reader built for Linux, so that the two-process step runs there too; where they are not, the
+script and the step say so. "Tests pass" means this script ran and passed at the reported commit. To reformat:
 `swift format --in-place --recursive Package.swift Sources Tests`.
 
 ## What Linux and the gate have taught

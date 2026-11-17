@@ -229,7 +229,34 @@ if [ -f "$suite/two-processes.sh" ] && [ -x "$suite_driver" ] && [ -x "$suite_re
         suite_commit="$suite_commit, with changes that are not committed"
     fi
     echo "the suite at $suite: $suite_commit"
+    # The suite's writer and its own reader are built by the suite's scripts and lie
+    # where they were left, so they can be older than the commit the suite is at: a
+    # writer built before a change to the test is not that change's writer. The gate
+    # cannot build them (it writes nothing into the suite), so it says how their times
+    # stand to the commit's, aloud where either is the older.
+    suite_time=$(git -C "$suite" log -1 --format=%ct 2>/dev/null || true)
+    for built in "$suite_driver" "$suite_reader"; do
+        if [ "$platform" = Darwin ]; then built_time=$(stat -f %m "$built"); else built_time=$(stat -c %Y "$built"); fi
+        if [ -z "$suite_time" ]; then
+            echo "  $built: the suite's commit has no time to hold it against"
+        elif [ "$built_time" -lt "$suite_time" ]; then
+            echo "  NOTE: $built was built $(((suite_time - built_time) / 60)) minutes BEFORE the suite's commit,"
+            echo "        and may not be that commit's: build it again with the suite's own script"
+        else
+            echo "  $built: built $(((built_time - suite_time) / 60)) minutes after the suite's commit"
+        fi
+    done
     rm -rf .build/two-processes
+    mkdir -p .build/two-processes
+    # Where the files lie can decide the test: a file on a file system that is not the
+    # machine's own is not read through a memory map.
+    if [ "$platform" = Darwin ]; then
+        files_on=$(mount | awk -v at="$(df -P .build/two-processes | awk 'NR == 2 { print $NF }')" '
+            { for (i = 1; i < NF; i++) if ($i == "on" && $(i + 1) == at) { kind = $(i + 2); gsub(/[(,]/, "", kind); print kind; exit } }')
+    else
+        files_on=$(stat -f -c %T .build/two-processes)
+    fi
+    echo "the files: .build/two-processes, on a file system of the kind: ${files_on:-not learnt}"
     TWO_PROCESSES_OUT="$PWD/.build/two-processes" limited "$two_processes_limit" sh "$suite/two-processes.sh" "$reader"
 else
     echo "skipped: the conformance suite's script, its writer or its own reader is not there:"

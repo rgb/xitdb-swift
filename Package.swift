@@ -92,6 +92,15 @@ let package = Package(
             dependencies: ["XitDBDumpKit"],
             swiftSettings: languageSettings
         ),
+        // What the test targets share: how a failed expectation shows an
+        // error of the library's. A target and no test target, since a test
+        // target cannot be depended on; it is in no product.
+        .target(
+            name: "XitDBTestSupport",
+            dependencies: ["XitDB"],
+            path: "Tests/XitDBTestSupport",
+            swiftSettings: languageSettings
+        ),
         .testTarget(
             name: "XitDBHashingTests",
             dependencies: ["XitDBHashing"],
@@ -100,7 +109,7 @@ let package = Package(
         ),
         .testTarget(
             name: "XitDBTests",
-            dependencies: ["XitDB", "XitDBHashing", "XitDBDumpKit"],
+            dependencies: ["XitDB", "XitDBHashing", "XitDBDumpKit", "XitDBTestSupport"],
             exclude: ["Resources/fixtures-source.txt"],
             resources: [
                 .copy("Resources/test.db"),
@@ -115,7 +124,7 @@ let package = Package(
         // The examples hash through XitDBHashing, as the articles' readers do.
         .testTarget(
             name: "XitDBExamples",
-            dependencies: ["XitDB", "XitDBHashing"],
+            dependencies: ["XitDB", "XitDBHashing", "XitDBTestSupport"],
             swiftSettings: languageSettings
         ),
         // The tests that start another process, alone in a target and so in
@@ -124,7 +133,7 @@ let package = Package(
         // a test beside it that reopens a file with its lock can be refused.
         .testTarget(
             name: "XitDBProcessTests",
-            dependencies: ["XitDB"],
+            dependencies: ["XitDB", "XitDBTestSupport"],
             swiftSettings: languageSettings
         ),
     ],
