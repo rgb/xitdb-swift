@@ -179,10 +179,24 @@ import Testing
     /// and changes nothing: the first byte past it, and a position four
     /// times the machine's memory away, which a system may well grant and
     /// could not back. A write within it goes through.
+    ///
+    /// The writes near the limit are ones a system may grant, since it
+    /// gives address space it cannot back; were the limit missing or not
+    /// applied, the test would write zeros until the machine had no memory
+    /// left. That is what the limit is for, and a test of it must not do it
+    /// when the limit fails. (It did, once, under a hand mutant that took
+    /// the default away.) So the test requires two things before it tries
+    /// them: that the storage it made has a limit, and that the limit has
+    /// just refused a write which no system would grant either.
     @Test func aWritePastTheDefaultLimitIsRefusedWithNothingChanged() throws {
-        let limit = try #require(MemoryStorage.defaultMaxSize)
         let storage = MemoryStorage()
+        let limit = try #require(storage.maxSize, "a storage made without a limit has none: no far write is tried")
+        #expect(limit == MemoryStorage.defaultMaxSize)
         try writeBytes(storage, [1, 2, 3, 4], at: 0)
+        let farthest = try #require(throws: XitDBError.self) { try writeBytes(storage, [9], at: UInt64(Int.max) - 16) }
+        try #require(
+            farthest == .maxSizeExceeded,
+            "the limit did not refuse a write that no system would grant: nearer ones are not tried")
         #expect(throws: XitDBError.maxSizeExceeded) { try writeBytes(storage, [9], at: limit) }
         #expect(throws: XitDBError.maxSizeExceeded) { try writeBytes(storage, [9, 9], at: limit - 1) }
         #expect(throws: XitDBError.maxSizeExceeded) { try writeBytes(storage, [9], at: limit * 4) }
