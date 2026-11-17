@@ -58,7 +58,8 @@ the end of the last commit that verifies, and leaves the decision to recover to 
 ### The storage
 
 ``XitDBError/storageFailure(errno:)`` is the system's refusal, or the one the system would have made, with its error
-number, and ``XitDBError/maxSizeExceeded`` a write that would pass a memory storage's limit, or what an array can hold
+number: a memory storage that has to grow asks the system for the memory first, and reports a refusal this way, with
+`ENOMEM`. ``XitDBError/maxSizeExceeded`` is a write that would pass a memory storage's limit, or what an array can hold
 if it has none. A transaction that fails this way rolls back like any other. The exception is the second sync of a
 commit, which comes after the root header has been rewritten. If that one fails, the call throws, and the commit stands,
 but it may not survive a crash or a power loss.
@@ -99,7 +100,8 @@ A few mistakes are preconditions, because they are bugs in the code and not cond
 cause them: a string literal of the wrong length as a ``FormatTag`` or a ``HashID`` (``FormatTag/init(string:)`` and
 ``HashID/init(string:)`` give `nil` for a string computed at run time), a range outside the buffer given to
 ``ReadableStorage/read(into:range:at:)``, and a hasher that appends more bytes than its ``KeyHashing/size``. An
-in-memory database without a limit stops the process if it asks for more memory than can be had, as any array would: see
+in-memory database without a limit can still stop the process, or slow the machine, where the system grants memory it
+cannot back: a size the system itself refuses is an error, and nothing more can be known from inside a process. See
 ``MemoryStorage/maxSize``.
 
 ## See Also

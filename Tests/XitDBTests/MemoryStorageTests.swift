@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import XitDB
@@ -99,6 +100,150 @@ import Testing
         let storage = MemoryStorage()
         #expect(throws: XitDBError.maxSizeExceeded) { try writeBytes(storage, [1, 2], at: .max) }
         #expect(storage.bytes == [])
+    }
+
+    // MARK: Growth (the first client's review of 0.5.1, the idiom review's section 3.4)
+
+    /// A write far beyond the end of a storage without a limit ended the
+    /// process: by an integer overflow in the room the array was to be
+    /// given (`endIndex + endIndex / 2`), or by an allocation the system
+    /// refused, which a Swift array answers by ending the process. Now the
+    /// system is asked first, and its refusal is the storage's failure with
+    /// the system's error; the storage is as it was.
+    ///
+    /// The three positions are the reviewer's: just below the largest array
+    /// index, where the sum overflowed; a page below it, as a byte writer's
+    /// seek and write reaches it; and 2^62, where the sum did not overflow
+    /// and the allocation failed.
+    @Test(arguments: [UInt64(Int.max) - 16, UInt64(Int.max) - 4096, 1 << 62])
+    func aWriteFarBeyondTheEndIsAnErrorAndNotTheProcesssEnd(offset: UInt64) throws {
+        let storage = MemoryStorage()
+        try writeBytes(storage, [1, 2, 3, 4], at: 0)
+        #expect(throws: XitDBError.storageFailure(errno: ENOMEM)) { try writeBytes(storage, [9, 9], at: offset) }
+        #expect(storage.bytes == [1, 2, 3, 4])
+        #expect(try storage.length == 4)
+        // and it goes on as before
+        try writeBytes(storage, [5], at: 4)
+        #expect(storage.bytes == [1, 2, 3, 4, 5])
+    }
+
+    /// The same through a byte writer: a seek far ahead in a value's bytes
+    /// and a write, in a database on a storage without a limit. The write
+    /// reports what the storage does.
+    @Test func aByteWritersSeekFarAheadIsAnErrorAtItsWrite() throws {
+        let storage = MemoryStorage()
+        let database = try Database(creating: storage, hashSize: 20)
+        #expect(throws: XitDBError.storageFailure(errno: ENOMEM)) {
+            try database.withTransaction { root in
+                try root.writeBytes { writer throws(XitDBError) in
+                    writer.seek(to: UInt64(Int.max) - 4096)
+                    try writer.write([1, 2, 3])
+                }
+            }
+        }
+        // the transaction failed, and the database is what it was
+        #expect(try database.rootCursor.slot.isEmpty)
+    }
+
+    /// A limit the caller set is still what refuses first, with its own
+    /// error: the system, which would refuse this size with another, is
+    /// not asked.
+    @Test func aLimitRefusesBeforeTheSystemIsAsked() throws {
+        let storage = MemoryStorage(maxSize: 100)
+        #expect(throws: XitDBError.maxSizeExceeded) { try writeBytes(storage, [1], at: UInt64(Int.max) - 16) }
+        #expect(storage.bytes == [])
+    }
+
+    /// The room an array is given when it has to grow, with no sum that
+    /// can overflow: half as much again as what is needed, or double what
+    /// it has, whichever is more; and where no integer holds those, what is
+    /// needed alone.
+    @Test func theRoomForMoreIsComputedWithoutOverflow() throws {
+        let yes = { (_: Int) -> Int32 in 0 }
+        #expect(try MemoryBuffer.capacity(toHold: 100, from: 0, asking: yes) == 150)
+        #expect(try MemoryBuffer.capacity(toHold: 100, from: 90, asking: yes) == 180)
+        #expect(try MemoryBuffer.capacity(toHold: 1, from: 0, asking: yes) == 1)
+        // half as much again of the largest index no integer holds
+        #expect(try MemoryBuffer.capacity(toHold: Int.max, from: 0, asking: yes) == Int.max)
+        #expect(try MemoryBuffer.capacity(toHold: Int.max - 16, from: 64, asking: yes) == Int.max - 16)
+        // the last size whose half as much again an integer holds, and the first whose it does not
+        let last = Int.max / 3 * 2
+        #expect(try MemoryBuffer.capacity(toHold: last, from: 0, asking: yes) == last + last / 2)
+        #expect(try MemoryBuffer.capacity(toHold: last + 2, from: 0, asking: yes) == last + 2)
+        // nor does double a capacity that no integer doubles
+        #expect(try MemoryBuffer.capacity(toHold: Int.max, from: Int.max - 1, asking: yes) == Int.max)
+        #expect(try MemoryBuffer.capacity(toHold: 10, from: Int.max / 2 + 1, asking: yes) == 15)
+    }
+
+    /// The system is asked for the room for more first and, refused that,
+    /// for what is needed alone: the array is then given exactly that, and
+    /// the write that needed it succeeds without asking again. Refused
+    /// both, it is the storage's failure with the system's error, and the
+    /// bytes, the length and the array's room are as they were.
+    ///
+    /// The question is replaced where the buffer grows, in the step that a
+    /// write calls when its bytes do not fit the array; that a write calls
+    /// it, and writes nothing when it throws, is held by the tests above,
+    /// which ask the system itself.
+    @Test func aRefusalByTheSystemIsAStorageFailureThatChangesNothing() throws {
+        var asked: [Int] = []
+
+        // the room for more refused, what is needed granted
+        var buffer = MemoryBuffer(bytes: [1, 2, 3, 4])
+        let before = buffer.bytes.capacity
+        let needed = before + 100
+        try buffer.reserve(toHold: needed) { (bytes: Int) in
+            asked.append(bytes)
+            return bytes > needed ? ENOMEM : 0
+        }
+        #expect(asked == [max(needed + needed / 2, before * 2), needed])
+        let given = buffer.bytes.capacity
+        #expect(given >= needed)
+        #expect(given < needed + needed / 2)
+        #expect(buffer.bytes == [1, 2, 3, 4])
+        try buffer.write([UInt8](repeating: 7, count: 100).span, at: UInt64(before))
+        #expect(buffer.bytes.capacity == given)
+        #expect(buffer.count == needed)
+        #expect(Array(buffer.bytes.prefix(4)) == [1, 2, 3, 4])
+        #expect(buffer.bytes.dropFirst(4).prefix(before - 4).allSatisfy { $0 == 0 })
+        #expect(buffer.bytes.suffix(100).allSatisfy { $0 == 7 })
+
+        // the room for more granted: the array is given it
+        asked = []
+        var roomy = MemoryBuffer(bytes: [1, 2, 3, 4])
+        try roomy.reserve(toHold: needed) { (bytes: Int) in
+            asked.append(bytes)
+            return 0
+        }
+        #expect(asked == [max(needed + needed / 2, before * 2)])
+        #expect(roomy.bytes.capacity >= max(needed + needed / 2, before * 2))
+
+        // both refused, with whatever the system said
+        asked = []
+        var refused = MemoryBuffer(bytes: [1, 2, 3, 4])
+        let capacity = refused.bytes.capacity
+        #expect(throws: XitDBError.storageFailure(errno: EAGAIN)) {
+            try refused.reserve(toHold: capacity + 50) { (bytes: Int) in
+                asked.append(bytes)
+                return EAGAIN
+            }
+        }
+        #expect(asked.count == 2)
+        #expect(refused.bytes == [1, 2, 3, 4])
+        #expect(refused.count == 4)
+        #expect(refused.bytes.capacity == capacity)
+    }
+
+    /// What the system is really asked: a little is granted, and more than
+    /// any machine has is refused with `ENOMEM`, on every system the
+    /// library runs on.
+    @Test func theSystemGrantsALittleAndRefusesWhatNoMachineHas() {
+        #expect(Platform.askForMemory(0) == 0)
+        #expect(Platform.askForMemory(1) == 0)
+        #expect(Platform.askForMemory(1 << 20) == 0)
+        #expect(Platform.askForMemory(1 << 62) == ENOMEM)
+        #expect(Platform.askForMemory(Int.max) == ENOMEM)
+        #expect(Platform.noMemory == ENOMEM)
     }
 
     @Test func writingNothingDoesNothing() throws {

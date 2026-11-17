@@ -772,7 +772,17 @@ public struct ByteWriter: ~Copyable {
     /// between: a seek far past the end makes the next write grow the
     /// array, and the storage with it, to where the position reaches, and
     /// the array stays that long. A position beyond any a storage has is
-    /// reported by that write.
+    /// reported by that write: ``XitDBError/storageFailure(errno:)`` from a
+    /// file, and from a ``MemoryStorage`` when the system refuses the
+    /// memory, or ``XitDBError/maxSizeExceeded`` beyond the storage's limit.
+    ///
+    /// **A position that is not under your control needs a storage with a
+    /// limit.** A seek only records the position, so nothing is refused
+    /// here. On a ``MemoryStorage`` without a limit, the write that follows
+    /// asks the system for every byte up to the position, and a system can
+    /// grant memory it cannot back: the machine is then slowed, or the
+    /// process ended, when the zeros are written, and no error is thrown.
+    /// See ``MemoryStorage/maxSize``.
     ///
     /// - Parameter offset: The new position.
     public mutating func seek(to offset: UInt64) {

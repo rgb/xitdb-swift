@@ -36,8 +36,9 @@ struct MemoryBuffer {
     /// any gap before the write with zeros. Writing nothing does nothing.
     ///
     /// - Throws: `maxSizeExceeded` if the write would grow the buffer beyond
-    ///   `maxSize`, or beyond what an array can hold. Nothing is changed
-    ///   then.
+    ///   `maxSize`, or beyond what an array can hold;
+    ///   `storageFailure(errno:)`, with the system's error, if the system
+    ///   refuses the memory when it is asked. Nothing is changed then.
     mutating func write(_ source: Span<UInt8>, at offset: UInt64) throws(XitDBError) {
         guard source.count > 0 else { return }
         let oldCount = bytes.count
@@ -46,14 +47,20 @@ struct MemoryBuffer {
         guard !overflow, let endIndex = Int(exactly: end) else { throw .maxSizeExceeded }
         if endIndex > oldCount {
             if let maxSize, end > maxSize { throw .maxSizeExceeded }
-            // A write that makes the array grow leaves room for more: the
-            // double the array would take for a small write, and half as
-            // much again for a large one, such as a replica's full sync,
-            // which would otherwise fit exactly and make the next write
-            // copy everything.
-            if endIndex > bytes.capacity {
-                bytes.reserveCapacity(max(endIndex + endIndex / 2, bytes.capacity * 2))
-            }
+            // An array that cannot have its memory ends the process, and
+            // no Swift code can catch that. So the system is asked before
+            // the array is: a size the system itself refuses is an error
+            // here, with nothing changed.
+            //
+            // What this does not cover. The array's own allocation comes a
+            // moment later, and can still be refused where the question was
+            // answered yes: another thread took the memory in between, or
+            // the allocator needs more than the bytes for its own
+            // bookkeeping. That still ends the process. And a system may
+            // say yes to memory it cannot back, and slow or end the process
+            // when the bytes are written: nothing inside a process can turn
+            // that into an error. Only a limit refuses such a size.
+            if endIndex > bytes.capacity { try reserve(toHold: endIndex, asking: Platform.askForMemory) }
             if offset == UInt64(oldCount) {
                 // The write starts at the end, as nearly every write of a
                 // transaction does: append the bytes themselves.
@@ -66,6 +73,56 @@ struct MemoryBuffer {
         }
         var target = bytes.mutableSpan
         target.copyBytes(from: source, count: source.count, to: Int(offset))
+    }
+
+    /// Gives the array room for `needed` bytes and more, asking the system
+    /// first; ``write(_:at:)`` calls it when the array has to grow, and
+    /// writes nothing if it throws.
+    ///
+    /// Kept out of that function's body, which every write of a transaction
+    /// in memory runs, and without a parameter there for the question: with
+    /// the growth in the body a hash map's put took 0.56% more instructions
+    /// than before the system was asked, for a branch taken a logarithm of
+    /// times; with it here every write of the four collections takes fewer
+    /// than before (a hash map's put 0.58% fewer).
+    ///
+    /// - Parameter ask: The question to the system
+    ///   (``Platform/askForMemory(_:)``), which a test replaces.
+    /// - Throws: `storageFailure(errno:)`, with the system's error, if the
+    ///   system does not give even what is needed. Nothing is changed then.
+    @inline(never)
+    mutating func reserve(toHold needed: Int, asking ask: (Int) -> Int32) throws(XitDBError) {
+        bytes.reserveCapacity(try Self.capacity(toHold: needed, from: bytes.capacity, asking: ask))
+    }
+
+    /// The capacity to reserve for an array that must hold `needed` bytes
+    /// and has room for `capacity` now.
+    ///
+    /// A write that makes the array grow leaves room for more: the double
+    /// the array would take for a small write, and half as much again for
+    /// a large one, such as a replica's full sync, which would otherwise
+    /// fit exactly and make the next write copy everything. No sum here
+    /// can overflow: each is taken with its overflow reported, and one that
+    /// overflows is left out, as it is for a write far beyond the end,
+    /// whose half as much again no integer holds. Where the system refuses
+    /// the room for more, what is needed is asked for alone.
+    ///
+    /// - Parameter ask: Asks the system for that many bytes and returns
+    ///   zero, or the error it refused with.
+    /// - Throws: `storageFailure(errno:)`, with the system's error, if the
+    ///   system does not give even what is needed.
+    static func capacity(
+        toHold needed: Int, from capacity: Int, asking ask: (Int) -> Int32
+    ) throws(XitDBError) -> Int {
+        var roomy = needed
+        let halfAgain = needed.addingReportingOverflow(needed / 2)
+        if !halfAgain.overflow { roomy = max(roomy, halfAgain.partialValue) }
+        let doubled = capacity.multipliedReportingOverflow(by: 2)
+        if !doubled.overflow { roomy = max(roomy, doubled.partialValue) }
+        if roomy > needed, ask(roomy) == 0 { return roomy }
+        let refusal = ask(needed)
+        guard refusal == 0 else { throw .storageFailure(errno: refusal) }
+        return needed
     }
 
     /// Cuts the buffer down to `length` bytes, keeping its capacity.
@@ -130,11 +187,22 @@ public final class MemoryStorage: WritableStorage {
     /// ``XitDBError/maxSizeExceeded`` and changes nothing.
     ///
     /// Without a limit, a write far beyond the end makes the storage as large
-    /// as it takes to reach it, and the process ends if that much memory
-    /// cannot be had. Set a limit for a storage whose writes are not under
-    /// the caller's control. Only a write whose bytes would end beyond what
-    /// an array can hold, past `Int.max`, is refused without a limit, with
-    /// the same ``XitDBError/maxSizeExceeded``.
+    /// as it takes to reach it, and a write through a
+    /// ``ByteWriter`` after a far ``ByteWriter/seek(to:)`` is such a write.
+    /// The system is asked for the memory before the storage grows, and a
+    /// size it refuses is ``XitDBError/storageFailure(errno:)`` with the
+    /// system's error, `ENOMEM`, and changes nothing. A write whose bytes
+    /// would end beyond what an array can hold, past `Int.max`, is refused
+    /// with ``XitDBError/maxSizeExceeded``, as with a limit.
+    ///
+    /// **That does not make a storage without a limit safe.** A system can
+    /// grant memory it cannot back, and slow the machine or end the process
+    /// when the bytes are written; nothing inside a process can turn that
+    /// into an error. And the storage's own allocation, a moment after the
+    /// system said yes, can still be refused, which ends the process as it
+    /// does for any array. Only a limit refuses a size before the system is
+    /// asked. Set one for a storage whose writes are not under the caller's
+    /// control.
     public var maxSize: UInt64? {
         unsafe buffer.maxSize
     }
@@ -186,8 +254,12 @@ public final class MemoryStorage: WritableStorage {
     ///   - offset: The position of the first byte written.
     /// - Throws: ``XitDBError/maxSizeExceeded`` if the write would grow the
     ///   storage beyond ``maxSize``, or, with or without a limit, if the
-    ///   bytes would end beyond what an array can hold, past `Int.max`.
-    ///   Nothing is changed then.
+    ///   bytes would end beyond what an array can hold, past `Int.max`;
+    ///   ``XitDBError/storageFailure(errno:)``, with the system's error,
+    ///   if the storage has to grow and the system refuses the memory when
+    ///   it is asked. Nothing is changed then. What ``maxSize`` says of a
+    ///   storage without a limit holds here: a size the system grants and
+    ///   cannot back is no error.
     public func write(_ bytes: Span<UInt8>, at offset: UInt64) throws(XitDBError) {
         try unsafe buffer.write(bytes, at: offset)
     }

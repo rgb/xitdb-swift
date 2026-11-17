@@ -308,6 +308,39 @@ enum Platform {
         return (address, 0)
     }
 
+    /// Asks the system whether it would give the process `bytes` of memory
+    /// right now, by mapping that much memory that belongs to no file and
+    /// unmapping it at once. None of it is touched, and nothing is written
+    /// anywhere, where a `malloc` the system refuses writes a message to the
+    /// process's standard error on macOS.
+    ///
+    /// A yes is not a promise that the memory can be used: a system may
+    /// grant address space it cannot back, and end the process when the
+    /// bytes are written. A no is what an allocation of that size would
+    /// have met, which for a Swift array ends the process.
+    ///
+    /// - Returns: Zero if the system gave the memory, or the error it
+    ///   refused with, `ENOMEM` as a rule.
+    static func askForMemory(_ bytes: Int) -> Int32 {
+        guard bytes > 0 else { return 0 }
+        #if canImport(Darwin)
+            let anonymous = MAP_PRIVATE | MAP_ANON
+        #else
+            let anonymous = MAP_PRIVATE | MAP_ANONYMOUS
+        #endif
+        // Safe: the system chooses the address, nothing is passed in by
+        // pointer, and nothing is read or written through the mapping, which
+        // is unmapped before the function returns. A refusal is the pointer
+        // with every bit set, `MAP_FAILED`.
+        let address = unsafe UInt(bitPattern: mmap(nil, bytes, PROT_READ | PROT_WRITE, anonymous, -1, 0))
+        if address == UInt.max { return errno }
+        _ = unsafe munmap(UnsafeMutableRawPointer(bitPattern: address), bytes)
+        return 0
+    }
+
+    /// The error of a system that has no memory to give, `ENOMEM`.
+    static let noMemory: Int32 = ENOMEM
+
     /// Tells the system that a mapped range is read in no order, as a
     /// database is that is read by following pointers: a read of a page
     /// that is not in memory then brings that page, and not its neighbours

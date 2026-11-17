@@ -201,7 +201,8 @@ public enum XitDBError: Error, Sendable {
     /// The storage refused, or the system did: `ENOENT` for a missing file,
     /// `EWOULDBLOCK` for a lock that is held, `EBADF` for a write to a
     /// read-only file, `ENOSPC` for a full disk, `EINVAL` for a path with a
-    /// NUL byte in it.
+    /// NUL byte in it, `ENOMEM` for memory the system would not give an
+    /// in-memory database that had to grow.
     ///
     /// - Parameter errno: The system's number for the error, also where the
     ///   storage refuses before it calls the system, as it does for the

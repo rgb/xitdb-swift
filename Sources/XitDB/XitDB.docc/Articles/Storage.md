@@ -53,8 +53,12 @@ let answer = try answers.value(forKey: "answer", as: UInt64.self)
 ```
 
 A memory storage can have a limit, ``MemoryStorage/maxSize``. A write that would pass it throws
-``XitDBError/maxSizeExceeded``, and the transaction fails with it. Set one if what goes in is not under your control: without a
-limit, the storage grows as far as it is asked to, and the process ends if the memory cannot be had.
+``XitDBError/maxSizeExceeded``, and the transaction fails with it. Set one if what goes in is not under your control, and a
+position given to ``ByteWriter/seek(to:)`` is part of what goes in. Without a limit the storage grows as far as it is asked
+to. It asks the system for the memory first, and a size the system refuses is ``XitDBError/storageFailure(errno:)`` with
+`ENOMEM`, with nothing changed. That is as far as a process can see. A system can grant memory it cannot back (macOS grants
+address space far beyond the machine's memory), and then slows the machine or ends the process when the bytes are written;
+nothing inside a process can turn that into an error, and only a limit refuses such a size.
 
 ### Opening a file
 
