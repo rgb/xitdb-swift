@@ -57,10 +57,14 @@ the same database. A storage opened with ``FileReading/memoryMapReadAhead`` is r
 ``FileReading/fileCalls`` has no map: a compaction of either reads as it always did.
 
 Why it is there, for a list of 4,000,000 values of 256 bytes, 1.09 GB, compacted into a new file with none of the source
-in memory at the start, as medians of five runs on a Linux virtual machine with four processors and a virtual disk: 8.9 s by
+in memory at the start, as medians of five runs. On a Linux virtual machine with four processors and a virtual disk: 8.9 s by
 file calls and 10.9 s through a map told that it is read in no order, so that a caller who had opened the map to read faster
 compacted slower than with none; and 4.9 s through a map left to the system's reading ahead, which is how the second
-mapping is read. The second mapping was not itself timed on that machine.
+mapping is read. The second mapping was not itself timed on that machine. It was on a Mac (Apple M4, macOS 27.2.1): 3.4 s
+through the second mapping, where the same takes 4.9 s by file calls with no map and took 4.2 s through the storage's own
+map; and in a Linux container on that Mac: 1.6 s, against 3.5 s and 2.4 s. With the source in memory already, where
+reading ahead buys nothing, the second mapping costs nothing that was measured: 2.34 s with it and 2.37 s without on the
+Mac, as medians of three.
 
 ### What is kept
 
