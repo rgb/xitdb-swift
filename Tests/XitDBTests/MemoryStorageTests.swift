@@ -251,9 +251,11 @@ import Testing
         var buffer = MemoryBuffer(bytes: [1, 2, 3, 4])
         let before = buffer.bytes.capacity
         let needed = before + 100
-        try buffer.reserve(toHold: needed) { (bytes: Int) in
-            asked.append(bytes)
-            return bytes > needed ? ENOMEM : 0
+        #expect(throws: Never.self) {
+            try buffer.reserve(toHold: needed) { (bytes: Int) in
+                asked.append(bytes)
+                return bytes > needed ? ENOMEM : 0
+            }
         }
         #expect(asked == [max(needed + needed / 2, before * 2), needed])
         let given = buffer.bytes.capacity
@@ -270,9 +272,11 @@ import Testing
         // the room for more granted: the array is given it
         asked = []
         var roomy = MemoryBuffer(bytes: [1, 2, 3, 4])
-        try roomy.reserve(toHold: needed) { (bytes: Int) in
-            asked.append(bytes)
-            return 0
+        #expect(throws: Never.self) {
+            try roomy.reserve(toHold: needed) { (bytes: Int) in
+                asked.append(bytes)
+                return 0
+            }
         }
         #expect(asked == [max(needed + needed / 2, before * 2)])
         #expect(roomy.bytes.capacity >= max(needed + needed / 2, before * 2))
