@@ -1,6 +1,6 @@
 {
   "format": "xitdb-script/1",
-  "description": "The reads of inputs/linked-counts-below-leaves, which the freeze hazard left with a linked array list and its clone: a header and a root that agree on 41, over leaves that hold more than the root counts for them: the copy wrote first, and then the original appended 10 elements in place in the leaves they still share. It's pinned as the original reads it, a file with no byte damaged: count, every position from two before the start to one past the end, the walk from the start in full, and on the clone an iterator from every position, by its first entry, how many it gives, and the null. Left out, as the port answers them otherwise (SCRIPT-FORMAT.md section 11, tests/port-differs): an iterator from the positions -1, 40 of the list clone, whose reads raise InvalidBTreeNode.",
+  "description": "The reads of inputs/linked-counts-below-leaves, which the freeze hazard left with a linked array list and its clone: a header and a root that agree on 41, over leaves that hold more than the root counts for them: the copy wrote first, and then the original appended 10 elements in place in the leaves they still share. It's pinned as the original reads it, a file with no byte damaged: count, every position from two before the start to one past the end, the walk from the start in full, and on the clone an iterator from every position, by its first entry, how many it gives, and the null. And an iterator from each position whose read raises InvalidBTreeNode raises it too, at the iterator: on the list clone from the positions -1, 40. The original checks the leaf an iterator starts in since 274418f, as the port does, and these were left out until then, as the port answered them otherwise.",
   "hash_size": 20,
   "hash_id": "sha1",
   "file_id": "c0f00000000000c8",
@@ -1202,6 +1202,7 @@
     {"op": "next", "on": "it", "as": "e"},
     {"op": "read_uint", "on": "e", "expect": 39},
     {"op": "next", "on": "it", "expect_null": true},
+    {"op": "iterator", "on": "c", "as": "it", "from_index": -1, "expect_error": "InvalidBTreeNode"},
     {"op": "iterator", "on": "c", "as": "it", "from_index": 0},
     {"op": "next", "on": "it", "as": "e"},
     {"op": "read_uint", "on": "e", "expect": 100},
@@ -2142,6 +2143,7 @@
     {"op": "next", "on": "it", "as": "e"},
     {"op": "read_uint", "on": "e", "expect": 39},
     {"op": "next", "on": "it", "expect_null": true},
+    {"op": "iterator", "on": "c", "as": "it", "from_index": 40, "expect_error": "InvalidBTreeNode"},
     {"op": "iterator", "on": "c", "as": "it", "from_index": 41},
     {"op": "next", "on": "it", "expect_null": true},
     {"op": "iterator", "on": "c", "as": "it", "from_index": 42},

@@ -6,8 +6,10 @@ import Testing
 /// branches say, through every operation and the iterator, on every
 /// storage. Each must end in ``XitDBError/invalidBTreeNode`` where a count
 /// or a rank is used against a node that cannot satisfy it, and never trap.
-/// Zig's checks (its branch `fix-findings-2-8-9`, commit a395cf0) catch the
-/// same cases; a damaged file produces each, and so can documented
+/// Zig catches the same cases: upstream checks a leaf's bounds in every
+/// descent by rank since `274418f`, and the branch with the port's fixes,
+/// `fix-findings-v3`, returns an error where a count disagrees with its
+/// tree (`37926d0`). A damaged file produces each, and so can documented
 /// operations (finding 23).
 @Suite struct DamagedTreeTests {
     /// Forty elements: a root branch over four leaves of 8, 8, 8 and 16.

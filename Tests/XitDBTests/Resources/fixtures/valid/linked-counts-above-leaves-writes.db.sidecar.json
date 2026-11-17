@@ -1,0 +1,112 @@
+{
+  "format": "xitdb-sidecar/1",
+  "file_id": "c0f00000000000c7",
+  "initial_size": 57,
+  "file_size": 3495,
+  "databases": {
+    "main": {"file_id": "c0f00000000000c7", "file_size": 3495, "trailers": [
+      {"position": 2294, "commit_id": "e2e04e4c542a293f", "file_id": "c0f00000000000c7"},
+      {"position": 2686, "commit_id": "b123a2d0f73ed0e7", "file_id": "c0f00000000000c7"},
+      {"position": 3078, "commit_id": "0a7795ef795b1550", "file_id": "c0f00000000000c7"},
+      {"position": 3470, "commit_id": "8df5a5091fd41ad5", "file_id": "c0f00000000000c7"}
+    ]},
+    "insert_at_22": {"file_id": "c0f00000000000c7", "file_size": 2739, "trailers": [
+      {"position": 2714, "commit_id": "14c67cff68f5ebe5", "file_id": "c0f00000000000c7"}
+    ]},
+    "insert_at_25": {"file_id": "c0f00000000000c7", "file_size": 2739, "trailers": [
+      {"position": 2714, "commit_id": "5f2ecff08113067d", "file_id": "c0f00000000000c7"}
+    ]},
+    "remove_at_21": {"file_id": "c0f00000000000c7", "file_size": 2739, "trailers": [
+      {"position": 2714, "commit_id": "28a16286253c7dd7", "file_id": "c0f00000000000c7"}
+    ]},
+    "remove_at_24": {"file_id": "c0f00000000000c7", "file_size": 2739, "trailers": [
+      {"position": 2714, "commit_id": "af9e4db2a1c673ab", "file_id": "c0f00000000000c7"}
+    ]},
+    "get_at_21": {"file_id": "c0f00000000000c7", "file_size": 2739, "trailers": [
+      {"position": 2714, "commit_id": "ec09370505ec0534", "file_id": "c0f00000000000c7"}
+    ]},
+    "get_at_24": {"file_id": "c0f00000000000c7", "file_size": 2739, "trailers": [
+      {"position": 2714, "commit_id": "d306cd207f125f5b", "file_id": "c0f00000000000c7"}
+    ]},
+    "slice_at_22": {"file_id": "c0f00000000000c7", "file_size": 5295, "trailers": [
+      {"position": 5270, "commit_id": "8dc1ed353c7b8481", "file_id": "c0f00000000000c7"}
+    ]},
+    "slice_at_25": {"file_id": "c0f00000000000c7", "file_size": 5021, "trailers": [
+      {"position": 4996, "commit_id": "c99f5b6c83b220c8", "file_id": "c0f00000000000c7"}
+    ]}
+  },
+  "ops": [
+    {"committed_size": null, "commit_id": null},
+    {"committed_size": null, "commit_id": null},
+    {"committed_size": 1927, "commit_id": null},
+    {"committed_size": 1927, "commit_id": null},
+    {"committed_size": 1927, "commit_id": null},
+    {"committed_size": 1927, "commit_id": null},
+    {"committed_size": 1927, "commit_id": null},
+    {"committed_size": 1927, "commit_id": null},
+    {"committed_size": 1927, "commit_id": null},
+    {"committed_size": 1927, "commit_id": null},
+    {"committed_size": 1927, "commit_id": null},
+    {"committed_size": 1927, "commit_id": null},
+    {"committed_size": 2319, "commit_id": "e2e04e4c542a293f"},
+    {"committed_size": 2711, "commit_id": "b123a2d0f73ed0e7"},
+    {"committed_size": 3103, "commit_id": "0a7795ef795b1550"},
+    {"committed_size": 3495, "commit_id": "8df5a5091fd41ad5"},
+    {"committed_size": 3495, "commit_id": null},
+    {"db": "insert_at_22", "committed_size": 57, "commit_id": null},
+    {"db": "insert_at_22", "committed_size": null, "commit_id": null},
+    {"db": "insert_at_22", "committed_size": null, "commit_id": null},
+    {"db": "insert_at_22", "committed_size": 1927, "commit_id": null},
+    {"db": "insert_at_22", "committed_size": 1927, "commit_id": null},
+    {"db": "insert_at_22", "committed_size": 2739, "commit_id": "14c67cff68f5ebe5"},
+    {"db": "insert_at_22", "committed_size": 2739, "commit_id": null},
+    {"db": "insert_at_25", "committed_size": 57, "commit_id": null},
+    {"db": "insert_at_25", "committed_size": null, "commit_id": null},
+    {"db": "insert_at_25", "committed_size": null, "commit_id": null},
+    {"db": "insert_at_25", "committed_size": 1927, "commit_id": null},
+    {"db": "insert_at_25", "committed_size": 1927, "commit_id": null},
+    {"db": "insert_at_25", "committed_size": 2739, "commit_id": "5f2ecff08113067d"},
+    {"db": "insert_at_25", "committed_size": 2739, "commit_id": null},
+    {"db": "remove_at_21", "committed_size": 57, "commit_id": null},
+    {"db": "remove_at_21", "committed_size": null, "commit_id": null},
+    {"db": "remove_at_21", "committed_size": null, "commit_id": null},
+    {"db": "remove_at_21", "committed_size": 1927, "commit_id": null},
+    {"db": "remove_at_21", "committed_size": 1927, "commit_id": null},
+    {"db": "remove_at_21", "committed_size": 2739, "commit_id": "28a16286253c7dd7"},
+    {"db": "remove_at_21", "committed_size": 2739, "commit_id": null},
+    {"db": "remove_at_24", "committed_size": 57, "commit_id": null},
+    {"db": "remove_at_24", "committed_size": null, "commit_id": null},
+    {"db": "remove_at_24", "committed_size": null, "commit_id": null},
+    {"db": "remove_at_24", "committed_size": 1927, "commit_id": null},
+    {"db": "remove_at_24", "committed_size": 1927, "commit_id": null},
+    {"db": "remove_at_24", "committed_size": 2739, "commit_id": "af9e4db2a1c673ab"},
+    {"db": "remove_at_24", "committed_size": 2739, "commit_id": null},
+    {"db": "get_at_21", "committed_size": 57, "commit_id": null},
+    {"db": "get_at_21", "committed_size": null, "commit_id": null},
+    {"db": "get_at_21", "committed_size": null, "commit_id": null},
+    {"db": "get_at_21", "committed_size": 1927, "commit_id": null},
+    {"db": "get_at_21", "committed_size": 1927, "commit_id": null},
+    {"db": "get_at_21", "committed_size": 2739, "commit_id": "ec09370505ec0534"},
+    {"db": "get_at_21", "committed_size": 2739, "commit_id": null},
+    {"db": "get_at_24", "committed_size": 57, "commit_id": null},
+    {"db": "get_at_24", "committed_size": null, "commit_id": null},
+    {"db": "get_at_24", "committed_size": null, "commit_id": null},
+    {"db": "get_at_24", "committed_size": 1927, "commit_id": null},
+    {"db": "get_at_24", "committed_size": 1927, "commit_id": null},
+    {"db": "get_at_24", "committed_size": 2739, "commit_id": "d306cd207f125f5b"},
+    {"db": "get_at_24", "committed_size": 2739, "commit_id": null},
+    {"db": "slice_at_22", "committed_size": 57, "commit_id": null},
+    {"db": "slice_at_22", "committed_size": null, "commit_id": null},
+    {"db": "slice_at_22", "committed_size": null, "commit_id": null},
+    {"db": "slice_at_22", "committed_size": 1927, "commit_id": null},
+    {"db": "slice_at_22", "committed_size": 1927, "commit_id": null},
+    {"db": "slice_at_22", "committed_size": 5295, "commit_id": "8dc1ed353c7b8481"},
+    {"db": "slice_at_22", "committed_size": 5295, "commit_id": null},
+    {"db": "slice_at_25", "committed_size": 57, "commit_id": null},
+    {"db": "slice_at_25", "committed_size": null, "commit_id": null},
+    {"db": "slice_at_25", "committed_size": null, "commit_id": null},
+    {"db": "slice_at_25", "committed_size": 1927, "commit_id": null},
+    {"db": "slice_at_25", "committed_size": 1927, "commit_id": null},
+    {"db": "slice_at_25", "committed_size": 5021, "commit_id": "c99f5b6c83b220c8"}
+  ]
+}

@@ -44,7 +44,7 @@ import XitDBHashing
     /// `Resources/dumps`, which `scripts/pin-dumps.sh` writes.
     @Test func everyFixtureDumpsAsPinned() throws {
         let fixtures = try Self.files("fixtures/valid", suffix: ".db")
-        #expect(fixtures.count == 304)
+        #expect(fixtures.count == 323)
         let dumps = try Self.resources().appendingPathComponent("dumps")
         for fixture in fixtures {
             let name = fixture.deletingPathExtension().lastPathComponent
@@ -545,10 +545,12 @@ import XitDBHashing
             if commits.count == 1 { withOneCommit.append(name) }
             checked += 1
         }
-        #expect(checked == 155, "every fixture with a sidecar but the one that ends on one byte")
+        #expect(checked == 159, "every fixture with a sidecar but the one that ends on one byte")
         #expect(
             fromInputs.sorted() == [
-                "linked-counts-above-leaves", "linked-counts-below-leaves", "linked-header-above-tree",
+                "linked-counts-above-leaves", "linked-counts-above-leaves-writes", "linked-counts-below-leaves",
+                "linked-counts-below-leaves-writes--port", "linked-header-above-tree",
+                "linked-header-above-tree-writes--port",
                 "linked-header-below-tree", "recovery-cut-during-creation", "recovery-cut-during-creation-read-only",
                 "recovery-lost-commit-version-1", "recovery-open-errors-version-1--port", "recovery-torn-root-slot",
                 "replicate-version-1", "sorted-counts-above-leaves", "sorted-counts-below-leaves",

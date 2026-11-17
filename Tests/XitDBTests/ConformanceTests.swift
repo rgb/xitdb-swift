@@ -82,7 +82,7 @@ import Testing
         }
         #expect(held.subtracting(named).sorted() == [], "files in the folder that nothing names")
         #expect(named.subtracting(held).sorted() == [], "files that are named and are not in the folder")
-        #expect(held.count == 740)
+        #expect(held.count == 767)
     }
 
     /// The manifest was read and every script in it runs, on every storage
@@ -91,8 +91,8 @@ import Testing
     /// kind.
     @Test func everyScriptRuns() {
         let all = ConformanceFixture.all
-        #expect(all.count == 254)
-        #expect(all.filter { $0.mustPass }.count == 156)
+        #expect(all.count == 258)
+        #expect(all.filter { $0.mustPass }.count == 160)
         #expect(all.filter { !$0.mustPass }.count == 98)
 
         // the failing scripts whose description pins the engine error that
@@ -167,10 +167,6 @@ import Testing
         ("stream-short-overwritten", "finding 9: a short value streams from the cursor's own slot"),
         ("iterator-past-slice", "finding 26: an iterator stops at the size of a cut-down list"),
         ("stream-short-no-position", "finding 9: a short key of a sorted set streams from the cursor's own slot"),
-        (
-            "iterator-from-position-past-tree",
-            "the freeze hazard: an iterator from a position its tree does not have is refused"
-        ),
         (
             "iterator-from-key-past-size",
             "the freeze hazard: an iterator from a key whose place is past the size gives nothing"

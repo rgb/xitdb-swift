@@ -25,7 +25,10 @@ import XitDBHashing
 /// each prints; the loop is in `Resources/listings/README.md`. The ones
 /// here are from `dump` built at conformance `cfbc254`, whose
 /// `src/dump.zig` is the one at `4d26fbd`, against the original at
-/// `89da8e7`, with Zig 0.17.1.
+/// `89da8e7`, with Zig 0.17.1; all but the lines added since, of which
+/// that README says how each lot was made, the last being the nineteen
+/// for the fixtures of the conformance commit `0aa572e`, which follow the
+/// original at `274418f`.
 ///
 /// The four samples under `fixtures/samples/haxy` come with their listings,
 /// and `ClientAcceptanceTests` compares those line for line.
@@ -72,7 +75,7 @@ import XitDBHashing
                 atPath: fixtures.appendingPathComponent(folder).path)
             paths += names.filter { $0.hasSuffix(".db") }.sorted().map { "\(folder)/\($0)" }
         }
-        #expect(paths.count == 318)
+        #expect(paths.count == 337)
 
         var withErrors: [String] = []
         var withoutListing: [String] = []
@@ -97,7 +100,9 @@ import XitDBHashing
         // Five of the freeze hazard's eight clones are among them, as
         // inputs and as the expected files they are byte for byte: a
         // position that the size has and the tree does not is
-        // `InvalidBTreeNode` in both.
+        // `InvalidBTreeNode` in both. So are the eighteen files that the
+        // writes through three of those clones leave (the fixtures of the
+        // conformance commit 0aa572e): each holds such a clone still.
         #expect(
             withErrors == [
                 "inputs/linked-counts-above-leaves.db",
@@ -105,8 +110,26 @@ import XitDBHashing
                 "inputs/linked-header-above-tree.db",
                 "inputs/sorted-counts-above-leaves.db",
                 "inputs/sorted-header-above-tree.db",
+                "valid/linked-counts-above-leaves-writes.db",
+                "valid/linked-counts-above-leaves-writes.get_at_21.db",
+                "valid/linked-counts-above-leaves-writes.get_at_24.db",
+                "valid/linked-counts-above-leaves-writes.insert_at_22.db",
+                "valid/linked-counts-above-leaves-writes.insert_at_25.db",
+                "valid/linked-counts-above-leaves-writes.remove_at_21.db",
+                "valid/linked-counts-above-leaves-writes.remove_at_24.db",
+                "valid/linked-counts-above-leaves-writes.slice_at_22.db",
+                "valid/linked-counts-above-leaves-writes.slice_at_25.db",
                 "valid/linked-counts-above-leaves.db",
+                "valid/linked-counts-below-leaves-writes--port.db",
+                "valid/linked-counts-below-leaves-writes--port.get_at_39.db",
+                "valid/linked-counts-below-leaves-writes--port.remove_at_39.db",
+                "valid/linked-counts-below-leaves-writes--port.slice_at_39.db",
                 "valid/linked-counts-below-leaves.db",
+                "valid/linked-header-above-tree-writes--port.db",
+                "valid/linked-header-above-tree-writes--port.get_at_30.db",
+                "valid/linked-header-above-tree-writes--port.insert_at_31.db",
+                "valid/linked-header-above-tree-writes--port.remove_at_30.db",
+                "valid/linked-header-above-tree-writes--port.slice_at_30.db",
                 "valid/linked-header-above-tree.db",
                 "valid/recover-cut-during-creation--port.v1_cut.db",
                 "valid/recover-without-first-commit--port.before_the_data.db",

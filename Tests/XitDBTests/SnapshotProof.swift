@@ -58,10 +58,19 @@ final class SnapshotProof {
     /// must say it nowhere. Without this list a fault that made a database
     /// and its snapshot lack the same position, or miscount alike, would
     /// walk to equal strings and pass as a proof.
+    ///
+    /// The three `-writes` fixtures (the conformance commit 0aa572e) write
+    /// through three of those clones, a write to a step, and every step's
+    /// snapshot holds the clone still: their figures are the clone's own
+    /// (2, 1 and 10 positions) times the snapshots that hold it (35, 18
+    /// and 26).
     static let disagreements: [String: Disagreements] = [
         "linked-counts-above-leaves": Disagreements(positionsLacking: 2),
+        "linked-counts-above-leaves-writes": Disagreements(positionsLacking: 70),
         "linked-counts-below-leaves": Disagreements(positionsLacking: 1),
+        "linked-counts-below-leaves-writes--port": Disagreements(positionsLacking: 18),
         "linked-header-above-tree": Disagreements(positionsLacking: 10),
+        "linked-header-above-tree-writes--port": Disagreements(positionsLacking: 260),
         "sorted-counts-above-leaves": Disagreements(countsApart: 2),
         "sorted-header-above-tree": Disagreements(countsApart: 2),
     ]

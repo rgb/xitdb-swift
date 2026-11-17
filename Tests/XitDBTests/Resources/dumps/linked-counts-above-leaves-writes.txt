@@ -1,0 +1,83 @@
+xitdb file: 3495 bytes; version 2, hash size 20, hash id "sha1", file id c0f00000000000c7; 5 moments
+verify: 6 commits verify, the last ending at the file's end
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 1927, id 3527741f2a66404f, root arrayList
+  commit 2: ends at 2319, id e2e04e4c542a293f, root arrayList
+  commit 3: ends at 2711, id b123a2d0f73ed0e7, root arrayList
+  commit 4: ends at 3103, id 0a7795ef795b1550, root arrayList
+  commit 5: ends at 3495, id 8df5a5091fd41ad5, root arrayList
+moment 4: map (2 entries)
+  38b62be4bddaa566: linked (31)
+    #0: uint 1
+    #1: uint 2
+    #2: uint 3
+    #3: uint 5
+    #4: uint 6
+    #5: uint 7
+    #6: uint 9
+    #7: uint 10
+    #8: uint 11
+    #9: uint 13
+    #10: uint 14
+    #11: uint 15
+    #12: uint 17
+    #13: uint 18
+    #14: uint 19
+    #15: uint 21
+    #16: uint 22
+    #17: uint 23
+    #18: uint 25
+    #19: uint 26
+    #20: uint 27
+    #21: uint 29
+    #22: uint 30
+    #23: uint 31
+    #24: uint 33
+    #25: uint 34
+    #26: uint 35
+    #27: uint 37
+    #28: uint 38
+    #29: uint 39
+    #30: uint 40
+  d7c6c66f716d1dec: linked (41)
+    #0: uint 100
+    #1: uint 1
+    #2: uint 2
+    #3: uint 3
+    #4: uint 4
+    #5: uint 5
+    #6: uint 6
+    #7: uint 7
+    #8: uint 9
+    #9: uint 10
+    #10: uint 11
+    #11: uint 13
+    #12: uint 14
+    #13: uint 15
+    #14: uint 17
+    #15: uint 18
+    #16: uint 17
+    #17: uint 18
+    #18: uint 19
+    #19: uint 21
+    #20: uint 22
+    #21: uint 23
+    #22: unreadable: element 22 could not be read: invalidBTreeNode
+    #23: unreadable: element 23 could not be read: invalidBTreeNode
+    #24: uint 24
+    #25: uint 25
+    #26: uint 26
+    #27: uint 27
+    #28: uint 28
+    #29: uint 29
+    #30: uint 30
+    #31: uint 31
+    #32: uint 25
+    #33: uint 26
+    #34: uint 27
+    #35: uint 29
+    #36: uint 30
+    #37: uint 31
+    #38: uint 33
+    #39: uint 34
+    #40: uint 35

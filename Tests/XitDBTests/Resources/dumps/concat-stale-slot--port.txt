@@ -1,0 +1,57 @@
+xitdb file: 2877 bytes; version 2, hash size 20, hash id "sha1", file id c0f00000000000e0; 2 moments
+verify: 3 commits verify, the last ending at the file's end
+  commit 0: ends at 57, id 0000000000000000, root none
+  commit 1: ends at 2339, id 0dabdffc0b2598fd, root arrayList
+  commit 2: ends at 2877, id d3012e1816681ee3, root arrayList
+moment 1: map (3 entries)
+  84a516841ba77a5b: linked (16)
+    #0: uint 0
+    #1: uint 1
+    #2: uint 2
+    #3: uint 3
+    #4: uint 4
+    #5: uint 5
+    #6: uint 6
+    #7: uint 7
+    #8: uint 8
+    #9: uint 9
+    #10: uint 10
+    #11: uint 11
+    #12: uint 12
+    #13: uint 13
+    #14: uint 14
+    #15: uint 17
+  e9d71f5ee7c92d6d: linked (17)
+    #0: uint 0
+    #1: uint 1
+    #2: uint 2
+    #3: uint 3
+    #4: uint 4
+    #5: uint 5
+    #6: uint 6
+    #7: uint 7
+    #8: uint 8
+    #9: uint 9
+    #10: uint 10
+    #11: uint 11
+    #12: uint 12
+    #13: uint 13
+    #14: uint 14
+    #15: uint 15
+    #16: uint 16
+  86f7e437faa5a7fc: linked (15)
+    #0: uint 0
+    #1: uint 1
+    #2: uint 2
+    #3: uint 3
+    #4: uint 4
+    #5: uint 5
+    #6: uint 6
+    #7: uint 7
+    #8: uint 8
+    #9: uint 9
+    #10: uint 10
+    #11: uint 11
+    #12: uint 12
+    #13: uint 13
+    #14: uint 14

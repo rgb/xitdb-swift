@@ -1,11 +1,11 @@
 # Reads the Swift port corrects
 
-The user decided that the port corrects these from the start (findings 8, 9, 21 and 26 in `director/zig-findings.md`), and the director the last two, on reads of a clone that the freeze hazard, an undefined use, left with a header that disagrees with its tree.
+The user decided that the port corrects these from the start (findings 8, 9, 21 and 26 in `director/zig-findings.md`), and the director the last one, on reads of a clone that the freeze hazard, an undefined use, left with a header that disagrees with its tree.
 So they aren't in `tests/valid/` or the fixtures, and `run` refuses to run a script that uses them unless it's given
 `--allow-port-differences`.
 
 Each has two scripts, which differ only in what they expect. `<name>.zig.json` says what the Zig original does, and
-`<name>.port.json` says what the port does, which for all but `iterator-past-slice` is also what the branch with the fixes
+`<name>.port.json` says what the port does, which for all but `iterator-past-slice` and `iterator-from-key-past-size` is also what the branch with the fixes
 does so far. On the Zig original the
 first passes and the second fails, and `check.sh` holds it to that, so it notices if the original changes.
 `second-zig.sh` reports which of the two each Zig checkout does.
@@ -17,5 +17,4 @@ first passes and the second fails, and `check.sh` holds it to that, so it notice
 | `stream-short-no-position` | 9 | streaming a short value from a cursor with no position raises `ExpectedSlotPosition` | it gives the value |
 | `stream-short-overwritten` | 9 | streaming a short value after its slot was overwritten gives the old length of the new bytes | it gives the cursor's value |
 | `iterator-past-slice` | 26 | an iterator on a sliced array list with an unwritten element gives an element past the end | it stops at the end, and agrees with `array_list_get` |
-| `iterator-from-position-past-tree` | the director's ruling, 2026-11-15 | on a clone whose header disagrees with its tree (`inputs/sorted-header-above-tree`, `inputs/sorted-counts-above-leaves`), an iterator from a position whose read raises `InvalidBTreeNode` gives nothing, or what comes after the leaf, and with a fuller leaf panics (`tests/undefined/`) | the iterator raises `InvalidBTreeNode` |
-| `iterator-from-key-past-size` | the same | on a clone with fewer in its header than in its tree (`inputs/sorted-header-below-tree`), an iterator from a key whose place is past the size goes on to the tree's end | it gives nothing |
+| `iterator-from-key-past-size` | the director's ruling, 2026-11-15 | on a clone with fewer in its header than in its tree (`inputs/sorted-header-below-tree`), an iterator from a key whose place is past the size goes on to the tree's end | it gives nothing |

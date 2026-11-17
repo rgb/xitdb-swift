@@ -7,9 +7,10 @@ port and holds its digest to the one here, so what the port reads from each of t
 The listings themselves are eleven megabytes, so they are not kept.
 
 One file has no line: `valid/recovery-cut-during-creation-read-only.db` is a single byte, for which the tool prints no
-listing. Sixteen listings say that something could not be read, by the original's name for the error, and are here like
-the others: ten of them are of five clones that the freeze hazard left, each as an input and as the expected file that
-is the input byte for byte, where a position that the size has and the tree does not is `InvalidBTreeNode`.
+listing. Thirty-four listings say that something could not be read, by the original's name for the error, and are here
+like the others: ten of them are of five clones that the freeze hazard left, each as an input and as the expected file
+that is the input byte for byte, where a position that the size has and the tree does not is `InvalidBTreeNode`, and
+eighteen are of the files that the writes through three of those clones leave, which hold the clone still.
 
 They were made with `dump` built from the conformance repository at cfbc254, whose `src/dump.zig` is the one at
 d2a80de, the commit the fixtures are copied from, against the original at 89da8e7, with Zig 0.17.1. The four listings
@@ -20,8 +21,13 @@ hazard's clones, the fixtures of the conformance commit be73945, were made on 20
 run over every file that gave the digest already here for each of the other three hundred. The lines that changed
 with the fixtures of the conformance commit 40ed434 (four new ones for `recover-cut-during-creation--port`, one changed
 and three gone for `recover-without-first-commit--port`, which that commit split) were made on 2026-11-17 with the
-same binary, in a run over every file that gave the digest already here for each of the other 312. To make them
-again, from `Resources`:
+same binary, in a run over every file that gave the digest already here for each of the other 312. The nineteen lines
+for the files that the fixtures of the conformance commit 0aa572e added (the writes through three of the freeze hazard's
+clones, and `concat-stale-slot--port`) were made on 2026-11-17 with the `dump` that repository had built that day at
+15:37, the minute its checkout of the original moved to 274418f, in a run over every file that gave the digest already
+here for each of the other 317; that the binary reads through the original at 274418f is taken from that time and not
+shown otherwise, and the port prints the same nineteen listings. Eighteen of them say that something could not be read.
+To make them again, from `Resources`:
 
     for f in fixtures/inputs/*.db fixtures/valid/*.db; do
         dump "$f" > listing.txt 2> /dev/null
