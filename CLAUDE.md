@@ -40,8 +40,32 @@ in one file only. No Foundation. Tests may import Foundation and CryptoKit.
 
     scripts/check.sh
 
-Debug and release build and tests with warnings as errors, the import check, the formatting check, the
-documentation build (DocC, warnings as errors) and an iOS compile check. It needs Xcode's toolchain, which
-the workspace's `.swift-version` selects. "Tests pass" means this script ran and passed at the reported
-commit. To reformat:
+Warnings are errors throughout. In order: the debug build and tests; a test planted to sleep, which shows
+that the time limit every run of the tests has does end a run; what must not compile; the snapshot
+concurrency suite under the thread sanitizer; the release build; the instruction counts of the in-memory
+lines against their figures (compared on macOS, on the toolchain the figures were taken on); the release
+tests; a smoke run of the benchmark and the corruption fuzzer; the step that keeps tests that start a process
+in their own target; the import check; the formatting check; the documentation build (DocC); and on macOS a
+compile-only build for iOS and the tests on an iOS simulator. It runs on macOS and on Linux, and stops at the
+first failure. On macOS it needs Xcode's toolchain, which the workspace's `.swift-version` selects. "Tests
+pass" means this script ran and passed at the reported commit. To reformat:
 `swift format --in-place --recursive Package.swift Sources Tests`.
+
+## What Linux and the gate have taught
+
+- Nothing is claimed for Linux that a container has not built and run. A piece's Linux half is seen from its
+  first commit, not at the end.
+- Swift is not shown some of the C library's calls on Linux (`statfs` and `fstatfs`, every extended attribute
+  call and constant, `readahead`, `pthread_getattr_np`). Ask the compiler in the container, one name at a time,
+  before designing on one.
+- In a target that imports Foundation, a C structure's initializer or members can be refused on Linux for the
+  lack of an import of whichever module the compiler takes the structure to belong to that time; importing that
+  one moves the refusal to another. Tests and tools ask the library, Foundation, or a call that returns a
+  number. The library itself imports the platform C library alone.
+- A script that builds and then runs with the build skipped stops on the build's status. One that kept going
+  once ran an older binary and printed that its tests had passed.
+- Tests that start a process live in the `XitDBProcessTests` target, which runs in a process of its own: a lock
+  asked for on a file the same process has just closed can be refused for a moment while a child is made.
+- A figure is given with how it was taken. Instruction counts move with where the stack starts and with what
+  the optimiser makes of code beside the path; `scripts/instructions.sh` takes a line's least over eight
+  placements of the stack's start.
