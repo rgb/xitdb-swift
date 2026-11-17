@@ -777,12 +777,16 @@ public struct ByteWriter: ~Copyable {
     /// memory, or ``XitDBError/maxSizeExceeded`` beyond the storage's limit.
     ///
     /// **A position that is not under your control needs a storage with a
-    /// limit.** A seek only records the position, so nothing is refused
-    /// here. On a ``MemoryStorage`` without a limit, the write that follows
-    /// asks the system for every byte up to the position, and a system can
-    /// grant memory it cannot back: the machine is then slowed, or the
-    /// process ended, when the zeros are written, and no error is thrown.
-    /// See ``MemoryStorage/maxSize``.
+    /// limit of your own.** A seek only records the position, so nothing
+    /// is refused here. A ``MemoryStorage`` made without a limit has the
+    /// machine's physical memory for one
+    /// (``MemoryStorage/defaultMaxSize``), which refuses a position that
+    /// no memory of the machine could reach and nothing below it. Up to
+    /// its limit, or without one, the write that follows asks the system
+    /// for every byte up to the position, and a system can grant memory it
+    /// cannot back: the machine is then slowed, or the process ended, when
+    /// the zeros are written, and no error is thrown. See
+    /// ``MemoryStorage/maxSize``.
     ///
     /// - Parameter offset: The new position.
     public mutating func seek(to offset: UInt64) {

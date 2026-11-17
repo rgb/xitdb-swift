@@ -76,7 +76,9 @@ checks on what it reads report damage, or at worst give a wrong value. See <doc:
 <doc:Compaction> for a file replaced while a snapshot reads it.
 
 In memory, a snapshot shares the database's array, and the first write while it lives copies the whole array. So let one
-go before the next write when you can, and keep data that is both large and written under readers in a file.
+go before the next write when you can, and keep data that is both large and written under readers in a file. The machine
+has to hold both for that write: the copy is not checked against the storage's limit and the system is not asked for it
+first, so a machine that cannot hold the bytes twice ends the process there, as it does for any array that is copied.
 
 ## See Also
 

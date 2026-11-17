@@ -52,13 +52,23 @@ let answers = try HashMap<ReadOnly>(received.rootCursor)
 let answer = try answers.value(forKey: "answer", as: UInt64.self)
 ```
 
-A memory storage can have a limit, ``MemoryStorage/maxSize``. A write that would pass it throws
-``XitDBError/maxSizeExceeded``, and the transaction fails with it. Set one if what goes in is not under your control, and a
-position given to ``ByteWriter/seek(to:)`` is part of what goes in. Without a limit the storage grows as far as it is asked
-to. It asks the system for the memory first, and a size the system refuses is ``XitDBError/storageFailure(errno:)`` with
-`ENOMEM`, with nothing changed. That is as far as a process can see. A system can grant memory it cannot back (macOS grants
-address space far beyond the machine's memory), and then slows the machine or ends the process when the bytes are written;
-nothing inside a process can turn that into an error, and only a limit refuses such a size.
+A memory storage has a limit, ``MemoryStorage/maxSize``. A write that would pass it throws
+``XitDBError/maxSizeExceeded``, and the transaction fails with it. Set one of your own if what goes in is not under your
+control, and a position given to ``ByteWriter/seek(to:)`` is part of what goes in.
+
+Where you name none, the limit is the machine's physical memory, ``MemoryStorage/defaultMaxSize``. That one is a guard
+against a runaway position, a write far beyond the end, and not a promise that the memory is there: no database held in
+memory is larger than the memory, so it refuses no size the machine could hold and refuses at once one it could not.
+Three things it does not do. On a phone the system ends an app well below the device's physical memory, so there the
+limit that guards is yours. It is the machine's figure and not a container's, nor any other limit the process is under: a
+server in a container sets `maxSize` to what the container is given. And a machine with more swap than memory can hold a
+larger store: pass `nil`, which is no limit.
+
+With a limit or without, the storage asks the system for the memory before it grows, and a size the system refuses is
+``XitDBError/storageFailure(errno:)`` with `ENOMEM`, with nothing changed. That is as far as a process can see. A system
+can grant memory it cannot back (macOS grants address space far beyond the machine's memory), and then slows the machine
+or ends the process when the bytes are written; nothing inside a process can turn that into an error, and only a limit
+refuses such a size.
 
 ### Opening a file
 

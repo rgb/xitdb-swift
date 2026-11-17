@@ -151,6 +151,10 @@ struct MemoryBuffer {
 /// one is free, and the first write after it copies the array once, as the
 /// first write after ``bytes`` does. A writer that keeps a snapshot alive
 /// across every commit therefore copies the whole database at each one.
+/// The machine has to hold the bytes twice for that write. The copy is
+/// the array's own, of what the storage already holds: it is not checked
+/// against ``maxSize`` and the system is not asked for it first, so a
+/// machine that cannot hold both ends the process there.
 ///
 /// Flushing and syncing do nothing.
 public final class MemoryStorage: WritableStorage {
@@ -170,30 +174,62 @@ public final class MemoryStorage: WritableStorage {
     // copied by the first write that follows it.
     @exclusivity(unchecked) private var buffer: MemoryBuffer
 
+    /// The limit of a storage that is made without one being named: the
+    /// machine's physical memory in bytes, asked of the system once. `nil`,
+    /// no limit, where the system does not say how much it has.
+    ///
+    /// It is a guard against a runaway position, and not a promise that
+    /// the memory is there. A write far beyond the end, such as one through
+    /// a ``ByteWriter`` after a far ``ByteWriter/seek(to:)``, would have the
+    /// storage ask for every byte up to it, and a system can grant memory
+    /// it cannot back (see ``maxSize``). No database held in memory is
+    /// larger than the memory, so this limit refuses no size the machine
+    /// could hold, and refuses at once, with
+    /// ``XitDBError/maxSizeExceeded``, one it could not.
+    ///
+    /// What it does not do, and a caller could take it to:
+    ///
+    /// - On a phone the system ends an app well below the device's
+    ///   physical memory. The limit that guards there is one the caller
+    ///   sets.
+    /// - It is the machine's figure, not that of a limit the process is
+    ///   under: in a container held to less, it is more than the process
+    ///   can have. A server in a container sets the limit to what the
+    ///   container is given.
+    /// - A machine with more swap than memory can hold a larger store, and
+    ///   this limit refuses it: pass `nil` for the limit, which is no
+    ///   limit.
+    public static let defaultMaxSize: UInt64? = Platform.physicalMemory
+
     /// Creates a storage.
     ///
     /// - Parameters:
     ///   - bytes: The storage's initial contents: the bytes of an existing
     ///     database, or nothing for a new one.
     ///   - maxSize: The most bytes the storage may grow to, or `nil` for no
-    ///     limit. Initial contents are not checked against it.
-    public init(bytes: [UInt8] = [], maxSize: UInt64? = nil) {
+    ///     limit. Left out, it is ``defaultMaxSize``, the machine's physical
+    ///     memory, which is a guard against a write far beyond the end and
+    ///     not a size to plan on: ``maxSize`` says what a storage without a
+    ///     limit risks. Initial contents are not checked against it.
+    public init(bytes: [UInt8] = [], maxSize: UInt64? = MemoryStorage.defaultMaxSize) {
         unsafe self.buffer = MemoryBuffer(bytes: bytes, maxSize: maxSize)
     }
 
     /// The most bytes the storage may grow to, or `nil` for no limit.
     ///
     /// A write that would grow the storage beyond the limit throws
-    /// ``XitDBError/maxSizeExceeded`` and changes nothing.
+    /// ``XitDBError/maxSizeExceeded`` and changes nothing. A storage made
+    /// without naming a limit has ``defaultMaxSize``.
     ///
-    /// Without a limit, a write far beyond the end makes the storage as large
-    /// as it takes to reach it, and a write through a
-    /// ``ByteWriter`` after a far ``ByteWriter/seek(to:)`` is such a write.
-    /// The system is asked for the memory before the storage grows, and a
-    /// size it refuses is ``XitDBError/storageFailure(errno:)`` with the
-    /// system's error, `ENOMEM`, and changes nothing. A write whose bytes
-    /// would end beyond what an array can hold, past `Int.max`, is refused
-    /// with ``XitDBError/maxSizeExceeded``, as with a limit.
+    /// Without a limit, which is asked for with `nil`, a write far beyond
+    /// the end makes the storage as large as it takes to reach it, and a
+    /// write through a ``ByteWriter`` after a far ``ByteWriter/seek(to:)``
+    /// is such a write. The system is asked for the memory before the
+    /// storage grows, with a limit or without, and a size it refuses is
+    /// ``XitDBError/storageFailure(errno:)`` with the system's error,
+    /// `ENOMEM`, and changes nothing. A write whose bytes would end beyond
+    /// what an array can hold, past `Int.max`, is refused with
+    /// ``XitDBError/maxSizeExceeded``, as with a limit.
     ///
     /// **That does not make a storage without a limit safe.** A system can
     /// grant memory it cannot back, and slow the machine or end the process
@@ -201,8 +237,9 @@ public final class MemoryStorage: WritableStorage {
     /// into an error. And the storage's own allocation, a moment after the
     /// system said yes, can still be refused, which ends the process as it
     /// does for any array. Only a limit refuses a size before the system is
-    /// asked. Set one for a storage whose writes are not under the caller's
-    /// control.
+    /// asked. Set one of your own for a storage whose writes are not under
+    /// your control: the default one refuses only what the whole machine
+    /// could not hold.
     public var maxSize: UInt64? {
         unsafe buffer.maxSize
     }

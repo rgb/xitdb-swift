@@ -97,19 +97,22 @@ import Testing
     }
 
     @Test func withoutALimitAnOffsetThatCannotBeAllocatedIsRejected() {
-        let storage = MemoryStorage()
+        let storage = MemoryStorage(maxSize: nil)
         #expect(throws: XitDBError.maxSizeExceeded) { try writeBytes(storage, [1, 2], at: .max) }
         #expect(storage.bytes == [])
     }
 
     // MARK: Growth (the first client's review of 0.5.1, the idiom review's section 3.4)
 
-    /// A write far beyond the end of a storage without a limit ended the
-    /// process: by an integer overflow in the room the array was to be
+    /// A write far beyond the end of a storage made without a limit ended
+    /// the process: by an integer overflow in the room the array was to be
     /// given (`endIndex + endIndex / 2`), or by an allocation the system
-    /// refused, which a Swift array answers by ending the process. Now the
-    /// system is asked first, and its refusal is the storage's failure with
-    /// the system's error; the storage is as it was.
+    /// refused, which a Swift array answers by ending the process. Now it
+    /// is an error, and the storage is as it was. A storage made without
+    /// naming a limit has the machine's physical memory for one, which
+    /// refuses these positions as any limit does; one made with no limit
+    /// asks the system first, and the system's refusal is the storage's
+    /// failure with the system's error.
     ///
     /// The three positions are the reviewer's: just below the largest array
     /// index, where the sum overflowed; a page below it, as a byte writer's
@@ -117,32 +120,88 @@ import Testing
     /// and the allocation failed.
     @Test(arguments: [UInt64(Int.max) - 16, UInt64(Int.max) - 4096, 1 << 62])
     func aWriteFarBeyondTheEndIsAnErrorAndNotTheProcesssEnd(offset: UInt64) throws {
-        let storage = MemoryStorage()
-        try writeBytes(storage, [1, 2, 3, 4], at: 0)
-        #expect(throws: XitDBError.storageFailure(errno: ENOMEM)) { try writeBytes(storage, [9, 9], at: offset) }
-        #expect(storage.bytes == [1, 2, 3, 4])
-        #expect(try storage.length == 4)
-        // and it goes on as before
-        try writeBytes(storage, [5], at: 4)
-        #expect(storage.bytes == [1, 2, 3, 4, 5])
+        let made: [(MemoryStorage, XitDBError)] = [
+            (MemoryStorage(), .maxSizeExceeded),
+            (MemoryStorage(maxSize: nil), .storageFailure(errno: ENOMEM)),
+        ]
+        for (storage, refusal) in made {
+            try writeBytes(storage, [1, 2, 3, 4], at: 0)
+            #expect(throws: refusal) { try writeBytes(storage, [9, 9], at: offset) }
+            #expect(storage.bytes == [1, 2, 3, 4])
+            #expect(try storage.length == 4)
+            // and it goes on as before
+            try writeBytes(storage, [5], at: 4)
+            #expect(storage.bytes == [1, 2, 3, 4, 5])
+        }
     }
 
     /// The same through a byte writer: a seek far ahead in a value's bytes
-    /// and a write, in a database on a storage without a limit. The write
-    /// reports what the storage does.
+    /// and a write, in a database on a storage made without a limit and on
+    /// one with no limit. The write reports what the storage does, the
+    /// transaction fails, and the database is what it was.
     @Test func aByteWritersSeekFarAheadIsAnErrorAtItsWrite() throws {
-        let storage = MemoryStorage()
-        let database = try Database(creating: storage, hashSize: 20)
-        #expect(throws: XitDBError.storageFailure(errno: ENOMEM)) {
-            try database.withTransaction { root in
-                try root.writeBytes { writer throws(XitDBError) in
-                    writer.seek(to: UInt64(Int.max) - 4096)
-                    try writer.write([1, 2, 3])
+        let made: [(MemoryStorage, XitDBError)] = [
+            (MemoryStorage(), .maxSizeExceeded),
+            (MemoryStorage(maxSize: nil), .storageFailure(errno: ENOMEM)),
+        ]
+        for (storage, refusal) in made {
+            let database = try Database(creating: storage, hashSize: 20)
+            #expect(throws: refusal) {
+                try database.withTransaction { root in
+                    try root.writeBytes { writer throws(XitDBError) in
+                        writer.seek(to: UInt64(Int.max) - 4096)
+                        try writer.write([1, 2, 3])
+                    }
                 }
             }
+            #expect(try database.rootCursor.slot.isEmpty)
         }
-        // the transaction failed, and the database is what it was
-        #expect(try database.rootCursor.slot.isEmpty)
+    }
+
+    // MARK: The default limit (decision D59)
+
+    /// A storage made without naming a limit has the machine's physical
+    /// memory for one, which the library asks of the system once and a
+    /// caller can read; `nil` is still no limit, and a limit that is named
+    /// is the limit.
+    @Test func theDefaultLimitIsTheMachinesPhysicalMemory() throws {
+        let machine = ProcessInfo.processInfo.physicalMemory
+        #expect(machine > 0)
+        #expect(MemoryStorage.defaultMaxSize == machine)
+        #expect(MemoryStorage().maxSize == machine)
+        #expect(MemoryStorage(bytes: [1, 2, 3]).maxSize == machine)
+        #expect(MemoryStorage(maxSize: nil).maxSize == nil)
+        #expect(MemoryStorage(bytes: [1, 2, 3], maxSize: nil).maxSize == nil)
+        #expect(MemoryStorage(maxSize: 10).maxSize == 10)
+    }
+
+    /// A write past the default limit is refused with the limit's error
+    /// and changes nothing: the first byte past it, and a position four
+    /// times the machine's memory away, which a system may well grant and
+    /// could not back. A write within it goes through.
+    @Test func aWritePastTheDefaultLimitIsRefusedWithNothingChanged() throws {
+        let limit = try #require(MemoryStorage.defaultMaxSize)
+        let storage = MemoryStorage()
+        try writeBytes(storage, [1, 2, 3, 4], at: 0)
+        #expect(throws: XitDBError.maxSizeExceeded) { try writeBytes(storage, [9], at: limit) }
+        #expect(throws: XitDBError.maxSizeExceeded) { try writeBytes(storage, [9, 9], at: limit - 1) }
+        #expect(throws: XitDBError.maxSizeExceeded) { try writeBytes(storage, [9], at: limit * 4) }
+        #expect(storage.bytes == [1, 2, 3, 4])
+        #expect(try storage.length == 4)
+        try writeBytes(storage, [5, 6], at: 6)
+        #expect(storage.bytes == [1, 2, 3, 4, 0, 0, 5, 6])
+    }
+
+    /// Where the system does not say how much memory the machine has, there
+    /// is no figure, and so no default limit: none is guessed.
+    @Test func aMachineThatDoesNotSayItsMemoryGivesNoFigure() {
+        #expect(Platform.memory(pages: 1000, pageSize: 4096) == 4_096_000)
+        #expect(Platform.memory(pages: -1, pageSize: 4096) == nil)
+        #expect(Platform.memory(pages: 1000, pageSize: -1) == nil)
+        #expect(Platform.memory(pages: 0, pageSize: 4096) == nil)
+        #expect(Platform.memory(pages: 1000, pageSize: 0) == nil)
+        #expect(Platform.memory(pages: Int.max, pageSize: 4096) == nil)
+        #expect(Platform.physicalMemory == MemoryStorage.defaultMaxSize)
     }
 
     /// A limit the caller set is still what refuses first, with its own

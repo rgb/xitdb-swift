@@ -341,6 +341,25 @@ enum Platform {
     /// The error of a system that has no memory to give, `ENOMEM`.
     static let noMemory: Int32 = ENOMEM
 
+    /// The machine's physical memory in bytes, asked of the system once:
+    /// its count of pages of physical memory times the size of one. `nil`
+    /// where the system does not say.
+    ///
+    /// It is the machine's figure, or the virtual machine's, and not a
+    /// limit the process itself may be under, such as a container's.
+    static let physicalMemory: UInt64? = memory(
+        pages: sysconf(Int32(_SC_PHYS_PAGES)), pageSize: sysconf(Int32(_SC_PAGESIZE)))
+
+    /// The bytes in `pages` pages of `pageSize` bytes, or `nil` where
+    /// either is not a number of something, as the system's answer of -1
+    /// for what it cannot say is not, or where no integer holds the
+    /// product.
+    static func memory(pages: Int, pageSize: Int) -> UInt64? {
+        guard pages > 0, pageSize > 0 else { return nil }
+        let bytes = UInt64(pages).multipliedReportingOverflow(by: UInt64(pageSize))
+        return bytes.overflow ? nil : bytes.partialValue
+    }
+
     /// Tells the system that a mapped range is read in no order, as a
     /// database is that is read by following pointers: a read of a page
     /// that is not in memory then brings that page, and not its neighbours
