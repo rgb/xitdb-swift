@@ -26,10 +26,16 @@
 # processor's count of instructions repeats within a tenth of a per cent, on a busy
 # machine too, where a time needs a machine with nothing else on it.
 #
-# The figures belong to one compiler on one system: another Swift, another macOS or
-# another processor moves them with no line of the package changed. On another the
-# check compares nothing and says so, naming both; take the figures again there.
-# Only macOS gives a process this count; on Linux the check says that and passes.
+# The figures belong to one compiler on one kind of system: another Swift, another
+# processor or another major version of macOS moves them with no line of the package
+# changed. On another of those the check compares nothing and says so, naming both;
+# take the figures again there. A point update of the system, or another build of it,
+# is compared, and the check says aloud that the figures were taken on another one: a
+# line that such an update moves then fails here, where the figures are taken, which
+# is where to learn of it. (The update from 27.2 to 27.2.1 moved no line by more than
+# two tenths of an instruction, and under the rule before it the gate compared nothing
+# for a day.) Only macOS gives a process this count; on Linux the check says that and
+# passes.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -103,7 +109,8 @@ if [ "$mode" = pin ]; then
         echo "# The instructions an operation takes in memory, by the benchmark's own count: what"
         echo "# scripts/instructions.sh holds the gate's plain release build to, within a per cent."
         echo "# The least a line over eight places of the stack, twice. Taken with"
-        echo "# \`scripts/instructions.sh pin\`; take them again on another toolchain or system."
+        echo "# \`scripts/instructions.sh pin\`; take them again on another toolchain, processor or"
+        echo "# major version of the system."
         echo "toolchain: $toolchain"
         echo "system: $system"
         echo "$measured"
@@ -122,14 +129,24 @@ fi
 }
 pinned_toolchain=$(sed -n 's/^toolchain: //p' "$figures")
 pinned_system=$(sed -n 's/^system: //p' "$figures")
-if [ "$pinned_toolchain" != "$toolchain" ] || [ "$pinned_system" != "$system" ]; then
-    echo "skipped: another toolchain or system, not compared"
+# What of a system the figures go by: its major version, the first number after
+# "macOS", and its processor, what follows the comma.
+major() { sed -E 's/^macOS ([0-9]+).*/\1/' <<<"$1"; }
+processor() { sed -E 's/^[^,]*, //' <<<"$1"; }
+if [ "$pinned_toolchain" != "$toolchain" ] \
+    || [ "$(processor "$pinned_system")" != "$(processor "$system")" ] \
+    || [ "$(major "$pinned_system")" != "$(major "$system")" ]; then
+    echo "skipped: another toolchain, processor or major version of the system, not compared"
     echo "  the figures were taken with: $pinned_toolchain"
     echo "                           on: $pinned_system"
     echo "  this is:                     $toolchain"
     echo "                           on: $system"
     echo "  take them again here with scripts/instructions.sh pin"
     exit 0
+fi
+if [ "$pinned_system" != "$system" ]; then
+    echo "the figures were taken on ${pinned_system%%,*}; this is ${system%%,*}:"
+    echo "  the same toolchain, processor and major version, so compared"
 fi
 
 measured=$(measure 1)

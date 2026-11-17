@@ -4,8 +4,9 @@
 #
 #   1. debug build and tests, and what must not compile
 #   2. release build and tests, the instructions of the in-memory lines against their
-#      figures (compared on macOS, on the toolchain and the system the figures were
-#      taken on), a smoke run of the benchmark and the corruption fuzzer
+#      figures (compared on macOS, on the toolchain, the processor and the major
+#      version of the system the figures were taken on), a smoke run of the benchmark
+#      and the corruption fuzzer
 #      Every run of the tests has a time limit (scripts/limit.sh), and the limit is
 #      tried on a test planted to sleep.
 #   3. import check for Sources/XitDB, that only the tests' own target for it

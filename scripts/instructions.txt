@@ -1,7 +1,8 @@
 # The instructions an operation takes in memory, by the benchmark's own count: what
 # scripts/instructions.sh holds the gate's plain release build to, within a per cent.
 # The least a line over eight places of the stack, twice. Taken with
-# `scripts/instructions.sh pin`; take them again on another toolchain or system.
+# `scripts/instructions.sh pin`; take them again on another toolchain, processor or
+# major version of the system.
 toolchain: swift-driver version: 1.168.6 Apple Swift version 6.4.2 (swiftlang-6.4.2.1.9 clang-2100.4.1.1)
 system: macOS 27.2.1 (26B131), Apple M4
 map_insert write 3364.4
