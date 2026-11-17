@@ -249,8 +249,11 @@ import Testing
                 try FileStorage(path: path, access: .readWrite, durability: .none, lock: .exclusive)
             }
         }
-        // The storage is gone, and its lock with it; the snapshot holds the
-        // descriptor, and reads.
+        // The storage is gone, and its lock with it: the lock is not
+        // refused, though the snapshot holds the descriptor, and reads.
+        #expect(throws: Never.self) {
+            _ = try FileStorage(path: path, access: .readWrite, durability: .none, lock: .exclusive)
+        }
         let next = try Database(opening: try writer(.readWrite), hashSize: 20)
         let kept = try #require(snapshot)
         #expect(try HashMap<ReadOnly>(kept.rootCursor).cursor(forHash: sha1("a").bytes)?.readUInt64() == 1)

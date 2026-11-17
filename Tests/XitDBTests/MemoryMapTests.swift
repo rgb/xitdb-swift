@@ -87,7 +87,11 @@ private struct RolledBack: Error {}
             try writeBytes(writer, Self.pattern(2 * Self.page), at: 0)
 
             // A reader with no lock, beside the writer that holds the
-            // exclusive one: it is mapped, and reads.
+            // exclusive one: it is not refused, is mapped, and reads.
+            #expect(throws: Never.self) { _ = try FileStorage(path: path, access: .readOnly, memoryMapped: true) }
+            #expect(throws: Never.self) {
+                _ = try BufferedFileStorage(path: path, access: .readOnly, memoryMapped: true)
+            }
             let unlocked = try FileStorage(path: path, access: .readOnly, memoryMapped: true)
             #expect(unlocked.isMemoryMapped)
             #expect(try readBytes(unlocked, at: 0, count: 3) == Array(Self.pattern(3)))
@@ -646,6 +650,25 @@ private struct RolledBack: Error {}
         #expect(try subject.storage.length == committed)
         #expect(try StructureWalk.describe(snapshot.rootCursor) == walk)
         #expect(try readBytes(snapshot.storage, at: 0, count: Int(committed)).count == Int(committed))
+
+        // The fence is looked at BEFORE the map is read, and not only
+        // after: with the fence tripped and the file still whole, a read is
+        // refused with nothing copied into the caller's buffer. (After the
+        // cut below, bytes copied first would be bytes that are gone.)
+        do {
+            guard case .file(_, let fence, _) = early.storage.source else {
+                Issue.record("a snapshot of a file storage reads a file")
+                return
+            }
+            let untouched = [UInt8](repeating: 0xEE, count: 64)
+            var buffer = untouched
+            var span = buffer.mutableSpan
+            fence.trip()
+            #expect(throws: XitDBError.snapshotOverwritten) {
+                _ = try early.storage.read(into: &span, range: 0..<64, at: UInt64(2 * Self.page))
+            }
+            #expect(buffer == untouched, "nothing was read through the map before the fence was looked at")
+        }
 
         // The caller's own cut, one byte below the snapshots: it is made.
         try subject.storage.truncate(to: committed - 1)
