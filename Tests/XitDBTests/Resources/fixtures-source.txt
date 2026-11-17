@@ -2,6 +2,21 @@ The folder `fixtures` beside this file is a copy of the folder of the same name 
 conformance repository (../../../../conformance), taken from a commit with `git archive`.
 Do not edit it. To update it, copy it again from a later commit and change the line below.
 
+The copy is the folder as it stands at that commit, and nothing else: a file that has left the
+source must leave here too. So the archive is unpacked into a folder that is made new, never
+over an older copy, which only adds and replaces:
+
+    mkdir <a new folder>                      (fails if it is there already, which is the point)
+    git -C <conformance> archive <commit> fixtures | tar -x -C <the new folder>
+    find <the new folder>/fixtures -type f | wc -l
+    git -C <conformance> ls-tree -r --name-only <commit> fixtures | wc -l      (the same number)
+
+and then this `fixtures` folder is removed and the new one put in its place. A test holds the
+result: `ConformanceTests` fails if the folder holds a file that nothing names, or lacks one that
+is named. After a copy: `scripts/pin-dumps.sh` and the dumps of files that are no longer fixtures
+removed; the lines of `listings/SHA256SUMS` taken again as its README says; and the counts the
+tests pin (`ConformanceTests`, `DumpTests`, `OriginalListingTests`).
+
 copied from conformance commit: 40ed434
 the manifest's conformance_commit: 3e3335a
 

@@ -30,6 +30,61 @@ import Testing
         try onLargeStack { try fixture.run(on: kind, otherOffsetMap: otherOffsetMap) }
     }
 
+    /// The fixtures' folder is the conformance repository's, copied as it
+    /// stands: every file in it is one the manifest names, and every file
+    /// the manifest names is in it. The few files the manifest does not
+    /// name are named here, each with what it is, so that a file a copy
+    /// left behind, or one a copy lost, fails this test. (A copy made into
+    /// a folder that still held the older one kept three files that had
+    /// left their fixture; nothing noticed, since no test names what should
+    /// not be there.)
+    @Test func theFixturesFolderHoldsWhatItsManifestNamesAndNothingElse() throws {
+        let folder = try #require(Bundle.module.url(forResource: "fixtures", withExtension: nil))
+        let manifest = try #require(
+            try JSONSerialization.jsonObject(with: Data(try fixtureFile("manifest.json"))) as? [String: Any])
+        let entries = try #require(manifest["fixtures"] as? [[String: Any]])
+
+        var named: Set<String> = ["manifest.json", "README.md"]
+        for entry in entries {
+            for key in ["script", "db", "sidecar"] {
+                if let path = entry[key] as? String { named.insert(path) }
+            }
+            for path in (entry["other_databases"] as? [String: String] ?? [:]).values { named.insert(path) }
+            for path in entry["inputs"] as? [String] ?? [] { named.insert(path) }
+        }
+        // An input that only a script of `port-differs` loads, which the
+        // manifest does not list: those scripts name their inputs by
+        // `"input": "<name>"`.
+        let portDiffers = try #require(Bundle.module.url(forResource: "port-differs", withExtension: nil))
+        for name in try FileManager.default.contentsOfDirectory(atPath: portDiffers.path)
+        where name.hasSuffix(".json") {
+            let script = String(decoding: try Data(contentsOf: portDiffers.appendingPathComponent(name)), as: UTF8.self)
+            for match in script.matches(of: /"input":\s*"([^"]+)"/) {
+                named.insert("inputs/\(match.1).db")
+            }
+        }
+        // The four sample files of the haxy project and what the original
+        // lists of them, with their own table of digests and their note.
+        for name in ["admin", "project-repo", "user-repo", "users-index"] {
+            named.insert("samples/haxy/\(name).db")
+            named.insert("samples/haxy/\(name).txt")
+        }
+        named.insert("samples/haxy/README.md")
+        named.insert("samples/haxy/SHA256SUMS")
+
+        var held: Set<String> = []
+        let files = try #require(FileManager.default.enumerator(at: folder, includingPropertiesForKeys: nil))
+        let root = folder.resolvingSymlinksInPath().path + "/"
+        for case let url as URL in files where !url.hasDirectoryPath {
+            let path = url.resolvingSymlinksInPath().path
+            try #require(path.hasPrefix(root))
+            held.insert(String(path.dropFirst(root.count)))
+        }
+        #expect(held.subtracting(named).sorted() == [], "files in the folder that nothing names")
+        #expect(named.subtracting(held).sorted() == [], "files that are named and are not in the folder")
+        #expect(held.count == 740)
+    }
+
     /// The manifest was read and every script in it runs, on every storage
     /// kind it applies to. Nothing is skipped silently: a script that stops
     /// running changes this test, and so does one that stops applying to a

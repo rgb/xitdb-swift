@@ -72,7 +72,7 @@ import XitDBHashing
                 atPath: fixtures.appendingPathComponent(folder).path)
             paths += names.filter { $0.hasSuffix(".db") }.sorted().map { "\(folder)/\($0)" }
         }
-        #expect(paths.count == 317)
+        #expect(paths.count == 318)
 
         var withErrors: [String] = []
         var withoutListing: [String] = []
@@ -108,9 +108,9 @@ import XitDBHashing
                 "valid/linked-counts-above-leaves.db",
                 "valid/linked-counts-below-leaves.db",
                 "valid/linked-header-above-tree.db",
+                "valid/recover-cut-during-creation--port.v1_cut.db",
                 "valid/recover-without-first-commit--port.before_the_data.db",
                 "valid/recover-without-first-commit--port.v1_before_the_data.db",
-                "valid/recover-without-first-commit--port.v1_cut.db",
                 "valid/recovery-cut-during-creation.db",
                 "valid/replicate-failed-first-sync.left_behind.db",
                 "valid/sorted-counts-above-leaves.db",

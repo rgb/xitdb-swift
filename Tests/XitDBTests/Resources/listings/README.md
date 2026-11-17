@@ -17,8 +17,11 @@ that the fixtures carry, under `fixtures/samples/haxy`, come out of the same bui
 `valid/put-key-then-value.db`, the one fixture added since, was made on 2026-11-15 with the `dump` that repository had
 built on 2026-11-13, after that binary gave the digests here for four other files. The sixteen lines for the freeze
 hazard's clones, the fixtures of the conformance commit be73945, were made on 2026-11-15 with the same binary, in a
-run over every file that gave the digest already here for each of the other three hundred. To make them again, from
-`Resources`:
+run over every file that gave the digest already here for each of the other three hundred. The lines that changed
+with the fixtures of the conformance commit 40ed434 (four new ones for `recover-cut-during-creation--port`, one changed
+and three gone for `recover-without-first-commit--port`, which that commit split) were made on 2026-11-17 with the
+same binary, in a run over every file that gave the digest already here for each of the other 312. To make them
+again, from `Resources`:
 
     for f in fixtures/inputs/*.db fixtures/valid/*.db; do
         dump "$f" > listing.txt 2> /dev/null

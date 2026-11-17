@@ -44,7 +44,7 @@ import XitDBHashing
     /// `Resources/dumps`, which `scripts/pin-dumps.sh` writes.
     @Test func everyFixtureDumpsAsPinned() throws {
         let fixtures = try Self.files("fixtures/valid", suffix: ".db")
-        #expect(fixtures.count == 303)
+        #expect(fixtures.count == 304)
         let dumps = try Self.resources().appendingPathComponent("dumps")
         for fixture in fixtures {
             let name = fixture.deletingPathExtension().lastPathComponent
@@ -545,7 +545,7 @@ import XitDBHashing
             if commits.count == 1 { withOneCommit.append(name) }
             checked += 1
         }
-        #expect(checked == 154, "every fixture with a sidecar but the one that ends on one byte")
+        #expect(checked == 155, "every fixture with a sidecar but the one that ends on one byte")
         #expect(
             fromInputs.sorted() == [
                 "linked-counts-above-leaves", "linked-counts-below-leaves", "linked-header-above-tree",
@@ -556,9 +556,15 @@ import XitDBHashing
                 "version-1-write",
             ])
         // Every other script commits after its database's first commit.
-        // These two end on a database that has only that one: a recovery
-        // that cut back to it, and a version 1 input cut during creation.
-        #expect(withOneCommit.sorted() == ["recover-without-first-commit--port", "recovery-cut-during-creation"])
+        // These three end on a database that has only that one: two
+        // recoveries that cut back to it, of a file cut during its creation
+        // and of one a copy left without a first commit, and a version 1
+        // input cut during creation.
+        #expect(
+            withOneCommit.sorted() == [
+                "recover-cut-during-creation--port", "recover-without-first-commit--port",
+                "recovery-cut-during-creation",
+            ])
 
         // Three of them, as their scripts leave them.
         func commits(_ name: String) throws -> [VerifiedCommit] {
