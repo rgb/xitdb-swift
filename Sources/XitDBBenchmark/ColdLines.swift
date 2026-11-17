@@ -1,6 +1,8 @@
 // The cold lines of the memory map: what reading through the map costs when
 // none of a file's pages is in memory, with the advice the map gives the
-// system ("read in no order") and without it.
+// system ("read in no order") and without it. With the advice is a storage
+// opened with `reading: .memoryMap`; without it, one opened with
+// `reading: .memoryMapReadAhead`, which tells the system nothing.
 //
 //     XitDBBenchmark --cold report <folder> [--elements <n>] [--keys <n>] [--passes <n>]
 //                                           [--seconds <n>] [--under-limit] [--no-compaction]
