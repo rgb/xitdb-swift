@@ -1,10 +1,24 @@
 /// An error thrown by XitDB.
 ///
-/// The cases mirror the error names of the original, so a failure means the
-/// same thing in both, with one case of its own: ``indexOutOfRange`` is
-/// what the original reports as `KeyNotFound` for a list index. Two are
-/// comparable only loosely: ``callerError(_:)`` carries an error of the
-/// caller's own, and two of them are equal when their descriptions are.
+/// Where the original has a name for a failure, the case has that name, so
+/// that a failure means the same thing in both: ``unexpectedTag``,
+/// ``keyNotFound``, ``invalidDatabase`` and every case not named in this
+/// paragraph (``cursorNotWritable`` is the original's `CursorNotWriteable`).
+/// The others are the port's own. ``indexOutOfRange`` is what
+/// the original reports as `KeyNotFound` for a list index.
+/// ``storageFailure(errno:)`` stands for the original's errors of the file
+/// and the system, with the system's number. ``callerError(_:)`` carries an
+/// error of the caller's own. And these are refusals and findings the
+/// original does not make: ``untrustedRootHeader(lastVerified:)``,
+/// ``poisonedTransaction``, ``staleCursor``, ``immutableBytes``,
+/// ``byteWriterOpen``, ``structuralSlot``, ``emptyLastMoment``,
+/// ``storageNotEmpty``, ``invalidCount``, ``invalidUTF8``,
+/// ``noKeyHashing``, ``subCollectionSnapshot``, ``snapshotOverwritten``
+/// and ``memoryMapNeedsLock``.
+///
+/// Two errors are equal when they are the same case with the same values.
+/// Two ``callerError(_:)`` are equal when their descriptions are, since a
+/// caller's error need not be equatable.
 ///
 /// **A damaged file is one thing.** Damage is reported by whichever check
 /// comes across it first, so the case says where the damage was met and

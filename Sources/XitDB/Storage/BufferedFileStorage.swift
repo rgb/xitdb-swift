@@ -74,6 +74,17 @@ public final class BufferedFileStorage: WritableStorage {
     ///     ``FileStorage/init(path:access:durability:lock:reading:)``
     ///     says, with what a map asks of the file and of the lock. What the
     ///     buffer holds is read from the buffer either way.
+    ///
+    ///     With the map, a file that something shortens ends the process:
+    ///     a read of a part that is no longer there is not an error but a
+    ///     signal. The library does not shorten a file below what is
+    ///     committed. A program that shortens or rewrites the file in
+    ///     place does, and so does your own call of ``truncate(to:)`` below
+    ///     what a ``Snapshot`` reads while it is being read on another
+    ///     thread: replace such a file by a new file and a rename, never
+    ///     in place. The same holds for a volume that goes away, and on
+    ///     iOS for a file whose data protection makes it unreadable while
+    ///     the device is locked.
     ///   - bufferLimit: The most bytes to hold before flushing.
     /// - Throws: ``XitDBError/memoryMapNeedsLock`` if the map is asked for
     ///   without the lock it needs, before the file is opened;

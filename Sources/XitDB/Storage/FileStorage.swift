@@ -82,6 +82,13 @@ public enum Durability: Sendable {
 public enum FileLock: Sendable {
     /// Any number of openers may hold a shared lock at once, as long as none
     /// holds an exclusive one. For readers.
+    ///
+    /// A shared lock keeps the writer out for as long as it is held, which
+    /// is until the storage goes. While any opener holds one, a writer of
+    /// this package that asks for its lock is refused, and a writer that
+    /// waits for its lock, as the writer in the original's README does,
+    /// stands still. A reader reads a consistent state without a lock, so
+    /// take this one only to keep the writer out.
     case shared
 
     /// Only one opener may hold an exclusive lock, and no shared lock may be

@@ -11,8 +11,10 @@ public enum ReadWrite: CursorAccess {}
 /// A position in a database: one slot, and what it held when the cursor was
 /// made.
 ///
-/// A cursor is a value. Copying one gives two cursors that no longer affect
-/// each other.
+/// A cursor is a handle on one slot of the database, with what the slot
+/// held when the cursor was made. Copying one gives two handles on the same
+/// slot, not two slots: a write through either goes to that one place, and
+/// the other does not see it, because each reads by what it remembers.
 ///
 /// **A cursor holds a snapshot.** It remembers the slot as it was when the
 /// cursor was made, or when something was last written through it. Reads go
