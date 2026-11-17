@@ -6,14 +6,14 @@
 toolchain: swift-driver version: 1.168.6 Apple Swift version 6.4.2 (swiftlang-6.4.2.1.9 clang-2100.4.1.1)
 system: macOS 27.2.1 (26B131), Apple M4
 map_insert write 3348.9
-map_insert read 2170.8
-map_insert iterate 1821.6
-list_append write 2637.4
-list_append read 1423.0
+map_insert read 2163.0
+map_insert iterate 1821.7
+list_append write 2628.5
+list_append read 1423.1
 list_append iterate 387.7
-linked_append write 30065.6
+linked_append write 30066.6
 linked_append read 3632.9
 linked_append iterate 512.2
-sorted_insert write 40046.8
+sorted_insert write 40046.0
 sorted_insert read 13501.7
 sorted_insert iterate 1789.2
