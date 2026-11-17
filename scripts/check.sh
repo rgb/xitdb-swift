@@ -208,11 +208,17 @@ scripts/must-not-compile.sh
 # runs where the suite and its built driver are beside the package, or where
 # XITDB_CONFORMANCE names them, and says aloud where they are not, as in a container
 # that holds the package alone: there nothing is held, and the step does not pretend.
+# The suite's script takes its writer and its own reader from TWO_PROCESSES_DRIVER and
+# TWO_PROCESSES_OWN_READER where they are set, as they are for a run on Linux with the
+# suite mounted (its linux-two-processes.sh builds them for Linux); the step looks for
+# the ones the script will use.
 # The suite writes its files where TWO_PROCESSES_OUT says, which is under this
 # package's build folder: nothing is written into the suite's.
 step "Conformance: a reader in another process"
 suite=${XITDB_CONFORMANCE:-../conformance}
-if [ -x "$suite/two-processes.sh" ] && [ -x "$suite/zig-out/bin/two-processes" ] && [ -x "$suite/zig-out/bin/reader" ]; then
+suite_driver=${TWO_PROCESSES_DRIVER:-$suite/zig-out/bin/two-processes}
+suite_reader=${TWO_PROCESSES_OWN_READER:-$suite/zig-out/bin/reader}
+if [ -f "$suite/two-processes.sh" ] && [ -x "$suite_driver" ] && [ -x "$suite_reader" ]; then
     reader="$(swift build --show-bin-path)/XitDBConformanceReader"
     [ -x "$reader" ] || {
         echo "error: the debug build left no reader at $reader"
@@ -224,9 +230,10 @@ if [ -x "$suite/two-processes.sh" ] && [ -x "$suite/zig-out/bin/two-processes" ]
     fi
     echo "the suite at $suite: $suite_commit"
     rm -rf .build/two-processes
-    TWO_PROCESSES_OUT="$PWD/.build/two-processes" limited "$two_processes_limit" "$suite/two-processes.sh" "$reader"
+    TWO_PROCESSES_OUT="$PWD/.build/two-processes" limited "$two_processes_limit" sh "$suite/two-processes.sh" "$reader"
 else
-    echo "skipped: the conformance suite, or its built driver and reader, is not at $suite"
+    echo "skipped: the conformance suite's script, its writer or its own reader is not there:"
+    echo "  $suite/two-processes.sh, $suite_driver, $suite_reader"
     echo "  the port's reader is not held against a writer in another process in this run"
 fi
 
