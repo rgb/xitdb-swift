@@ -5,8 +5,8 @@ What this package does differently from xitdb in Zig, and what it does the same 
 ## Overview
 
 The port's first rule is that it writes the same bytes: given the same file ID, the same commit IDs and the same operations, it
-produces the same file as the original. The original here is xitdb at the commit the port follows, `89da8e7`. That is checked
-with 253 conformance scripts. In 155 the file must match byte for byte the one the original writes, or, for the few operations
+produces the same file as the original. The original here is xitdb at the commit the port follows, `274418f`. That is checked
+with 258 conformance scripts. In 160 the file must match byte for byte the one the original writes, or, for the few operations
 the port deliberately does differently, the one the original writes when it is made to do the same. The other 98 must fail, as
 they do with the original: they check that a runner catches what is wrong.
 
@@ -19,8 +19,8 @@ written, the transaction can no longer commit. So it narrows which sequences of 
 alone: the port reads every file the original writes. Two of the differences change the bytes of operations that are valid in
 both: the operations after a join in the same transaction, and ``Cursor/writeIfEmpty(_:)``. For each, the port's authors changed
 the original the same way, on a branch of their own, which the original does not have, and these two are the places where the
-port's files match byte for byte that branch's and not the original's. That branch is `fix-findings-v2` of the fork
-[`rgb/xitdb`](https://github.com/rgb/xitdb/tree/fix-findings-v2), at `bd6abc3`, on `89da8e7`.
+port's files match byte for byte that branch's and not the original's. That branch is `fix-findings-v3` of the fork
+[`rgb/xitdb`](https://github.com/rgb/xitdb/tree/fix-findings-v3), at `6b48d2d`, on `274418f`.
 
 ### Where the original lets data be damaged
 
@@ -64,11 +64,8 @@ port's files match byte for byte that branch's and not the original's. That bran
 - **A tree whose header disagrees with its nodes**, which a damaged file or the original's freeze hazards produce, can crash the
   original. The port throws an error where a read or a write is led where the tree has nothing, and never traps: see
   <doc:Errors>. Within what a read is held to (below), it otherwise reads such a tree as the original does, by its size and
-  counts as they are, and two reads differ even so:
-  - **An iterator started at a position its tree does not have**, though its size has it, gives nothing in the original, or the
-    entries after the leaf, or with a fuller leaf ends its process. The port throws ``XitDBError/invalidBTreeNode``.
-  - **An iterator started at a key whose place is past the size**, in a tree that holds more than its size says, runs on to the
-    tree's end in the original. The port gives nothing.
+  counts as they are, and one read differs even so: **an iterator started at a key whose place is past the size**, in a tree
+  that holds more than its size says, runs on to the tree's end in the original. The port gives nothing.
 - **The key and value slots of a hashed entry** are read without checking their tags in the original. The port checks them.
 - **With 64-byte hashes**, the original's depth counter overflows at 64 levels. The port goes as deep as the hash allows, and then
   throws ``XitDBError/keyOffsetExceeded``.
