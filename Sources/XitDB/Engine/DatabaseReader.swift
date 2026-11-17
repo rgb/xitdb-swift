@@ -126,9 +126,19 @@ final class DatabaseReader {
     }
 
     /// Takes where data starts from the header again, after a replication
-    /// from zero replaced it.
+    /// from zero replaced it; and forgets how long the storage was, since
+    /// what it holds now is another database, which may be shorter.
     func headerChanged() {
         dataStart.store(identity.header.dataStart, ordering: .relaxed)
+        lengthChanged()
+    }
+
+    /// Forgets the length the storage was last known to have, after the
+    /// storage was cut or its file replaced: the next count that is held
+    /// against it asks the storage again. Left as it was, a length from
+    /// before would let a count pass that the shorter storage cannot hold.
+    func lengthChanged() {
+        knownLength.store(0, ordering: .relaxed)
     }
 
     // MARK: What a file can hold

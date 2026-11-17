@@ -8,8 +8,8 @@
 #      taken on), a smoke run of the benchmark and the corruption fuzzer
 #      Every run of the tests has a time limit (scripts/limit.sh), and the limit is
 #      tried on a test planted to sleep.
-#   3. import check for Sources/XitDB, and that only the tests' own target for it
-#      starts a process
+#   3. import check for Sources/XitDB, that only the tests' own target for it
+#      starts a process, and that no test is marked as a known failure
 #   4. formatting check
 #   5. documentation build
 #   6. compile-only build for iOS, and the tests on an iOS simulator (on macOS)
@@ -324,6 +324,20 @@ if grep -rnE '(^|[^A-Za-z0-9_.])(Process\(\)|posix_spawnp?\(|fork\(\)|system\("|
     exit 1
 fi
 echo "ok: only Tests/XitDBProcessTests does"
+
+# No test is let off. The standards have no skipped tests and no weakened assertions, and
+# a test marked as a known failure is both: it runs, and what it expects is not held. Two
+# harnesses of a full copy were written before the code they hold and carried such a mark
+# until every file storage wrote the copy into a new file; the mark is gone, and this step
+# keeps it and its kind from coming back: a known issue, an expected failure, a skip, a
+# disabled test. A test that cannot run on a system says so with `.enabled(if:)` and the
+# reason, which is not this.
+step "No test is marked as a known failure"
+if grep -rnE 'withKnownIssue|XCTExpectFailure|XCTSkip|\.disabled\(' Tests --include='*.swift'; then
+    echo "error: a test is marked as a known failure, skipped or disabled"
+    exit 1
+fi
+echo "ok: none is"
 
 step "Import check"
 find Sources/XitDB -name '*.swift' -exec awk '

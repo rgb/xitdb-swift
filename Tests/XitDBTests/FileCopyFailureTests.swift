@@ -105,14 +105,22 @@ final class CountedFileCalls {
     }
 }
 
-/// A full copy onto a file storage that reads through a memory map, with
-/// each file call it makes failing in turn. Whatever fails, the path then
-/// holds a database that opens and is whole, and it is the one that was
-/// there or the one that was copied: the old one until the new file has
-/// been given the path's name, the new one from then on. The writer's own
-/// database object says the same, of itself and to a source that asks what
-/// to send it next.
-@Suite struct MappedCopyFailureTests {
+/// A full copy onto a file storage, of each of the four kinds, with each
+/// file call it makes failing in turn. Whatever fails, the path then holds
+/// a database that opens and is whole, and it is the one that was there or
+/// the one that was copied: the old one until the new file has been given
+/// the path's name, the new one from then on. The writer's own database
+/// object says the same, of itself and to a source that asks what to send
+/// it next.
+///
+/// The writers here hold the exclusive lock, as a writer does that wants a
+/// file left by a copy that did not end removed when it opens the path;
+/// what a writer without the lock does about such a file has a test of its
+/// own beside the replacement's.
+@Suite struct FileCopyFailureTests {
+    /// The four kinds of file storage.
+    static let kinds: [StorageKind] = [.file, .bufferedFile, .mappedFile, .mappedBufferedFile]
+
     /// A database as a test starts from it or copies it: its file's bytes,
     /// how it walks, and what it says of itself as a replica.
     struct Known {
@@ -166,14 +174,16 @@ final class CountedFileCalls {
     static let old = Result { try known("old", count: 40) }
     static let new = Result { try known("new", count: 300) }
 
-    /// A writer's storage of `kind` on the file at `path`, reading through
-    /// a memory map in segments of one page, with its calls counted.
+    /// A writer's storage of `kind` on the file at `path`, with the
+    /// exclusive lock and its calls counted; on the mapped kinds reading
+    /// through a memory map in segments of one page.
     private static func writer(_ kind: StorageKind, at path: String, calls: FileCalls) throws -> any WritableStorage {
-        let file = try readThroughTheMap(
-            try FileStorage(
-                path: path, access: .readWrite, lock: .exclusive, memoryMapped: true,
-                segmentSize: Platform.pageSize, calls: calls), at: path)
-        return kind == .mappedBufferedFile ? BufferedFileStorage(file) : file
+        let mapped = kind == .mappedFile || kind == .mappedBufferedFile
+        var file = try FileStorage(
+            path: path, access: .readWrite, lock: .exclusive, memoryMapped: mapped,
+            segmentSize: Platform.pageSize, calls: calls)
+        if mapped { file = try readThroughTheMap(file, at: path) }
+        return kind == .bufferedFile || kind == .mappedBufferedFile ? BufferedFileStorage(file) : file
     }
 
     /// One full copy with one call failing, or none, and what came of it.
@@ -185,9 +195,6 @@ final class CountedFileCalls {
         /// What the copy threw, if it threw.
         let thrown: XitDBError?
 
-        /// Whether the copy got as far as emptying the old file, which a
-        /// copy in place does first and a copy into a new file never does.
-        var cutTheOldFile: Bool { counted.succeeded.contains("cut to nothing") }
         /// Whether the new file was given the path's name.
         var renamed: Bool { counted.succeeded.contains("rename") }
     }
@@ -243,7 +250,7 @@ final class CountedFileCalls {
 
     /// A copy with nothing failing gives the new database, to the writer,
     /// to a reader and to the next writer, and leaves no file beside it.
-    @Test(arguments: [StorageKind.mappedFile, .mappedBufferedFile], Way.allCases)
+    @Test(arguments: kinds, Way.allCases)
     func aWholeCopyGivesTheNewDatabase(kind: StorageKind, way: Way) throws {
         let new = try Self.new.get()
         var copy = try Self.copy(kind, way, failing: nil)
@@ -261,7 +268,7 @@ final class CountedFileCalls {
     /// one: for the writer's own object, for a reader that opens the path
     /// while the writer lives, and for the next writer; and once that
     /// writer has opened the path no file of the copy is left beside it.
-    @Test(arguments: [StorageKind.mappedFile, .mappedBufferedFile], Way.allCases)
+    @Test(arguments: kinds, Way.allCases)
     func aCopyThatFailsAtAnyCallLeavesTheOldDatabaseOrTheNew(kind: StorageKind, way: Way) throws {
         let old = try Self.old.get()
         let new = try Self.new.get()
@@ -281,28 +288,10 @@ final class CountedFileCalls {
             #expect(copy.counted.failed == calls[index], "\(step)")
             let expected = copy.thrown == nil || copy.renamed ? new : old
 
-            // A copy in place has emptied the old file by its first call,
-            // so that a failure after it leaves a file without a first
-            // commit where the old database is expected. Known until a
-            // mapped storage copies into a new file: piece (c) of brief 33,
-            // which takes these three markers away.
-            let stillInPlace = copy.thrown != nil && copy.cutTheOldFile
-            try withKnownIssue("a full copy on a mapped storage is still in place; piece (c)") {
-                try Self.theWritersObjectIs(expected, copy, step)
-            } when: {
-                stillInPlace
-            }
-            try withKnownIssue("a full copy on a mapped storage is still in place; piece (c)") {
-                try Self.aReaderOpens(expected, copy, step)
-            } when: {
-                stillInPlace
-            }
+            try Self.theWritersObjectIs(expected, copy, step)
+            try Self.aReaderOpens(expected, copy, step)
             copy.database = nil
-            try withKnownIssue("a full copy on a mapped storage is still in place; piece (c)") {
-                try Self.theNextWriterOpens(expected, kind, copy, step)
-            } when: {
-                stillInPlace
-            }
+            try Self.theNextWriterOpens(expected, kind, copy, step)
             #expect(!FileManager.default.fileExists(atPath: copy.directory.path() + ".incoming"), "\(step)")
         }
     }

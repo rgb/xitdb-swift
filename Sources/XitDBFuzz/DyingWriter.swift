@@ -3,12 +3,13 @@
 //
 //     XitDBFuzz die <step> <kind> <database> <bytes> [<write>]
 //
-// Opens the database at a path as its writer, on a file read through a
-// memory map with an exclusive lock, and applies to it, from 0, the bytes
-// of another database kept in a second file, a thousand at a time. At the
-// step named the process ends at once, by `_exit` with status 86, with
-// nothing flushed and nothing cleaned up, as a process that is killed
-// ends. `kind` is `file` or `buffered`. `write` says which of the copy's
+// Opens the database at a path as its writer, with an exclusive lock, and
+// applies to it, from 0, the bytes of another database kept in a second
+// file, a thousand at a time. At the step named the process ends at once,
+// by `_exit` with status 86, with nothing flushed and nothing cleaned up,
+// as a process that is killed ends. `kind` is one of the four kinds of
+// file storage: `file`, `buffered`, and `mapped-file` and
+// `mapped-buffered`, which read through a memory map. `write` says which of the copy's
 // writes to the file is the one that `mid-copy` dies at, before making it,
 // the fifth if nothing is said: a buffered storage writes a copy in fewer.
 //
@@ -56,7 +57,9 @@ private struct Piecewise: ByteSource {
 
 /// Opens the database at `path` as its writer and copies `bytes` onto it,
 /// dying at `step`.
-func dieInACopy(at step: DyingStep, buffered: Bool, path: String, bytes: [UInt8], midWrite: Int) -> Never {
+func dieInACopy(
+    at step: DyingStep, buffered: Bool, mapped: Bool, path: String, bytes: [UInt8], midWrite: Int
+) -> Never {
     // The process ends by itself if it is still here after twenty seconds.
     alarm(20)
     // the platform's own calls, which the counted ones go on to
@@ -88,7 +91,7 @@ func dieInACopy(at step: DyingStep, buffered: Bool, path: String, bytes: [UInt8]
     }
     do {
         let file = try FileStorage(
-            path: path, access: .readWrite, lock: .exclusive, memoryMapped: true,
+            path: path, access: .readWrite, lock: .exclusive, memoryMapped: mapped,
             segmentSize: FileStorage.defaultSegmentSize, calls: calls)
         let database: Database
         if buffered {

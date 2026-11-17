@@ -74,19 +74,10 @@ final class MappedSegment: Sendable {
     }
 }
 
-/// What every snapshot that reads a file through its memory map holds of
-/// the storage, and the storage holds too: while a second reference to it
-/// exists, such a snapshot is alive, and the storage refuses to cut the
-/// file below what the snapshot reads.
-final class MapLease: Sendable {
-    init() {}
-}
-
 /// The mapped segments of a file, in order from its start: what the file
 /// storage reads through, and what a snapshot takes a copy of.
 ///
-/// A copy shares the segments. A snapshot's copy also holds the storage's
-/// ``MapLease``, which is how the storage knows of it.
+/// A copy shares the segments, which stay mapped while any copy lives.
 struct FileMapView: Sendable {
     /// The size of every segment: a power of two and a multiple of the
     /// page size.
@@ -96,9 +87,6 @@ struct FileMapView: Sendable {
     /// `nil` where a segment is not mapped: not yet, or because the system
     /// refused it.
     var segments: [MappedSegment?] = []
-
-    /// The storage's lease, in a snapshot's copy.
-    var lease: MapLease?
 
     init(segmentSize: Int) {
         precondition(

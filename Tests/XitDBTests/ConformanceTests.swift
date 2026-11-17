@@ -13,8 +13,7 @@ import Testing
     static let runnable: [(ConformanceFixture, StorageKind, otherOffsetMap: Bool)] = ConformanceFixture.all
         .flatMap { fixture in
             StorageKind.allCases
-                // The memory storage has no read-only mode, in Zig or here.
-                .filter { !($0 == .memory && fixture.features.contains("read_only")) }
+                .filter { fixture.runs(on: $0) }
                 .flatMap { kind in
                     fixture.features.contains("compaction")
                         ? [(fixture, kind, otherOffsetMap: false), (fixture, kind, otherOffsetMap: true)]
@@ -32,8 +31,9 @@ import Testing
     }
 
     /// The manifest was read and every script in it runs, on every storage
-    /// kind. Nothing is skipped silently: a script that stops running changes
-    /// this test.
+    /// kind it applies to. Nothing is skipped silently: a script that stops
+    /// running changes this test, and so does one that stops applying to a
+    /// kind.
     @Test func everyScriptRuns() {
         let all = ConformanceFixture.all
         #expect(all.count == 253)
@@ -70,6 +70,23 @@ import Testing
                 "write-on-read-only-not-handled": "WriteFailed",
             ])
 
+        // which scripts are left out, and on which kinds: these two lists
+        // and nothing else
+        let leftOut = Dictionary(
+            grouping: all.flatMap { fixture in
+                StorageKind.allCases.filter { !fixture.runs(on: $0) }.map { (fixture.name, $0) }
+            }, by: { $0.1 }
+        ).mapValues { $0.map(\.0).sorted() }
+        let files: [StorageKind] = [.file, .bufferedFile, .bufferedFileSmallWindow, .mappedFile, .mappedBufferedFile]
+        #expect(Set(leftOut.keys) == Set(StorageKind.allCases))
+        for kind in files {
+            // on a file a full copy cut short leaves the old database
+            #expect(
+                leftOut[kind] == [
+                    "recover-without-first-commit--port", "replicate-copy-cut-short", "replicate-failed-first-sync",
+                ], "\(kind)")
+        }
+
         // not applicable to the memory storage, which has no read-only mode
         let readOnly = all.filter { $0.features.contains("read_only") }.map(\.name).sorted()
         #expect(
@@ -79,6 +96,7 @@ import Testing
                 "version-1-read", "write-on-read-only-not-handled",
             ]
         )
+        #expect(leftOut[.memory] == readOnly)
     }
 }
 

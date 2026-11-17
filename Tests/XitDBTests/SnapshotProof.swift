@@ -20,17 +20,11 @@ import Testing
 /// the file kinds: a raw write, load or cut while the database is closed, a
 /// recovery, and a reopening, which is a second storage object on the same
 /// path and may create the file again where its creation did not finish. A
-/// sync from zero is covered: in memory the snapshots read on, and on the
-/// file kinds every read of theirs refuses with `snapshotOverwritten`.
-///
-/// On the kinds that read through a memory map a sync from zero is refused
-/// while a snapshot of the database lives (`snapshotStillMapped`): the cut
-/// it begins with would end the process at the snapshot's next read. So
-/// there the database's snapshots are checked and released before the op,
-/// which is what a caller has to do. That is the rule, and not a weakening
-/// of the proof: the scripts still run to their end through the map, and
-/// what they no longer show, a snapshot that outlives a full copy, is shown
-/// refused by a test of its own in `MemoryMapTests`.
+/// sync from zero is covered on every kind, and on every kind the snapshots
+/// read on: in memory they keep the bytes, and on a file the copy goes into
+/// a new file, so that the snapshots taken before it go on reading the old
+/// one, through file calls or through its memory map, whether the copy went
+/// through or failed.
 final class SnapshotProof {
     struct Kept {
         let database: String
@@ -91,24 +85,10 @@ final class SnapshotProof {
 
     private var isFile: Bool { kind != .memory }
 
-    private var isMapped: Bool { kind == .mappedFile || kind == .mappedBufferedFile }
-
     /// Before a top-level op runs: the ops that change a file outside the
     /// engine's guarantee have the current database's snapshots checked and,
-    /// on the file kinds, dropped; and so has a sync from zero on the
-    /// mapped kinds, where it is refused while a snapshot lives.
-    ///
-    /// - Parameter syncsFromZero: Whether the op is an `apply_replicated`
-    ///   that starts at 0.
-    func before(op name: String, on database: String, syncsFromZero: Bool = false) throws {
-        if syncsFromZero && isMapped {
-            let released = kept.filter { $0.database == database }
-            kept.removeAll { $0.database == database }
-            for one in released {
-                try check(one, expected: nil)
-            }
-            return
-        }
+    /// on the file kinds, dropped.
+    func before(op name: String, on database: String) throws {
         switch name {
         case "raw_write", "raw_append", "raw_load", "raw_truncate", "recover", "reopen":
             for index in kept.indices where kept[index].database == database {
@@ -126,8 +106,8 @@ final class SnapshotProof {
         }
     }
 
-    /// After a sync from zero of a database: its snapshots on the file kinds
-    /// refuse from now on; in memory they read on.
+    /// After a sync from zero of a database: its snapshots read on, on every
+    /// kind, and what they read is no longer a prefix of the expected file.
     func zeroSynced(_ database: String) {
         for index in kept.indices where kept[index].database == database {
             kept[index].zeroSynced = true
@@ -189,24 +169,6 @@ final class SnapshotProof {
         guard one.copy.count >= size else {
             throw ScriptFailure(
                 "step \(one.step): the copy of \(one.database) is shorter than the snapshot's committed size")
-        }
-
-        if one.zeroSynced && isFile {
-            // Overwritten under it: every read refuses, and nothing is decoded.
-            let bytes = Result { try readBytes(one.snapshot.storage, at: 0, count: 8) }
-            guard case .failure(let error) = bytes, error as? XitDBError == .snapshotOverwritten else {
-                throw ScriptFailure("step \(one.step): a snapshot of \(one.database) read on after a sync from zero")
-            }
-            // A walk of a root that is a value in its slot reads nothing;
-            // any other refuses too.
-            let walk = Result { try StructureWalk.describe(one.snapshot.rootCursor) }
-            if one.snapshot.root.tag.pointsIntoStorage {
-                guard case .failure(let error) = walk, error as? XitDBError == .snapshotOverwritten else {
-                    throw ScriptFailure(
-                        "step \(one.step): a snapshot of \(one.database) walked on after a sync from zero")
-                }
-            }
-            return
         }
 
         // The read half gives the copy's first bytes, the root header
@@ -289,8 +251,7 @@ final class SnapshotProof {
         .filter(\.mustPass)
         .flatMap { fixture in
             StorageKind.allCases
-                // The memory storage has no read-only mode, in Zig or here.
-                .filter { !($0 == .memory && fixture.features.contains("read_only")) }
+                .filter { fixture.runs(on: $0) }
                 .map { (fixture, $0) }
         }
 

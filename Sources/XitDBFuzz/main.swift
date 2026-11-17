@@ -7,7 +7,7 @@
 //     XitDBFuzz run <hashSize|v1> <from> <to> [targeted] [--progress <file>] [--mapped]
 //     XitDBFuzz save <hashSize|v1> <seed|good> [targeted] <path>
 //     XitDBFuzz check [--mapped] <file>...
-//     XitDBFuzz die <step> <file|buffered> <database> <bytes> [<write>]
+//     XitDBFuzz die <step> <kind> <database> <bytes> [<write>]
 //     XitDBFuzz watch <file|buffered> <path>
 //
 // The sample is built in memory with hashes of `hashSize` bytes, in format
@@ -45,7 +45,8 @@ let usage = """
     usage: XitDBFuzz run <hashSize|v1> <from> <to> [targeted] [--progress <file>] [--mapped]
            XitDBFuzz save <hashSize|v1> <seed|good> [targeted] <path>
            XitDBFuzz check [--mapped] <file>...
-           XitDBFuzz die <new-file|mid-copy|before-rename|after-rename> <file|buffered> <database> <bytes> [<write>]
+           XitDBFuzz die <new-file|mid-copy|before-rename|after-rename>
+                         <file|buffered|mapped-file|mapped-buffered> <database> <bytes> [<write>]
            XitDBFuzz watch <file|buffered> <path>
     """
 
@@ -230,15 +231,17 @@ case "check":
     guard !arguments.isEmpty else { fail(usage, status: 2) }
     check(arguments, mapped: mapped)
 case "die":
+    let kinds = ["file", "buffered", "mapped-file", "mapped-buffered"]
     guard !mapped, arguments.count == 4 || arguments.count == 5, let step = DyingStep(rawValue: arguments[0]),
-        arguments[1] == "file" || arguments[1] == "buffered",
+        kinds.contains(arguments[1]),
         let midWrite = arguments.count == 5 ? Int(arguments[4]) : 5, midWrite > 0
     else { fail(usage, status: 2) }
     guard let bytes = FileManager.default.contents(atPath: arguments[3]) else {
         fail("cannot read \(arguments[3])", status: 1)
     }
     dieInACopy(
-        at: step, buffered: arguments[1] == "buffered", path: arguments[2], bytes: [UInt8](bytes), midWrite: midWrite)
+        at: step, buffered: arguments[1].hasSuffix("buffered"), mapped: arguments[1].hasPrefix("mapped"),
+        path: arguments[2], bytes: [UInt8](bytes), midWrite: midWrite)
 case "watch":
     guard !mapped, arguments.count == 2, arguments[0] == "file" || arguments[0] == "buffered" else {
         fail(usage, status: 2)

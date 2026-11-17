@@ -96,6 +96,17 @@ enum StorageKind: String, CaseIterable, CustomTestStringConvertible {
     case mappedBufferedFile
 
     var testDescription: String { rawValue }
+
+    /// The kinds on which a full copy is made in place, as the original
+    /// makes it: memory. (A storage of the caller's own takes it in place
+    /// too, and is no kind here.) What such a copy leaves when it is cut
+    /// short is a database without a first commit.
+    static let takingACopyInPlace: [StorageKind] = [.memory]
+
+    /// The kinds that are files, on which a full copy is written into a
+    /// new file that is given the old one's name at the end: a copy that
+    /// is cut short leaves the old database.
+    static let files: [StorageKind] = allCases.filter { $0 != .memory }
 }
 
 /// A new, empty storage of one kind, with a way to see the bytes that have

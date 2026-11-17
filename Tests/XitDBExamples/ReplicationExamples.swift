@@ -256,11 +256,10 @@ import XitDB
         #expect(try replica.committedSize == end)
     }
 
-    /// The article's sentences on what a failed copy leaves: the blocks of
-    /// 4,096 bytes that arrived whole, which on a buffered file are in the
-    /// storage's buffer, so that the file has them only if the storage is
-    /// flushed before it goes away.
-    @Test func anInterruptedFullSyncOnABufferedFile() throws {
+    /// The article's sentences on what a full sync that fails leaves on a
+    /// file: the database that was there, whole, and nothing of the copy
+    /// beside it.
+    @Test func anInterruptedFullSyncOnAFileLeavesTheOldDatabase() throws {
         let scratch = ScratchDirectory()
         defer { scratch.remove() }
         let (_, source, history) = try newSource()
@@ -273,31 +272,31 @@ import XitDB
         let arrived = 4500
         #expect(bytes.count > arrived)
 
-        func interruptedCopy(to path: String, flushing: Bool) throws {
-            let storage = try BufferedFileStorage(path: path, access: .create)
-            let replica = try Database(creating: storage, hashSize: 32)
-            var half = ArrayByteSource(Array(bytes[..<arrived]))
-            #expect(throws: XitDBError.endOfStream) {
-                try replica.applyReplicated(at: 0, from: &half, count: UInt64(bytes.count))
-            }
-            if flushing { try storage.flush() }
+        let path = scratch.path("replica.db")
+        let storage = try BufferedFileStorage(path: path, access: .create)
+        let replica = try Database(creating: storage, hashSize: 32)
+        let before = try replica.replicaState
+        var half = ArrayByteSource(Array(bytes[..<arrived]))
+        #expect(throws: XitDBError.endOfStream) {
+            try replica.applyReplicated(at: 0, from: &half, count: UInt64(bytes.count))
         }
 
-        // Not flushed: the headers alone, which is a creation that did not
-        // finish. Opening refuses it, and creating builds over it.
-        try interruptedCopy(to: scratch.path("unflushed.db"), flushing: false)
-        let headers = try BufferedFileStorage(path: scratch.path("unflushed.db"), access: .readWrite)
-        #expect(try headers.length == 32)
-        #expect(throws: XitDBError.invalidDatabase) { try Database(opening: headers) }
-        #expect(try Database(creating: headers, hashSize: 32).committedSize == 57)
+        // The copy went into a new file beside the replica's, which was
+        // removed when the copy failed: the replica is the database it was,
+        // and says so to the source.
+        #expect(try replica.replicaState == before)
+        #expect(try replica.committedSize == 57)
+        #expect(!scratch.has("replica.db.incoming"))
+        #expect(try source.replicationStart(for: try replica.replicaState) == 0)
 
-        // Flushed: the headers and the first block, all that arrived whole, a
-        // database without a first commit, which opens for the next sync to
-        // replace.
-        try interruptedCopy(to: scratch.path("flushed.db"), flushing: true)
-        let partial = try BufferedFileStorage(path: scratch.path("flushed.db"), access: .readWrite)
-        #expect(try partial.length == 32 + 4096)
-        #expect(try Database(opening: partial).replicaState == ReplicaState(committedSize: 0, checksum: 0))
+        // Opened again, the same database.
+        let reopened = try Database(opening: try BufferedFileStorage(path: path, access: .readOnly))
+        #expect(try reopened.replicaState == before)
+
+        // The next full sync replaces it.
+        try replica.applyReplicated(at: 0, bytes: bytes)
+        #expect(try replica.committedSize == UInt64(bytes.count))
+        #expect(try replica.replicaState == (try source.replicaState))
     }
 
     @Test func aFullSyncOfBytesCutShort() throws {

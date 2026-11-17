@@ -181,12 +181,20 @@ final class FileDescriptor: Sendable {
 /// one to use for that. A file storage suits a database that is only read.
 ///
 /// The storage owns its file descriptor and closes it when the storage and
-/// every ``Snapshot`` of a database in it have gone, which also releases
-/// its lock: a snapshot reads through the same descriptor, so the file stays
-/// open, and any lock held, until the last snapshot is released. A snapshot
-/// is told of a rewrite of the file below its committed size through this
-/// storage object only; a second storage on the same path, or another
-/// process, rewrites it unseen.
+/// every ``Snapshot`` of a database in it have gone: a snapshot reads
+/// through the same descriptor, so the file stays open until the last
+/// snapshot is released. A lock is the storage's, and is let go when the
+/// storage goes, whatever snapshots are left. A snapshot is told of a
+/// rewrite of the file below its committed size through this storage
+/// object only; a second storage on the same path, or another process,
+/// rewrites it unseen.
+///
+/// A full copy from a replica's source, ``Database/applyReplicated(at:from:count:)``
+/// at 0, does not rewrite the file. It is written into a new file beside
+/// it, named after it with `.incoming` added, which is given the file's
+/// name when the copy's committed size has been written and synced. A copy
+/// that fails, or a process that ends in the middle of one, leaves the
+/// database that was there; a snapshot taken before reads the old file on.
 ///
 /// Opened with `memoryMapped: true`, the storage reads through a memory
 /// map of the file: a read is then a copy from memory that the system
@@ -250,11 +258,6 @@ public final class FileStorage: WritableStorage {
     /// for and the file is on a volume that is mapped.
     private var map: FileMap?
 
-    /// What every snapshot that reads through the map holds with the
-    /// storage. While a second reference to it exists such a snapshot is
-    /// alive, and the file is not cut below what it reads.
-    private var mapLease = MapLease()
-
     /// The storage's side of its memory map.
     private struct FileMap {
         /// The segments mapped so far.
@@ -310,6 +313,15 @@ public final class FileStorage: WritableStorage {
     /// Whether the engine is to tell this storage what it has verified:
     /// only a storage that reads through a map and cannot write.
     var takesItsLimitFromTheEngine: Bool { map != nil && isReadOnly }
+
+    deinit {
+        // The lock is the storage's: let go now, though a snapshot may keep
+        // the file open after it. During a replacement the storage holds
+        // the old file's lock and the new file's, and lets both go.
+        guard lock != nil else { return }
+        Platform.unlockFile(descriptor.rawValue)
+        if let replacement { Platform.unlockFile(replacement.old.rawValue) }
+    }
 
     // MARK: A read in file order
 
@@ -440,12 +452,23 @@ public final class FileStorage: WritableStorage {
     /// cuts it any more.
     ///
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the name cannot be
-    ///   given, in which case the replacement is still under way and
-    ///   ``abandonReplacement()`` ends it; or if the directory cannot be
+    ///   given, or if the new file is no longer the one under the name it
+    ///   was made under ("no such file"), in which cases the replacement is
+    ///   still under way and ``abandonReplacement()`` ends it; or if the
+    ///   directory cannot be
     ///   synced, in which case the new file has the name all the same and
     ///   the replacement has ended.
     func commitReplacement() throws(XitDBError) {
         guard let replacement else { return }
+        // The name the new file was made under must still be the new
+        // file's. A second writer of the same database, which "one writer"
+        // forbids and which no lock kept out, takes a new file it finds
+        // for one left behind, removes it and makes its own under that
+        // name; to give that name's file the database's name now would put
+        // a copy that is not finished there.
+        guard try Platform.leads(replacement.incomingPath, to: descriptor.rawValue) else {
+            throw .storageFailure(errno: Platform.noSuchFile)
+        }
         try calls.rename(replacement.incomingPath, realPath)
         self.replacement = nil
         defer {
@@ -471,13 +494,17 @@ public final class FileStorage: WritableStorage {
     /// removes it.
     func abandonReplacement() {
         guard let replacement else { return }
+        // The new file is removed if its name still leads to it. A file
+        // that another writer has since made under that name is not this
+        // storage's to remove.
+        let isStillItsOwn = (try? Platform.leads(replacement.incomingPath, to: descriptor.rawValue)) == true
         descriptor = replacement.old
         map = replacement.oldMap
         pinnedSize = replacement.oldPinnedSize
         committedSizePosition = replacement.oldCommittedSizePosition
         fence = replacement.oldFence
         self.replacement = nil
-        _ = try? calls.remove(replacement.incomingPath)
+        if isStillItsOwn { _ = try? calls.remove(replacement.incomingPath) }
     }
 
     /// Whether the storage's reads go through a memory map.
@@ -521,20 +548,27 @@ public final class FileStorage: WritableStorage {
     ///     unless asked for.
     ///   - memoryMapped: Whether to read the file through a memory map,
     ///     which makes a read a copy from memory where it is a system call
-    ///     otherwise. Writes are file writes either way. It needs a lock:
-    ///     ``FileLock/exclusive``, or ``FileLock/shared`` for a file opened
-    ///     with ``FileAccess/readOnly``. See ``isMemoryMapped`` for whether
+    ///     otherwise. Writes are file writes either way. A storage that
+    ///     can write needs ``FileLock/exclusive`` for it, which says that
+    ///     it is the file's one writer; one opened with
+    ///     ``FileAccess/readOnly`` needs no lock, and reads through the
+    ///     map only what is committed. See ``isMemoryMapped`` for whether
     ///     the map was had.
     ///
-    ///     With the map, a file that something else shortens ends the
-    ///     process: a read of a part that is no longer there is not an
-    ///     error but a signal. The library never shortens a file below
-    ///     what a snapshot reads (see ``XitDBError/snapshotStillMapped``),
-    ///     and the lock keeps a second opener that asks for one out. What
-    ///     neither can stop is a program that takes no lock: replace such
-    ///     a file by a new file and a rename, never in place. The same
-    ///     holds for a volume that goes away, and on iOS for a file whose
-    ///     data protection makes it unreadable while the device is locked.
+    ///     With the map, a file that something shortens ends the process:
+    ///     a read of a part that is no longer there is not an error but a
+    ///     signal. The library does not shorten a file below what is
+    ///     committed: a full copy is written into a new file, and what a
+    ///     failed transaction leaves is cut off beyond the committed size.
+    ///     What it cannot stop is a program that shortens or rewrites the
+    ///     file in place: an earlier version of this library, or the
+    ///     original, making a full copy; a tool that copies onto the file;
+    ///     and your own call of ``truncate(to:)`` below what a ``Snapshot``
+    ///     reads, which a snapshot being read on another thread at that
+    ///     moment does not survive. Replace such a file by a new file and
+    ///     a rename, never in place. The same holds for a volume that goes
+    ///     away, and on iOS for a file whose data protection makes it
+    ///     unreadable while the device is locked.
     /// - Throws: ``XitDBError/memoryMapNeedsLock`` if the map is asked for
     ///   without the lock it needs, before the file is opened;
     ///   ``XitDBError/storageFailure(errno:)`` if the file cannot be
@@ -571,12 +605,12 @@ public final class FileStorage: WritableStorage {
         calls: FileCalls = FileCalls()
     ) throws(XitDBError) {
         if memoryMapped {
-            // The map needs the lock that keeps a second opener from
-            // cutting the file: an exclusive one, or a shared one where
-            // this opener cannot write and a writer that asks for its lock
-            // is kept out by it.
+            // With the map the lock says "I am the writer": two writers
+            // that read through maps end each other's process. A storage
+            // that only reads needs none: it reads through the map only
+            // what its engine has verified to be committed.
             switch (access, lock) {
-            case (_, .exclusive?), (.readOnly, .shared?): break
+            case (.readOnly, _), (_, .exclusive?): break
             default: throw .memoryMapNeedsLock
             }
         }
@@ -631,9 +665,7 @@ public final class FileStorage: WritableStorage {
     ///   trips the fence.
     ///
     /// With a memory map the snapshot also gets the segments that hold
-    /// those bytes, mapped now if they were not, and the storage's lease:
-    /// from now on the storage refuses to cut the file below `size` while
-    /// the snapshot, or a copy of it, is alive.
+    /// those bytes, mapped now if they were not.
     func snapshotSource(upTo size: UInt64, committedSizeAt position: UInt64) -> (
         descriptor: FileDescriptor, fence: SnapshotFence, map: FileMapView?
     ) {
@@ -643,9 +675,7 @@ public final class FileStorage: WritableStorage {
         if map != nil, size > 0 {
             let last = map!.view.segmentIndex(of: size - 1)
             for index in 0...last { _ = segment(at: index) }
-            var copy = map!.view
-            copy.lease = mapLease
-            view = copy
+            view = map!.view
         }
         return (descriptor, fence, view)
     }
@@ -787,12 +817,18 @@ public final class FileStorage: WritableStorage {
     /// file leaves it as it is; a larger one is still ``XitDBError/invalidLength``.
     ///
     /// - Parameter length: The new length in bytes.
+    /// A length below what a ``Snapshot`` of a database in this file reads
+    /// takes those bytes from under it: every read through the snapshot
+    /// throws ``XitDBError/snapshotOverwritten`` from then on. The library
+    /// itself never asks for that. On a storage that reads through a
+    /// memory map, do not ask for it while such a snapshot is being read on
+    /// another thread: a read under way then reaches a part of the file
+    /// that is gone, which is a signal that ends the process, and not an
+    /// error.
+    ///
     /// - Throws: ``XitDBError/invalidLength`` if `length` is larger than the
-    ///   file's length; ``XitDBError/snapshotStillMapped`` if the storage
-    ///   reads through a memory map and `length` is below what a snapshot
-    ///   that is still alive reads, in which case nothing is changed; or
-    ///   ``XitDBError/storageFailure(errno:)`` if the file cannot be
-    ///   shortened.
+    ///   file's length, or ``XitDBError/storageFailure(errno:)`` if the file
+    ///   cannot be shortened.
     public func truncate(to length: UInt64) throws(XitDBError) {
         guard length <= (try self.length) else { throw .invalidLength }
         try resize(to: length)
@@ -806,16 +842,16 @@ public final class FileStorage: WritableStorage {
     /// beyond the end of the file and is cut away, the gap before it has to
     /// become part of the file.
     ///
-    /// With a memory map, a cut below what a live snapshot reads is
-    /// refused: the snapshot's next read of a part that is gone would end
-    /// the process. Every cut the library makes comes through here.
+    /// A cut below what a snapshot reads trips the snapshots' fence first,
+    /// so that their reads refuse from then on: a snapshot that reads
+    /// through the map looks at the fence before it reads as well as
+    /// after. Every cut the library makes comes through here, and none of
+    /// its own goes below a snapshot.
     ///
-    /// - Throws: `snapshotStillMapped` for such a cut, before anything is
-    ///   changed, and what setting the file's length throws.
+    /// - Throws: What setting the file's length throws.
     func resize(to length: UInt64) throws(XitDBError) {
         if isReadOnly { return }
         if length < pinnedSize {
-            if map != nil, !isKnownUniquelyReferenced(&mapLease) { throw .snapshotStillMapped }
             invalidateSnapshots()
         }
         if map != nil {

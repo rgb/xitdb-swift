@@ -59,8 +59,7 @@ struct SnapshotStorage: ReadableStorage, Sendable {
         /// A file, read through its storage's descriptor, and the fence the
         /// storage trips before it rewrites the file below the committed
         /// size; and, where the storage reads through a memory map, the
-        /// segments that hold the commit's bytes, with the lease that
-        /// keeps the storage from cutting the file below them.
+        /// segments that hold the commit's bytes.
         case file(FileDescriptor, SnapshotFence, FileMapView?)
     }
 
@@ -106,6 +105,12 @@ struct SnapshotStorage: ReadableStorage, Sendable {
             return count
         case .file(let descriptor, let fence, let map):
             let bounded = range.lowerBound..<(range.lowerBound + count)
+            // Before a read through the map as well: bytes that the file
+            // was cut below are no longer there to read, and reaching for
+            // them is a signal, not an error. (A cut made while this read
+            // is under way is not seen here; the storage's `truncate(to:)`
+            // says so.)
+            if map != nil, fence.isTripped { throw .snapshotOverwritten }
             let read = try Self.readFile(
                 descriptor, map, into: &buffer, range: bounded, at: offset, limit: committedSize)
             // After the read, so that a read which saw the new contents
@@ -116,8 +121,7 @@ struct SnapshotStorage: ReadableStorage, Sendable {
     }
 
     /// Reads a part of a file's commit: through the map what is mapped,
-    /// bounded by the commit's size, which the storage does not cut the
-    /// file below while the snapshot lives; by a file call the rest.
+    /// bounded by the commit's size; by a file call the rest.
     ///
     /// - Returns: How many bytes came each way, the mapped ones first.
     static func readFile(

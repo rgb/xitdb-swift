@@ -376,6 +376,69 @@ import Testing
         #expect(try directory.contents() == Self.old)
     }
 
+    /// A writer that holds no lock leaves a file of a copy that did not end
+    /// where it finds it when it opens the database, and removes it at the
+    /// beginning of its own next replacement, which is its own word that it
+    /// is the writer. So without a lock a file of the database's size at
+    /// most can lie beside it from a process's death to the next full
+    /// copy; with the lock it is gone when the database is opened.
+    @Test(arguments: [Kind.file, .bufferedFile])
+    func aWriterWithoutTheLockRemovesALeftoverAtItsNextReplacement(kind: Kind) throws {
+        let directory = try Self.folder()
+        #expect(FileManager.default.createFile(atPath: Self.incoming(directory), contents: Data([1, 2, 3])))
+        let writer = try Self.writer(kind, at: directory.path(), lock: nil)
+        #expect(try [UInt8](Data(contentsOf: URL(fileURLWithPath: Self.incoming(directory)))) == [1, 2, 3])
+
+        try writer.beginReplacement()
+        // the file under that name is the writer's new one now, and empty
+        #expect(try [UInt8](Data(contentsOf: URL(fileURLWithPath: Self.incoming(directory)))) == [])
+        try Self.writeTheNewBytes(writer)
+        try writer.commitReplacement()
+        #expect(!Self.exists(Self.incoming(directory)))
+        #expect(try directory.contents() == Self.new)
+    }
+
+    /// What two writers without a lock do to each other's replacements. It
+    /// is a breach of "one writer" that the library cannot prevent where no
+    /// lock is taken, and this is what it costs here: the second writer
+    /// takes the first one's new file for one left behind, removes it and
+    /// makes its own under the same name. The first writer's replacement
+    /// then fails when it comes to give its file the name, because the
+    /// file under that name is not its own; it goes back to the old file,
+    /// which is whole, and leaves the second writer's file alone. The
+    /// second writer's goes through. One copy is lost, and the path never
+    /// leads to a file that is not a whole database.
+    @Test(arguments: [Kind.file, .bufferedFile])
+    func twoWritersWithoutALockLoseOneOfTheirReplacements(kind: Kind) throws {
+        let directory = try Self.folder()
+        let first = try Self.writer(kind, at: directory.path(), lock: nil)
+        let second = try Self.writer(kind, at: directory.path(), lock: nil)
+        let seconds = Array("the second writer's bytes".utf8)
+
+        try first.beginReplacement()
+        try Self.writeTheNewBytes(first)
+        // the second writer begins: the first one's new file is removed
+        try second.beginReplacement()
+        try writeBytes(second.storage, seconds, at: 0)
+        try second.storage.sync(.afterRootHeader)
+        #expect(try directory.contents() == Self.old, "the name is the old file's all the while")
+
+        // the first writer comes to its end, while the second is at work
+        #expect(throws: XitDBError.storageFailure(errno: ENOENT)) { try first.commitReplacement() }
+        #expect(try directory.contents() == Self.old, "nothing was given the name")
+        first.abandonReplacement()
+        #expect(Self.exists(Self.incoming(directory)), "the second writer's new file is left alone")
+        #expect(try Self.all(first.storage) == Self.old, "the first writer is on the old file, whole")
+
+        try second.commitReplacement()
+        #expect(try directory.contents() == seconds)
+        #expect(!Self.exists(Self.incoming(directory)))
+        #expect(try Self.all(second.storage) == seconds)
+        // the first writer still has the old file, which has no name now
+        #expect(try Self.all(first.storage) == Self.old)
+        #expect(try first.file.isStillAtPath == false)
+    }
+
     /// A path that is a symbolic link: the storage resolves it once, at
     /// opening, and a replacement gives the real file's name to the new
     /// file, so that the link stays a link and leads to the new file. A

@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import XitDB
@@ -93,6 +94,24 @@ struct CollectingSink: ByteSink {
     private struct ThrowingSource: ByteSource {
         mutating func read(into buffer: inout MutableSpan<UInt8>) throws -> Int {
             throw Refused()
+        }
+    }
+
+    /// A source that gives the first `giving` of its bytes and throws at
+    /// the read after them.
+    private struct GivesThenThrows: ByteSource {
+        let bytes: [UInt8]
+        let giving: Int
+        var given = 0
+
+        mutating func read(into buffer: inout MutableSpan<UInt8>) throws -> Int {
+            guard given < giving else { throw Refused() }
+            let count = min(buffer.count, giving - given)
+            for index in 0..<count {
+                buffer[index] = bytes[given + index]
+            }
+            given += count
+            return count
         }
     }
 
@@ -252,8 +271,9 @@ struct CollectingSink: ByteSink {
     /// replaced the replica by then: what is left has the source's header
     /// and no first commit, and nothing of a block of data that did not
     /// arrive whole. A whole one from a source puts it right, the same as
-    /// from an array.
-    @Test(arguments: StorageKind.allCases)
+    /// from an array. This is the copy in place; what a file is left with
+    /// is in `aSyncAtZeroThatFailsOnAFileLeavesTheOldDatabase`.
+    @Test(arguments: StorageKind.takingACopyInPlace)
     func aStreamingSyncAtZeroThatEndsShort(kind: StorageKind) throws {
         let (_, source) = try makeSource(kind)
         let committed = try source.committedSize
@@ -609,12 +629,120 @@ struct CollectingSink: ByteSink {
         #expect(try readCommitted(replica, from: 0, to: committed) == whole)
     }
 
+    /// On a file a sync at 0 is written into a new file, which is given
+    /// the old one's name when the copy's committed size is written and
+    /// synced. So whatever stops the copy, the replica is the database it
+    /// was: its own header, its own bytes to the last one, its own account
+    /// of itself, to which the source answers as before; nothing of the
+    /// copy is left beside it; and the error is the one the copy in place
+    /// raises for the same cause. A whole copy afterwards puts the source's
+    /// database there.
+    @Test(arguments: StorageKind.files)
+    func aSyncAtZeroThatFailsOnAFileLeavesTheOldDatabase(kind: StorageKind) throws {
+        let (_, source) = try makeSource(kind)
+        let committed = try source.committedSize
+        let whole = try readCommitted(source, from: 0, to: committed)
+        let replicaSubject = try StorageUnderTest(kind)
+        let replica = try makeDatabase(replicaSubject, fileID: 7)
+        let path = try #require(replicaSubject.path)
+        let before = try replicaSubject.stored()
+        let state = try replica.replicaState
+        #expect(before.count == Int(Self.newSize))
+
+        /// The replica is what it was before the copies that failed.
+        func theOldDatabase(_ comment: Comment) throws {
+            #expect(replica.header.fileID == 7, comment)
+            #expect(try replica.committedSize == Self.newSize, comment)
+            #expect(try replica.replicaState == state, comment)
+            #expect(try replicaSubject.storage.length == Self.newSize, comment)
+            #expect(try replicaSubject.stored() == before, comment)
+            #expect(!FileManager.default.fileExists(atPath: path + ".incoming"), comment)
+            // and it is a database that works: a snapshot, and a commit's
+            // worth of reading
+            #expect(try replica.snapshot().committedSize == Self.newSize, comment)
+            #expect(try readCommitted(replica, from: 0, to: Self.newSize) == before, comment)
+        }
+
+        // the source ends inside its header, or claims more than the
+        // buffer holds: refused before anything is begun
+        var inside = ArrayByteSource(Array(whole[0..<10]))
+        #expect(throws: XitDBError.endOfStream) {
+            try replica.applyReplicated(at: 0, from: &inside, count: Self.newSize)
+        }
+        try theOldDatabase("a source that ends inside its header")
+        var overstating = OverstatingSource()
+        #expect(throws: XitDBError.endOfStream) {
+            try replica.applyReplicated(at: 0, from: &overstating, count: committed)
+        }
+        try theOldDatabase("a source that claims more than the buffer holds")
+
+        // the source ends after its header, inside the data: the new file
+        // was begun, and is given up
+        var short = ArrayByteSource(Array(whole[0..<40]))
+        #expect(throws: XitDBError.endOfStream) {
+            try replica.applyReplicated(at: 0, from: &short, count: Self.newSize)
+        }
+        try theOldDatabase("a source that ends in the data")
+
+        // the source throws in the data
+        var throwing = GivesThenThrows(bytes: whole, giving: 40)
+        #expect(throws: XitDBError.callerError(Refused())) {
+            try replica.applyReplicated(at: 0, from: &throwing, count: committed)
+        }
+        try theOldDatabase("a source that throws in the data")
+
+        // bytes that do not end with a trailer, and a trailer that does
+        // not check: found when all of the copy is in the new file
+        #expect(throws: XitDBError.invalidDatabase) {
+            try replica.applyReplicated(at: 0, bytes: Array(whole.dropLast()))
+        }
+        try theOldDatabase("bytes a byte short")
+        var damaged = whole
+        damaged[damaged.count - 1] ^= 0xFF
+        #expect(throws: XitDBError.invalidDatabase) { try replica.applyReplicated(at: 0, bytes: damaged) }
+        try theOldDatabase("a trailer that does not check")
+        var damagedStream = ArrayByteSource(damaged)
+        #expect(throws: XitDBError.invalidDatabase) {
+            try replica.applyReplicated(at: 0, from: &damagedStream, count: committed)
+        }
+        try theOldDatabase("a trailer that does not check, from a source")
+
+        // not even a header, and a database of another hash size: refused
+        // before anything is begun, as in place
+        #expect(throws: XitDBError.invalidRange) { try replica.applyReplicated(at: 0, bytes: Array(whole[0..<10])) }
+        let other = try Database(
+            storage: MemoryStorage(), hashSize: 8, hashID: nil, fileID: 3, random: FixedRandom([1]))
+        #expect(throws: XitDBError.invalidHashSize) {
+            try replica.applyReplicated(at: 0, bytes: try readCommitted(other, from: 0, to: try other.committedSize))
+        }
+        try theOldDatabase("bytes that are refused before the copy begins")
+
+        // the replica goes on as the database it is: a transaction of its own
+        try replica.withTransaction { _ in }
+        #expect(replica.header.fileID == 7)
+
+        // a whole copy puts the source's database there, from a source and
+        // from an array
+        var all = ArrayByteSource(whole)
+        try replica.applyReplicated(at: 0, from: &all, count: committed)
+        #expect(replica.header.fileID == 6)
+        #expect(try replica.committedSize == committed)
+        #expect(try readCommitted(replica, from: 0, to: committed) == whole)
+        #expect(try replica.replicaState == (try source.replicaState))
+        #expect(try replicaSubject.stored() == whole)
+        #expect(!FileManager.default.fileExists(atPath: path + ".incoming"))
+        try replica.applyReplicated(at: 0, bytes: whole)
+        #expect(try replicaSubject.stored() == whole)
+    }
+
     /// A sync at 0 that fails once the replica has been emptied leaves a
     /// database without a first commit: its state is zero and zero,
     /// everything that needs the committed size raises `invalidDatabase`
     /// from then on, and a sync at 0 that succeeds puts it right. Bytes
     /// that are no database are refused before the replica is touched.
-    @Test(arguments: StorageKind.allCases)
+    /// This is the copy in place; what a file is left with is in
+    /// `aSyncAtZeroThatFailsOnAFileLeavesTheOldDatabase`.
+    @Test(arguments: StorageKind.takingACopyInPlace)
     func aFailedSyncAtZeroLeavesNoFirstCommit(kind: StorageKind) throws {
         let (_, source) = try makeSource(kind)
         let committed = try source.committedSize

@@ -16,15 +16,14 @@
 /// What a snapshot costs depends on the storage. In a ``MemoryStorage`` it
 /// shares the array, and the writer copies the array once at its next write
 /// while the snapshot lives. On a ``FileStorage`` or ``BufferedFileStorage``
-/// it shares the storage's descriptor, so the file stays open, and any lock
-/// held, until the storage and the last snapshot have gone; a replication
-/// from zero through the writer then rewrites the file under it, and its
-/// reads report ``XitDBError/snapshotOverwritten`` from then on. Where the
-/// storage reads through a memory map the snapshot reads through the same
-/// map, and that replication is refused while the snapshot lives, with
-/// ``XitDBError/snapshotStillMapped``: the snapshot goes on reading its
-/// commit. On a storage of the caller's own it is a copy of the committed
-/// bytes, made when the snapshot is taken.
+/// it shares the storage's descriptor, so the file stays open until the
+/// storage and the last snapshot have gone; a lock is the storage's alone
+/// and goes with it. A replication from zero through the writer brings the
+/// new database in a new file, and the snapshot goes on reading its commit
+/// in the old one, whose space is freed when the last snapshot of it is
+/// released. Where the storage reads through a memory map the snapshot
+/// reads through the same map. On a storage of the caller's own it is a
+/// copy of the committed bytes, made when the snapshot is taken.
 ///
 /// That report covers the one storage object the snapshot was taken
 /// through. A rewrite of the file through another storage object on the

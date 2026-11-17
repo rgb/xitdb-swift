@@ -222,39 +222,69 @@ extension Database {
     /// database with its own header. The header is read from the source
     /// and checked before anything is changed: bytes that are no database,
     /// or one of another hash size, leave this database as it was. Then
-    /// the storage is emptied, the incoming header is written with an empty
-    /// root header and synced, the root header that came with the bytes is
+    /// the copy is made: the incoming header is written with an empty root
+    /// header and synced, the root header that came with the bytes is
     /// passed over, the rest is written, and the committed size is set once
-    /// everything has arrived and ends with a trailer. This database's
-    /// ``header`` is the incoming one from the moment the incoming header
-    /// is in the storage, its format version included: a replica takes the
-    /// version of what it was sent. A sync that fails before that, as on a
-    /// storage opened read-only, leaves this database as it was. The bytes
-    /// between the database header and the committed size, which are
-    /// padding, or in a version 1 file a copy of the root slot that
-    /// nothing reads, are not taken from the source: the replica has zeros
-    /// there.
+    /// everything has arrived and ends with a trailer. The bytes between
+    /// the database header and the committed size, which are padding, or in
+    /// a version 1 file a copy of the root slot that nothing reads, are not
+    /// taken from the source: the replica has zeros there.
     ///
-    /// What a failure leaves is what the original leaves. The data is
-    /// written in blocks of 4096 bytes, counted from where it starts, each
-    /// once all of it has arrived, so a source that ends short or throws
-    /// leaves the blocks that arrived whole and nothing of the one it
-    /// stopped in. Otherwise than at 0, those blocks, or bytes that do not
-    /// end with a trailer, stay past the committed size, where the next
-    /// sync or transaction discards them. At 0, a failure after the storage
-    /// was emptied leaves a database without a first commit: the incoming
-    /// header, a committed size of zero, and the blocks that arrived whole.
-    /// With no whole block it is no longer than a new database, and is what
-    /// a creation that did not finish leaves, which
-    /// ``init(creating:hashSize:hashID:fileID:)`` creates over. On a
-    /// ``BufferedFileStorage`` the blocks may still be in the buffer, and
-    /// reach the file when the storage is flushed or synced: a process
-    /// that ends before that leaves the two headers in the file, and any
-    /// blocks the buffer had already written out. The database's
+    /// Where the copy is made depends on the storage.
+    ///
+    /// On a file, a ``FileStorage`` or a ``BufferedFileStorage``, it is
+    /// made in a new file beside the database's, named after it with
+    /// `.incoming` added, which is given the database's name once the
+    /// committed size is written and synced. Until then the file under the
+    /// name is the old database, for every other opener and for every
+    /// ``Snapshot`` taken before, which goes on reading the old file after
+    /// the copy too. A copy that fails, for any reason, leaves this
+    /// database the one it was, its ``header`` and its ``replicaState``
+    /// with it, and removes the new file; a process that ends in the
+    /// middle of a copy leaves the old database under the name, and a file
+    /// of the copy beside it, which the next copy removes, and which a
+    /// storage removes that opens the database for writing with
+    /// ``FileLock/exclusive``. The one failure after which this database is
+    /// the new one is the last step's: the sync of the directory after the
+    /// new file has been given the name. So a full copy onto a file needs
+    /// room for both files at once, and a directory in which the process
+    /// may make and rename a file; where it may not, the copy fails with
+    /// ``XitDBError/storageFailure(errno:)`` and nothing is changed. The
+    /// new file takes the old one's permission bits; on Linux its owner
+    /// and group too, as far as the system lets the process, and not its
+    /// extended attributes; on Apple platforms what the system's own
+    /// copying of a file's metadata carries, extended attributes and the
+    /// access control list among it, and the data protection class. A path
+    /// that is a symbolic link keeps its link: the file it leads to is the
+    /// one replaced.
+    ///
+    /// In a ``MemoryStorage`` and in a storage of the caller's own the copy
+    /// is made in place, as the original makes it: the storage is emptied
+    /// first, and this database's ``header`` is the incoming one from the
+    /// moment the incoming header is in the storage, its format version
+    /// included. What a failure leaves there is what the original leaves.
+    /// The data is written in blocks of 4096 bytes, counted from where it
+    /// starts, each once all of it has arrived, so a source that ends short
+    /// or throws leaves the blocks that arrived whole and nothing of the
+    /// one it stopped in: a database without a first commit, with the
+    /// incoming header, a committed size of zero, and those blocks. With no
+    /// whole block it is no longer than a new database, and is what a
+    /// creation that did not finish leaves, which
+    /// ``init(creating:hashSize:hashID:fileID:)`` creates over. Its
     /// ``replicaState`` is a size of zero and a checksum of zero, to which
     /// the source answers 0, so the next sync replaces it; everything else
     /// throws ``XitDBError/invalidDatabase`` until then, as
-    /// ``init(opening:hashSize:)`` says of such a database.
+    /// ``init(opening:hashSize:)`` says of such a database. A file can hold
+    /// such a database too, left by the original or by a version of this
+    /// library that copied onto files in place, and is opened, recovered
+    /// and replaced the same way.
+    ///
+    /// Otherwise than at 0, on every storage, a source that ends short or
+    /// throws leaves the blocks that arrived whole, or bytes that do not
+    /// end with a trailer, past the committed size, where the next sync or
+    /// transaction discards them. A sync that fails before anything is
+    /// written, as on a storage opened read-only, leaves this database as
+    /// it was.
     ///
     /// - Throws: ``XitDBError/invalidRange`` for a `start` that is neither
     ///   0 nor the committed size, and at 0 for a `count` too small to hold
@@ -267,13 +297,25 @@ extension Database {
     ///   header, which changes nothing; ``XitDBError/invalidVersion`` and
     ///   ``XitDBError/invalidHashSize`` at 0 for a database of a format
     ///   version this implementation does not read, or of another hash
-    ///   size, which change nothing; ``XitDBError/snapshotStillMapped`` at
-    ///   0 on a storage that reads through a memory map while a snapshot
-    ///   of this database is alive, which changes nothing: a sync from 0
-    ///   begins by emptying the storage, and there the storage refuses;
-    ///   the storage's errors; and the source's, carried as
-    ///   ``XitDBError/callerError(_:)``.
+    ///   size, which change nothing; the storage's errors; and the
+    ///   source's, carried as ``XitDBError/callerError(_:)``.
     public func applyReplicated<Source: ByteSource>(at start: UInt64, from source: inout Source, count: UInt64)
+        throws(XitDBError)
+    {
+        // What this database was, to go back to if a copy from 0 fails on
+        // a storage that writes the copy into a new file.
+        let before = header
+        do throws(XitDBError) {
+            try applyStreamed(at: start, from: &source, count: count)
+        } catch {
+            giveUpReplacement(backTo: before)
+            throw error
+        }
+    }
+
+    /// What ``applyReplicated(at:from:count:)`` does, without what it does
+    /// about a failure.
+    private func applyStreamed<Source: ByteSource>(at start: UInt64, from source: inout Source, count: UInt64)
         throws(XitDBError)
     {
         var position = start
@@ -347,6 +389,18 @@ extension Database {
     ///
     /// - Throws: What ``applyReplicated(at:from:count:)`` throws.
     public func applyReplicated(at start: UInt64, bytes: [UInt8]) throws(XitDBError) {
+        let before = header
+        do throws(XitDBError) {
+            try applyArray(at: start, bytes: bytes)
+        } catch {
+            giveUpReplacement(backTo: before)
+            throw error
+        }
+    }
+
+    /// What ``applyReplicated(at:bytes:)`` does, without what it does about
+    /// a failure.
+    private func applyArray(at start: UInt64, bytes: [UInt8]) throws(XitDBError) {
         var position = start
         var first = 0
         if start == 0 {
@@ -398,7 +452,11 @@ extension Database {
     /// was. (The original takes the header before it writes it, and would
     /// go on reading a sound file by another file's ID and version.)
     private func beginFullCopy(of incoming: DatabaseHeader, headerBytes: Span<UInt8>) throws(XitDBError) {
-        try storage.truncate(to: 0)
+        if storage.replacesItsFile {
+            try storage.beginReplacement()
+        } else {
+            try storage.truncate(to: 0)
+        }
         try storage.write(headerBytes, at: 0)
         become(incoming)
         try writeEmptyRootHeader()
@@ -438,6 +496,23 @@ extension Database {
         try storage.sync(.beforeRootHeader)
         try writeRootHeader()
         try storage.sync(.afterRootHeader)
+        // A copy from 0 onto a file was written into a new file, which is
+        // whole and on the disk as far as the storage's durability asks:
+        // now it is given the old file's name. Nothing where the copy was
+        // made in place.
+        if start == 0 { try storage.commitReplacement() }
+    }
+
+    /// Ends a copy from 0 that failed on a storage that writes the copy
+    /// into a new file: the storage goes back to the old file, which is as
+    /// it was, and this object to the database in it. Nothing where no
+    /// replacement is under way: where the copy was made in place, where it
+    /// failed before the new file was begun, and where it failed after the
+    /// new file had been given the name, which is then the database.
+    private func giveUpReplacement(backTo before: DatabaseHeader) {
+        guard storage.isReplacing else { return }
+        storage.abandonReplacement()
+        become(before)
     }
 
     /// The size of the chunks the streams move: large enough that a file is

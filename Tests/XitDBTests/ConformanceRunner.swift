@@ -92,13 +92,14 @@ final class ScriptStorage {
     }
 
     /// The file opened to be read through a memory map, in segments of one
-    /// page, with the lock the map needs.
+    /// page: with the exclusive lock where it can be written, which the
+    /// map needs of a writer, and with no lock where it is only read.
     private func mappedFile(readOnly: Bool) throws -> FileStorage {
         let path = try #require(directory).path()
         return try readThroughTheMap(
             try FileStorage(
                 path: path, access: readOnly ? .readOnly : .create, durability: .none,
-                lock: readOnly ? .shared : .exclusive, memoryMapped: true, segmentSize: Platform.pageSize), at: path)
+                lock: readOnly ? nil : .exclusive, memoryMapped: true, segmentSize: Platform.pageSize), at: path)
     }
 
     /// Ends the use of the storage, flushing it first as the Zig runner's
@@ -461,15 +462,6 @@ final class ScriptRunner {
     }
 
     /// A number: an integer, or `{"var": NAME}` with a name that holds one.
-    /// Whether an op is an `apply_replicated` that starts at 0, looked at
-    /// before it runs: its `start` may be a bound number, which is read
-    /// and not changed. An op whose `start` cannot be read is not one; the
-    /// run then says what is wrong with it.
-    func syncsFromZero(_ op: ScriptObject) -> Bool {
-        guard (try? op.string("op")) == "apply_replicated" else { return false }
-        return (try? number(op.fields["start"], "start")) == 0
-    }
-
     private func number(_ value: Any?, _ what: String) throws -> UInt64 {
         if let object = value as? [String: Any], object["var"] != nil {
             let reference = try ScriptObject(object, what)
@@ -706,7 +698,6 @@ final class ScriptRunner {
         case .byteWriterOpen: "ByteWriterOpen"
         case .snapshotOverwritten: "SnapshotOverwritten"
         // No script opens a storage with a memory map.
-        case .snapshotStillMapped: "SnapshotStillMapped"
         case .memoryMapNeedsLock: "MemoryMapNeedsLock"
         case .subCollectionSnapshot: "SubCollectionSnapshot"
         case .structuralSlot: "StructuralSlot"
@@ -1489,6 +1480,32 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
         }
     }()
 
+    /// The fixtures that pin what a full copy cut short leaves behind. The
+    /// original leaves a database without a first commit, and so does this
+    /// implementation where the copy is made in place: in memory, and in a
+    /// storage of the caller's own. On a file the copy is written into a
+    /// new file, and a copy cut short leaves the old database (decision
+    /// D55). So these scripts run where the copy is in place, which among
+    /// the kinds here is memory; what a copy cut short leaves on a file is
+    /// held by `FileCopyFailureTests` and `DyingWriterTests`.
+    ///
+    /// A LIST OF NAMES, WHICH IS TO GO: the conformance repository marks
+    /// these fixtures in its manifest (`cut_short_copy`). When the fixtures
+    /// are copied again from a commit that has the mark, this list goes and
+    /// ``runs(on:)`` asks the manifest.
+    static let pinningACopyCutShort: Set<String> = [
+        "replicate-copy-cut-short", "recover-without-first-commit--port", "replicate-failed-first-sync",
+    ]
+
+    /// Whether this script applies to a storage of `kind`.
+    func runs(on kind: StorageKind) -> Bool {
+        // The memory storage has no read-only mode, in Zig or here.
+        if kind == .memory, features.contains("read_only") { return false }
+        // Every kind but memory is a file, which a full copy replaces.
+        if kind != .memory, Self.pinningACopyCutShort.contains(name) { return false }
+        return true
+    }
+
     /// The engine error a failing script's description pins, if it pins
     /// one: "expected failure: unexpected error X" is Zig's message for an
     /// error X that its last op raised and nothing handled. Any other text
@@ -1577,9 +1594,7 @@ struct ConformanceFixture: CustomTestStringConvertible, Sendable {
         for (index, op) in ops.enumerated() {
             if let proof {
                 let opObject = try ScriptObject(op, "an op")
-                try proof.before(
-                    op: try opObject.string("op"), on: runner.currentName,
-                    syncsFromZero: runner.syncsFromZero(opObject))
+                try proof.before(op: try opObject.string("op"), on: runner.currentName)
             }
             runner.zeroSyncTarget = nil
             try runner.run(op, topLevel: true)

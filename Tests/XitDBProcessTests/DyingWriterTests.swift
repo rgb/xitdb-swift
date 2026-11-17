@@ -99,9 +99,9 @@ private struct Piecewise: ByteSource {
     }
 }
 
-/// A writer that dies in the middle of a full copy onto a file read through
-/// a memory map: a second process, which ends at once at a step it is
-/// given, with nothing flushed and nothing cleaned up. Whatever the step,
+/// A writer that dies in the middle of a full copy onto a file, on each of
+/// the four kinds of file storage: a second process, which ends at once at
+/// a step it is given, with nothing flushed and nothing cleaned up. Whatever the step,
 /// the path then holds a database that opens and is whole: the one that
 /// was there, until the new file has been given the path's name, and the
 /// copied one from then on. The next writer that opens the path finds that
@@ -126,11 +126,16 @@ private struct Piecewise: ByteSource {
         var testDescription: String { rawValue }
     }
 
-    /// The two file storages, by the tool's names for them.
+    /// The four kinds of file storage, by the tool's names for them.
     enum Kind: String, CaseIterable, CustomTestStringConvertible {
         case file, buffered
+        case mappedFile = "mapped-file"
+        case mappedBuffered = "mapped-buffered"
 
         var testDescription: String { rawValue }
+
+        var isMapped: Bool { self == .mappedFile || self == .mappedBuffered }
+        var isBuffered: Bool { self == .buffered || self == .mappedBuffered }
     }
 
     /// A database as a test starts from it or copies it: its committed
@@ -165,16 +170,17 @@ private struct Piecewise: ByteSource {
     static let old = Result { try known(entries: 40, mark: 1) }
     static let new = Result { try known(entries: 300, mark: 2) }
 
-    /// A writer's storage of `kind` on the file at `path`, reading through
-    /// a memory map in segments of one page.
+    /// A writer's storage of `kind` on the file at `path`, with the
+    /// exclusive lock; on the mapped kinds reading through a memory map in
+    /// segments of one page.
     private static func writer(
         _ kind: Kind, at path: String, calls: FileCalls = FileCalls()
     ) throws -> any WritableStorage {
         let file = try FileStorage(
-            path: path, access: .readWrite, lock: .exclusive, memoryMapped: true, segmentSize: Int(getpagesize()),
-            calls: calls)
-        guard file.isMemoryMapped else { throw NotReadThroughTheMap(path: path) }
-        return kind == .buffered ? BufferedFileStorage(file) : file
+            path: path, access: .readWrite, lock: .exclusive, memoryMapped: kind.isMapped,
+            segmentSize: Int(getpagesize()), calls: calls)
+        if kind.isMapped, !file.isMemoryMapped { throw NotReadThroughTheMap(path: path) }
+        return kind.isBuffered ? BufferedFileStorage(file) : file
     }
 
     /// How many writes to the file a whole copy of `new` onto `old` makes
@@ -236,32 +242,15 @@ private struct Piecewise: ByteSource {
             let words = String(decoding: said.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
             writer.waitUntilExit()
 
-            // A copy in place makes no new file and renames nothing, so the
-            // writer runs past three of the four steps to the copy's end;
-            // and where it does die, in the middle, it has emptied the old
-            // file first. Known until a mapped storage copies into a new
-            // file: piece (c) of brief 33, which takes these markers away.
-            withKnownIssue("a full copy on a mapped storage is still in place; piece (c)") {
-                #expect(writer.terminationReason == .exit, "\(words)")
-                #expect(writer.terminationStatus == 86, "the writer was to die at \(step): \(words)")
-            } when: {
-                step != .midCopy
-            }
+            #expect(writer.terminationReason == .exit, "\(words)")
+            #expect(writer.terminationStatus == 86, "the writer was to die at \(step): \(words)")
 
             let expected = step == .afterRename ? new : old
-            try withKnownIssue("a full copy on a mapped storage is still in place; piece (c)") {
-                let reader = try Database(
-                    opening: try FileStorage(path: folder.path(), access: .readOnly), hashSize: 20)
-                try Self.hold(reader, to: expected, "a reader after \(step)")
-            } when: {
-                step != .afterRename
-            }
-            try withKnownIssue("a full copy on a mapped storage is still in place; piece (c)") {
-                let next = try Database(opening: try Self.writer(kind, at: folder.path()), hashSize: 20)
-                try Self.hold(next, to: expected, "the next writer after \(step)")
-            } when: {
-                step != .afterRename
-            }
+            let reader = try Database(
+                opening: try FileStorage(path: folder.path(), access: .readOnly), hashSize: 20)
+            try Self.hold(reader, to: expected, "a reader after \(step)")
+            let next = try Database(opening: try Self.writer(kind, at: folder.path()), hashSize: 20)
+            try Self.hold(next, to: expected, "the next writer after \(step)")
             #expect(!FileManager.default.fileExists(atPath: folder.path() + ".incoming"), "after \(step)")
         #endif
     }

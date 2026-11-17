@@ -147,6 +147,58 @@ enum BuiltInStorage {
         }
     }
 
+    // MARK: A full copy into a new file
+
+    /// Whether a full copy onto this storage is written into a new file,
+    /// which is given the old file's name when it is whole: every file
+    /// storage does that. Memory and a storage of the caller's own take the
+    /// copy in place, as the original does.
+    var replacesItsFile: Bool {
+        switch self {
+        case .file, .bufferedFile: true
+        case .memory, .custom, .snapshot: false
+        }
+    }
+
+    /// Whether a replacement has begun on this storage and not ended.
+    var isReplacing: Bool {
+        switch self {
+        case .file(let storage): storage.isReplacing
+        case .bufferedFile(let storage): storage.isReplacing
+        case .memory, .custom, .snapshot: false
+        }
+    }
+
+    /// ``FileStorage/beginReplacement()`` on a file storage. Nothing on the
+    /// others, which is never asked of them.
+    func beginReplacement() throws(XitDBError) {
+        switch self {
+        case .file(let storage): try storage.beginReplacement()
+        case .bufferedFile(let storage): try storage.beginReplacement()
+        case .memory, .custom, .snapshot: break
+        }
+    }
+
+    /// ``FileStorage/commitReplacement()`` on a file storage: nothing where
+    /// no replacement is under way, and nothing on the others.
+    func commitReplacement() throws(XitDBError) {
+        switch self {
+        case .file(let storage): try storage.commitReplacement()
+        case .bufferedFile(let storage): try storage.commitReplacement()
+        case .memory, .custom, .snapshot: break
+        }
+    }
+
+    /// ``FileStorage/abandonReplacement()`` on a file storage: nothing
+    /// where no replacement is under way, and nothing on the others.
+    func abandonReplacement() {
+        switch self {
+        case .file(let storage): storage.abandonReplacement()
+        case .bufferedFile(let storage): storage.abandonReplacement()
+        case .memory, .custom, .snapshot: break
+        }
+    }
+
     /// The file storage that takes its memory map's limit from the engine,
     /// if this is one: a file storage that only reads and reads through a
     /// map (``FileStorage/committedBytesVerified(upTo:)``). The other kinds

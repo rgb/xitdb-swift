@@ -413,34 +413,99 @@ final class WrappedStorage: WritableStorage {
 
     // MARK: Files
 
-    @Test(arguments: [StorageKind.file, .bufferedFile, .bufferedFileSmallWindow])
-    func aSyncFromZeroOnAFileInvalidatesTheSnapshotsTakenBefore(kind: StorageKind) throws {
+    /// A sync from zero onto a file brings the new database in a new file,
+    /// so a snapshot taken before it reads the old file on: after a sync
+    /// that failed, which leaves the old database, and after one that went
+    /// through, which leaves the old file to the snapshots that have it
+    /// open. Nothing of the library's own tells a snapshot of a file that
+    /// it was overwritten.
+    @Test(arguments: StorageKind.files)
+    func aSnapshotTakenBeforeASyncFromZeroReadsTheOldFileOn(kind: StorageKind) throws {
         let fixture = try Fixture(kind)
         try fixture.put("a", 1)
         let snapshot = try fixture.database.snapshot()
         let map = try HashMap<ReadOnly>(snapshot.rootCursor)
         #expect(try map.cursor(forHash: sha1("a").bytes)?.readUInt64() == 1)
+        let first = try readBytes(snapshot.storage, at: 0, count: 8)
 
         // Another database's bytes, replicated from zero over this one.
         let other = try Database(creating: MemoryStorage(), hashSize: 20)
         try HashMap<ReadWrite>(other.rootCursor).put(.uint(7), forHash: sha1("b").bytes)
         let replica = try other.readCommitted(from: 0, to: try other.committedSize)
+
+        // a copy that fails: the database is the old one, and so is what
+        // the snapshot reads
+        #expect(throws: XitDBError.invalidDatabase) {
+            try fixture.database.applyReplicated(at: 0, bytes: Array(replica.dropLast()))
+        }
+        #expect(try fixture.value("a") == 1)
+        #expect(try Self.value("a", in: snapshot) == 1)
+        #expect(try map.cursor(forHash: sha1("a").bytes)?.readUInt64() == 1)
+
+        // a copy that goes through: the database is the new one, and the
+        // snapshot reads the old one on, a held collection's reads too
         try fixture.database.applyReplicated(at: 0, bytes: replica)
         #expect(try fixture.value("b") == 7)
-
-        // Every read through the old snapshot now refuses, a held collection's too.
-        #expect(throws: XitDBError.snapshotOverwritten) { try Self.value("a", in: snapshot) }
-        #expect(throws: XitDBError.snapshotOverwritten) { try map.cursor(forHash: sha1("a").bytes) }
-        #expect(throws: XitDBError.snapshotOverwritten) {
-            try readBytes(snapshot.storage, at: 0, count: 8)
-        }
+        #expect(try Self.value("a", in: snapshot) == 1)
+        #expect(try map.cursor(forHash: sha1("a").bytes)?.readUInt64() == 1)
+        #expect(try readBytes(snapshot.storage, at: 0, count: 8) == first)
 
         // A snapshot taken after the sync reads the new database, and a
-        // further sync invalidates it in turn and not the first one twice.
+        // further sync leaves both snapshots what they were.
         let after = try fixture.database.snapshot()
         #expect(try Self.value("b", in: after) == 7)
         try fixture.database.applyReplicated(at: 0, bytes: replica)
-        #expect(throws: XitDBError.snapshotOverwritten) { try Self.value("b", in: after) }
+        #expect(try Self.value("b", in: after) == 7)
+        #expect(try Self.value("a", in: snapshot) == 1)
+    }
+
+    /// A source that asks the replica for a snapshot at each of its reads
+    /// and keeps what the asking threw.
+    private struct AskingSource: ByteSource {
+        let bytes: [UInt8]
+        let database: Database
+        var given = 0
+        var answers: [XitDBError?] = []
+
+        mutating func read(into buffer: inout MutableSpan<UInt8>) throws -> Int {
+            do {
+                _ = try database.snapshot()
+                answers.append(nil)
+            } catch {
+                answers.append(error)
+            }
+            let count = min(500, buffer.count, bytes.count - given)
+            for index in 0..<count {
+                buffer[index] = bytes[given + index]
+            }
+            given += count
+            return count
+        }
+    }
+
+    /// A snapshot asked for in the middle of a copy from zero, from inside
+    /// the source's own read, is refused on every kind of storage: the
+    /// database is then one without a first commit, in the storage that is
+    /// being emptied and filled or in the new file. Before the copy's
+    /// header has been taken the database is still the old one and gives a
+    /// snapshot; after the copy it is the new one.
+    @Test(arguments: storageKinds)
+    func aSnapshotAskedForInTheMiddleOfACopyFromZeroIsRefused(kind: StorageKind) throws {
+        let fixture = try Fixture(kind)
+        try fixture.put("a", 1)
+        let other = try Database(creating: MemoryStorage(), hashSize: 20)
+        try HashMap<ReadWrite>(other.rootCursor).put(
+            .bytes(Array(repeating: 0xCD, count: 3000)), forHash: sha1("b").bytes)
+        let replica = try other.readCommitted(from: 0, to: try other.committedSize)
+
+        var source = AskingSource(bytes: replica, database: fixture.database)
+        try fixture.database.applyReplicated(at: 0, from: &source, count: UInt64(replica.count))
+        #expect(source.answers.count >= 4, "\(source.answers)")
+        // the first read gives the header: the copy has not begun
+        #expect(source.answers.first == .some(nil))
+        // every read after it is in the middle of the copy
+        #expect(source.answers.dropFirst().allSatisfy { $0 == .invalidDatabase }, "\(source.answers)")
+        _ = try fixture.database.snapshot()
     }
 
     @Test(arguments: [StorageKind.file, .bufferedFile])

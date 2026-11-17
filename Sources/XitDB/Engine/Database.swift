@@ -735,6 +735,7 @@ public final class Database {
         let committedSize = try reader.committedSize
         if try storage.length > committedSize {
             try storage.truncate(to: committedSize)
+            reader.lengthChanged()
         }
     }
 

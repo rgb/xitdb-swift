@@ -64,13 +64,15 @@ new snapshot's root cursor is at that collection. It throws because, for a curso
 snapshot of that database, which reads the root header. A cursor at work that the running transaction has not committed yet
 is refused with ``XitDBError/staleCursor``: take the snapshot after the commit.
 
-A snapshot of a database in a file reads the file through the storage's own descriptor, so the file stays open, and any lock
-held, until the storage and the last snapshot have gone. If a replication sync at 0 through that database rewrites the file,
-every read through the snapshot from then on, one under way included, throws ``XitDBError/snapshotOverwritten``: take a new
-one. A snapshot of a database in memory keeps its commit's bytes and reads on. Only a rewrite through the storage the snapshot
-was taken from is seen. One through another storage opened on the same path, or by another process, is not: the snapshot then
-reads the new file at the old offsets, and the checks on what it reads report damage, or at worst give a wrong value. A file
-lock, when the writer asked for one, keeps out a second opener that asks for the lock too, while the snapshot lives. See <doc:Replication>, and
+A snapshot of a database in a file reads the file through the storage's own descriptor, so the file stays open until the
+storage and the last snapshot have gone. A file lock is the storage's alone: it is let go when the storage goes, whatever
+snapshots are left. A replication sync at 0 through that database brings the new database in a new file, which takes the
+old one's name, and the snapshot goes on reading its commit in the old file until it is released. A snapshot of a database in
+memory keeps its commit's bytes and reads on as well. What the library does not do of itself, a caller can: a write or a
+truncation below the snapshot's committed size through the storage the snapshot was taken from makes every read through the
+snapshot throw ``XitDBError/snapshotOverwritten`` from then on. Only such a rewrite is seen. One through another storage
+opened on the same path, or by another process, is not: the snapshot then reads the changed file at the old offsets, and the
+checks on what it reads report damage, or at worst give a wrong value. See <doc:Replication>, and
 <doc:Compaction> for a file replaced while a snapshot reads it.
 
 In memory, a snapshot shares the database's array, and the first write while it lives copies the whole array. So let one

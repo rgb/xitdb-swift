@@ -249,12 +249,13 @@ public final class BufferedFileStorage: WritableStorage {
     /// ``XitDBError/invalidLength``.
     ///
     /// - Parameter length: The new length in bytes.
+    /// A length below what a ``Snapshot`` reads takes those bytes from
+    /// under it, as ``FileStorage/truncate(to:)`` says, with what that
+    /// means where the file is read through a memory map.
+    ///
     /// - Throws: ``XitDBError/invalidLength`` if `length` is larger than the
-    ///   storage's length; ``XitDBError/snapshotStillMapped`` if the file
-    ///   is read through a memory map and `length` is below what a
-    ///   snapshot that is still alive reads, in which case the file is as
-    ///   it was; or ``XitDBError/storageFailure(errno:)`` if the file
-    ///   cannot be shortened.
+    ///   storage's length, or ``XitDBError/storageFailure(errno:)`` if the
+    ///   file cannot be shortened.
     public func truncate(to length: UInt64) throws(XitDBError) {
         guard length <= (try self.length) else { throw .invalidLength }
         let bufferSize = UInt64(memory.count)

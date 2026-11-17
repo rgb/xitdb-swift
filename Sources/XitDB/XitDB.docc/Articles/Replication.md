@@ -115,10 +115,10 @@ Leave the file ID to be chosen.
 That last case is why you should only change a replica with ``Database/applyReplicated(at:from:count:)``. Written to directly, it
 no longer matches the source, and the next sync replaces it.
 
-A sync at 0 rewrites a replica's file under any ``Snapshot`` of it. From then on every read through such a snapshot, one under
-way included, throws ``XitDBError/snapshotOverwritten``: take a new snapshot after the sync. A snapshot of a replica in memory
-keeps the old bytes and reads on. A snapshot is told only of a sync through the storage it was taken from: see
-<doc:ConcurrencyAndSnapshots>.
+A sync at 0 onto a file does not rewrite the file. The copy is written into a new file, which is given the replica's name when
+it is complete. A ``Snapshot`` taken before the sync has the old file open and goes on reading its commit, after the sync
+too, until it is released; the old file's space is freed then. A snapshot of a replica in memory keeps the old bytes and reads
+on as well. Take a new snapshot after the sync to read what it brought: see <doc:ConcurrencyAndSnapshots>.
 
 A source can be a ``SnapshotDatabase``, made over a snapshot, so that another task serves the sync while the writer goes on. It serves the whole commit's bytes, even for a snapshot of one collection, since the file is the unit of
 replication.
@@ -137,9 +137,22 @@ let bytes = try source.readCommitted(from: start, to: end)
 var half = ArrayByteSource(Array(bytes[..<(bytes.count / 2)]))
 ```
 
-A sync at 0 is the exception. It reads and checks the incoming database header before it touches the replica, so a count too
+A sync at 0 is different. It reads and checks the incoming database header before it touches the replica, so a count too
 small for the headers, bytes that do not start with a database header, a format version this package does not read, another
-hash size, and a source that ends or throws within those first 20 bytes leave the replica as it was. After that the replica
+hash size, and a source that ends or throws within those first 20 bytes leave the replica as it was. What a copy that fails
+after that leaves depends on where the replica is.
+
+On a file, a ``FileStorage`` or a ``BufferedFileStorage``, the copy is written into a new file beside the replica's, named
+after it with `.incoming` added, and the new file is given the replica's name only when the copy's committed size has been
+written and synced. A copy that fails, or a process that ends in the middle of one, leaves the replica the database it was:
+its last commit, and its own ``Database/replicaState``, to which the source answers as before. The new file is removed when
+the copy fails. One left by a process that ended is removed by the next full sync, and when the replica is next opened for
+writing with ``FileLock/exclusive``; it is the library's own file, no larger than the database, and safe to delete while no
+process has the replica open for writing. A full sync onto a file therefore needs room for the old file and the new one
+together, and a directory in which the process may create and rename a file: where it may not, the sync fails with
+``XitDBError/storageFailure(errno:)`` and the replica is as it was.
+
+In memory, and in a storage of your own, the copy is made in place, as the original makes it. The replica
 is emptied, so a copy that fails then leaves a database without a first commit: the incoming header, a committed size of
 zero, and what of the data was written. A copy from an array writes all of its bytes before it checks the trailer, so bytes
 cut short are all there. A copy from a ``ByteSource`` writes the data in blocks of 4,096 bytes, counted from the end of the
@@ -147,13 +160,13 @@ root header, each once all of it has arrived, as the original does, so it leaves
 that stops within the first 4,096 bytes after the headers leaves the headers alone. The replica's
 ``Database/replicaState`` is a size of zero and a checksum of zero, to which the source answers 0, so the next sync replaces
 it; everything else on it throws ``XitDBError/invalidDatabase`` until then. What was written may still hold the source's
-earlier commits whole, and ``Database/recover(_:)`` keeps the last of them, after which the source sends only the rest: see <doc:Recovery>. Opened
-again, the file opens if it is longer than a new database; one no longer than that, such as the headers alone, is taken for
-a creation that did not finish, which opening refuses and creating builds over (see <doc:Storage>). On a
-``BufferedFileStorage``, the blocks written after the headers wait in the storage's buffer, so unless the storage is flushed
-before it goes away, the file keeps only the headers and what the buffer had already written out.
+earlier commits whole, and ``Database/recover(_:)`` keeps the last of them, after which the source sends only the rest: see <doc:Recovery>. A
+file can hold such a database too, written by the original or by a version of this package up to 0.5.1, which copied onto
+files in place. Opened, such a file opens if it is longer than a new database; one no longer than that, such as the headers
+alone, is taken for a creation that did not finish, which opening refuses and creating builds over (see <doc:Storage>).
 
-If a replica must not be left without a first commit, check for a full sync, and write the copy to a new file, which takes the
+What a file storage does for a full sync can be done by hand, for a replica in a storage of your own that must not be left
+without a first commit, or to keep the old file: check for a full sync, and write the copy to a new file, which takes the
 place of the old one only when it is complete:
 
 ```swift

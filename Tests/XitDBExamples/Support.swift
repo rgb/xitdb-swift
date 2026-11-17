@@ -23,6 +23,11 @@ struct ScratchDirectory {
         url.appendingPathComponent(name).path
     }
 
+    /// Whether a file of that name is in the folder.
+    func has(_ name: String) -> Bool {
+        FileManager.default.fileExists(atPath: path(name))
+    }
+
     func remove() {
         try? FileManager.default.removeItem(at: url)
     }

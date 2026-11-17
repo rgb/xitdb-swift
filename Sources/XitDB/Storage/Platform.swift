@@ -39,6 +39,9 @@ enum Platform {
     /// opened for reading only.
     static let notOpenForWriting: Int32 = EBADF
 
+    /// The error number for a name that leads to no file.
+    static let noSuchFile: Int32 = ENOENT
+
     /// The largest offset a byte of a file can end at.
     static let maximumFileOffset = UInt64(off_t.max)
 

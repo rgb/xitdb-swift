@@ -326,6 +326,16 @@ import Testing
     /// 0 replaces it. `recover`, on a copy of the same bytes, cuts back to
     /// the last commit of the source that those blocks hold whole, and the
     /// replica goes on from there.
+    ///
+    /// That is the copy in place, which memory and a storage of the
+    /// caller's own take. A file's copy goes into a new file, and one that
+    /// ends early leaves the old database; but a file can still hold a
+    /// copy that did not finish, left by the original or by a version of
+    /// this library from before a file was replaced. So on the file kinds
+    /// the bytes that the failed sync leaves in memory are put into the
+    /// file, and everything after "in the process that made it" is held
+    /// there too: such a file opens, recovers and is replaced as before,
+    /// through a memory map as well.
     @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
     func aFullCopyThatDidNotFinishOpensAndIsReplaced(kind: StorageKind, version: FormatVersion) throws {
         let (sourceStorage, source) = try Self.makeLargeSource(version)
@@ -336,7 +346,9 @@ import Testing
         let data = Int(source.header.dataStart)
 
         let subject = try StorageUnderTest(kind)
-        let replica = try Self.makeReplica(subject.storage)
+        let inPlace = StorageKind.takingACopyInPlace.contains(kind)
+        let memory = MemoryStorage()
+        let replica = try Self.makeReplica(inPlace ? subject.storage : memory)
         // the connection ends seven bytes into the source's last commit,
         // inside the second block of the data: the first block arrived
         // whole, and holds the source's commits up to the first moment
@@ -347,6 +359,12 @@ import Testing
         var short = ArrayByteSource(Array(whole[..<arrived]))
         #expect(throws: XitDBError.endOfStream) {
             try replica.applyReplicated(at: 0, from: &short, count: committed)
+        }
+
+        if !inPlace {
+            // what the copy in place left, as a file holds it that was
+            // written by a writer that copies in place
+            try writeBytes(subject.storage, memory.bytes, at: 0)
         }
 
         // what is left: the source's header, zeros up to the data, and the
@@ -386,7 +404,7 @@ import Testing
             #expect(target.bytes.isEmpty, comment)
             #expect(try FormatVersionTests.stored(subject) == left, comment)
         }
-        try expectNoFirstCommit(replica, "in the process of the failed sync")
+        if inPlace { try expectNoFirstCommit(replica, "in the process of the failed sync") }
 
         let reopened = try Database(opening: subject.storage, hashSize: 20)
         try expectNoFirstCommit(reopened, "opened again")
@@ -456,8 +474,9 @@ import Testing
     /// before the one it stopped in and nothing of that one, whether it
     /// gave its bytes whole, one at a time, or in pieces that do not fit
     /// the blocks; and the last block, which is as long as what remains,
-    /// is written when the last byte comes.
-    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    /// is written when the last byte comes. This is the copy in place: on a
+    /// file nothing of a copy that stopped is kept.
+    @Test(arguments: StorageKind.takingACopyInPlace, FormatVersion.allCases)
     func aCopyKeepsTheBlocksThatArrivedWhole(kind: StorageKind, version: FormatVersion) throws {
         let (sourceStorage, source) = try Self.makeLargeSource(version)
         let committed = try source.committedSize
@@ -614,8 +633,10 @@ import Testing
     /// ends or throws inside the root header or the data, and bytes that
     /// do not end with a trailer, or end with a trailer of another file.
     /// The incoming root header's size is not read: bytes that stop short
-    /// of it are told by their missing trailer.
-    @Test(arguments: StorageKind.allCases, FormatVersion.allCases)
+    /// of it are told by their missing trailer. This is the copy in place;
+    /// on a file each of these leaves the old database
+    /// (`ReplicationEdgeTests`, `FileCopyFailureTests`).
+    @Test(arguments: StorageKind.takingACopyInPlace, FormatVersion.allCases)
     func aCopyThatFailsPastTheHeaderLeavesNoFirstCommit(kind: StorageKind, version: FormatVersion) throws {
         let (_, source) = try Self.makeSource(version)
         let committed = try source.committedSize
