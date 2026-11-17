@@ -103,10 +103,13 @@ public enum FileLock: Sendable {
 /// fraction of their rate. ``memoryMap`` tells the system that the file is
 /// read in no order, which keeps it from that; the price is a read in file
 /// order while the file's pages are not in memory, a walk of a large
-/// collection or a compaction, which then brings the file in a page at a
-/// time and takes several times as long. ``memoryMapReadAhead`` leaves the
-/// system to read ahead: right for a database that fits in memory and is
-/// walked, and wrong for one that does not fit.
+/// collection, which then brings the file in a page at a time and takes
+/// several times as long. A compaction does not pay that price: for its
+/// length the storage reads through a second mapping, which the system
+/// reads ahead in, and its own map stays as it was told for the readers
+/// beside it. ``memoryMapReadAhead`` leaves the system to read ahead:
+/// right for a database that fits in memory and is walked, and wrong for
+/// one that does not fit.
 public enum FileReading: Sendable, Hashable {
     /// By file calls: every read is a system call. The default, and the
     /// way that asks nothing of the file or of its volume.
@@ -295,6 +298,11 @@ public final class FileStorage: WritableStorage {
     /// The memory map the storage reads through: there when it was asked
     /// for and the file is on a volume that is mapped.
     private var map: FileMap?
+
+    /// A second view of the file, which the storage reads through in place
+    /// of its own while a compaction of a database in it runs
+    /// (``beginCompactionReads()``); `nil` at every other time.
+    private(set) var compactionView: FileMapView?
 
     /// The storage's side of its memory map.
     private struct FileMap {
@@ -727,6 +735,64 @@ public final class FileStorage: WritableStorage {
         return (descriptor, fence, view)
     }
 
+    /// Begins a compaction's reads: from now until
+    /// ``endCompactionReads()`` the storage reads through a second view of
+    /// its file, whose segments are mapped new and told nothing, so that
+    /// the system reads ahead in them. It does so only where its own map is
+    /// told that the file is read in no order (``FileReading/memoryMap``):
+    /// a compaction follows pointers from the root, which for data written
+    /// in order is file order, and through such a map it brings a file
+    /// that is not in memory in a page at a time.
+    ///
+    /// Nothing else changes. Every read is the storage's own, by the same
+    /// limit and with the same file calls for what lies past it, so a
+    /// compaction reads exactly what every other read of the database
+    /// reads, a damaged file's bytes and bytes past the last commit
+    /// included. The storage's own view is not touched: its segments stay
+    /// mapped and told as they were, and a snapshot, which holds a copy of
+    /// that view, reads through it all along and is not read ahead of.
+    /// Advice belongs to a mapping.
+    ///
+    /// The second view holds the bytes below the storage's limit as it is
+    /// now, in whole segments, so the file takes that length in address
+    /// space a second time until the reads end. A segment the system
+    /// refuses is left out, and no further one is asked for: the bytes
+    /// there are read by file calls, which is slower and no less right.
+    ///
+    /// Whatever reads through the storage while the second view is in
+    /// place reads the same bytes through it. Only code of the thread that
+    /// compacts can: the compaction itself, and an offset map of the
+    /// caller's if it reads this storage.
+    ///
+    /// - Returns: Whether a second view is now in place.
+    ///   ``endCompactionReads()`` is to be called if it is, and only then:
+    ///   `false` where the storage has no map, has one that is left to the
+    ///   system's reading ahead already, has nothing to read through it
+    ///   yet, or is reading through a second view as it is.
+    func beginCompactionReads() -> Bool {
+        guard map != nil, requestedReading == .memoryMap, compactionView == nil else { return false }
+        let limit = map!.limit
+        guard limit > Self.headerBytes else { return false }
+        var view = FileMapView(segmentSize: map!.view.segmentSize)
+        for index in 0...view.segmentIndex(of: limit - 1) {
+            guard
+                let segment = MappedSegment(
+                    descriptor: descriptor.rawValue, offset: UInt64(index) * UInt64(view.segmentSize),
+                    length: view.segmentSize, map: calls.map, advise: { (_: UInt, _: Int) in })
+            else { break }
+            view.segments.append(segment)
+        }
+        compactionView = view
+        return true
+    }
+
+    /// Ends a compaction's reads: the storage reads through its own view
+    /// again, and the second view's segments are unmapped, which are the
+    /// storage's alone.
+    func endCompactionReads() {
+        compactionView = nil
+    }
+
     /// The segment at `index`, mapped now if it was not: `nil` if the
     /// system refuses it, after which no further segment is asked for.
     ///
@@ -766,6 +832,12 @@ public final class FileStorage: WritableStorage {
         // another, and a reader that takes it by a file call takes it
         // whole.
         guard offset >= Self.headerBytes, offset < limit, range.count > 0 else { return 0 }
+        // While a compaction runs, through its view, by the same limit.
+        // Nothing is mapped on demand there: what that view lacks is left
+        // to the file call, as a segment the system refused is.
+        if compactionView != nil {
+            return compactionView!.read(into: &buffer, range: range, at: offset, limit: limit)
+        }
         let end = offset + min(UInt64(range.count), limit - offset)
         let first = map!.view.segmentIndex(of: offset)
         let last = map!.view.segmentIndex(of: end - 1)

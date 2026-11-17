@@ -532,6 +532,328 @@ private struct RolledBack: Error {}
         #expect(reads.afterTheHeaders.isEmpty)
     }
 
+    // MARK: A compaction's reads
+
+    /// What a mapped storage's calls did while a test watched.
+    private final class Watched {
+        var maps = 0
+        var told = 0
+        var reads = 0
+        /// The mapping calls that succeed; the ones after them are refused.
+        var grantedMaps: Int?
+    }
+
+    /// Watches the mappings a file storage makes, what it tells the system
+    /// of them and its file reads, from now on.
+    private static func watch(_ file: FileStorage) -> Watched {
+        let watched = Watched()
+        file.calls.advise = { (address: UInt, length: Int) in
+            watched.told += 1
+            Platform.adviseRandom(address: address, length: length)
+        }
+        file.calls.map = { (descriptor: Int32, offset: UInt64, length: Int) in
+            watched.maps += 1
+            if let granted = watched.grantedMaps, watched.maps > granted { return (0, ENOMEM) }
+            return Platform.mapFile(descriptor, offset: offset, length: length)
+        }
+        file.calls.read = {
+            (descriptor: Int32, buffer: inout MutableSpan<UInt8>, range: Range<Int>, offset: UInt64)
+                throws(XitDBError) -> Int in
+            watched.reads += 1
+            return try Platform.readFile(descriptor, into: &buffer, range: range, at: offset)
+        }
+        return watched
+    }
+
+    /// An offset map in memory that calls a test back once, when the
+    /// compaction records its first copy: the one moment at which a test
+    /// can look at the source's storage while a compaction runs.
+    private struct HookedOffsetMap: OffsetMap {
+        var inner = MemoryOffsetMap()
+        var puts = 0
+        let atTheFirstCopy: () throws -> Void
+
+        mutating func reset() throws { inner.reset() }
+        mutating func get(_ sourceOffset: UInt64) throws -> UInt64? { inner.get(sourceOffset) }
+        mutating func put(_ sourceOffset: UInt64, _ targetOffset: UInt64) throws {
+            puts += 1
+            if puts == 1 { try atTheFirstCopy() }
+            inner.put(sourceOffset, targetOffset)
+        }
+    }
+
+    /// An error a test's offset map throws to end a compaction.
+    private struct Stopped: Error {}
+
+    /// A mapped subject with its file storage watched from before anything
+    /// is mapped, a database filled in it and read once, so that every
+    /// segment of the storage's own view is mapped and told.
+    private static func watchedSubject(
+        _ kind: StorageKind
+    ) throws -> (subject: StorageUnderTest, file: FileStorage, watched: Watched, database: Database, walk: String) {
+        let subject = try StorageUnderTest(kind)
+        let file = try #require(
+            (subject.storage as? FileStorage) ?? (subject.storage as? BufferedFileStorage)?.file)
+        let watched = watch(file)
+        let database = try filled(subject)
+        let walk = try StructureWalk.describe(database.rootCursor.readOnly)
+        return (subject, file, watched, database, walk)
+    }
+
+    /// The segments that hold a file of `length` bytes.
+    private static func segments(holding length: UInt64) -> Int {
+        Int((length - 1) / UInt64(page)) + 1
+    }
+
+    /// For the length of a compaction, a storage whose map is told that it
+    /// is read in no order reads through a second view, which the system
+    /// reads ahead in: a compaction follows pointers from the root, which
+    /// for data written in order is file order, and through the storage's
+    /// own map it would bring a file that is not in memory in a page at a
+    /// time. Every segment that holds the file is mapped a second time,
+    /// once, and told nothing; the storage's own view is told nothing more
+    /// and maps nothing more; the target is what the source reads as; and
+    /// at the end the storage reads through its own view again.
+    @Test(arguments: mappedKinds)
+    func aCompactionReadsThroughASecondViewForItsLength(kind: StorageKind) throws {
+        let (subject, file, watched, database, walk) = try Self.watchedSubject(kind)
+        let segments = Self.segments(holding: try subject.storage.length)
+        #expect(segments > 3, "the database spans several segments")
+        #expect(watched.maps == segments)
+        #expect(watched.told == segments, "each segment of the storage's own view was told once")
+        #expect(file.compactionView == nil)
+
+        var during: (inPlace: Bool, segments: Int) = (false, 0)
+        var offsets = HookedOffsetMap {
+            during = (file.compactionView != nil, file.compactionView?.segments.count ?? 0)
+        }
+        let target = try database.compact(into: MemoryStorage(), fileID: 9, offsetMap: &offsets)
+        #expect(during.inPlace)
+        #expect(during.segments == segments)
+        #expect(try StructureWalk.describe(target.rootCursor.readOnly) == walk)
+        #expect(watched.maps == 2 * segments)
+        #expect(watched.told == segments)
+
+        // and the source reads on through its own view, as it did
+        #expect(file.compactionView == nil)
+        #expect(try StructureWalk.describe(database.rootCursor.readOnly) == walk)
+        #expect(watched.maps == 2 * segments)
+        #expect(watched.told == segments)
+    }
+
+    /// A compaction that throws leaves the storage as it was: it reads
+    /// through its own view, which was told nothing more and has every
+    /// segment it had, and the second view's segments are gone, which is to
+    /// say unmapped: a segment unmaps itself when the last reference to it
+    /// goes.
+    @Test(arguments: mappedKinds)
+    func aCompactionThatThrowsLeavesTheStorageReadingThroughItsOwnView(kind: StorageKind) throws {
+        let (subject, file, watched, database, walk) = try Self.watchedSubject(kind)
+        let segments = Self.segments(holding: try subject.storage.length)
+
+        final class Held {
+            weak var first: MappedSegment?
+            weak var last: MappedSegment?
+            var count = 0
+        }
+        let held = Held()
+        var offsets = HookedOffsetMap {
+            let view = file.compactionView
+            held.count = view?.segments.count ?? 0
+            held.first = view?.segments.first ?? nil
+            held.last = view?.segments.last ?? nil
+            throw Stopped()
+        }
+        let failure = #expect(throws: XitDBError.self) {
+            try database.compact(into: MemoryStorage(), fileID: 9, offsetMap: &offsets)
+        }
+        guard case .callerError(let carried)? = failure, carried is Stopped else {
+            Issue.record("the compaction ends with the offset map's error, carried: \(String(describing: failure))")
+            return
+        }
+        #expect(held.count == segments, "the second view was in place when the compaction was stopped")
+
+        #expect(file.compactionView == nil)
+        #expect(held.first == nil)
+        #expect(held.last == nil)
+        #expect(watched.told == segments)
+        #expect(watched.maps == 2 * segments)
+        #expect(try StructureWalk.describe(database.rootCursor.readOnly) == walk)
+        #expect(watched.maps == 2 * segments, "its own segments are all there: none had to be mapped again")
+
+        // and the next compaction goes through
+        var again = MemoryOffsetMap()
+        let target = try database.compact(into: MemoryStorage(), fileID: 9, offsetMap: &again)
+        #expect(try StructureWalk.describe(target.rootCursor.readOnly) == walk)
+        #expect(watched.maps == 3 * segments)
+        #expect(file.compactionView == nil)
+    }
+
+    /// A segment of the second view that the system refuses is read by
+    /// file calls, and no further one is asked for: the compaction is
+    /// slower there and its target is the same. With the third mapping
+    /// refused there are two mapped, one asked for in vain and none after
+    /// it; with the first refused the second view holds nothing, and the
+    /// whole source is read by file calls.
+    @Test(arguments: mappedKinds, [2, 0])
+    func aSegmentOfTheSecondViewThatIsRefusedIsReadByFileCalls(kind: StorageKind, granted: Int) throws {
+        let (_, _, watched, database, walk) = try Self.watchedSubject(kind)
+        // what a compaction reads by file calls when nothing is refused:
+        // the two headers, which no storage reads through its map
+        var plain = MemoryOffsetMap()
+        let readsBefore = watched.reads
+        _ = try database.compact(into: MemoryStorage(), fileID: 9, offsetMap: &plain)
+        let plainReads = watched.reads - readsBefore
+
+        let maps = watched.maps
+        let told = watched.told
+        let reads = watched.reads
+        watched.grantedMaps = maps + granted
+        var offsets = MemoryOffsetMap()
+        let target = try database.compact(into: MemoryStorage(), fileID: 9, offsetMap: &offsets)
+        #expect(try StructureWalk.describe(target.rootCursor.readOnly) == walk)
+        #expect(watched.maps == maps + granted + 1)
+        #expect(watched.told == told)
+        #expect(watched.reads - reads > plainReads, "what the second view lacks came by file calls")
+    }
+
+    /// A snapshot taken before a compaction reads through the storage's
+    /// own view all along, whose segments were told that they are read in
+    /// no order: it holds a copy of that view, none of whose segments is
+    /// one of the second view's, and it reads what it read while the
+    /// compaction runs. The storage's own view is told nothing more: what
+    /// the system was told belongs to a mapping, and those mappings are not
+    /// touched.
+    @Test(arguments: mappedKinds)
+    func aSnapshotBesideACompactionReadsThroughTheViewItHad(kind: StorageKind) throws {
+        let (subject, file, watched, database, walk) = try Self.watchedSubject(kind)
+        let segments = Self.segments(holding: try subject.storage.length)
+        let snapshot = try database.snapshot()
+        guard case .file(_, _, let view?) = snapshot.storage.source else {
+            Issue.record("a snapshot of a mapped storage reads through a view")
+            return
+        }
+        #expect(view.segments.count == segments)
+        #expect(watched.maps == segments, "the snapshot took the storage's segments and mapped none")
+        #expect(watched.told == segments)
+
+        var shared = -1
+        var walkDuring = ""
+        var offsets = HookedOffsetMap {
+            let second = file.compactionView?.segments ?? []
+            shared = view.segments.count { mine in second.contains { $0 === mine } }
+            walkDuring = try StructureWalk.describe(snapshot.rootCursor)
+        }
+        let target = try database.compact(into: MemoryStorage(), fileID: 9, offsetMap: &offsets)
+        #expect(shared == 0)
+        #expect(walkDuring == walk)
+        #expect(try StructureWalk.describe(target.rootCursor.readOnly) == walk)
+        #expect(try StructureWalk.describe(snapshot.rootCursor) == walk)
+        #expect(watched.told == segments)
+        #expect(watched.maps == 2 * segments)
+    }
+
+    /// A buffered storage's window is read first, during a compaction as at
+    /// any other time: bytes written through the storage that it has not
+    /// yet given to the file are what the compaction copies. A value's
+    /// bytes are overwritten through the storage after the commit; on the
+    /// buffered storage they sit in its window and the file still holds the
+    /// old ones, which is what a reader of the file alone would copy.
+    @Test(arguments: mappedKinds)
+    func aCompactionReadsABufferedStoragesWindowFirst(kind: StorageKind) throws {
+        let (subject, _, watched, database, _) = try Self.watchedSubject(kind)
+        let old = utf8("the value of entry 7, longer than a slot")
+        let new = utf8("THE VALUE OF ENTRY 7, LONGER THAN A SLOT")
+        let stored = try readBytes(subject.storage, at: 0, count: Int(try subject.storage.length))
+        let position = try #require(stored.firstRange(of: old)?.lowerBound)
+        try writeBytes(subject.storage, new, at: UInt64(position))
+        if kind == .mappedBufferedFile {
+            let onDisk = try Data(contentsOf: URL(fileURLWithPath: try #require(subject.path)))
+            #expect(Array(onDisk[position..<(position + old.count)]) == old, "the file still holds the old bytes")
+        }
+
+        let maps = watched.maps
+        var offsets = MemoryOffsetMap()
+        let target = try database.compact(into: MemoryStorage(), fileID: 9, offsetMap: &offsets)
+        #expect(watched.maps > maps, "the compaction read through a second view")
+        let value = try #require(try HashMap<ReadOnly>(target.rootCursor.readOnly).cursor(forHash: hashInt("key-7")))
+        #expect(try value.readBytes() == new)
+    }
+
+    /// Bytes past the last commit are read during a compaction as at any
+    /// other time, which is what the original does with a damaged file. A
+    /// committed header is made to lead to a byte appended past the commit;
+    /// the compaction reads that byte and reports what it is (a tree node's
+    /// kind that is not one), and with another byte there what that one
+    /// leads to (a kind that is one, whose count the file ends before). A
+    /// reader that stopped at the commit would report the file's end for
+    /// both.
+    @Test(arguments: mappedKinds)
+    func aCompactionReadsBytesPastTheLastCommit(kind: StorageKind) throws {
+        let subject = try StorageUnderTest(kind)
+        let file = try #require(
+            (subject.storage as? FileStorage) ?? (subject.storage as? BufferedFileStorage)?.file)
+        let watched = Self.watch(file)
+        let database = try Database(creating: subject.storage, hashSize: 20)
+        try database.withTransaction { root in
+            let map = try HashMap<ReadWrite>(root)
+            let linked = try LinkedArrayList(try map.putCursor(forHash: hashInt("linked")))
+            for index in 0..<3 { try linked.append(.uint(UInt64(index))) }
+            for index in 0..<400 {
+                try map.put(
+                    .bytes(utf8("a value that makes the file some pages long, \(index)")),
+                    forHash: hashInt("k-\(index)"))
+            }
+        }
+        let header = try #require(
+            try HashMap<ReadOnly>(database.rootCursor.readOnly).cursor(forHash: hashInt("linked"))
+        ).slot.value
+        let end = try subject.storage.length
+        #expect(end == (try database.committedSize))
+        try writeBytes(subject.storage, [5], at: end)
+        try writeBytes(subject.storage, bigEndianBytes(end), at: header + 8)
+
+        func compacting() -> XitDBError? {
+            var offsets = MemoryOffsetMap()
+            do throws(XitDBError) {
+                _ = try database.compact(into: MemoryStorage(), fileID: 9, offsetMap: &offsets)
+                return nil
+            } catch {
+                return error
+            }
+        }
+        var maps = watched.maps
+        #expect(compacting() == .invalidBTreeNodeKind)
+        #expect(watched.maps > maps, "the compaction read through a second view")
+        try writeBytes(subject.storage, [0], at: end)
+        maps = watched.maps
+        #expect(compacting() == .endOfStream)
+        #expect(watched.maps > maps)
+    }
+
+    /// Where the storage's map is left to the system's reading ahead
+    /// already, or there is no map, a compaction reads as every other read
+    /// does: no second view is made.
+    @Test(arguments: [FileReading.memoryMapReadAhead, .fileCalls])
+    func aCompactionMakesNoSecondViewWhereTheSystemReadsAheadOrThereIsNoMap(reading: FileReading) throws {
+        let directory = try TemporaryDirectory()
+        let file = try FileStorage(
+            path: directory.path(), access: .create, durability: .none, lock: .exclusive, reading: reading,
+            segmentSize: Self.page)
+        #expect(file.isMemoryMapped == (reading == .memoryMapReadAhead))
+        let database = try Self.filled(in: file)
+        let walk = try StructureWalk.describe(database.rootCursor.readOnly)
+
+        let watched = Self.watch(file)
+        var inPlace = true
+        var offsets = HookedOffsetMap { inPlace = file.compactionView != nil }
+        let target = try database.compact(into: MemoryStorage(), fileID: 9, offsetMap: &offsets)
+        #expect(!inPlace)
+        #expect(try StructureWalk.describe(target.rootCursor.readOnly) == walk)
+        #expect(watched.maps == 0)
+        #expect(watched.told == 0)
+    }
+
     // MARK: The fallback
 
     /// A file on a volume that is not this machine's, as far as the system
@@ -660,7 +982,12 @@ private struct RolledBack: Error {}
     /// A database of a few hundred entries on a mapped storage, some pages
     /// long, committed.
     private static func filled(_ subject: StorageUnderTest) throws -> Database {
-        let database = try Database(creating: subject.storage, hashSize: 20)
+        try filled(in: subject.storage)
+    }
+
+    /// The same database in a storage a test made itself.
+    private static func filled(in storage: any WritableStorage) throws -> Database {
+        let database = try Database(creating: storage, hashSize: 20)
         try database.withTransaction { root in
             let map = try HashMap<ReadWrite>(root)
             for index in 0..<400 {

@@ -147,6 +147,28 @@ enum BuiltInStorage {
         }
     }
 
+    // MARK: A compaction's reads
+
+    /// ``FileStorage/beginCompactionReads()`` on the file storage under
+    /// this one; `false`, with nothing done, on every other storage.
+    func beginCompactionReads() -> Bool {
+        switch self {
+        case .file(let storage): storage.beginCompactionReads()
+        case .bufferedFile(let storage): storage.file.beginCompactionReads()
+        case .memory, .custom, .snapshot: false
+        }
+    }
+
+    /// ``FileStorage/endCompactionReads()`` on the file storage under this
+    /// one.
+    func endCompactionReads() {
+        switch self {
+        case .file(let storage): storage.endCompactionReads()
+        case .bufferedFile(let storage): storage.file.endCompactionReads()
+        case .memory, .custom, .snapshot: break
+        }
+    }
+
     // MARK: A full copy into a new file
 
     /// Whether a full copy onto this storage is written into a new file,

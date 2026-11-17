@@ -40,6 +40,28 @@ The source can be a ``SnapshotDatabase``, made over a ``Snapshot``, so that anot
 the writer goes on committing. A snapshot of one collection, made with ``Snapshot/init(_:)``, is not a whole commit, and
 compacting a ``SnapshotDatabase`` over one is refused with ``XitDBError/subCollectionSnapshot``.
 
+### A source read through a memory map
+
+A file storage opened with `reading: .memoryMap` tells the system that its file is read in no order (``FileReading/memoryMap``).
+That is right for reads by key and wrong for a compaction, which follows the pointers from the root: for data that was
+written in order that is the file's own order, and read so through such a map, a file that is not in memory comes in a page
+at a time. So for the length of a compaction the storage reads through a second mapping of its file, which is left to the
+system's reading ahead. Its own map stays as it was told, and reads by key beside the compaction, a snapshot's among them,
+are not read ahead of. Nothing else about the reads changes: a compaction reads what every other read of the database reads.
+Only your own offset map can read through the storage in that while, if its code reads this same storage: it gets the same
+bytes, and a snapshot it takes there is given the storage's own map.
+
+What it costs: while the compaction runs, the file takes its length in address space a second time, in whole segments of
+64 MB. Where the system refuses a part of that mapping, the storage reads that part by file calls, which is slower and gives
+the same database. A storage opened with ``FileReading/memoryMapReadAhead`` is read ahead of already, and one opened with
+``FileReading/fileCalls`` has no map: a compaction of either reads as it always did.
+
+Why it is there, for a list of 4,000,000 values of 256 bytes, 1.09 GB, compacted into a new file with none of the source
+in memory at the start, as medians of five runs on a Linux virtual machine with four processors and a virtual disk: 8.9 s by
+file calls and 10.9 s through a map told that it is read in no order, so that a caller who had opened the map to read faster
+compacted slower than with none; and 4.9 s through a map left to the system's reading ahead, which is how the second
+mapping is read. The second mapping was not itself timed on that machine.
+
 ### What is kept
 
 What happens depends on the root:

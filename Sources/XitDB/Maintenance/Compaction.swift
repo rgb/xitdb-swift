@@ -39,6 +39,15 @@ extension Database {
     /// hash ID unless another is given, see
     /// ``compact(into:hashID:fileID:offsetMap:)``.
     ///
+    /// Where this database's storage reads its file through a memory map
+    /// that is told the file is read in no order (``FileReading/memoryMap``),
+    /// the storage reads through a second mapping for the compaction's
+    /// length, which the system reads ahead in, and its own map stays as
+    /// it was told. While the compaction runs, the file takes its length
+    /// in address space a second time; a part of that mapping the system
+    /// refuses is read by file calls, slower and to the same result. The
+    /// article on compaction says what that gains.
+    ///
     /// - Parameters:
     ///   - target: The database to write into.
     ///   - offsetMap: Where the copy remembers what went where. It is reset
@@ -166,6 +175,13 @@ extension Database {
         // writes to it with ordinary transactions. this also rejects
         // compacting a database into its own file.
         guard try target.rootCursor.slot.isEmpty else { throw .targetNotEmpty }
+
+        // a source whose storage reads through a memory map that is told
+        // the file is read in no order reads through a second view for the
+        // length of the copy, which the system reads ahead in; whichever
+        // way the copy ends, the storage reads through its own again
+        let throughASecondView = storage.beginCompactionReads()
+        defer { if throughASecondView { storage.endCompactionReads() } }
 
         // the target is written as one ordinary transaction, so it is
         // committed and synced like any other. the remap must run inside
