@@ -2,7 +2,8 @@
 #
 # The gate. Run it from anywhere; it must pass at every commit offered for review.
 #
-#   1. debug build and tests, and what must not compile
+#   1. debug build and tests, what must not compile, and the conformance suite's test
+#      of two processes with the port's reader, where the suite is beside the package
 #   2. release build and tests, the instructions of the in-memory lines against their
 #      figures (compared on macOS, on the toolchain, the processor and the major
 #      version of the system the figures were taken on), a smoke run of the benchmark
@@ -49,6 +50,9 @@ debug_limit=900
 sanitizer_limit=300
 release_limit=600
 simulator_limit=1800
+# The suite's test of two processes takes 8 seconds here with the port's six kinds and
+# the suite's own two; the suite itself ends a reader that stops answering.
+two_processes_limit=300
 
 step "Toolchain"
 swift --version
@@ -188,6 +192,43 @@ fi
 # and one that must be refused on each marked line with the library's own message.
 step "What must not compile"
 scripts/must-not-compile.sh
+
+# The conformance suite holds what the port's first client rests on, and what no script
+# of its fixtures can: the original commits to a file while a reader in another process,
+# with no lock and one database object, is asked what it sees, through 300 commits each
+# followed by a question, 300 more with questions answered while it commits, and then a
+# compaction into a new file renamed over the old name and 50 commits to the new one.
+# Every answer has to be a committed state, none going back and none an error, and the
+# reader that kept the old file has to go on answering the old file's last state.
+#
+# The reader is the port's (Sources/XitDBConformanceReader), the one the debug build
+# made, on each of its six kinds of file storage: the two storages, each read by file
+# calls and through a memory map in either of its two ways. The writer and the rule are
+# the suite's (its two-processes.sh, section 15 of its SCRIPT-FORMAT.md), so the step
+# runs where the suite and its built driver are beside the package, or where
+# XITDB_CONFORMANCE names them, and says aloud where they are not, as in a container
+# that holds the package alone: there nothing is held, and the step does not pretend.
+# The suite writes its files where TWO_PROCESSES_OUT says, which is under this
+# package's build folder: nothing is written into the suite's.
+step "Conformance: a reader in another process"
+suite=${XITDB_CONFORMANCE:-../conformance}
+if [ -x "$suite/two-processes.sh" ] && [ -x "$suite/zig-out/bin/two-processes" ] && [ -x "$suite/zig-out/bin/reader" ]; then
+    reader="$(swift build --show-bin-path)/XitDBConformanceReader"
+    [ -x "$reader" ] || {
+        echo "error: the debug build left no reader at $reader"
+        exit 1
+    }
+    suite_commit=$(git -C "$suite" rev-parse --short HEAD 2>/dev/null || echo "no commit to name")
+    if [ -n "$(git -C "$suite" status --porcelain 2>/dev/null)" ]; then
+        suite_commit="$suite_commit, with changes that are not committed"
+    fi
+    echo "the suite at $suite: $suite_commit"
+    rm -rf .build/two-processes
+    TWO_PROCESSES_OUT="$PWD/.build/two-processes" limited "$two_processes_limit" "$suite/two-processes.sh" "$reader"
+else
+    echo "skipped: the conformance suite, or its built driver and reader, is not at $suite"
+    echo "  the port's reader is not held against a writer in another process in this run"
+fi
 
 # The snapshot concurrency suite under the thread sanitizer, in a build of its
 # own: a race in a snapshot's read half would be a wrong read that no plain run

@@ -41,7 +41,8 @@ in one file only. No Foundation. Tests may import Foundation and CryptoKit.
     scripts/check.sh
 
 Warnings are errors throughout. In order: the debug build and tests; a test planted to sleep, which shows
-that the time limit every run of the tests has does end a run; what must not compile; the snapshot
+that the time limit every run of the tests has does end a run; what must not compile; the conformance suite's
+test of two processes with the port's reader, where the suite is beside the package; the snapshot
 concurrency suite under the thread sanitizer; the release build; the instruction counts of the in-memory
 lines against their figures (compared on macOS, on the toolchain the figures were taken on); the release
 tests; a smoke run of the benchmark and the corruption fuzzer; the step that keeps tests that start a process

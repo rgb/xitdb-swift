@@ -47,7 +47,7 @@ let usage = """
            XitDBFuzz check [--mapped] <file>...
            XitDBFuzz die <new-file|mid-copy|before-rename|after-rename>
                          <file|buffered|mapped-file|mapped-buffered> <database> <bytes> [<write>]
-           XitDBFuzz watch <file|buffered> <path>
+           XitDBFuzz watch <file|buffered|file-map|file-map-read-ahead|buffered-map|buffered-map-read-ahead> <path>
     """
 
 /// Prints `message` to standard error and exits with `status`.
@@ -243,10 +243,10 @@ case "die":
         at: step, buffered: arguments[1].hasSuffix("buffered"), mapped: arguments[1].hasPrefix("mapped"),
         path: arguments[2], bytes: [UInt8](bytes), midWrite: midWrite)
 case "watch":
-    guard !mapped, arguments.count == 2, arguments[0] == "file" || arguments[0] == "buffered" else {
+    guard !mapped, arguments.count == 2, let kind = watchKinds[arguments[0]] else {
         fail(usage, status: 2)
     }
-    watch(buffered: arguments[0] == "buffered", path: arguments[1])
+    watch(buffered: kind.buffered, reading: kind.reading, path: arguments[1])
 default:
     fail(usage, status: 2)
 }

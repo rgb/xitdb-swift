@@ -35,11 +35,20 @@ struct ReaderEnded: Error, CustomStringConvertible {
 /// Nothing here depends on which storages a full copy will replace the
 /// file of.
 @Suite struct ReaderInAnotherProcessTests {
-    /// The reader's storage, by the tool's names for the two.
+    /// The reader's storage, by the tool's names for the six: the two file
+    /// storages, each read by file calls and through a memory map in either
+    /// of its two ways.
     enum Kind: String, CaseIterable, CustomTestStringConvertible {
         case file, buffered
+        case fileMap = "file-map"
+        case fileMapReadAhead = "file-map-read-ahead"
+        case bufferedMap = "buffered-map"
+        case bufferedMapReadAhead = "buffered-map-read-ahead"
 
         var testDescription: String { rawValue }
+
+        /// Whether the reader opens its file to be read through a map.
+        var isThroughAMap: Bool { self != .file && self != .buffered }
     }
 
     static let old = Array("the old file's bytes, which a reader that has them keeps".utf8)
@@ -115,6 +124,15 @@ struct ReaderEnded: Error, CustomStringConvertible {
             func read() throws -> String {
                 try ask("read")
             }
+
+            /// The reader's storage's `isMemoryMapped`.
+            func isMemoryMapped() throws -> Bool {
+                let answer = try ask("mapped")
+                guard answer == "true" || answer == "false" else {
+                    throw ReaderSaidSomethingElse(expected: "true or false", said: answer)
+                }
+                return answer == "true"
+            }
         }
 
         /// A folder with the old file in it, under the folder's own name
@@ -154,6 +172,7 @@ struct ReaderEnded: Error, CustomStringConvertible {
             defer { withExtendedLifetime(folder) {} }
             let path = folder.path()
             let reader = try Reader(kind, at: path)
+            #expect(try reader.isMemoryMapped() == kind.isThroughAMap)
             #expect(try reader.isStillAtPath())
             #expect(try reader.read() == Self.said(Self.old))
 

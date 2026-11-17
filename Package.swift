@@ -67,6 +67,16 @@ let package = Package(
             dependencies: ["XitDB", "XitDBHashing"],
             swiftSettings: languageSettings
         ),
+        // The port's reader for the conformance suite's test of two processes,
+        // in which the original commits to a file while a reader in another
+        // process reads it (the suite's `two-processes.sh`): a tool for the
+        // suite and for the gate, and no more meant for a client than the
+        // benchmark or the fuzzer.
+        .executableTarget(
+            name: "XitDBConformanceReader",
+            dependencies: ["XitDB", "XitDBHashing"],
+            swiftSettings: languageSettings
+        ),
         // xitdb-dump, which prints any xitdb file as it is on disk (M11). The
         // reading, the tree and its renderings are a library target, so that
         // the tests hold the dump of every fixture without an executable in
