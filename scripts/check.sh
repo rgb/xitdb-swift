@@ -4,10 +4,11 @@
 #
 #   1. debug build and tests, what must not compile, and the conformance suite's test
 #      of two processes with the port's reader, where the suite is beside the package
-#   2. release build and tests, the instructions of the in-memory lines and of three
-#      reads through a mapped file against their figures (compared on macOS, on the
-#      toolchain, the processor and the major version of the system the figures were
-#      taken on), a smoke run of the benchmark and the corruption fuzzer
+#   2. release build and tests, the instructions of the in-memory lines, of three
+#      reads through a mapped file and of two through a snapshot against their figures
+#      (compared on macOS, on the toolchain, the processor and the major version of
+#      the system the figures were taken on), a smoke run of the benchmark and the
+#      corruption fuzzer
 #      Every run of the tests has a time limit (scripts/limit.sh), and the limit is
 #      tried on a test planted to sleep.
 #   3. import check for Sources/XitDB, that only the tests' own target for it
@@ -313,14 +314,15 @@ fi
 step "Release build"
 swift build -c release "${strict[@]}"
 
-# What a write, a read and a walk cost in memory, and what three reads cost through a
+# What a write, a read and a walk cost in memory, what three reads cost through a
 # mapped file (a map's by hash, a list's by index, typed reads of a number and a text),
-# in instructions, against the figures in scripts/instructions.txt: a line that takes
-# more than a per cent more fails the gate, here, on the build a client compiles and
-# before the tests' build replaces it. The script says why each is there, and what it
-# does on another toolchain or system, and on Linux, where a process is given no such
-# count: it compares nothing, and says so.
-step "Instructions in memory and through a mapped file"
+# and what a list's read by index costs through a snapshot, of a mapped file and of a
+# database in memory, in instructions, against the figures in scripts/instructions.txt:
+# a line that takes more than a per cent more fails the gate, here, on the build a
+# client compiles and before the tests' build replaces it. The script says why each is
+# there, and what it does on another toolchain or system, and on Linux, where a process
+# is given no such count: it compares nothing, and says so.
+step "Instructions in memory, through a mapped file and through a snapshot"
 scripts/instructions.sh check
 
 # The build of the tests rebuilds the library with testing enabled, so that the tests

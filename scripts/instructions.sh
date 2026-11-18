@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 #
-# The instructions a write, a read and a walk take in memory, and three reads through a
-# mapped file, held to figures kept in the repository: scripts/instructions.txt.
+# The instructions a write, a read and a walk take in memory, three reads through a
+# mapped file, and a list's read by index through a snapshot of a mapped file and of a
+# database in memory, held to figures kept in the repository: scripts/instructions.txt.
 #
 #   scripts/instructions.sh check [figures]
 #       runs the benchmark's four collections in memory with the release build that is
 #       there (the gate calls this right after its plain release build), eight times
-#       with the stack at eight places (forty seconds), and three reads through a
-#       mapped file three times (ten seconds), and compares the least
+#       with the stack at eight places (forty seconds), three reads through a
+#       mapped file three times (ten seconds) and a read through each of two
+#       snapshots three times (five seconds), and compares the least
 #       instructions an operation took, line by line, with the figures. A line
 #       that takes more than a per cent more fails: ROSE, status 1. A line that takes
 #       more than a per cent less fails too and says to take the figures again: FELL,
@@ -127,28 +129,61 @@ measure_mapped() {
             END { for (line = 1; line <= lines; line++) printf "%s %.1f\n", order[line], least[order[line]] }'
 }
 
+# "snapshot_mapped_list_append read instructions-an-operation" and "snapshot_list_append
+# read ...": an array list read by index through a snapshot of a database in a mapped
+# file, and through a snapshot of a database in memory (the read-path mode's
+# `--snapshot`, at a tenth of its size). The least over `measure_snapshot <runs>` runs.
+#
+# Why these are held: a snapshot's read goes through a type of its own, which no line
+# above reaches, and a snapshot is what a program reads through on its other threads.
+# That read stands between each of the engine's reads and the bytes as a call, where a
+# storage's own read is compiled into its caller: a list's read by index takes a fifth
+# more instructions through a snapshot of a mapped file than through the file's storage,
+# and about a tenth more in memory. Compiling it in was tried and put back, because it
+# took two of the lines in memory over their per cent (brief 36); until these two lines
+# nothing in the gate counted a read through a snapshot at all, and whoever takes that
+# up again is held by them. An array list's lines do not move with the stack, so these
+# need no eight places either.
+measure_snapshot() {
+    local run
+    for run in $(seq "$1"); do
+        env -i "$benchmark" --read-path --mapped --snapshot --kind mapped_file --divide 10 list_append
+        env -i "$benchmark" --read-path --snapshot --kind memory --divide 10 list_append
+    done \
+        | sed -E -n \
+            -e 's/.*"workload": "([a-z_]+)", "phase": "read", "kind": "mapped_file", "n": ([0-9]+),.*"instructions": ([0-9]+),.*/snapshot_mapped_\1 read \2 \3/p' \
+            -e 's/.*"workload": "([a-z_]+)", "phase": "read", "kind": "memory", "n": ([0-9]+),.*"instructions": ([0-9]+),.*/snapshot_\1 read \2 \3/p' \
+        | awk '
+            { key = $1 " " $2; each = $4 / $3
+              if (!(key in least)) { order[++lines] = key; least[key] = each }
+              else if (each < least[key]) least[key] = each }
+            END { for (line = 1; line <= lines; line++) printf "%s %.1f\n", order[line], least[order[line]] }'
+}
+
 if [ "$mode" = pin ]; then
     swift build -c release --product XitDBBenchmark -Xswiftc -warnings-as-errors >/dev/null
     measured=$(
         measure 2
         measure_mapped 3
+        measure_snapshot 3
     )
-    [ "$(echo "$measured" | grep -c .)" -eq 15 ] || {
-        echo "error: the benchmark printed $(echo "$measured" | grep -c .) lines with instructions, not fifteen" >&2
+    [ "$(echo "$measured" | grep -c .)" -eq 17 ] || {
+        echo "error: the benchmark printed $(echo "$measured" | grep -c .) lines with instructions, not seventeen" >&2
         exit 1
     }
     {
         echo "# The instructions an operation takes, by the benchmark's own count: what"
         echo "# scripts/instructions.sh holds the gate's plain release build to, within a per cent."
-        echo "# Twelve lines in memory, the least a line over eight places of the stack, twice; and"
-        echo "# three reads through a mapped file (\`mapped_\`), the least of three runs. Taken with"
-        echo "# \`scripts/instructions.sh pin\`; take them again on another toolchain, processor or"
-        echo "# major version of the system."
+        echo "# Twelve lines in memory, the least a line over eight places of the stack, twice;"
+        echo "# three reads through a mapped file (\`mapped_\`) and a list's read by index through"
+        echo "# a snapshot of a mapped file and of a database in memory (\`snapshot_\`), the least"
+        echo "# of three runs. Taken with \`scripts/instructions.sh pin\`; take them again on"
+        echo "# another toolchain, processor or major version of the system."
         echo "toolchain: $toolchain"
         echo "system: $system"
         echo "$measured"
     } >"$figures"
-    echo "fifteen figures in $figures"
+    echo "seventeen figures in $figures"
     exit 0
 fi
 
@@ -185,6 +220,7 @@ fi
 measured=$(
     measure 1
     measure_mapped 3
+    measure_snapshot 3
 )
 # Each line beside its figure; the status says whether any rose or fell past the tolerance.
 status=0
@@ -201,12 +237,12 @@ echo "$measured" | awk -v figures="$figures" -v tolerance="$tolerance" '
     {
         key = $1 " " $2
         seen++
-        if (!(key in pinned)) { printf "  %-18s %-8s %10.1f  has no figure\n", $1, $2, $3; missing++; next }
+        if (!(key in pinned)) { printf "  %-27s %-8s %10.1f  has no figure\n", $1, $2, $3; missing++; next }
         change = ($3 - pinned[key]) / pinned[key] * 100
         mark = ""
         if (change > tolerance) { mark = "  ROSE"; rose = rose (rose ? ", " : "") $1 " " $2 }
         if (change < -tolerance) { mark = "  FELL"; fell = fell (fell ? ", " : "") $1 " " $2 }
-        printf "  %-18s %-8s %10.1f  figure %10.1f  %+6.2f%%%s\n", $1, $2, $3, pinned[key], change, mark
+        printf "  %-27s %-8s %10.1f  figure %10.1f  %+6.2f%%%s\n", $1, $2, $3, pinned[key], change, mark
     }
     END {
         if (missing || seen != expected) { printf "error: %d lines measured against %d figures\n", seen, expected; exit 3 }

@@ -191,9 +191,10 @@ and refuses any other; on Linux it runs on any Swift 6.4.x and skips the iOS ste
 
 Every run of the tests has a time limit: one that does not end is ended, after a look at what its test process was
 doing, and fails the gate. On the toolchain and the system the figures in `scripts/instructions.txt` were taken on,
-the gate also holds the benchmark's twelve in-memory lines to the instructions an operation takes: a line more than
-a per cent over its figure fails it, and so does one more than a per cent under, until the figures are taken again
-with `scripts/instructions.sh pin`. Anywhere else it compares nothing and says so.
+the gate also holds the benchmark's twelve in-memory lines, three reads through a mapped file and a list's read by
+index through a snapshot of a mapped file and of a database in memory to the instructions an operation takes: a line
+more than a per cent over its figure fails it, and so does one more than a per cent under, until the figures are taken
+again with `scripts/instructions.sh pin`. Anywhere else it compares nothing and says so.
 
 Issues are welcome: bug reports, questions about the conformance suite, requests. The repository does not take pull
 requests, since every change goes through the gate and the conformance suite here; a reader with a fix opens an
