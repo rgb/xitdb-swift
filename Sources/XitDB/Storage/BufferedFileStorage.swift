@@ -234,10 +234,9 @@ public final class BufferedFileStorage: WritableStorage {
     ///   - offset: The position of the first byte written.
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the buffer had to
     ///   be flushed or the bytes written to the file, and that failed. Also,
-    ///   at once and without buffering anything, for a storage opened with
-    ///   ``FileAccess/readOnly`` and for bytes that would lie beyond the
-    ///   largest offset a file can have: the same errors, at the same
-    ///   moment, as ``FileStorage`` gives.
+    ///   at once and without buffering anything, for bytes that would lie
+    ///   beyond the largest offset a file can have: the same error, at the
+    ///   same moment, as ``FileStorage`` gives.
     public func write(_ bytes: Span<UInt8>, at offset: UInt64) throws(XitDBError) {
         guard bytes.count > 0 else { return }
         // Zig accepts these writes into the buffer and fails when it flushes.
@@ -286,10 +285,6 @@ public final class BufferedFileStorage: WritableStorage {
     /// rollback must not depend on writing the data it is throwing away,
     /// because that write may be the one that failed, on a full disk for
     /// example.
-    ///
-    /// On a storage opened with ``FileAccess/readOnly`` a length within the
-    /// storage leaves the file as it is; a larger one is still
-    /// ``XitDBError/invalidLength``.
     ///
     /// - Parameter length: The new length in bytes.
     /// A length below what a ``Snapshot`` reads takes those bytes from

@@ -338,3 +338,62 @@ import Testing
         try Self.expectTransaction(recovered)
     }
 }
+
+/// The engine's recovery of a file opened to be read: the original's
+/// behaviour on a read-only file, and nothing a client of the port can ask
+/// for, since a `ReadOnlyFileStorage` is no storage to recover. The file
+/// storage in its reading mode is reached by the package's door.
+@Suite struct RecoveryOfAFileOpenedToBeReadTests {
+    /// Three commits, and the storage's bytes after each.
+    private static func threeMoments() throws -> (bytes: [UInt8], after: [[UInt8]]) {
+        let storage = MemoryStorage()
+        let database = try Database(creating: storage, hashSize: 20)
+        let history = try ArrayList<ReadWrite>(database.rootCursor)
+        var after: [[UInt8]] = []
+        for price: UInt64 in [10, 12, 15] {
+            try history.append(.slot(try history.slot(at: -1))) { cursor in
+                try HashMap<ReadWrite>(cursor).put(.uint(price), forHash: sha1("price").bytes)
+            }
+            after.append(storage.bytes)
+        }
+        return (storage.bytes, after)
+    }
+
+    /// A file of `bytes`, and the file storage on it in its reading mode,
+    /// plain or under a buffer.
+    private static func opened(_ bytes: [UInt8], buffered: Bool) throws -> (TemporaryDirectory, any WritableStorage) {
+        let directory = try TemporaryDirectory()
+        try writeBytes(try FileStorage(path: directory.path(), access: .create, durability: .none), bytes, at: 0)
+        let file = try FileStorage(openedToBeReadAt: directory.path())
+        return (directory, buffered ? BufferedFileStorage(file) : file)
+    }
+
+    /// A root header that is sound, with a commit's bytes after the commit
+    /// it names, as a writer that died before its last root header leaves
+    /// a file: the recovery opens it as opening does, and the file is as
+    /// it was, since a request to shorten a read-only file does nothing.
+    @Test(arguments: [false, true])
+    func aSoundRootHeaderOpensAndNothingIsCut(buffered: Bool) throws {
+        let (good, after) = try Self.threeMoments()
+        var died = good
+        died.replaceSubrange(24..<32, with: after[1][24..<32])
+        let (directory, storage) = try Self.opened(died, buffered: buffered)
+        let recovered = try Database.recover(storage)
+        #expect(try ArrayList<ReadOnly>(recovered.rootCursor).count == 2)
+        #expect(try directory.contents() == died)
+    }
+
+    /// A root header that has to be mended: the recovery fails at the write
+    /// of it, as every write to a read-only file fails, and the file is as
+    /// it was.
+    @Test(arguments: [false, true])
+    func aRootHeaderToMendFailsAtItsWrite(buffered: Bool) throws {
+        let (good, _) = try Self.threeMoments()
+        let cut = Array(good.dropLast())
+        let (directory, storage) = try Self.opened(cut, buffered: buffered)
+        #expect(throws: XitDBError.storageFailure(errno: Platform.notOpenForWriting)) {
+            try Database.recover(storage)
+        }
+        #expect(try directory.contents() == cut)
+    }
+}

@@ -36,9 +36,9 @@ import XitDBHashing
             }
             for _ in 0..<2 {
                 group.addTask {
-                    // A reader: a storage opened read-only, and a database of its own.
-                    let storage = try FileStorage(path: scratch.path("main.db"), access: .readOnly)
-                    let database = try Database(opening: storage, hashing: SHA256.self)
+                    // A reader: a file opened to be read, and a database of its own that only reads.
+                    let storage = try ReadOnlyFileStorage(path: scratch.path("main.db"))
+                    let database = try ReadOnlyDatabase(opening: storage, hashing: SHA256.self)
                     let history = try ArrayList<ReadOnly>(database.rootCursor)
 
                     var mismatches = 0

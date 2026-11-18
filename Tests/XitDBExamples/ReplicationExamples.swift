@@ -290,7 +290,7 @@ import XitDB
         #expect(try source.replicationStart(for: try replica.replicaState) == 0)
 
         // Opened again, the same database.
-        let reopened = try Database(opening: try BufferedFileStorage(path: path, access: .readOnly))
+        let reopened = try ReadOnlyDatabase(opening: try ReadOnlyFileStorage(path: path))
         #expect(try reopened.replicaState == before)
 
         // The next full sync replaces it.
@@ -393,8 +393,7 @@ import XitDB
             at: try source.replicationStart(for: try replica.replicaState),
             bytes: try source.readCommitted(from: 0, to: try source.committedSize))
 
-        let reader = try Database(
-            opening: FileStorage(path: scratch.path("replica.db"), access: .readOnly, durability: .none))
+        let reader = try ReadOnlyDatabase(opening: ReadOnlyFileStorage(path: scratch.path("replica.db")))
         #expect(try reader.committedSize == sourceStorage.length)
     }
 }

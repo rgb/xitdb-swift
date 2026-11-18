@@ -110,7 +110,7 @@ import Testing
     func aReplacementThatIsCommittedGivesTheNewFileTheName(kind: Kind) throws {
         let directory = try Self.folder()
         let writer = try Self.writer(kind, at: directory.path())
-        let before = try FileStorage(path: directory.path(), access: .readOnly)
+        let before = try FileStorage(openedToBeReadAt: directory.path())
         #expect(try Self.all(writer.storage) == Self.old)
         #expect(!writer.file.isReplacing)
 
@@ -123,7 +123,7 @@ import Testing
         let bits = try FileManager.default.attributesOfItem(atPath: Self.incoming(directory))[.posixPermissions]
         #expect((bits as? NSNumber)?.intValue == 0o600, "the new file has the old one's bits before a byte is in it")
         // a reader that opens the path during the copy has the old file
-        let during = try FileStorage(path: directory.path(), access: .readOnly)
+        let during = try FileStorage(openedToBeReadAt: directory.path())
         #expect(try Self.all(during) == Self.old)
 
         try Self.writeTheNewBytes(writer)
@@ -154,7 +154,7 @@ import Testing
     func aReplacementThatIsAbandonedLeavesTheOldFile(kind: Kind) throws {
         let directory = try Self.folder()
         let writer = try Self.writer(kind, at: directory.path())
-        let reader = try FileStorage(path: directory.path(), access: .readOnly)
+        let reader = try FileStorage(openedToBeReadAt: directory.path())
         #expect(try Self.all(writer.storage) == Self.old)
 
         try writer.beginReplacement()
@@ -183,7 +183,7 @@ import Testing
     /// file.
     @Test func aReaderBeginsNoReplacement() throws {
         let directory = try Self.folder()
-        let reader = try FileStorage(path: directory.path(), access: .readOnly)
+        let reader = try FileStorage(openedToBeReadAt: directory.path())
         #expect(throws: XitDBError.storageFailure(errno: Platform.notOpenForWriting)) { try reader.beginReplacement() }
         #expect(!reader.isReplacing)
         #expect(!Self.exists(Self.incoming(directory)))
@@ -363,9 +363,9 @@ import Testing
         let directory = try Self.folder()
         #expect(FileManager.default.createFile(atPath: Self.incoming(directory), contents: Data([1, 2, 3])))
         do {
-            _ = try FileStorage(path: directory.path(), access: .readOnly)
+            _ = try FileStorage(openedToBeReadAt: directory.path())
             #expect(Self.exists(Self.incoming(directory)), "a reader leaves it")
-            _ = try FileStorage(path: directory.path(), access: .readOnly, lock: .shared)
+            _ = try FileStorage(openedToBeReadAt: directory.path(), lock: .shared)
             #expect(Self.exists(Self.incoming(directory)), "a reader with a shared lock leaves it")
             _ = try FileStorage(path: directory.path(), access: .readWrite)
             #expect(Self.exists(Self.incoming(directory)), "a writer without the lock leaves it")
@@ -455,7 +455,7 @@ import Testing
         let writer = try Self.writer(kind, at: link)
         #expect(writer.file.path == link)
         #expect(writer.file.realPath == (try Platform.realPath(directory.path())))
-        let reader = try FileStorage(path: link, access: .readOnly)
+        let reader = try FileStorage(openedToBeReadAt: link)
         #expect(try reader.leadsToItsFile())
 
         try writer.beginReplacement()
@@ -490,8 +490,8 @@ import Testing
     /// no lock and no map, as a reader beside a writer has it.
     private static func reader(_ kind: Kind, at path: String) throws -> any WritableStorage {
         kind.isBuffered
-            ? try BufferedFileStorage(path: path, access: .readOnly)
-            : try FileStorage(path: path, access: .readOnly)
+            ? BufferedFileStorage(try FileStorage(openedToBeReadAt: path))
+            : try FileStorage(openedToBeReadAt: path)
     }
 
     /// The property across a symbolic link: a storage that was opened
@@ -571,16 +571,16 @@ import Testing
     /// is.
     @Test func whetherAPathLeadsToItsFile() throws {
         let directory = try Self.folder()
-        let storage = try FileStorage(path: directory.path(), access: .readOnly)
+        let storage = try FileStorage(openedToBeReadAt: directory.path())
         #expect(try storage.leadsToItsFile())
-        #expect(try BufferedFileStorage(path: directory.path(), access: .readOnly).leadsToItsFile())
+        #expect(try BufferedFileStorage(try FileStorage(openedToBeReadAt: directory.path())).leadsToItsFile())
 
         #expect(FileManager.default.createFile(atPath: directory.path("other.db"), contents: Data([1])))
         try Platform.renameFile(directory.path("other.db"), to: directory.path())
         #expect(try storage.leadsToItsFile() == false, "another file has the name")
         #expect(try Self.all(storage) == Self.old)
 
-        let second = try FileStorage(path: directory.path(), access: .readOnly)
+        let second = try FileStorage(openedToBeReadAt: directory.path())
         #expect(try second.leadsToItsFile())
         try FileManager.default.removeItem(atPath: directory.path())
         #expect(try second.leadsToItsFile() == false, "no file has the name")

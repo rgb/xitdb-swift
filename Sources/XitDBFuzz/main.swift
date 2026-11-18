@@ -47,7 +47,7 @@ let usage = """
            XitDBFuzz check [--mapped] <file>...
            XitDBFuzz die <new-file|mid-copy|before-rename|after-rename>
                          <file|buffered|mapped-file|mapped-buffered> <database> <bytes> [<write>]
-           XitDBFuzz watch <file|buffered|file-map|file-map-read-ahead|buffered-map|buffered-map-read-ahead> <path>
+           XitDBFuzz watch <file|file-map|file-map-read-ahead> <path>
     """
 
 /// Prints `message` to standard error and exits with `status`.

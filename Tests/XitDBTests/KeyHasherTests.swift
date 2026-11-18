@@ -567,7 +567,7 @@ private func unfinishedCreation(of database: [UInt8]) -> [UInt8] {
         }
     }
 
-    /// The header reads from a file opened for reading only, and from a
+    /// The header reads from a file opened to be read, and from a
     /// storage that holds no more than a header: nothing past the twenty
     /// bytes is looked at, so a header that reads says nothing about
     /// whether the database opens.
@@ -575,7 +575,7 @@ private func unfinishedCreation(of database: [UInt8]) -> [UInt8] {
         let directory = try TemporaryDirectory()
         let writable = try FileStorage(path: directory.path(), access: .create, durability: .none)
         let database = try Database(creating: writable, hashing: SHA256.self, hashID: "sha2", fileID: 9)
-        let readOnly = try FileStorage(path: directory.path(), access: .readOnly, durability: .none)
+        let readOnly = try ReadOnlyFileStorage(path: directory.path())
         #expect(try DatabaseHeader(reading: readOnly) == database.header)
 
         let whole = try directory.contents()

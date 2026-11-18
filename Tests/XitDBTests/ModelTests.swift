@@ -44,7 +44,7 @@ struct ModelTests {
             #expect(Array(stored[..<6]) == [0x78, 0x69, 0x74, 0x00, 0x00, 0x01], "\(database.kind)")
             #expect(Array(stored[29..<37]) == bigEndianBytes(UInt64(stored.count)), "\(database.kind)")
             if let path = database.subject.path {
-                let reopened = try Database(opening: FileStorage(path: path, access: .readOnly, durability: .none))
+                let reopened = try ReadOnlyDatabase(opening: ReadOnlyFileStorage(path: path))
                 #expect(reopened.header.version == 1, "\(database.kind)")
             }
         }

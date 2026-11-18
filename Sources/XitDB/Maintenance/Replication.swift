@@ -283,8 +283,8 @@ extension Database {
     /// throws leaves the blocks that arrived whole, or bytes that do not
     /// end with a trailer, past the committed size, where the next sync or
     /// transaction discards them. A sync that fails before anything is
-    /// written, as on a storage opened read-only, leaves this database as
-    /// it was.
+    /// written, as on a storage that refuses its first write, leaves this
+    /// database as it was.
     ///
     /// - Throws: ``XitDBError/invalidRange`` for a `start` that is neither
     ///   0 nor the committed size, and at 0 for a `count` too small to hold
@@ -447,7 +447,7 @@ extension Database {
     ///
     /// This database becomes the incoming one once that header is in the
     /// storage, and not before: a copy that fails without having changed
-    /// the storage, as on one opened read-only, where cutting does nothing
+    /// the storage, as on a file opened to be read, where cutting does nothing
     /// and the first write is refused, leaves this database the one it
     /// was. (The original takes the header before it writes it, and would
     /// go on reading a sound file by another file's ID and version.)

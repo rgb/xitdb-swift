@@ -35,20 +35,18 @@ struct ReaderEnded: Error, CustomStringConvertible {
 /// Nothing here depends on which storages a full copy will replace the
 /// file of.
 @Suite struct ReaderInAnotherProcessTests {
-    /// The reader's storage, by the tool's names for the six: the two file
-    /// storages, each read by file calls and through a memory map in either
-    /// of its two ways.
+    /// How the reader's storage reads its file, by the tool's names for
+    /// the three: a file opened to be read (a `ReadOnlyFileStorage`), read
+    /// by file calls and through a memory map in either of its two ways.
     enum Kind: String, CaseIterable, CustomTestStringConvertible {
-        case file, buffered
+        case file
         case fileMap = "file-map"
         case fileMapReadAhead = "file-map-read-ahead"
-        case bufferedMap = "buffered-map"
-        case bufferedMapReadAhead = "buffered-map-read-ahead"
 
         var testDescription: String { rawValue }
 
         /// Whether the reader opens its file to be read through a map.
-        var isThroughAMap: Bool { self != .file && self != .buffered }
+        var isThroughAMap: Bool { self != .file }
     }
 
     static let old = Array("the old file's bytes, which a reader that has them keeps".utf8)

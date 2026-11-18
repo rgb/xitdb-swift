@@ -26,7 +26,7 @@ is the error's own line, and for a failure of the storage the system's words for
 
 ```swift
 do {
-    _ = try FileStorage(url: folder.appending(path: "nothing-here.db"), access: .readOnly)
+    _ = try ReadOnlyFileStorage(url: folder.appending(path: "nothing-here.db"))
 } catch {
     // "the storage failed with system error 2: No such file or directory"
     show(error.localizedDescription)
@@ -45,14 +45,14 @@ protocol once.
 
 ### A file by its URL
 
-`FileStorage` and `BufferedFileStorage` are opened by a URL, with the arguments their initialisers that take a path
-have. The URL has to be a file's; another is refused with `storageFailure(errno:)` carrying `EINVAL`, before anything
+`FileStorage`, `BufferedFileStorage` and `ReadOnlyFileStorage` are opened by a URL, with the arguments their
+initialisers that take a path have. The URL has to be a file's; another is refused with `storageFailure(errno:)` carrying `EINVAL`, before anything
 is opened. The path is taken from the URL without percent-encoding, so a name with a space or a letter outside ASCII opens
 the file of that name. Access to a folder the app was granted (a security-scoped URL) is yours to start and to stop around
 the storage's life.
 
-On Apple's platforms the two are opened by a `FilePath` as well. The type is the System framework's there; on Linux it is
-the swift-system package's, a dependency this package does not take, so those two initialisers are Apple's platforms' only.
+On Apple's platforms the three are opened by a `FilePath` as well. The type is the System framework's there; on Linux it is
+the swift-system package's, a dependency this package does not take, so those three initialisers are Apple's platforms' only.
 A path written as a string literal is a `String`'s with this module imported as without it.
 
 ### Data
@@ -89,6 +89,7 @@ from tasks.
 
 - ``XitDB/FileStorage/init(url:access:durability:lock:reading:)``
 - ``XitDB/BufferedFileStorage/init(url:access:durability:lock:reading:bufferLimit:)``
+- ``XitDB/ReadOnlyFileStorage/init(url:lock:reading:)``
 
 <!-- The members this module gives `Data` are not listed here by name: a link to them names the module `Data` is declared
 in, which is Foundation on Apple's platforms and FoundationEssentials on Linux, and a link that resolves on one fails the

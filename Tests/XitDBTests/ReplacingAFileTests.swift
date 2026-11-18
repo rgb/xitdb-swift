@@ -10,7 +10,7 @@ import Testing
     /// A file of these bytes at `path`, and a descriptor on it for reading.
     private func file(_ bytes: [UInt8], at path: String) throws -> FileDescriptor {
         #expect(FileManager.default.createFile(atPath: path, contents: Data(bytes)))
-        return try FileDescriptor(opening: path, access: .readOnly)
+        return try FileDescriptor(opening: path, .toRead)
     }
 
     private func bytes(of descriptor: FileDescriptor, count: Int) throws -> [UInt8] {
@@ -105,7 +105,7 @@ import Testing
         defer { Platform.closeFile(descriptor) }
         try calls.lock(descriptor, .exclusive)
         // a second descriptor on the same file is kept out by the lock
-        let second = try Platform.openFile(directory.path("test.db.incoming"), access: .readWrite)
+        let second = try Platform.openFile(directory.path("test.db.incoming"), .toWrite(.readWrite))
         defer { Platform.closeFile(second) }
         #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK)) { try calls.lock(second, .exclusive) }
 
@@ -113,7 +113,7 @@ import Testing
         #expect(FileManager.default.fileExists(atPath: directory.path()))
         #expect(calls.syncDirectory(directory.path(), .plain) == 0)
         // the lock went with the file to its new name
-        let third = try Platform.openFile(directory.path(), access: .readWrite)
+        let third = try Platform.openFile(directory.path(), .toWrite(.readWrite))
         defer { Platform.closeFile(third) }
         #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK)) { try Platform.lockFile(third, .exclusive) }
         #expect(try calls.remove(directory.path()))

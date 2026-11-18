@@ -34,7 +34,7 @@ import XitDBDumpKit
         [UInt8](try Data(contentsOf: try url(name)))
     }
 
-    static func walk(_ database: Database) throws -> String {
+    static func walk(_ database: some ReadableDatabase) throws -> String {
         try StructureWalk.describe(database.rootCursor.readOnly)
     }
 
@@ -47,32 +47,35 @@ import XitDBDumpKit
 
     // MARK: Item 1
 
-    /// Each opens read-only without error, on the plain and the buffered
-    /// file storage, with hash size 20, and reads the same through both.
+    /// Each opens to be read without error, by file calls and through a
+    /// memory map, with hash size 20, and reads the same through both.
+    /// (The request was made of the two file storages opened read-only
+    /// under a `Database`; a file opened to be read is a type of its own
+    /// since, under a database that only reads.)
     /// The header is what the request's evidence says: the magic, version
     /// 2, hash size 20, `sha1`, zeros at 20 to 23 and the file's own length
     /// at 24. Nothing requires the hash ID: the size alone is checked.
     @Test(arguments: names)
-    func itOpensReadOnlyOnThePlainAndTheBufferedFile(name: String) throws {
+    func itOpensToBeReadByFileCallsAndThroughAMap(name: String) throws {
         let path = try Self.url(name).path
         let bytes = try Self.bytes(name)
         #expect(Array(bytes[..<12]) == [0x78, 0x69, 0x74, 0x00, 0x00, 0x02, 0x00, 0x14, 0x73, 0x68, 0x61, 0x31])
         #expect(Array(bytes[20..<24]) == zeros(4))
         #expect(Array(bytes[24..<32]) == bigEndianBytes(UInt64(bytes.count)))
 
-        let plain = try FileStorage(path: path, access: .readOnly)
-        let buffered = try BufferedFileStorage(path: path, access: .readOnly)
+        let byFileCalls = try ReadOnlyFileStorage(path: path)
+        let throughAMap = try ReadOnlyFileStorage(path: path, reading: .memoryMap)
         var walks: [String] = []
-        for storage in [plain, buffered] as [any WritableStorage] {
+        for storage in [byFileCalls, throughAMap] {
             for hashSize in [20, nil] as [Int?] {
-                let database = try Database(opening: storage, hashSize: hashSize)
+                let database = try ReadOnlyDatabase(opening: storage, hashSize: hashSize)
                 #expect(database.header.version == 2)
                 #expect(database.header.hashSize == 20)
                 #expect(database.header.hashID == "sha1")
                 #expect(try database.committedSize == UInt64(bytes.count))
                 walks.append(try Self.walk(database))
             }
-            #expect(throws: XitDBError.invalidHashSize) { try Database(opening: storage, hashSize: 32) }
+            #expect(throws: XitDBError.invalidHashSize) { try ReadOnlyDatabase(opening: storage, hashSize: 32) }
         }
         #expect(Set(walks).count == 1)
         #expect(walks[0].count > 50)
@@ -94,7 +97,7 @@ import XitDBDumpKit
         options.allMoments = true
         options.hash = .sha1
         var dumper = Dumper(options: options)
-        let dump = dumper.dump(try FileStorage(path: try Self.url(name).path, access: .readOnly))
+        let dump = dumper.dump(try FileStorage(openedToBeReadAt: try Self.url(name).path))
 
         #expect(dump.exitCode == 0)
         #expect(dump.header?.version == 2)

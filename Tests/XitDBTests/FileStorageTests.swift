@@ -27,7 +27,7 @@ import Testing
         let path = directory.path()
 
         // neither of these creates a file
-        #expect(throws: XitDBError.storageFailure(errno: ENOENT)) { try FileStorage(path: path, access: .readOnly) }
+        #expect(throws: XitDBError.storageFailure(errno: ENOENT)) { try FileStorage(openedToBeReadAt: path) }
         #expect(throws: XitDBError.storageFailure(errno: ENOENT)) { try FileStorage(path: path, access: .readWrite) }
         #expect(!FileManager.default.fileExists(atPath: path))
 
@@ -35,7 +35,7 @@ import Testing
         try writeBytes(try FileStorage(path: path, access: .create), [1, 2, 3], at: 0)
         #expect(try FileStorage(path: path, access: .create).length == 3)
         #expect(try FileStorage(path: path, access: .readWrite).length == 3)
-        #expect(try FileStorage(path: path, access: .readOnly).length == 3)
+        #expect(try FileStorage(openedToBeReadAt: path).length == 3)
 
         // truncate empties it, and makes it when it is missing
         #expect(try FileStorage(path: path, access: .truncate).length == 0)
@@ -45,11 +45,18 @@ import Testing
         #expect(FileManager.default.fileExists(atPath: other))
     }
 
-    @Test func theDefaultsAreCreateAndFullDurability() throws {
+    /// The durability a storage has where none is given is the full one;
+    /// and the access that creates is held by what happens, since a storage
+    /// does not say how it was opened: a path that is not there is made.
+    @Test func theDefaultDurabilityIsFullAndCreateMakesAFileThatIsNotThere() throws {
         let directory = try TemporaryDirectory()
+        #expect(!FileManager.default.fileExists(atPath: directory.path()))
         let storage = try FileStorage(path: directory.path(), access: .create)
         #expect(storage.durability == .full)
-        if case .create = storage.access {} else { Issue.record("the default access is not create") }
+        #expect(FileManager.default.fileExists(atPath: directory.path()))
+        // and one that is there is opened, not emptied
+        try writeBytes(storage, [1, 2, 3], at: 0)
+        #expect(try FileStorage(path: directory.path(), access: .create).length == 3)
     }
 
     @Test func aWritePastTheEndFillsTheGapWithZeros() throws {
@@ -84,15 +91,19 @@ import Testing
         #expect(try storage.length == 0)
     }
 
-    /// Both file storages reject a write to a file opened for reading only,
-    /// at once and with the same error. Zig's buffered file accepts the
-    /// write into its buffer and fails only when it flushes.
+    /// The file storage in its reading mode, plain and under a buffer,
+    /// rejects a write at once and with the same error. Zig's buffered file
+    /// accepts the write into its buffer and fails only when it flushes.
+    /// (No client holds such a storage: a file opened to be read is a
+    /// `ReadOnlyFileStorage`, which has no write. The mode is the engine's,
+    /// for the original's behaviour on a read-only file, and is reached
+    /// here by the package's door.)
     @Test(arguments: [false, true])
     func aReadOnlyStorageRejectsWritesAndIgnoresTruncation(buffered: Bool) throws {
         let directory = try TemporaryDirectory()
         try writeBytes(try FileStorage(path: directory.path(), access: .create), [1, 2, 3, 4], at: 0)
 
-        let file = try FileStorage(path: directory.path(), access: .readOnly)
+        let file = try FileStorage(openedToBeReadAt: directory.path())
         let storage: any WritableStorage = buffered ? BufferedFileStorage(file, bufferLimit: 16) : file
         #expect(try readBytes(storage, at: 0, count: 10) == [1, 2, 3, 4])
 
@@ -132,9 +143,12 @@ import Testing
         try writeBytes(try FileStorage(path: directory.path(), access: .create), [1, 2, 3], at: 0)
         try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: directory.path())
 
-        let storage = try FileStorage(path: directory.path(), access: .readOnly)
+        #expect(try readBytes(try ReadOnlyFileStorage(path: directory.path()), at: 0, count: 10) == [1, 2, 3])
+        // and the file storage in its reading mode, plain and under a
+        // buffer, as the engine's own tests have it
+        let storage = try FileStorage(openedToBeReadAt: directory.path())
         #expect(try readBytes(storage, at: 0, count: 10) == [1, 2, 3])
-        let buffered = try BufferedFileStorage(path: directory.path(), access: .readOnly)
+        let buffered = BufferedFileStorage(try FileStorage(openedToBeReadAt: directory.path()))
         #expect(try readBytes(buffered, at: 0, count: 10) == [1, 2, 3])
 
         // the other ways of opening need write access, and say so
@@ -171,20 +185,23 @@ import Testing
 
     /// A C string ends at the first NUL, so a path with one in it would
     /// open the file that the part before the NUL names: "test.db\0-new"
-    /// would open test.db. Both file storages refuse it with EINVAL.
+    /// would open test.db. Every file storage refuses it with EINVAL.
     @Test func aPathWithANULByteIsRefused() throws {
         let directory = try TemporaryDirectory()
         let truncated = directory.path()
         let paths = [truncated + "\u{0}-new", truncated + "\u{0}", "\u{0}" + truncated]
         let invalid = XitDBError.storageFailure(errno: EINVAL)
         for path in paths {
-            for access in [FileAccess.readOnly, .readWrite, .create, .truncate] {
+            for access in [FileAccess.readWrite, .create, .truncate] {
                 #expect(throws: invalid, "\(path.debugDescription), \(access)") {
                     try FileStorage(path: path, access: access, lock: .exclusive)
                 }
                 #expect(throws: invalid, "\(path.debugDescription), \(access)") {
                     try BufferedFileStorage(path: path, access: access)
                 }
+            }
+            #expect(throws: invalid, "\(path.debugDescription), to be read") {
+                try ReadOnlyFileStorage(path: path, lock: .exclusive)
             }
         }
         // neither the file named before the NUL nor any other was made
@@ -194,7 +211,7 @@ import Testing
         // with that file there, the path is still refused rather than opened
         try writeBytes(try FileStorage(path: truncated, access: .create), [1, 2, 3], at: 0)
         for path in paths {
-            #expect(throws: invalid) { try FileStorage(path: path, access: .readOnly) }
+            #expect(throws: invalid) { try FileStorage(openedToBeReadAt: path) }
             #expect(throws: invalid) { try BufferedFileStorage(path: path, access: .truncate) }
         }
         #expect(try directory.contents() == [1, 2, 3])
@@ -226,12 +243,17 @@ private func descriptorsOpen(on path: String) throws -> Int {
     /// opened with `O_CLOEXEC`.
     @Test func theDescriptorIsClosedOnExec() throws {
         let directory = try TemporaryDirectory()
-        for access in [FileAccess.create, .readOnly, .readWrite, .truncate] {
+        for access in [FileAccess.create, .readWrite, .truncate] {
             let storage = try FileStorage(path: directory.path(), access: access)
             let flags = fcntl(storage.descriptor.rawValue, F_GETFD)
             #expect(flags >= 0, "\(access)")
             #expect(flags & FD_CLOEXEC != 0, "\(access)")
         }
+        // and a file opened to be read
+        let reader = try ReadOnlyFileStorage(path: directory.path())
+        let flags = fcntl(reader.file.descriptor.rawValue, F_GETFD)
+        #expect(flags >= 0, "to be read")
+        #expect(flags & FD_CLOEXEC != 0, "to be read")
     }
 
     /// An init that fails after the file is open, because the lock cannot
@@ -244,23 +266,27 @@ private func descriptorsOpen(on path: String) throws -> Int {
         try writeBytes(holder, [1, 2, 3], at: 0)
         #expect(try descriptorsOpen(on: path) == 1)
         do {
-            let second = try FileStorage(path: path, access: .readOnly)
+            let second = try FileStorage(openedToBeReadAt: path)
             #expect(try descriptorsOpen(on: path) == 2)
             try second.flush()
         }
         #expect(try descriptorsOpen(on: path) == 1)
 
-        for access in [FileAccess.readOnly, .readWrite, .create, .truncate] {
-            let lock: FileLock = access == .readOnly ? .shared : .exclusive
+        for access in [FileAccess.readWrite, .create, .truncate] {
             #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK), "\(access)") {
-                try FileStorage(path: path, access: access, lock: lock)
+                try FileStorage(path: path, access: access, lock: .exclusive)
             }
             #expect(try descriptorsOpen(on: path) == 1, "\(access)")
             #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK), "\(access)") {
-                try BufferedFileStorage(path: path, access: access, lock: lock)
+                try BufferedFileStorage(path: path, access: access, lock: .exclusive)
             }
             #expect(try descriptorsOpen(on: path) == 1, "\(access)")
         }
+        // and a reader that asks for a lock, which it cannot have
+        #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK), "to be read") {
+            try ReadOnlyFileStorage(path: path, lock: .shared)
+        }
+        #expect(try descriptorsOpen(on: path) == 1, "to be read")
         // and the file was not emptied by the truncating opener
         #expect(try directory.contents() == [1, 2, 3])
         try holder.flush()
@@ -275,7 +301,7 @@ private func descriptorsOpen(on path: String) throws -> Int {
             try FileStorage(path: directory.path(), access: .create, lock: .exclusive)
         }
         #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK)) {
-            try FileStorage(path: directory.path(), access: .readOnly, lock: .shared)
+            try FileStorage(openedToBeReadAt: directory.path(), lock: .shared)
         }
         #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK)) {
             try BufferedFileStorage(path: directory.path(), access: .create, lock: .exclusive)
@@ -286,7 +312,7 @@ private func descriptorsOpen(on path: String) throws -> Int {
     @Test func sharedLocksCoexistAndKeepOutAnExclusiveOne() throws {
         let directory = try TemporaryDirectory()
         let first = try FileStorage(path: directory.path(), access: .create, lock: .shared)
-        let second = try FileStorage(path: directory.path(), access: .readOnly, lock: .shared)
+        let second = try FileStorage(openedToBeReadAt: directory.path(), lock: .shared)
         #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK)) {
             try FileStorage(path: directory.path(), access: .create, lock: .exclusive)
         }

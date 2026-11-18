@@ -60,7 +60,10 @@ struct OriginalListing {
             listing.text += Self.hex(hashID)
         }
         listing.text += "\nfile id: \(Self.hex(bytes[12..<20]))\n"
-        let storage = try FileStorage(path: path, access: .readOnly)
+        // the engine's own database over the file opened to be read, as
+        // the original's listing has its one database type: by the
+        // package's door
+        let storage = try FileStorage(openedToBeReadAt: path)
         let database: Database
         do {
             database = try Database(storage: storage, hashSize: hashSize)

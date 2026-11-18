@@ -35,7 +35,10 @@ import XitDBHashing
     }
 
     /// A reader's storage of its own on a file, opened to be read with no
-    /// lock, whose calls for the file's length are counted.
+    /// lock, whose calls for the file's length are counted. It is the file
+    /// storage in its reading mode, by the package's door, so that the
+    /// engine's buffered kinds over such a file are held as well as what a
+    /// `ReadOnlyFileStorage` gives a client.
     private static func reader(_ kind: FileKind, at path: String, _ counted: Counted) throws -> any WritableStorage {
         var calls = FileCalls()
         let length = calls.length
@@ -44,7 +47,7 @@ import XitDBHashing
             return try length(descriptor)
         }
         let file = try FileStorage(
-            path: path, access: .readOnly, reading: kind.isMapped ? .memoryMap : .fileCalls,
+            openedToBeReadAt: path, reading: kind.isMapped ? .memoryMap : .fileCalls,
             segmentSize: Platform.pageSize, calls: calls)
         guard file.isMemoryMapped == kind.isMapped else { throw NotReadThroughTheMap(path: path) }
         return kind.isBuffered ? BufferedFileStorage(file) : file
@@ -282,7 +285,7 @@ import XitDBHashing
         let directory = try TemporaryDirectory()
         try Self.write(at: directory.path(), texts: 3, values: 40)
         let file = try FileStorage(
-            path: directory.path(), access: .readOnly, reading: reading, segmentSize: Platform.pageSize)
+            openedToBeReadAt: directory.path(), reading: reading, segmentSize: Platform.pageSize)
         guard file.isMemoryMapped == (reading != .fileCalls) else {
             throw NotReadThroughTheMap(path: directory.path())
         }
@@ -321,7 +324,7 @@ import XitDBHashing
         // to be trusted.
         var opening: XitDBError.Code?
         do throws(XitDBError) {
-            _ = try ReadOnlyDatabase(opening: try FileStorage(path: directory.path(), access: .readOnly))
+            _ = try ReadOnlyDatabase(opening: try ReadOnlyFileStorage(path: directory.path()))
         } catch {
             opening = error.code
         }
@@ -407,7 +410,7 @@ import XitDBHashing
         #expect(throws: XitDBError.endOfStream) { try source.database.compact(into: target, offsetMap: &offsets) }
         #expect(offsets.fired)
         // The file is cut where the map cut it: the compaction got that far.
-        #expect(try FileStorage(path: source.directory.path(), access: .readOnly).length == source.lastRecord + 5_008)
+        #expect(try ReadOnlyFileStorage(path: source.directory.path()).length == source.lastRecord + 5_008)
 
         #expect(targetStorage.bytes == before)
         #expect(try target.rootCursor.slot.isEmpty)

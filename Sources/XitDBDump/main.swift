@@ -55,7 +55,7 @@ func writeByteToStandardError(_ byte: UnsafeRawPointer) -> Int {
 }
 
 func readLines(_ path: String) -> [String] {
-    guard let storage = try? FileStorage(path: path, access: .readOnly, durability: .none),
+    guard let storage = try? ReadOnlyFileStorage(path: path),
         let length = try? storage.length, let count = Int(exactly: length)
     else { fail("cannot read \(path)") }
     var bytes = [UInt8](repeating: 0, count: count)
@@ -127,9 +127,13 @@ func parse(_ given: [String]) -> (DumpOptions, String) {
 }
 
 let (options, file) = parse(Array(CommandLine.arguments.dropFirst()))
+// The file is opened to be read, as the file storage a `ReadOnlyFileStorage`
+// is the face of: the dump kit works on the engine's own database, which a
+// program of another package does not have, and which this tool reaches by
+// the package's door.
 let storage: FileStorage
 do {
-    storage = try FileStorage(path: file, access: .readOnly, durability: .none)
+    storage = try FileStorage(openedToBeReadAt: file, durability: .none)
 } catch {
     fail("cannot open \(file): \(error.description)")
 }

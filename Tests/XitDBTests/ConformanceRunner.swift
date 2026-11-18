@@ -62,6 +62,12 @@ final class ScriptStorage {
 
     /// Opens the storage for a database. The script format has syncing off
     /// and the default buffer size.
+    ///
+    /// A script's `read_only` opens the file storage in its reading mode,
+    /// by the package's door, on every file kind: the fixtures hold the
+    /// engine to the original's behaviour on a read-only file, under the
+    /// original's one database type, which a client of the port cannot
+    /// open over a file opened to be read.
     func openStorage(readOnly: Bool) throws -> any WritableStorage {
         let storage: any WritableStorage
         switch kind {
@@ -72,16 +78,24 @@ final class ScriptStorage {
             storage = memory
         case .file:
             let path = try #require(directory).path()
-            storage = try FileStorage(path: path, access: readOnly ? .readOnly : .create, durability: .none)
+            storage =
+                readOnly
+                ? try FileStorage(openedToBeReadAt: path, durability: .none)
+                : try FileStorage(path: path, access: .create, durability: .none)
         case .bufferedFile:
             let path = try #require(directory).path()
-            storage = try BufferedFileStorage(path: path, access: readOnly ? .readOnly : .create, durability: .none)
+            storage =
+                readOnly
+                ? BufferedFileStorage(try FileStorage(openedToBeReadAt: path, durability: .none))
+                : try BufferedFileStorage(path: path, access: .create, durability: .none)
         case .bufferedFileSmallWindow:
             // a window most of a script's writes restart or go around, as
             // the storage tests use it
             let path = try #require(directory).path()
-            storage = try BufferedFileStorage(
-                path: path, access: readOnly ? .readOnly : .create, durability: .none, bufferLimit: 200)
+            storage =
+                readOnly
+                ? BufferedFileStorage(try FileStorage(openedToBeReadAt: path, durability: .none), bufferLimit: 200)
+                : try BufferedFileStorage(path: path, access: .create, durability: .none, bufferLimit: 200)
         case .mappedFile:
             storage = try mappedFile(readOnly: readOnly)
         case .mappedBufferedFile:
@@ -97,9 +111,12 @@ final class ScriptStorage {
     private func mappedFile(readOnly: Bool) throws -> FileStorage {
         let path = try #require(directory).path()
         return try readThroughTheMap(
-            try FileStorage(
-                path: path, access: readOnly ? .readOnly : .create, durability: .none,
-                lock: readOnly ? nil : .exclusive, reading: .memoryMap, segmentSize: Platform.pageSize), at: path)
+            readOnly
+                ? try FileStorage(
+                    openedToBeReadAt: path, durability: .none, reading: .memoryMap, segmentSize: Platform.pageSize)
+                : try FileStorage(
+                    path: path, access: .create, durability: .none, lock: .exclusive, reading: .memoryMap,
+                    segmentSize: Platform.pageSize), at: path)
     }
 
     /// Ends the use of the storage, flushing it first as the Zig runner's

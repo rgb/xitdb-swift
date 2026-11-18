@@ -120,7 +120,7 @@ import XitDBHashing
         let scratch = ScratchDirectory()
         defer { scratch.remove() }
         do {
-            _ = try BufferedFileStorage(path: scratch.path("nothing-here.db"), access: .readOnly)
+            _ = try ReadOnlyFileStorage(path: scratch.path("nothing-here.db"))
             Issue.record("opening should have failed")
         } catch {
             guard case .storageFailure(let number) = error else {

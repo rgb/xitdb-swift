@@ -75,7 +75,7 @@ final class CountedFileCalls {
         }
         calls.open = { [self] (path: String, access: FileAccess) throws(XitDBError) -> Int32 in
             if fails("open") { throw .storageFailure(errno: EIO) }
-            let descriptor = try Platform.openFile(path, access: access)
+            let descriptor = try Platform.openFile(path, .toWrite(access))
             came("open")
             return descriptor
         }
@@ -233,9 +233,9 @@ final class CountedFileCalls {
 
     /// An opener without a lock, while the writer lives, opens `expected`.
     private static func aReaderOpens(_ expected: Known, _ copy: Copy, _ step: String) throws {
-        let reader = try Database(
-            opening: try FileStorage(path: copy.directory.path(), access: .readOnly), hashSize: 20)
-        #expect(try StructureWalk.describe(reader.rootCursor.readOnly) == expected.walk, "a reader's walk, \(step)")
+        let reader = try ReadOnlyDatabase(
+            opening: try ReadOnlyFileStorage(path: copy.directory.path()), hashSize: 20)
+        #expect(try StructureWalk.describe(reader.rootCursor) == expected.walk, "a reader's walk, \(step)")
     }
 
     /// With the first writer gone, the next writer opens `expected`.

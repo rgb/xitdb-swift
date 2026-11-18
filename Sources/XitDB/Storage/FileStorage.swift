@@ -1,12 +1,8 @@
-/// How a file storage opens its file.
+/// How a file storage opens its file, which it reads and writes.
+///
+/// A file that is only to be read is opened as a ``ReadOnlyFileStorage``,
+/// a type of its own that has no way to write.
 public enum FileAccess: Sendable {
-    /// Open an existing file for reading only.
-    ///
-    /// Writing to the storage fails. A request to shorten it is ignored; a
-    /// length larger than the file's is still ``XitDBError/invalidLength``,
-    /// as on every storage.
-    case readOnly
-
     /// Open an existing file for reading and writing.
     case readWrite
 
@@ -168,7 +164,10 @@ package struct FileCalls {
 
     /// Opens a file and returns its descriptor: the call that makes the
     /// file a full copy is written into, beside the one it replaces.
-    package var open: (String, FileAccess) throws(XitDBError) -> Int32 = Platform.openFile
+    package var open: (String, FileAccess) throws(XitDBError) -> Int32 = {
+        (path: String, access: FileAccess) throws(XitDBError) in
+        try Platform.openFile(path, .toWrite(access))
+    }
 
     /// Takes an advisory lock on a file without waiting for it.
     package var lock: (Int32, FileLock) throws(XitDBError) -> Void = Platform.lockFile
@@ -199,6 +198,19 @@ package struct FileCalls {
     package init() {}
 }
 
+/// How a file storage's file is opened: to be read, which is the mode a
+/// ``ReadOnlyFileStorage`` has its file storage in, or to be written, in
+/// one of the ways a caller asks for.
+///
+/// A file storage in the reading mode is the original's read-only file: a
+/// write through it fails, a request to shorten it is ignored, and a
+/// length larger than the file's is still `invalidLength`. No caller of
+/// the library holds one as a ``FileStorage``.
+enum FileOpening: Sendable {
+    case toRead
+    case toWrite(FileAccess)
+}
+
 /// Owns an open file descriptor and closes it when the last reference goes.
 ///
 /// The descriptor never changes and positional reads on it are safe from any
@@ -206,8 +218,8 @@ package struct FileCalls {
 final class FileDescriptor: Sendable {
     let rawValue: Int32
 
-    init(opening path: String, access: FileAccess) throws(XitDBError) {
-        self.rawValue = try Platform.openFile(path, access: access)
+    init(opening path: String, _ opening: FileOpening) throws(XitDBError) {
+        self.rawValue = try Platform.openFile(path, opening)
     }
 
     /// Takes over a descriptor that is open already, which this owner
@@ -634,8 +646,11 @@ public final class FileStorage: WritableStorage {
         return !map.refused
     }
 
-    /// How the file was opened.
-    public let access: FileAccess
+    /// Whether the file was opened to be read: the mode a
+    /// ``ReadOnlyFileStorage`` has its file storage in. A write fails, a
+    /// request to shorten the file is ignored, and a memory map needs no
+    /// lock and takes its limit from the engine.
+    let isReadOnly: Bool
 
     /// How far the storage goes to put a commit on the disk.
     public let durability: Durability
@@ -656,8 +671,8 @@ public final class FileStorage: WritableStorage {
     ///
     /// - Parameters:
     ///   - path: The path of the file.
-    ///   - access: Whether to open the file for reading only, and whether to
-    ///     create or empty it.
+    ///   - access: Whether the file must exist, and whether to create or
+    ///     empty it.
     ///   - durability: How far to go to put a commit on the disk.
     ///   - lock: An advisory lock to take on the file, or `nil` for none.
     ///     Holding a lock on a file in a shared container while an iOS app is
@@ -666,12 +681,11 @@ public final class FileStorage: WritableStorage {
     ///   - reading: How the file is read: by file calls, or through a
     ///     memory map, which makes a read a copy from memory where it is a
     ///     system call otherwise, in either of the two ways ``FileReading``
-    ///     says. Writes are file writes either way. A storage that can
-    ///     write needs ``FileLock/exclusive`` for a map, which says that
-    ///     it is the file's one writer; one opened with
-    ///     ``FileAccess/readOnly`` needs no lock, and reads through the
-    ///     map only what is committed. See ``isMemoryMapped`` for whether
-    ///     the map was had.
+    ///     says. Writes are file writes either way. The storage needs
+    ///     ``FileLock/exclusive`` for a map, which says that it is the
+    ///     file's one writer; a ``ReadOnlyFileStorage`` needs no lock, and
+    ///     reads through the map only what is committed. See
+    ///     ``isMemoryMapped`` for whether the map was had.
     ///
     ///     With the map, a file that something shortens ends the process:
     ///     a read of a part that is no longer there is not an error but a
@@ -701,8 +715,8 @@ public final class FileStorage: WritableStorage {
         reading: FileReading = .fileCalls
     ) throws(XitDBError) {
         try self.init(
-            path: path, access: access, durability: durability, lock: lock, reading: reading,
-            segmentSize: FileStorage.defaultSegmentSize)
+            path: path, opening: .toWrite(access), durability: durability, lock: lock, reading: reading,
+            segmentSize: FileStorage.defaultSegmentSize, calls: FileCalls())
     }
 
     /// Opens a file as a storage, with the size of the segments its memory
@@ -713,7 +727,7 @@ public final class FileStorage: WritableStorage {
     ///
     /// - Precondition: `segmentSize` is a power of two and a multiple of
     ///   the page size.
-    package init(
+    package convenience init(
         path: String,
         access: FileAccess,
         durability: Durability = .full,
@@ -722,18 +736,61 @@ public final class FileStorage: WritableStorage {
         segmentSize: Int,
         calls: FileCalls = FileCalls()
     ) throws(XitDBError) {
+        try self.init(
+            path: path, opening: .toWrite(access), durability: durability, lock: lock, reading: reading,
+            segmentSize: segmentSize, calls: calls)
+    }
+
+    /// Opens a file to be read, as a file storage in its reading mode: what
+    /// a ``ReadOnlyFileStorage`` is the public face of, and the door by
+    /// which the package's own tests hold the engine to the original's
+    /// behaviour on a read-only file, which the conformance fixtures
+    /// describe. A write through it fails with `storageFailure` carrying
+    /// `EBADF` and a request to shorten it does nothing; with a memory map
+    /// it needs no lock.
+    ///
+    /// - Precondition: `segmentSize` is a power of two and a multiple of
+    ///   the page size.
+    package convenience init(
+        openedToBeReadAt path: String,
+        durability: Durability = .full,
+        lock: FileLock? = nil,
+        reading: FileReading = .fileCalls,
+        segmentSize: Int = FileStorage.defaultSegmentSize,
+        calls: FileCalls = FileCalls()
+    ) throws(XitDBError) {
+        try self.init(
+            path: path, opening: .toRead, durability: durability, lock: lock, reading: reading,
+            segmentSize: segmentSize, calls: calls)
+    }
+
+    /// Opens a file as a storage, to be read or to be written.
+    init(
+        path: String,
+        opening: FileOpening,
+        durability: Durability,
+        lock: FileLock?,
+        reading: FileReading,
+        segmentSize: Int,
+        calls: FileCalls
+    ) throws(XitDBError) {
+        let isReadOnly: Bool
+        let empties: Bool
+        switch opening {
+        case .toRead: (isReadOnly, empties) = (true, false)
+        case .toWrite(.truncate): (isReadOnly, empties) = (false, true)
+        case .toWrite(.readWrite), .toWrite(.create): (isReadOnly, empties) = (false, false)
+        }
         if reading.isThroughAMap {
             // With the map the lock says "I am the writer": two writers
             // that read through maps end each other's process. A storage
             // that only reads needs none: it reads through the map only
             // what its engine has verified to be committed.
-            switch (access, lock) {
-            case (.readOnly, _), (_, .exclusive?): break
-            default: throw .memoryMapNeedsLock
-            }
+            let holdsTheWritersLock = if case .exclusive? = lock { true } else { false }
+            guard isReadOnly || holdsTheWritersLock else { throw .memoryMapNeedsLock }
         }
-        self.descriptor = try FileDescriptor(opening: path, access: access)
-        self.access = access
+        self.descriptor = try FileDescriptor(opening: path, opening)
+        self.isReadOnly = isReadOnly
         self.durability = durability
         self.requestedReading = reading
         self.path = path
@@ -745,7 +802,7 @@ public final class FileStorage: WritableStorage {
         if let lock {
             try Platform.lockFile(descriptor.rawValue, lock)
         }
-        if case .truncate = access {
+        if empties {
             try Platform.setFileLength(descriptor.rawValue, 0)
         }
         self.calls = calls
@@ -764,16 +821,12 @@ public final class FileStorage: WritableStorage {
             // its limit starts at nothing and is raised by the engine, to
             // each committed size it has verified.
             let length = try Platform.fileLength(descriptor.rawValue)
-            let limit: UInt64 = if case .readOnly = access { 0 } else { length }
+            let limit: UInt64 = isReadOnly ? 0 : length
             let view = FileMapView(segmentSize: segmentSize)
             unsafe readView = view
             unsafe readLimit = limit
             map = MapState(view: view, writtenEnd: limit)
         }
-    }
-
-    var isReadOnly: Bool {
-        if case .readOnly = access { true } else { false }
     }
 
     /// What a snapshot of the file's first `size` bytes reads through: the
@@ -996,8 +1049,8 @@ public final class FileStorage: WritableStorage {
     ///   - bytes: The bytes to write.
     ///   - offset: The position in the file of the first byte written.
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if writing fails. It
-    ///   always does on a storage opened with ``FileAccess/readOnly``, and
-    ///   for bytes that would lie beyond the largest offset a file can have.
+    ///   always does for bytes that would lie beyond the largest offset a
+    ///   file can have.
     public func write(_ bytes: Span<UInt8>, at offset: UInt64) throws(XitDBError) {
         guard bytes.count > 0 else { return }
         try checkWritable(bytes, at: offset)
@@ -1023,9 +1076,6 @@ public final class FileStorage: WritableStorage {
     }
 
     /// Cuts the file down to `length` bytes.
-    ///
-    /// On a storage opened with ``FileAccess/readOnly`` a length within the
-    /// file leaves it as it is; a larger one is still ``XitDBError/invalidLength``.
     ///
     /// - Parameter length: The new length in bytes.
     /// A length below what a ``Snapshot`` of a database in this file reads

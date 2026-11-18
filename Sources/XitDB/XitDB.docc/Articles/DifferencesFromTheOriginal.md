@@ -88,7 +88,8 @@ port's files match byte for byte that branch's and not the original's. That bran
 - **Setting a storage's length larger** is refused in memory and allowed for a file in the original. The port's
   ``WritableStorage/truncate(to:)`` only shortens, on every storage.
 - **A read-only file** fails at the first write in the original's plain file kind, and only at the commit in its buffered kind.
-  The port fails at once on both.
+  In the port a write through a file opened to be read does not compile (see the differences that are only the API, below);
+  the engine underneath, which the conformance suite holds to the original's behaviour on such a file, fails at once on both.
 - **Parts of a path after a remove** are ignored by the original. The port's path API refuses them, and since that API is internal,
   only the package's own code can meet this.
 - **The original syncs after every write outside a transaction**, including ones that commit nothing. The port syncs after a
@@ -182,6 +183,16 @@ The file format and the operations are the same, and the API follows Swift:
 - **The storage is a value too.** ``Database`` is not generic over it either, and any ``WritableStorage`` will do.
 - **Opening and creating are separate calls**, and a file's access mode has no default: see <doc:Storage>. The original's one
   call creates over what a creation that did not finish left; here creating does, and opening refuses it.
+- **A file opened to be read is a type of its own.** The original has one database type, and so have its Go, Java and
+  TypeScript ports: a read-only file is opened with the same call, and a write through it fails when the program runs.
+  Here a reader opens a ``ReadOnlyFileStorage`` and a ``ReadOnlyDatabase`` over it, and a transaction, a recovery or a
+  sync onto it does not compile. No file is read or written differently, and everything that succeeds on a read-only
+  file in the original has its twin: reads, a snapshot, the reading side of replication, a compaction from it. The step
+  is along a line the family draws already. Read-only against read-write is a matter for the compiler on the original's
+  collections (`DB.HashMap(.read_only)`) and on the ports' cursors (`ReadCursor` and `WriteCursor`); the Java port has a
+  read-only file of its own, `CoreReadOnlyFile`; and the Go and Java READMEs tell a process that only reads to open its
+  file read-only. The price is two types where a program decides while it runs whether it only reads: it holds
+  `any ReadableStorage`, as <doc:Storage> shows.
 - **Values are Swift types** beside ``WritableData``: `UInt64`, `Int64`, `Double`, `String`, `[UInt8]`, ``Bytes``, and any
   ``StorableValue`` of your own, each written as the format's own slot: see <doc:CursorsAndValues>.
 - **A byte writer is a closure**, ``Cursor/writeBytes(formatTag:_:)``. There is no `finish` to forget.

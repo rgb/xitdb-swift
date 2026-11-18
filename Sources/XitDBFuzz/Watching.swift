@@ -4,11 +4,11 @@
 //
 //     XitDBFuzz watch <kind> <path>
 //
-// The kinds are the port's six file kinds, by the words the conformance
-// suite's reader has for them (`XitDBConformanceReader`): `file`,
-// `buffered`, and each through a memory map in either of its two ways,
-// `file-map`, `file-map-read-ahead`, `buffered-map`,
-// `buffered-map-read-ahead`.
+// The kinds are the three ways a file opened to be read is read, by the
+// words the conformance suite's reader has for them
+// (`XitDBConformanceReader`): `file`, by file calls, and through a memory
+// map in either of its two ways, `file-map` and `file-map-read-ahead`. The
+// storage is a `ReadOnlyFileStorage` on each.
 //
 // Opens the file at the path to be read, with no lock, as a reader beside a
 // writer in another process does, prints `open`, and then answers each line
@@ -31,30 +31,20 @@
 import Foundation
 import XitDB
 
-/// The kinds of file storage a watching reader opens, each by the word the
-/// command line has for it: the two file storages, each read by file calls
-/// and through a memory map in either of its two ways.
+/// The ways a watching reader reads its file, each by the word the command
+/// line has for it: a file opened to be read, read by file calls and
+/// through a memory map in either of its two ways.
 enum WatchKind: String, CaseIterable {
-    case file, buffered
+    case file
     case fileMap = "file-map"
     case fileMapReadAhead = "file-map-read-ahead"
-    case bufferedMap = "buffered-map"
-    case bufferedMapReadAhead = "buffered-map-read-ahead"
-
-    /// Whether the storage is the buffered one.
-    var buffered: Bool {
-        switch self {
-        case .file, .fileMap, .fileMapReadAhead: false
-        case .buffered, .bufferedMap, .bufferedMapReadAhead: true
-        }
-    }
 
     /// How the storage reads its file.
     var reading: FileReading {
         switch self {
-        case .file, .buffered: .fileCalls
-        case .fileMap, .bufferedMap: .memoryMap
-        case .fileMapReadAhead, .bufferedMapReadAhead: .memoryMapReadAhead
+        case .file: .fileCalls
+        case .fileMap: .memoryMap
+        case .fileMapReadAhead: .memoryMapReadAhead
         }
     }
 }
@@ -75,21 +65,9 @@ enum WatchQuestion: String {
 /// storage of the kind named.
 func watch(_ kind: WatchKind, path: String) {
     alarm(20)
-    let storage: any WritableStorage
-    let still: () throws(XitDBError) -> Bool
-    let isMapped: Bool
+    let storage: ReadOnlyFileStorage
     do {
-        if kind.buffered {
-            let opened = try BufferedFileStorage(path: path, access: .readOnly, reading: kind.reading)
-            storage = opened
-            still = { () throws(XitDBError) in try opened.isStillAtPath }
-            isMapped = opened.isMemoryMapped
-        } else {
-            let opened = try FileStorage(path: path, access: .readOnly, reading: kind.reading)
-            storage = opened
-            still = { () throws(XitDBError) in try opened.isStillAtPath }
-            isMapped = opened.isMemoryMapped
-        }
+        storage = try ReadOnlyFileStorage(path: path, reading: kind.reading)
     } catch {
         fail("XitDBFuzz: cannot open \(path): \(error.description)", status: 1)
     }
@@ -102,14 +80,14 @@ func watch(_ kind: WatchKind, path: String) {
         switch question {
         case .still:
             do {
-                say(try still() ? "true" : "false")
+                say(try storage.isStillAtPath ? "true" : "false")
             } catch {
                 // The case's own name, by its code: a line a test reads is
                 // never what an error prints.
                 say("error \(error.code.rawValue)")
             }
         case .mapped:
-            say(isMapped ? "true" : "false")
+            say(storage.isMemoryMapped ? "true" : "false")
         case .read:
             do {
                 var bytes = [UInt8](repeating: 0, count: 16)

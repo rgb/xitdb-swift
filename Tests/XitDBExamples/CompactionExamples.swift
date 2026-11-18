@@ -309,7 +309,7 @@ import XitDBHashing
             URL(fileURLWithPath: scratch.path("main.db")),
             withItemAt: URL(fileURLWithPath: scratch.path("compact.db")))
 
-        let reopened = try Database(opening: BufferedFileStorage(path: scratch.path("main.db"), access: .readOnly))
+        let reopened = try ReadOnlyDatabase(opening: ReadOnlyFileStorage(path: scratch.path("main.db")))
         #expect(try ArrayList<ReadOnly>(reopened.rootCursor).count == 1)
     }
 

@@ -200,11 +200,16 @@ refused_with_words() {
 # A database opened to be read has no way to write, and the compiler says so:
 # no transaction, no freeze, no replication onto it, no recovery, no compaction
 # into it; a root that is read-only, and so everything made from it; and it is
-# no `Database`, nor does a cursor of it lead to one. What a reader does through
-# it is in the accepted file, which compiled above.
+# no `Database`, nor does a cursor of it lead to one. Nor has a file opened to be
+# read: no access opens a file storage read-only, no database that writes opens
+# over a `ReadOnlyFileStorage` or is created in it, it is no storage to recover,
+# to buffer or to write through, and a file storage is not asked how it was
+# opened. What a reader does through both is in the accepted file, which
+# compiled above.
 grep -q 'ReadOnlyDatabase(opening:' "$accepted" || fail "$accepted opens no database to be read"
+grep -q 'ReadOnlyFileStorage(path:' "$accepted" || fail "$accepted opens no file to be read"
 refused_with_words scripts/must-not-compile/RefusedReadOnly.swift \
-    "writes through a database opened to be read refused, each with the compiler's words for it, and its reads accepted"
+    "writes through a database or a file opened to be read refused, each with the compiler's words for it, and a reader's reads accepted"
 
 # The view a file storage reads through cannot be changed in place: every stored
 # member of it is a `let`. That is what the storage's two properties without a

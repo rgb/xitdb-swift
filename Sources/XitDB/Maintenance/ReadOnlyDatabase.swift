@@ -7,20 +7,20 @@
 /// comes from one commit. What it does not have is a way to write. Its
 /// root cursor is a ``Cursor`` of ``ReadOnly`` access, so the collections
 /// made from it are the read-only ones, and there is no transaction, no
-/// freeze, no replication onto it and no recovery: a write that a
-/// ``Database`` over a storage opened read-only refuses when it runs does
-/// not compile here.
+/// freeze, no replication onto it and no recovery: a write that the
+/// original refuses on a read-only file when the program runs does not
+/// compile here.
 ///
 /// ```swift
-/// let storage = try FileStorage(path: "main.db", access: .readOnly)
+/// let storage = try ReadOnlyFileStorage(path: "main.db")
 /// let database = try ReadOnlyDatabase(opening: storage, hashing: SHA256.self)
 /// let list = try ArrayList(database.rootCursor)
 /// ```
 ///
 /// It is opened over any ``ReadableStorage``, so a storage of your own that
 /// can only read is enough, and it never writes to the storage it is given,
-/// whatever that storage could do. A reader of a file opens it with
-/// ``FileAccess/readOnly`` all the same: that is how a storage reads beside
+/// whatever that storage could do. A reader of a file opens a
+/// ``ReadOnlyFileStorage`` all the same: that is how a storage reads beside
 /// a writer, with no lock, through a memory map included.
 ///
 /// It serves what a ``Database`` serves to a reader, as
@@ -91,12 +91,15 @@ public final class ReadOnlyDatabase: ReadableDatabase {
         engine.readingOwner = self
     }
 
-    /// The storage as the engine holds one: itself where it is a
-    /// ``WritableStorage``, which the three storages of this package are
-    /// however they were opened, and otherwise behind a class whose writes
-    /// refuse.
+    /// The storage as the engine holds one: the file storage a
+    /// ``ReadOnlyFileStorage`` is the face of, which is in its reading
+    /// mode; the storage itself where it is a ``WritableStorage``, as the
+    /// package's writing storages are; and otherwise behind a class whose
+    /// writes refuse. So each of the package's storages reaches the engine
+    /// by its class.
     private static func asTheEngineHoldsIt(_ storage: any ReadableStorage) -> any WritableStorage {
-        (storage as? any WritableStorage) ?? ReadingStorage(storage)
+        if let reading = storage as? ReadOnlyFileStorage { return reading.file }
+        return (storage as? any WritableStorage) ?? ReadingStorage(storage)
     }
 
     /// A read-only cursor at the root, which every read starts from.

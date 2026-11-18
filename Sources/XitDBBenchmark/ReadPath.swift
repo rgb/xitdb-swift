@@ -32,10 +32,12 @@
 // with `--mapped`, the two mapped ones (`mapped_buffered_file`,
 // `mapped_file`); `--kind` names one. A phase reads through the storage it
 // was written through unless `--snapshot` says a snapshot of it or
-// `--reader` a reader of its own: a second storage opened on the file to be
-// read, with no lock, read as the kind is, under a `ReadOnlyDatabase`. In
-// memory there is no file for a reader to open, and `--reader` reads
-// through the storage there.
+// `--reader` a reader of its own: a `ReadOnlyFileStorage` opened on the
+// file, with no lock, read by file calls or through a map as the kind is,
+// under a `ReadOnlyDatabase`. A reader has no buffered form, so the reader
+// of a buffered kind is the reader of the plain kind that reads the same
+// way. In memory there is no file for a reader to open, and `--reader`
+// reads through the storage there.
 //
 // Every reading phase is run once off the clock before it is timed, so
 // that no page is touched for the first time on the clock: these lines are
@@ -67,8 +69,9 @@ let readPathLimit: UInt32 = {
     return seconds
 }()
 
-/// A database that only reads, over a second storage opened on a run's file
-/// to be read, with no lock, and read as the run's kind is.
+/// A database that only reads, over a storage opened on a run's file to be
+/// read, with no lock, and read as the run's kind is, by file calls or
+/// through a map.
 ///
 /// - Throws: A failure for a memory storage, which has no file, and for a
 ///   mapped kind whose file the library does not map, so that a line that
@@ -77,13 +80,11 @@ func readerDatabase(of storage: RunStorage) throws -> ReadOnlyDatabase {
     guard let path = storage.path else {
         throw BenchmarkFailure(description: "a memory storage has no file for a reader of its own to open")
     }
-    let file = try FileStorage(path: path, access: .readOnly, reading: storage.kind.isMapped ? .memoryMap : .fileCalls)
+    let file = try ReadOnlyFileStorage(path: path, reading: storage.kind.isMapped ? .memoryMap : .fileCalls)
     guard file.isMemoryMapped == storage.kind.isMapped else {
         throw BenchmarkFailure(description: "the reader's storage is not read as the run's kind is")
     }
-    let own: any ReadableStorage =
-        storage.kind == .file || storage.kind == .mappedFile ? file : BufferedFileStorage(file)
-    return try ReadOnlyDatabase(opening: own, hashing: Insecure.SHA1.self)
+    return try ReadOnlyDatabase(opening: file, hashing: Insecure.SHA1.self)
 }
 
 extension Reading {

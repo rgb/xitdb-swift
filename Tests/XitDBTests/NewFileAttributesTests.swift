@@ -22,8 +22,8 @@ import Testing
         let directory = try TemporaryDirectory()
         #expect(FileManager.default.createFile(atPath: directory.path(), contents: Data([1, 2, 3])))
         try FileManager.default.setAttributes([.posixPermissions: bits], ofItemAtPath: directory.path())
-        let old = try FileDescriptor(opening: directory.path(), access: .readWrite)
-        let new = try FileDescriptor(opening: directory.path("test.db.incoming"), access: .create)
+        let old = try FileDescriptor(opening: directory.path(), .toWrite(.readWrite))
+        let new = try FileDescriptor(opening: directory.path("test.db.incoming"), .toWrite(.create))
         return (directory, old, new)
     }
 

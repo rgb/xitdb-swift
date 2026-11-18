@@ -179,38 +179,6 @@ import XitDBHashing
         #expect(try moments(Database.recover(MemoryStorage(bytes: died), ignoringRootHeader: true)) == 3)
     }
 
-    @Test func recoveringAReadOnlyFileWhoseRootHeaderIsSound() throws {
-        let (good, after) = try threeMoments()
-        var died = good
-        died.replaceSubrange(24..<32, with: after[1][24..<32])
-        let scratch = ScratchDirectory()
-        defer { scratch.remove() }
-        let path = scratch.path("main.db")
-        let writer = try FileStorage(path: path, access: .create)
-        try writer.write(died.span, at: 0)
-        let reader = try FileStorage(path: path, access: .readOnly)
-        #expect(try moments(Database.recover(reader)) == 2)
-        #expect(try Data(contentsOf: URL(fileURLWithPath: path)) == Data(died))
-    }
-
-    @Test func recoveringAReadOnlyFile() throws {
-        let (good, _) = try threeMoments()
-        let scratch = ScratchDirectory()
-        defer { scratch.remove() }
-        let path = scratch.path("main.db")
-        let writer = try FileStorage(path: path, access: .create)
-        try writer.write(Array(good.dropLast()).span, at: 0)
-        let reader = try FileStorage(path: path, access: .readOnly)
-        do {
-            _ = try Database.recover(reader)
-            Issue.record("a read-only storage cannot be recovered")
-        } catch {
-            // `EBADF`, at the write of the root header.
-            #expect(error == .storageFailure(errno: 9))
-        }
-        #expect(try Data(contentsOf: URL(fileURLWithPath: path)) == Data(good.dropLast()))
-    }
-
     @Test func aReplicaAfterAFailedSyncAtZero() throws {
         // A sync writes its data in blocks of 4,096 bytes, counted from the
         // end of the root header, each once all of it has arrived. The three

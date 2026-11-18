@@ -238,8 +238,7 @@ public final class Database {
     ///   ``XitDBError/invalidHashSize`` if `hashSize` is 0 or more than
     ///   65535, or if the storage holds an unfinished creation of a
     ///   database with another hash size, which is left as it is; and
-    ///   ``XitDBError/storageFailure(errno:)`` if the storage fails, as a
-    ///   storage opened read-only does at the header's write.
+    ///   ``XitDBError/storageFailure(errno:)`` if the storage fails.
     public convenience init(
         creating storage: any WritableStorage,
         hashSize: Int,
@@ -313,10 +312,10 @@ public final class Database {
     /// was interrupted while being created, so it is created again;
     /// otherwise it is a full copy that was interrupted, which is left for
     /// the next sync to replace. Where the storage cannot be emptied
-    /// because it was opened read-only, which cutting it does not report,
-    /// an unfinished creation is left too, and opened as a database
-    /// without a first commit; ``init(opening:hashSize:)`` refuses it
-    /// instead.
+    /// because its file was opened to be read, which cutting it does not
+    /// report, an unfinished creation is left too, and opened as a
+    /// database without a first commit; ``init(opening:hashSize:)``
+    /// refuses it instead.
     ///
     /// - Throws: What the two public initialisers throw, except
     ///   ``XitDBError/storageNotEmpty``; `invalidHashSize` also if a hasher

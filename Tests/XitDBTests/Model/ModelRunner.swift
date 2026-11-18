@@ -306,7 +306,7 @@ final class ModelRunner {
         // A file reopened reads the same.
         for database in databases {
             guard let path = database.subject.path else { continue }
-            let reopened = try Database(opening: FileStorage(path: path, access: .readOnly, durability: .none))
+            let reopened = try ReadOnlyDatabase(opening: ReadOnlyFileStorage(path: path))
             let history = try ArrayList<ReadOnly>(reopened.rootCursor)
             if try history.count != UInt64(moments.count) {
                 mismatches.append(

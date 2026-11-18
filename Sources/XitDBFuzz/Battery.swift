@@ -19,12 +19,13 @@ struct BatteryPlace {
     /// memory map; `nil` for memory.
     let directory: String?
 
-    /// A storage that holds `bytes`, to read a database from.
-    func readable(_ bytes: [UInt8]) -> (any WritableStorage)? {
+    /// A storage that holds `bytes`, to read a database from: in a
+    /// directory, the file opened to be read, through a memory map.
+    func readable(_ bytes: [UInt8]) -> (any ReadableStorage)? {
         guard let directory else { return MemoryStorage(bytes: bytes) }
         let path = directory + "/source.db"
         guard put(bytes, at: path) else { return nil }
-        return try? FileStorage(path: path, access: .readOnly, durability: .none, lock: .shared, reading: .memoryMap)
+        return try? ReadOnlyFileStorage(path: path, lock: .shared, reading: .memoryMap)
     }
 
     /// A storage that holds `bytes` and may grow by `room` bytes and no
@@ -144,7 +145,7 @@ func writeEverywhere(_ database: Database) {
 
 /// Runs the battery on the bytes of one file.
 func runBattery(on bytes: [UInt8], in place: BatteryPlace) {
-    guard let source = place.readable(bytes), let database = try? Database(opening: source) else { return }
+    guard let source = place.readable(bytes), let database = try? ReadOnlyDatabase(opening: source) else { return }
 
     // read everything reachable from the root
     var budget = 3000

@@ -11,7 +11,7 @@ import XitDBHashing
 #endif
 
 @Suite("Storage") struct StorageExamples {
-    @Test func theThreeStorages() throws {
+    @Test func theStorages() throws {
         let scratch = ScratchDirectory()
         defer { scratch.remove() }
 
@@ -20,8 +20,12 @@ import XitDBHashing
         _ = try Database(creating: buffered, hashSize: 32)
 
         // A file, with a system call for every read and write.
-        let reader = try FileStorage(path: scratch.path("main.db"), access: .readOnly)
-        _ = try Database(opening: reader)
+        let plain = try FileStorage(path: scratch.path("main.db"), access: .readWrite)
+        _ = try Database(opening: plain)
+
+        // A file opened to be read: what a reader of the file opens.
+        let reader = try ReadOnlyFileStorage(path: scratch.path("main.db"))
+        _ = try ReadOnlyDatabase(opening: reader)
 
         // Memory.
         let memory = MemoryStorage()
@@ -37,7 +41,7 @@ import XitDBHashing
             try BufferedFileStorage(path: scratch.path("mistyped.db"), access: .readWrite)
         }
         #expect(throws: XitDBError.self) {
-            try BufferedFileStorage(path: scratch.path("mistyped.db"), access: .readOnly)
+            try ReadOnlyFileStorage(path: scratch.path("mistyped.db"))
         }
         _ = try BufferedFileStorage(path: scratch.path("new.db"), access: .create)
         _ = try BufferedFileStorage(path: scratch.path("new.db"), access: .readWrite)
@@ -98,8 +102,8 @@ import XitDBHashing
         let history = try ArrayList<ReadWrite>(writer.rootCursor)
         try history.append(.slot(nil))
 
-        // The reader: a storage of its own, opened read-only, and a database that only reads.
-        let storage = try FileStorage(path: scratch.path("main.db"), access: .readOnly)
+        // The reader: a storage of its own, opened to be read, and a database that only reads.
+        let storage = try ReadOnlyFileStorage(path: scratch.path("main.db"))
         let database = try ReadOnlyDatabase(opening: storage, hashing: SHA256.self)
         let list = try ArrayList(database.rootCursor)
         #expect(try list.count == 1)
@@ -115,31 +119,26 @@ import XitDBHashing
         #expect(try list.count == 3)
     }
 
-    @Test func aDatabaseOverAStorageOpenedReadOnly() throws {
+    @Test func aProgramThatDecidesWhileItRunsWhetherItOnlyReads() throws {
         let scratch = ScratchDirectory()
         defer { scratch.remove() }
 
-        // The writer.
-        let writerStorage = try BufferedFileStorage(path: scratch.path("main.db"), access: .create)
-        let writer = try Database(creating: writerStorage, hashSize: 32)
-        let history = try ArrayList<ReadWrite>(writer.rootCursor)
-        try history.append(.slot(nil))
-
-        let storage = try FileStorage(path: scratch.path("main.db"), access: .readOnly)
-        // A database over the reader's kind of storage: its root can be written through, and the write fails.
-        let database = try Database(opening: storage, hashing: SHA256.self)
-        let list = try ArrayList<ReadOnly>(database.rootCursor)
-        #expect(try list.count == 1)
-
-        // A read through the root sees the writer's later commits.
-        try history.append(.slot(nil))
-        #expect(try list.count == 2)
-
-        // A write through the root fails, and changes nothing.
-        #expect(throws: XitDBError.storageFailure(errno: EBADF)) {
-            try ArrayList<ReadWrite>(database.rootCursor).append(.uint(1))
+        do {
+            let made = try BufferedFileStorage(path: scratch.path("main.db"), access: .create)
+            let writer = try Database(creating: made, hashSize: 32)
+            try ArrayList<ReadWrite>(writer.rootCursor).append(.slot(nil))
         }
-        #expect(try list.count == 2)
+
+        for onlyReads in [true, false] {
+            // Decided while the program runs: either is a storage to read, under a database that only reads.
+            let storage: any ReadableStorage =
+                onlyReads
+                ? try ReadOnlyFileStorage(path: scratch.path("main.db"))
+                : try BufferedFileStorage(path: scratch.path("main.db"), access: .readWrite)
+            let database = try ReadOnlyDatabase(opening: storage, hashing: SHA256.self)
+            let list = try ArrayList(database.rootCursor)
+            #expect(try list.count == 1)
+        }
     }
 
     @Test func aLockIsNeverWaitedFor() throws {
@@ -156,10 +155,10 @@ import XitDBHashing
         }
         // So does a reader who asks for a lock.
         #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK)) {
-            try BufferedFileStorage(path: scratch.path("main.db"), access: .readOnly, lock: .shared)
+            try ReadOnlyFileStorage(path: scratch.path("main.db"), lock: .shared)
         }
         // A lock is advisory: one who does not ask gets in.
-        _ = try FileStorage(path: scratch.path("main.db"), access: .readOnly)
+        _ = try ReadOnlyFileStorage(path: scratch.path("main.db"))
         _ = writer
     }
 

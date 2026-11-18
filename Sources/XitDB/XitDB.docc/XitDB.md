@@ -58,8 +58,8 @@ How a database works, in the order to read it.
 
 A database keeps its bytes in a storage. ``BufferedFileStorage`` is the one to use for a file, and
 ``MemoryStorage`` for a database that needs none. What opening does with a damaged file, how threads and processes
-share one, the database a reader opens, which cannot write, and the snapshot that hands one commit to other tasks are
-here too.
+share one, the file and the database a reader opens, neither of which can write, and the snapshot that hands one commit
+to other tasks are here too.
 
 - <doc:Storage>
 - <doc:Recovery>
@@ -73,6 +73,7 @@ here too.
 - ``BufferedFileStorage``
 - ``MemoryStorage``
 - ``FileStorage``
+- ``ReadOnlyFileStorage``
 - ``FileAccess``
 - ``FileLock``
 - ``DatabaseHeader``

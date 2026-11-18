@@ -69,3 +69,30 @@ extension BufferedFileStorage {
             reading: reading, bufferLimit: bufferLimit)
     }
 }
+
+extension ReadOnlyFileStorage {
+    /// Opens the file a URL names to be read: `init(path:lock:reading:)`
+    /// with the URL's path.
+    ///
+    /// The URL has to be a file's (`isFileURL`). Its path is taken without
+    /// percent-encoding, so a name with a space or a letter outside ASCII
+    /// opens the file of that name. A URL to a folder the app was granted
+    /// (a security-scoped one) is the caller's to start and stop accessing
+    /// around the storage's life.
+    ///
+    /// - Parameters:
+    ///   - url: The file's URL.
+    ///   - lock: The advisory lock to take, if any.
+    ///   - reading: How the storage reads the file.
+    /// - Throws: `storageFailure(errno:)` carrying `EINVAL` if the URL is
+    ///   not a file's, before anything is opened, and what the
+    ///   initialiser that takes a path throws.
+    public convenience init(
+        url: URL,
+        lock: FileLock? = nil,
+        reading: FileReading = .fileCalls
+    ) throws(XitDBError) {
+        guard url.isFileURL else { throw .storageFailure(errno: EINVAL) }
+        try self.init(path: url.path(percentEncoded: false), lock: lock, reading: reading)
+    }
+}

@@ -10,7 +10,8 @@ import XitDBHashing
 
 /// The file storages opened by a `URL`, and on Apple's platforms by a
 /// `FilePath` (the first client's review of 0.5.1, item 14; decision D66):
-/// each is the initialiser that takes a path, with the same arguments.
+/// each is the initialiser that takes a path, with the same arguments, on
+/// the two that write and on the one that only reads.
 @Suite struct StorageByURLTests {
     /// A folder for one test's files, removed when the value goes away.
     private final class Folder {
@@ -47,8 +48,8 @@ import XitDBHashing
     /// A URL opens the file its path names, whatever the name holds: a
     /// storage opened by the URL to be made makes the file of that name
     /// and no other, what it wrote is read through a storage opened by the
-    /// path, and a file made by the path is opened by the URL, on both
-    /// file storages.
+    /// path, and a file that is there is opened by the URL, to be read and
+    /// to be written, on every file storage.
     @Test func aURLOpensTheFileItsPathNames() throws {
         let folder = try Folder()
         let url = folder.url.appendingPathComponent(Self.name)
@@ -79,15 +80,18 @@ import XitDBHashing
             #expect(try names() == [Self.name], "made by its URL, buffered: \(buffered)")
             guard try names() == [Self.name] else { return }
             // Read by the path.
-            #expect(try answer(in: try FileStorage(path: path, access: .readOnly)) == 42)
-            // And a file that is there by its path is opened by the URL.
+            #expect(try answer(in: try ReadOnlyFileStorage(path: path)) == 42)
+            // And a file that is there by its path is opened by the URL: to
+            // be read, and to be written by the kind that made it.
             #expect(throws: Never.self) {
+                let read = try answer(in: try ReadOnlyFileStorage(url: url))
+                #expect(read == 42)
                 let byURL: any ReadableStorage =
                     buffered
-                    ? try BufferedFileStorage(url: url, access: .readOnly)
-                    : try FileStorage(url: url, access: .readOnly)
-                let read = try answer(in: byURL)
-                #expect(read == 42)
+                    ? try BufferedFileStorage(url: url, access: .readWrite)
+                    : try FileStorage(url: url, access: .readWrite)
+                let readAgain = try answer(in: byURL)
+                #expect(readAgain == 42)
             }
             try FileManager.default.removeItem(atPath: path)
         }
@@ -101,6 +105,7 @@ import XitDBHashing
         #expect(throws: XitDBError.storageFailure(errno: EINVAL)) {
             try BufferedFileStorage(url: web, access: .create)
         }
+        #expect(throws: XitDBError.storageFailure(errno: EINVAL)) { try ReadOnlyFileStorage(url: web) }
     }
 
     /// The arguments are the path initialiser's and reach it: the access,
@@ -109,17 +114,30 @@ import XitDBHashing
         let folder = try Folder()
         let url = folder.url.appendingPathComponent("main.db")
 
-        // The access: a file that is not there is not made by reading.
-        #expect(throws: XitDBError.storageFailure(errno: ENOENT)) { try FileStorage(url: url, access: .readOnly) }
+        // The access: a file that is not there is not made by reading, nor
+        // by an access that asks for a file that is there.
+        #expect(throws: XitDBError.storageFailure(errno: ENOENT)) { try ReadOnlyFileStorage(url: url) }
+        #expect(throws: XitDBError.storageFailure(errno: ENOENT)) { try FileStorage(url: url, access: .readWrite) }
         #expect(throws: XitDBError.storageFailure(errno: ENOENT)) {
             try BufferedFileStorage(url: url, access: .readWrite)
         }
+        #expect(!FileManager.default.fileExists(atPath: url.path(percentEncoded: false)))
 
-        // The lock: a second asker is refused while the first holds it.
+        // The lock: a second asker is refused while the first holds it, a
+        // reader that asks for one among them; a reader that asks for none
+        // opens.
         let locked = try FileStorage(url: url, access: .create, durability: .none, lock: .exclusive)
         #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK)) {
             try BufferedFileStorage(url: url, access: .readWrite, lock: .exclusive)
         }
+        #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK)) {
+            try ReadOnlyFileStorage(url: url, lock: .shared)
+        }
+        #expect(throws: Never.self) { _ = try ReadOnlyFileStorage(url: url) }
+        // How a reader reads the file: it is given what was asked for, and
+        // needs no lock for a map.
+        #expect(try ReadOnlyFileStorage(url: url).requestedReading == .fileCalls)
+        #expect(try ReadOnlyFileStorage(url: url, reading: .memoryMap).requestedReading == .memoryMap)
         // How the file is read: the map needs the lock, and says so.
         #expect(throws: XitDBError.memoryMapNeedsLock) {
             try FileStorage(url: url, access: .readWrite, reading: .memoryMap)
@@ -139,7 +157,7 @@ import XitDBHashing
 
     #if canImport(System)
         /// On Apple's platforms a `FilePath` opens the file it names, on
-        /// both file storages, with the same arguments; and a path written
+        /// every file storage, with the same arguments; and a path written
         /// as a string literal is still a `String`'s, so that importing
         /// this module makes no call ambiguous.
         @Test func aFilePathOpensTheFileItNames() throws {
@@ -149,12 +167,13 @@ import XitDBHashing
 
             #expect(
                 try Self.writeAndReadBack(
-                    try FileStorage(path: path, access: .create), try FileStorage(url: url, access: .readOnly)) == 42)
+                    try FileStorage(path: path, access: .create), try ReadOnlyFileStorage(path: path)) == 42)
             try FileManager.default.removeItem(at: url)
             #expect(
                 try Self.writeAndReadBack(
                     try BufferedFileStorage(path: path, access: .create, bufferLimit: 4096),
-                    try BufferedFileStorage(path: path, access: .readOnly)) == 42)
+                    try ReadOnlyFileStorage(path: path, reading: .memoryMap)) == 42)
+            #expect(try ReadOnlyFileStorage(path: path, reading: .memoryMap).requestedReading == .memoryMap)
             #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK)) {
                 let first = try FileStorage(path: path, access: .readWrite, lock: .exclusive)
                 _ = try BufferedFileStorage(path: path, access: .readWrite, lock: .exclusive)
@@ -165,10 +184,18 @@ import XitDBHashing
             // read, and the buffer's limit, as the lock did above.
             let missing = FilePath(folder.url.appendingPathComponent("none.db").path(percentEncoded: false))
             #expect(throws: XitDBError.storageFailure(errno: ENOENT)) {
-                try FileStorage(path: missing, access: .readOnly)
+                try ReadOnlyFileStorage(path: missing)
+            }
+            #expect(throws: XitDBError.storageFailure(errno: ENOENT)) {
+                try FileStorage(path: missing, access: .readWrite)
             }
             #expect(throws: XitDBError.storageFailure(errno: ENOENT)) {
                 try BufferedFileStorage(path: missing, access: .readWrite)
+            }
+            #expect(throws: XitDBError.storageFailure(errno: EWOULDBLOCK)) {
+                let first = try FileStorage(path: path, access: .readWrite, lock: .exclusive)
+                _ = try ReadOnlyFileStorage(path: path, lock: .shared)
+                _ = first
             }
             #expect(throws: XitDBError.memoryMapNeedsLock) {
                 try FileStorage(path: path, access: .readWrite, reading: .memoryMap)
@@ -181,10 +208,13 @@ import XitDBHashing
 
             // A literal: the string's initialiser, as before the import.
             #expect(throws: XitDBError.storageFailure(errno: ENOENT)) {
-                try FileStorage(path: "/xitdb-foundation-tests-no-such-folder/none.db", access: .readOnly)
+                try ReadOnlyFileStorage(path: "/xitdb-foundation-tests-no-such-folder/none.db")
             }
             #expect(throws: XitDBError.storageFailure(errno: ENOENT)) {
-                try BufferedFileStorage(path: "/xitdb-foundation-tests-no-such-folder/none.db", access: .readOnly)
+                try FileStorage(path: "/xitdb-foundation-tests-no-such-folder/none.db", access: .readWrite)
+            }
+            #expect(throws: XitDBError.storageFailure(errno: ENOENT)) {
+                try BufferedFileStorage(path: "/xitdb-foundation-tests-no-such-folder/none.db", access: .readWrite)
             }
         }
     #endif

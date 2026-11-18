@@ -523,11 +523,13 @@ import Testing
             break
         case .file, .mappedFile:
             // The second opener asks for no lock and no map, beside a first
-            // that may hold both.
-            let file = try FileStorage(path: try #require(subject.path), access: .readOnly)
+            // that may hold both. It is the file storage in its reading
+            // mode, by the package's door: the original's one database
+            // type on a read-only file.
+            let file = try FileStorage(openedToBeReadAt: try #require(subject.path))
             _ = try Database(storage: file, hashSize: 20)
         case .bufferedFile, .bufferedFileSmallWindow, .mappedBufferedFile:
-            let file = try BufferedFileStorage(path: try #require(subject.path), access: .readOnly)
+            let file = BufferedFileStorage(try FileStorage(openedToBeReadAt: try #require(subject.path)))
             _ = try Database(storage: file, hashSize: 20)
         }
 

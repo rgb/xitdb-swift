@@ -268,8 +268,11 @@ import Testing
             let writer = try FileStorage(path: directory.path(), access: .create, durability: .none)
             try writeBytes(writer, bytes, at: 0)
 
-            let plain = try FileStorage(path: directory.path(), access: .readOnly)
-            let buffered = try BufferedFileStorage(path: directory.path(), access: .readOnly)
+            // The engine's own database on a file opened to be read, as
+            // the original has it, on both file storages: by the package's
+            // door, since a client's `Database` no longer opens over one.
+            let plain = try FileStorage(openedToBeReadAt: directory.path())
+            let buffered = BufferedFileStorage(try FileStorage(openedToBeReadAt: directory.path()))
             for storage in [plain, buffered] as [any WritableStorage] {
                 #expect(throws: error, "\(what)") { try Database(opening: storage) }
                 #expect(throws: XitDBError.storageFailure(errno: EBADF), "\(what)") {
@@ -717,8 +720,10 @@ import Testing
         _ = try Self.makeReplica(writer)
         let before = try directory.contents()
 
-        let plain = try FileStorage(path: directory.path(), access: .readOnly)
-        let buffered = try BufferedFileStorage(path: directory.path(), access: .readOnly)
+        // by the package's door: the engine's own database on a file
+        // opened to be read
+        let plain = try FileStorage(openedToBeReadAt: directory.path())
+        let buffered = BufferedFileStorage(try FileStorage(openedToBeReadAt: directory.path()))
         for storage in [plain, buffered] as [any WritableStorage] {
             let replica = try Database(opening: storage, hashSize: 20)
             let header = replica.header

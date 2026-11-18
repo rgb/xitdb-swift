@@ -149,7 +149,10 @@ func acceptedToSend(snapshot: Snapshot, header: DatabaseHeader, slot: Slot, erro
 // it is taken wherever a reader's database is, with its root where the
 // root's access is named.
 
-func acceptedReads(storage: FileStorage, source: Database) throws(XitDBError) -> UInt64 {
+func acceptedReads(path: String, source: Database) throws(XitDBError) -> UInt64 {
+    // A reader's file is opened to be read, a type of its own, with no lock
+    // also where it is read through a memory map.
+    let storage = try ReadOnlyFileStorage(path: path, reading: .memoryMap)
     let database = try ReadOnlyDatabase(opening: storage)
     let map = try HashMap(database.rootCursor)
     var total = try map.cursor(forHash: [UInt8](repeating: 1, count: 32))?.read(UInt64.self) ?? 0
@@ -169,5 +172,12 @@ func acceptedReads(storage: FileStorage, source: Database) throws(XitDBError) ->
     // It is a compaction's source, never its target.
     var offsets = MemoryOffsetMap()
     try database.compact(into: source, offsetMap: &offsets)
+
+    // The storage says how it reads and whether its path still leads to
+    // its file, and is a storage to read wherever one is asked for; so is
+    // a storage that writes, under the database that only reads.
+    if storage.isMemoryMapped, storage.requestedReading == .memoryMap, try storage.isStillAtPath { total += 1 }
+    let either: any ReadableStorage = total > 0 ? storage : try FileStorage(path: path, access: .readWrite)
+    total += try ReadOnlyDatabase(opening: either).committedSize
     return total
 }

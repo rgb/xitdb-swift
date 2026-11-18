@@ -26,7 +26,7 @@ import XitDBHashing
         func show(_ text: String) { shown.append(text) }
 
         do {
-            _ = try FileStorage(url: folder.appending(path: "nothing-here.db"), access: .readOnly)
+            _ = try ReadOnlyFileStorage(url: folder.appending(path: "nothing-here.db"))
         } catch {
             // "the storage failed with system error 2: No such file or directory"
             show(error.localizedDescription)

@@ -219,10 +219,10 @@ public enum XitDBError: Error, Sendable {
     case notImplemented
 
     /// The storage refused, or the system did: `ENOENT` for a missing file,
-    /// `EWOULDBLOCK` for a lock that is held, `EBADF` for a write to a
-    /// read-only file, `ENOSPC` for a full disk, `EINVAL` for a path with a
-    /// NUL byte in it, `ENOMEM` for memory the system would not give an
-    /// in-memory database that had to grow.
+    /// `EWOULDBLOCK` for a lock that is held, `EACCES` for a file the
+    /// process may not open as asked, `ENOSPC` for a full disk, `EINVAL`
+    /// for a path with a NUL byte in it, `ENOMEM` for memory the system
+    /// would not give an in-memory database that had to grow.
     ///
     /// - Parameter errno: The system's number for the error, also where the
     ///   storage refuses before it calls the system, as it does for the
@@ -320,9 +320,9 @@ public enum XitDBError: Error, Sendable {
     /// then read by file calls, as a file in an iOS app's shared container
     /// must be, since it cannot hold a lock while the app is suspended.
     ///
-    /// A storage opened with ``FileAccess/readOnly`` needs no lock for the
-    /// map: it reads through it only what is committed. It is thrown before
-    /// the file is opened.
+    /// A ``ReadOnlyFileStorage`` needs no lock for the map: it reads
+    /// through it only what is committed. It is thrown before the file is
+    /// opened.
     case memoryMapNeedsLock
 
     /// The database reads a snapshot of one collection, made with

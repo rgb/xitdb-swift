@@ -44,47 +44,30 @@ final class ReadingWindow: ReadableStorage {
 /// and writes nothing. That a write through it does not compile is held by
 /// the gate's compile check, `scripts/must-not-compile/RefusedReadOnly.swift`.
 @Suite struct ReadOnlyDatabaseTests {
-    /// A reader's storage of its own on a writer's file: the two file
-    /// storages, each read by file calls and through a memory map in either
-    /// of its two ways.
+    /// A reader's storage of its own on a writer's file, as a client has
+    /// it: a file opened to be read, read by file calls and through a
+    /// memory map in either of its two ways.
     enum ReaderKind: String, CaseIterable, CustomTestStringConvertible {
-        case file, buffered, fileMap, fileMapReadAhead, bufferedMap, bufferedMapReadAhead
+        case file, fileMap, fileMapReadAhead
 
         var testDescription: String { rawValue }
 
-        var buffered: Bool {
-            switch self {
-            case .file, .fileMap, .fileMapReadAhead: false
-            case .buffered, .bufferedMap, .bufferedMapReadAhead: true
-            }
-        }
-
         var reading: FileReading {
             switch self {
-            case .file, .buffered: .fileCalls
-            case .fileMap, .bufferedMap: .memoryMap
-            case .fileMapReadAhead, .bufferedMapReadAhead: .memoryMapReadAhead
+            case .file: .fileCalls
+            case .fileMap: .memoryMap
+            case .fileMapReadAhead: .memoryMapReadAhead
             }
         }
 
         /// The file at a path opened to be read, with no lock, mapped in
         /// segments of one page so that what is read crosses from one to the
         /// next; a kind that is to read through a map is held to it.
-        func open(_ path: String) throws -> any WritableStorage {
-            let file = try FileStorage(
-                path: path, access: .readOnly, reading: reading, segmentSize: Platform.pageSize)
-            guard file.isMemoryMapped == (reading != .fileCalls) else { throw NotReadThroughTheMap(path: path) }
-            return buffered ? BufferedFileStorage(file) : file
+        func open(_ path: String) throws -> ReadOnlyFileStorage {
+            let storage = try ReadOnlyFileStorage(path: path, reading: reading, segmentSize: Platform.pageSize)
+            guard storage.isMemoryMapped == (reading != .fileCalls) else { throw NotReadThroughTheMap(path: path) }
+            return storage
         }
-    }
-
-    /// The two ways a reader opens a storage: the database that only
-    /// reads, and a ``Database``, whose root is read-write on every
-    /// storage.
-    enum Opening: String, CaseIterable, CustomTestStringConvertible {
-        case readOnlyDatabase, database
-
-        var testDescription: String { rawValue }
     }
 
     /// The bytes under "blob" after a round's commit: long enough that a
@@ -165,29 +148,45 @@ final class ReadingWindow: ReadableStorage {
     }
 
     /// A reader on a storage of its own beside a writer on the same file
-    /// sees each commit, on each kind of reader's storage and by each way
-    /// of opening it.
-    @Test(arguments: ReaderKind.allCases, Opening.allCases)
-    func aReaderOnAStorageOfItsOwnSeesEachCommitOfAWriter(kind: ReaderKind, opening: Opening) throws {
+    /// sees each commit, however its storage reads the file.
+    @Test(arguments: ReaderKind.allCases)
+    func aReaderOnAStorageOfItsOwnSeesEachCommitOfAWriter(kind: ReaderKind) throws {
         let directory = try TemporaryDirectory()
         let writer = try Database(
             creating: try BufferedFileStorage(path: directory.path(), access: .create, durability: .none),
             hashing: SHA256.self)
         try Self.commit(1, through: writer)
 
-        let storage = try kind.open(directory.path())
-        switch opening {
-        case .readOnlyDatabase:
-            let reader = try ReadOnlyDatabase(opening: storage, hashing: SHA256.self)
-            #expect(try State(at: reader.rootCursor) == State(round: 1))
-            try follows(reader, writer, rounds: 2...30)
-        case .database:
-            let reader = try Database(opening: storage, hashing: SHA256.self)
-            #expect(try State(at: reader.rootCursor.readOnly) == State(round: 1))
-            try follows(reader, writer, rounds: 2...30)
-        }
+        let reader = try ReadOnlyDatabase(opening: try kind.open(directory.path()), hashing: SHA256.self)
+        #expect(try State(at: reader.rootCursor) == State(round: 1))
+        try follows(reader, writer, rounds: 2...30)
         // Thirty commits of three thousand bytes and more: the file has
         // grown past several pages under the reader.
+        #expect(try writer.committedSize > UInt64(4 * Platform.pageSize))
+    }
+
+    /// The engine's own database over the file storage in its reading
+    /// mode, plain and under a buffer, follows a writer as well: the
+    /// original's reader, with its one database type, and what a `read_only`
+    /// of the conformance fixtures opens. A client cannot open one, since a
+    /// `Database` does not open over a `ReadOnlyFileStorage`; the storage
+    /// is reached by the package's door.
+    @Test(arguments: [FileReading.fileCalls, .memoryMap, .memoryMapReadAhead], [false, true])
+    func theEnginesDatabaseOverAFileOpenedToBeReadFollowsAWriter(reading: FileReading, buffered: Bool) throws {
+        let directory = try TemporaryDirectory()
+        let writer = try Database(
+            creating: try BufferedFileStorage(path: directory.path(), access: .create, durability: .none),
+            hashing: SHA256.self)
+        try Self.commit(1, through: writer)
+
+        let file = try FileStorage(openedToBeReadAt: directory.path(), reading: reading, segmentSize: Platform.pageSize)
+        guard file.isMemoryMapped == (reading != .fileCalls) else {
+            throw NotReadThroughTheMap(path: directory.path())
+        }
+        let storage: any WritableStorage = buffered ? BufferedFileStorage(file) : file
+        let reader = try Database(opening: storage, hashing: SHA256.self)
+        #expect(try State(at: reader.rootCursor.readOnly) == State(round: 1))
+        try follows(reader, writer, rounds: 2...30)
         #expect(try writer.committedSize > UInt64(4 * Platform.pageSize))
     }
 

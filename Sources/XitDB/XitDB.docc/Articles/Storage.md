@@ -1,6 +1,6 @@
 # Storage
 
-Where a database keeps its bytes: the three storages, how to open a file, and how to write your own.
+Where a database keeps its bytes: the storages, how to open a file, and how to write your own.
 
 ## Overview
 
@@ -15,7 +15,12 @@ let buffered = try BufferedFileStorage(path: "main.db", access: .create)
 
 ```swift
 // A file, with a system call for every read and write.
-let reader = try FileStorage(path: "main.db", access: .readOnly)
+let plain = try FileStorage(path: "main.db", access: .readWrite)
+```
+
+```swift
+// A file opened to be read: what a reader of the file opens.
+let reader = try ReadOnlyFileStorage(path: "main.db")
 ```
 
 ```swift
@@ -23,7 +28,7 @@ let reader = try FileStorage(path: "main.db", access: .readOnly)
 let memory = MemoryStorage()
 ```
 
-The bytes are the same in all three, and a database moves between them without any conversion.
+The bytes are the same in all of them, and a database moves between them without any conversion.
 
 ### Which to use
 
@@ -33,6 +38,10 @@ that goes straight to the file.
 
 ``FileStorage`` makes a system call for every read and write. On one machine that made 100,000 puts in one transaction
 about three times as slow as through the buffer, and reading no slower, since the buffer only holds writes.
+
+``ReadOnlyFileStorage`` is a file opened to be read, for a reader of a file that another database writes and for any
+file a program only looks at: see The reader pattern below. It has no way to write, so a ``Database`` does not open over
+it, and it has no buffered form, since the buffer only holds writes.
 
 ``MemoryStorage`` keeps the bytes in memory. Syncing does nothing, so a commit costs only what it writes. The bytes are a complete
 database, so one can be a value to send. There is no decoding step on the other side:
@@ -72,17 +81,19 @@ refuses such a size.
 
 ### Opening a file
 
-``FileAccess`` says how to open the file, and there is no default:
+``FileAccess`` says how to open a file that is read and written, and there is no default:
 
 | Access | If the file exists | If it does not |
 |---|---|---|
-| ``FileAccess/readOnly`` | Opens it for reading. Writing fails. | Fails. |
 | ``FileAccess/readWrite`` | Opens it. | Fails. |
 | ``FileAccess/create`` | Opens it. | Creates it. |
 | ``FileAccess/truncate`` | Empties it. | Creates it. |
 
 There is no default because each choice is one you would want to have made on purpose. With ``FileAccess/create`` as the default, a mistyped
 path makes an empty file and the program goes on to the next error. With ``FileAccess/readWrite``, the first run of a new program fails.
+
+A file that is only to be read is opened as a ``ReadOnlyFileStorage``, which takes no access: it opens the file if it
+exists and fails if it does not.
 
 A failure to open, including a missing file, throws ``XitDBError/storageFailure(errno:)``.
 
@@ -130,11 +141,12 @@ offset 24, a multiple of eight, and the data starts at 32. A new database is 57 
 
 ### The reader pattern
 
-A reader opens the file read-only, with a storage of its own, and a ``ReadOnlyDatabase`` over it:
+A reader opens the file to be read, with a storage of its own, a ``ReadOnlyFileStorage``, and a ``ReadOnlyDatabase``
+over it:
 
 ```swift
-// The reader: a storage of its own, opened read-only, and a database that only reads.
-let storage = try FileStorage(path: "main.db", access: .readOnly)
+// The reader: a storage of its own, opened to be read, and a database that only reads.
+let storage = try ReadOnlyFileStorage(path: "main.db")
 let database = try ReadOnlyDatabase(opening: storage, hashing: SHA256.self)
 let list = try ArrayList(database.rootCursor)
 ```
@@ -148,19 +160,27 @@ from it are the read-only ones: a write through a reader does not compile. It re
 your own that can only read included, and serves what a database serves a reader: a ``Snapshot`` for other tasks, the
 reading side of <doc:Replication>, and <doc:Compaction> into a target.
 
-A ``Database`` opens a storage that was opened read-only as well, as the original's does:
+A ``ReadOnlyFileStorage`` is a ``ReadableStorage`` and no ``WritableStorage``, so a ``Database`` does not open over it,
+and neither does a recovery or a sync onto it: what the original refuses on a read-only file when the program runs does
+not compile here (see <doc:DifferencesFromTheOriginal>). That is the protection. A reader that opens the file to be
+written, with a ``Database``, is a second writer: making a read-write collection on its root cursor discards whatever the
+real writer's transaction has written so far.
+
+A reader's file and a writer's are two types. A program that decides while it runs whether it only reads holds its
+storage as `any ReadableStorage`, and the database that only reads opens over either:
 
 ```swift
-// A database over the reader's kind of storage: its root can be written through, and the write fails.
-let database = try Database(opening: storage, hashing: SHA256.self)
-let list = try ArrayList<ReadOnly>(database.rootCursor)
+// Decided while the program runs: either is a storage to read, under a database that only reads.
+let storage: any ReadableStorage =
+    onlyReads
+    ? try ReadOnlyFileStorage(path: "main.db")
+    : try BufferedFileStorage(path: "main.db", access: .readWrite)
+let database = try ReadOnlyDatabase(opening: storage, hashing: SHA256.self)
 ```
 
-``Database/rootCursor`` is a ``Cursor`` of ``ReadWrite`` access on every storage, including a read-only one. Pass it straight
-to a read-only collection, as here, or take ``Cursor/readOnly`` first. A write through it on a read-only storage fails at
-once with ``XitDBError/storageFailure(errno:)`` carrying `EBADF`, and it truncates nothing. There the read-only access mode
-is the protection: a reader that opened the file read-write with a ``Database`` is a second writer, and making a read-write
-collection on its root cursor discards whatever the real writer's transaction has written so far.
+A reader keeps the file it opened. When the writer brings a new file under the name, as a sync from 0 does
+(<doc:Replication>), or a restore or a deployment replaces the file, the reader goes on reading the old one, whole;
+``ReadOnlyFileStorage/isStillAtPath`` tells it, and it opens the path again.
 
 ### The lock
 

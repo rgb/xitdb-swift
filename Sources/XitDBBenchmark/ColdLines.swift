@@ -312,17 +312,16 @@ private func run(_ task: ColdTask) throws -> ColdRun {
 
     // with the advice, the map as it is read unless told otherwise; without
     // it, the map left to the system's own reading ahead
-    let file = try FileStorage(
-        path: task.path, access: .readOnly, lock: .shared,
-        reading: task.advised ? .memoryMap : .memoryMapReadAhead)
+    let file = try ReadOnlyFileStorage(
+        path: task.path, lock: .shared, reading: task.advised ? .memoryMap : .memoryMapReadAhead)
     guard file.isMemoryMapped else {
         throw BenchmarkFailure(description: "the file at \(task.path) is on a volume that is not read through a map")
     }
-    let database = try Database(opening: file, hashSize: 20)
+    let database = try ReadOnlyDatabase(opening: file, hashSize: 20)
     result.fileSize = try file.length
     let last: InlineArray<1, PathPart> = [.arrayListGet(-1)]
     func moment() throws -> Cursor<ReadOnly> {
-        guard let moment = try database.rootCursor.readOnly.readPath(last.span) else {
+        guard let moment = try database.rootCursor.readPath(last.span) else {
             throw BenchmarkFailure(description: "the database has no moment")
         }
         return moment

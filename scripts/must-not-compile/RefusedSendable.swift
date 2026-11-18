@@ -18,7 +18,7 @@ func sent<Value: Sendable & ~Copyable>(_ value: borrowing Value) {}
 
 func refused(
     database: Database, readOnlyDatabase: ReadOnlyDatabase, snapshotDatabase: SnapshotDatabase,
-    memory: MemoryStorage, file: FileStorage, buffered: BufferedFileStorage,
+    memory: MemoryStorage, file: FileStorage, buffered: BufferedFileStorage, readOnlyFile: ReadOnlyFileStorage,
     cursor: Cursor<ReadOnly>, writing: Cursor<ReadWrite>, entry: Entry,
     iterator: CollectionIterator, entries: EntryIterator, elements: ElementIterator<UInt64>,
     reader: ByteReader, writer: borrowing ByteWriter,
@@ -33,6 +33,7 @@ func refused(
     sent(memory)  // must not compile: MemoryStorage
     sent(file)  // must not compile: FileStorage
     sent(buffered)  // must not compile: BufferedFileStorage
+    sent(readOnlyFile)  // must not compile: ReadOnlyFileStorage
     sent(cursor)  // must not compile: Cursor
     sent(writing)  // must not compile: Cursor
     sent(entry)  // must not compile: Entry

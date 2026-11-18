@@ -96,7 +96,7 @@ import XitDBFoundation
     @Test func aFailedOpenSaysWhy() {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("xitdb-none-\(UUID().uuidString)")
         do {
-            _ = try FileStorage(url: folder.appendingPathComponent("none.db"), access: .readOnly)
+            _ = try ReadOnlyFileStorage(url: folder.appendingPathComponent("none.db"))
             Issue.record("a file that is not there was opened")
         } catch {
             #expect(error.localizedDescription == "the storage failed with system error 2: No such file or directory")

@@ -78,7 +78,7 @@ import XitDBHashing
         // Every word of that, again from the file: what is committed survives
         // the storage it was written through. Only the hasher's size is
         // checked, and the hash ID is the label the creator wrote.
-        let reopened = try Database(opening: BufferedFileStorage(path: scratch.path("main.db"), access: .readOnly))
+        let reopened = try ReadOnlyDatabase(opening: ReadOnlyFileStorage(path: scratch.path("main.db")))
         #expect(reopened.header.hashSize == 32)
         #expect(reopened.header.hashID == "sha2")
         let last = try HashMap<ReadOnly>(ArrayList<ReadOnly>(reopened.rootCursor).cursor(at: -1)!)
@@ -88,9 +88,8 @@ import XitDBHashing
         #expect(try bob.cursor(forHash: sha256("age"))!.slot.tag == .uint)
         #expect(try bob.cursor(forHash: sha256("age"))!.readUInt64() == 42)
         #expect(throws: XitDBError.invalidHashSize) {
-            try Database(
-                opening: BufferedFileStorage(path: scratch.path("main.db"), access: .readOnly),
-                hashing: Insecure.SHA1.self)
+            try ReadOnlyDatabase(
+                opening: ReadOnlyFileStorage(path: scratch.path("main.db")), hashing: Insecure.SHA1.self)
         }
     }
 
@@ -114,7 +113,7 @@ import XitDBHashing
         }
 
         // And the first run's moment is still there after the second.
-        let database = try Database(opening: BufferedFileStorage(path: path, access: .readOnly), hashing: SHA256.self)
+        let database = try ReadOnlyDatabase(opening: ReadOnlyFileStorage(path: path), hashing: SHA256.self)
         let history = try ArrayList<ReadOnly>(database.rootCursor)
         let first = try HashMap<ReadOnly>(history.cursor(at: 0)!)
         #expect(try first.value(forKey: "run", as: UInt64.self) == 1)

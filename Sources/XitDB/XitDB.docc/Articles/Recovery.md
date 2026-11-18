@@ -84,9 +84,9 @@ What to know before calling it:
   and recovering neither goes on to a later trailer unasked nor cuts back before it, which would destroy what the newer
   version wrote. With `ignoringRootHeader: true` it goes to the last trailer that verifies, and refuses that one the same way
   if its tag is unknown.
-- **It needs to write where the root header has to be mended.** On a storage opened read-only it then fails with
-  ``XitDBError/storageFailure(errno:)``, `EBADF`, at the write of the root header, and the file is as it was. A read-only file
-  whose root header is sound it opens as opening does, with nothing cut.
+- **It takes a storage that can be written**, since it mends the root header and cuts what follows the commit it goes to.
+  A file opened to be read, a ``ReadOnlyFileStorage``, is none, and asking for its recovery does not compile: open the
+  file with ``BufferedFileStorage`` or ``FileStorage`` to recover it.
 - **It refuses a file with no commit to go back to**, with ``XitDBError/invalidDatabase``, or ``XitDBError/endOfStream`` if the
   storage is too short for a header, and leaves the storage as it was.
 

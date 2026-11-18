@@ -370,7 +370,7 @@ final class WrappedStorage: WritableStorage {
         // The snapshot holds the old file through its descriptor; a storage
         // opened on the path now reads the other database.
         #expect(try Self.value("a", in: snapshot) == 1)
-        let reopened = try Database(opening: try FileStorage(path: path, access: .readOnly))
+        let reopened = try ReadOnlyDatabase(opening: try ReadOnlyFileStorage(path: path))
         #expect(try HashMap<ReadOnly>(reopened.rootCursor).cursor(forHash: sha1("a").bytes)?.readUInt64() == 2)
     }
 

@@ -127,7 +127,7 @@ import Testing
         @Test func theSystemsListSaysWhatTheTestsFilesAreOn() throws {
             let directory = try TemporaryDirectory()
             #expect(FileManager.default.createFile(atPath: directory.path(), contents: Data([1, 2, 3])))
-            let descriptor = try FileDescriptor(opening: directory.path(), access: .readOnly)
+            let descriptor = try FileDescriptor(opening: directory.path(), .toRead)
             let mounts = try String(contentsOfFile: "/proc/self/mountinfo", encoding: .utf8)
             // the file's device from Foundation and not by a `stat` of the
             // tests' own, whose members the compiler does not reliably

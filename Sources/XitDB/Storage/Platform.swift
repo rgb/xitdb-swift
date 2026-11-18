@@ -61,13 +61,13 @@ enum Platform {
     ///   `EINVAL` for a path that contains a NUL byte: a C string ends at
     ///   the first NUL, so `open` would be given the part before it and
     ///   open some other file.
-    static func openFile(_ path: String, access: FileAccess) throws(XitDBError) -> Int32 {
+    static func openFile(_ path: String, _ opening: FileOpening) throws(XitDBError) -> Int32 {
         guard !path.utf8.contains(0) else { throw .storageFailure(errno: EINVAL) }
         let flags: Int32 =
-            switch access {
-            case .readOnly: O_RDONLY
-            case .readWrite: O_RDWR
-            case .create, .truncate: O_RDWR | O_CREAT
+            switch opening {
+            case .toRead: O_RDONLY
+            case .toWrite(.readWrite): O_RDWR
+            case .toWrite(.create), .toWrite(.truncate): O_RDWR | O_CREAT
             }
         while true {
             // Safe: the path is passed as a C string that `open` only reads,

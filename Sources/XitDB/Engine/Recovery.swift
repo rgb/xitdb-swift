@@ -170,11 +170,8 @@ extension Database {
     ///   if the trailer recovered to has a root slot whose tag is unknown,
     ///   the one a sound root header names included, which is not gone
     ///   past either; ``XitDBError/storageFailure(errno:)`` if the storage
-    ///   fails, which a file storage opened read-only does at the root
-    ///   header's write, where the root header has to be written: one whose
-    ///   root header is sound it opens, with nothing cut; and what
-    ///   ``init(opening:hashSize:)`` throws, which the storage this call
-    ///   has just checked or written does not raise.
+    ///   fails; and what ``init(opening:hashSize:)`` throws, which the
+    ///   storage this call has just checked or written does not raise.
     public static func recover(
         _ storage: any WritableStorage, ignoringRootHeader: Bool = false
     ) throws(XitDBError) -> Database {

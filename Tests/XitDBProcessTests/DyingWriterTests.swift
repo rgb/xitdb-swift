@@ -205,7 +205,7 @@ private struct Piecewise: ByteSource {
 
     /// The database is `expected`, and whole: it says of itself what that
     /// one says, and its map gives every entry.
-    private static func hold(_ database: Database, to expected: Known, _ who: String) throws {
+    private static func hold(_ database: some ReadableDatabase, to expected: Known, _ who: String) throws {
         #expect(try database.replicaState == expected.state, "\(who)'s account of itself")
         var entries = 0
         var iterator = try HashMap<ReadOnly>(database.rootCursor.readOnly).iterator()
@@ -246,8 +246,7 @@ private struct Piecewise: ByteSource {
             #expect(writer.terminationStatus == 86, "the writer was to die at \(step): \(words)")
 
             let expected = step == .afterRename ? new : old
-            let reader = try Database(
-                opening: try FileStorage(path: folder.path(), access: .readOnly), hashSize: 20)
+            let reader = try ReadOnlyDatabase(opening: try ReadOnlyFileStorage(path: folder.path()), hashSize: 20)
             try Self.hold(reader, to: expected, "a reader after \(step)")
             let next = try Database(opening: try Self.writer(kind, at: folder.path()), hashSize: 20)
             try Self.hold(next, to: expected, "the next writer after \(step)")

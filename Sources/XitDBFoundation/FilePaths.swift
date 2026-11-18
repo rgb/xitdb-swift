@@ -1,7 +1,7 @@
 // A storage opened by a `FilePath`, where the system has the type without
 // a dependency: Apple's platforms, whose System framework it is. On Linux
 // `FilePath` is the swift-system package's, which this package does not
-// take, so these two initialisers are not there.
+// take, so these three initialisers are not there.
 #if canImport(System)
     public import System
     public import XitDB
@@ -53,6 +53,25 @@
             try self.init(
                 path: path.string, access: access, durability: durability, lock: lock, reading: reading,
                 bufferLimit: bufferLimit)
+        }
+    }
+
+    extension ReadOnlyFileStorage {
+        /// Opens the file at a `FilePath` to be read:
+        /// `init(path:lock:reading:)` with the path's string. On Apple's
+        /// platforms only.
+        ///
+        /// - Parameters:
+        ///   - path: The file's path.
+        ///   - lock: The advisory lock to take, if any.
+        ///   - reading: How the storage reads the file.
+        /// - Throws: What the initialiser that takes a string throws.
+        public convenience init(
+            path: FilePath,
+            lock: FileLock? = nil,
+            reading: FileReading = .fileCalls
+        ) throws(XitDBError) {
+            try self.init(path: path.string, lock: lock, reading: reading)
         }
     }
 #endif

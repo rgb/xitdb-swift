@@ -97,14 +97,14 @@ private struct RolledBack: Error {}
 
             // A reader with no lock, beside the writer that holds the
             // exclusive one: it is not refused, is mapped, and reads.
-            #expect(throws: Never.self) { _ = try FileStorage(path: path, access: .readOnly, reading: .memoryMap) }
+            #expect(throws: Never.self) { _ = try FileStorage(openedToBeReadAt: path, reading: .memoryMap) }
             #expect(throws: Never.self) {
-                _ = try BufferedFileStorage(path: path, access: .readOnly, reading: .memoryMap)
+                _ = BufferedFileStorage(try FileStorage(openedToBeReadAt: path, reading: .memoryMap))
             }
-            let unlocked = try FileStorage(path: path, access: .readOnly, reading: .memoryMap)
+            let unlocked = try FileStorage(openedToBeReadAt: path, reading: .memoryMap)
             #expect(unlocked.isMemoryMapped)
             #expect(try readBytes(unlocked, at: 0, count: 3) == Array(Self.pattern(3)))
-            let buffered = try BufferedFileStorage(path: path, access: .readOnly, reading: .memoryMap)
+            let buffered = BufferedFileStorage(try FileStorage(openedToBeReadAt: path, reading: .memoryMap))
             #expect(buffered.isMemoryMapped)
             #expect(try readBytes(buffered, at: 0, count: 3) == Array(Self.pattern(3)))
             withExtendedLifetime(writer) {}
@@ -115,15 +115,15 @@ private struct RolledBack: Error {}
         do {
             let directory = try TemporaryDirectory()
             #expect(FileManager.default.createFile(atPath: directory.path(), contents: Data([1, 2, 3])))
-            let shared = try FileStorage(path: directory.path(), access: .readOnly, lock: .shared, reading: .memoryMap)
+            let shared = try FileStorage(openedToBeReadAt: directory.path(), lock: .shared, reading: .memoryMap)
             #expect(shared.isMemoryMapped)
             #expect(try readBytes(shared, at: 0, count: 3) == [1, 2, 3])
         }
         do {
             let directory = try TemporaryDirectory()
             #expect(FileManager.default.createFile(atPath: directory.path(), contents: Data([1, 2, 3])))
-            let exclusive = try BufferedFileStorage(
-                path: directory.path(), access: .readOnly, lock: .exclusive, reading: .memoryMap)
+            let exclusive = BufferedFileStorage(
+                try FileStorage(openedToBeReadAt: directory.path(), lock: .exclusive, reading: .memoryMap))
             #expect(exclusive.isMemoryMapped)
             #expect(try readBytes(exclusive, at: 0, count: 3) == [1, 2, 3])
         }
@@ -349,7 +349,7 @@ private struct RolledBack: Error {}
         }
         let file = try readThroughTheMap(
             try FileStorage(
-                path: directory.path(), access: .readOnly, durability: .none, lock: .shared, reading: .memoryMap,
+                openedToBeReadAt: directory.path(), durability: .none, lock: .shared, reading: .memoryMap,
                 segmentSize: page, calls: calls), at: directory.path())
         var onDisk = try directory.contents()
         let end = Int(committed)
@@ -485,13 +485,14 @@ private struct RolledBack: Error {}
     @Test func aStorageSaysHowItWasAskedToReadItsFile() throws {
         let directory = try TemporaryDirectory()
         #expect(FileManager.default.createFile(atPath: directory.path(), contents: Data([1, 2, 3])))
-        #expect(try FileStorage(path: directory.path(), access: .readOnly).requestedReading == .fileCalls)
-        #expect(try BufferedFileStorage(path: directory.path(), access: .readOnly).requestedReading == .fileCalls)
+        #expect(try FileStorage(openedToBeReadAt: directory.path()).requestedReading == .fileCalls)
+        let bufferedByFileCalls = BufferedFileStorage(try FileStorage(openedToBeReadAt: directory.path()))
+        #expect(bufferedByFileCalls.requestedReading == .fileCalls)
         for reading in [FileReading.fileCalls, .memoryMap, .memoryMapReadAhead] {
-            let file = try FileStorage(path: directory.path(), access: .readOnly, reading: reading)
+            let file = try FileStorage(openedToBeReadAt: directory.path(), reading: reading)
             #expect(file.requestedReading == reading)
             #expect(file.isMemoryMapped == (reading != .fileCalls), "\(reading)")
-            let buffered = try BufferedFileStorage(path: directory.path(), access: .readOnly, reading: reading)
+            let buffered = BufferedFileStorage(try FileStorage(openedToBeReadAt: directory.path(), reading: reading))
             #expect(buffered.requestedReading == reading)
             #expect(buffered.isMemoryMapped == (reading != .fileCalls), "\(reading)")
         }
@@ -499,7 +500,7 @@ private struct RolledBack: Error {}
         calls.isLocal = { _ in false }
         for reading in Self.maps {
             let file = try FileStorage(
-                path: directory.path(), access: .readOnly, reading: reading, segmentSize: Self.page, calls: calls)
+                openedToBeReadAt: directory.path(), reading: reading, segmentSize: Self.page, calls: calls)
             #expect(file.requestedReading == reading, "what was asked")
             #expect(!file.isMemoryMapped, "is not what was had")
         }
@@ -1019,7 +1020,7 @@ private struct RolledBack: Error {}
         // A full copy onto it goes into a new file all the same, as on
         // every file storage: a reader that had the file open is told that
         // its path leads elsewhere, and the snapshot reads the old file on.
-        let reader = try FileStorage(path: other.path(), access: .readOnly)
+        let reader = try FileStorage(openedToBeReadAt: other.path())
         let source = try Database(creating: MemoryStorage(), hashSize: 20)
         try source.withTransaction { root in
             try HashMap<ReadWrite>(root).put(.uint(2), forHash: hashInt("one"))
