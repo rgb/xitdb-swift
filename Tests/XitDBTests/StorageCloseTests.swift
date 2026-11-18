@@ -219,6 +219,10 @@ import XitDBHashing
             #expect(throws: Self.closed) { try writable.sync(.afterRootHeader) }
             // writing nothing is nothing, as on every storage
             #expect(throws: Never.self) { try writeBytes(writable, [], at: 0) }
+            // and a write that was refused left nothing behind to be read:
+            // a buffered storage took none of it into its window
+            #expect(throws: Self.closed) { try readBytes(writable, at: 0, count: 3) }
+            #expect(throws: Self.closed) { try readBytes(writable, at: 1 << 20, count: 3) }
         }
         // the engine's own calls
         #expect(throws: Self.closed) { try subject.file.resize(to: 10) }
@@ -427,12 +431,17 @@ import XitDBHashing
 
         #expect(subject.close() == false, "a snapshot holds the file")
         #expect(subject.descriptorsOpen() == 1)
-        do {
-            let next = try FileStorage(path: path, access: .readWrite, lock: .exclusive)
-            #expect(subject.descriptorsOpen() == 2)
-            withExtendedLifetime(next) {}
-        }
-        #expect(try ArrayList(snapshot.rootCursor).count == 500)
+        // The next opener is not refused the lock, though the file is
+        // still open for the snapshot.
+        var next: FileStorage?
+        #expect(throws: Never.self) { next = try FileStorage(path: path, access: .readWrite, lock: .exclusive) }
+        #expect(next != nil)
+        #expect(subject.descriptorsOpen() == (next == nil ? 1 : 2))
+        // And the snapshot is not refused: the close took nothing from
+        // under it.
+        var count: UInt64?
+        #expect(throws: Never.self) { count = try ArrayList(snapshot.rootCursor).count }
+        #expect(count == 500)
         withExtendedLifetime(subject.file) {}
     }
 
@@ -463,21 +472,27 @@ import XitDBHashing
         #expect(subject.descriptorsOpen() == 1)
         #expect(throws: Self.closed) { try database.snapshot() }
 
-        // both read their commit, whole, by a walk and as bytes
+        // both read their commit, whole, by a walk and as bytes, and
+        // neither is refused
         for snapshot in [try #require(first), try #require(second)] {
             var sum: UInt64 = 0
-            var iterator = try ArrayList(snapshot.rootCursor).iterator()
-            while let number = try iterator.next()?.read(UInt64.self) { sum += number }
+            var bytes = 0
+            #expect(throws: Never.self) {
+                var iterator = try ArrayList(snapshot.rootCursor).iterator()
+                while let number = try iterator.next()?.read(UInt64.self) { sum += number }
+                bytes = try SnapshotDatabase(snapshot).readCommitted(from: 0, to: snapshot.committedSize).count
+            }
             #expect(sum == 500 * 499 / 2)
-            let committed = snapshot.committedSize
-            #expect(try SnapshotDatabase(snapshot).readCommitted(from: 0, to: committed).count == Int(committed))
+            #expect(bytes == Int(snapshot.committedSize))
         }
 
         first = nil
         #expect(subject.close() == false, "one snapshot is left")
         #expect(subject.descriptorsOpen() == 1)
         if kind.isMapped { #expect(segment != nil) }
-        #expect(try ArrayList(try #require(second).rootCursor).count == 500)
+        var count: UInt64?
+        #expect(throws: Never.self) { count = try ArrayList(try #require(second).rootCursor).count }
+        #expect(count == 500)
 
         second = nil
         #expect(subject.descriptorsOpen() == 0, "the last snapshot has gone")
