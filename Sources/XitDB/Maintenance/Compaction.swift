@@ -686,15 +686,23 @@ struct Compactor {
     /// memoises it afterwards: bytes contain no references, so there is no
     /// cycle to end first. Zig's `remapBytes`.
     ///
+    /// The record is held to the source's length before any of it is
+    /// copied: the length the source's reader knows, and the storage's own
+    /// where the record does not fit that (``DatabaseReader/checkExtent(from:size:)``).
+    ///
     /// - Throws: `endOfStream` if the record reaches past the end of the
-    ///   source, before any of it is copied.
+    ///   source. Where the length says so, that is before any of it is
+    ///   copied. Where the source was cut by another process after its
+    ///   reader learnt its length, the read of a chunk comes short, and the
+    ///   chunks before it are in the target by then, in a transaction that
+    ///   fails and is dropped, as after any compaction that fails.
     private func remapBytes<Map: OffsetMap>(_ slot: Slot, offsetMap: inout Map) throws(XitDBError) -> UInt64 {
         if let offset = try offsetMap.lookup(slot.value) { return offset }
         let length = try source.uint64(at: slot.value)
         // total size: u64 length + bytes + optional 2-byte format_tag
         let payload = try length.offset(by: slot.full ? ByteArrayFormat.formatTagByteCount : 0)
         var remaining = try payload.offset(by: ByteArrayFormat.lengthByteCount)
-        guard remaining <= (try source.storage.length) - slot.value else { throw .endOfStream }
+        try source.checkExtent(from: slot.value, size: remaining)
 
         let newOffset = try target.length
         var position = slot.value

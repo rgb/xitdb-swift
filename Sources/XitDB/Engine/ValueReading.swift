@@ -19,12 +19,12 @@ extension DatabaseReader {
             let start = try slot.value.offset(by: ByteArrayFormat.lengthByteCount)
             // A size that the storage cannot hold comes from a corrupt file.
             // It must not be allocated. A caller's limit bounds it already;
-            // without one, the storage's length does, which on a file is a
-            // system call.
+            // without one, the storage's length does: the length known so
+            // far, and the storage's own only for an array that does not
+            // fit that, since on a file asking is a system call.
             guard let count = Int(exactly: size) else { throw .endOfStream }
             if maxSize == nil {
-                let length = try storage.length
-                guard start <= length, size <= length - start else { throw .endOfStream }
+                try checkExtent(from: start, size: size)
             }
             var value = [UInt8](repeating: 0, count: count)
             var span = value.mutableSpan

@@ -214,6 +214,39 @@ final class DatabaseReader {
         guard !overflow, needed <= (try lengthNow()) else { throw .invalidCount }
     }
 
+    /// Refuses a byte array that the file could not hold: `size` bytes
+    /// from `start`, where both come from the file, are more than the
+    /// storage has. A damaged file can say any size, and a size is not
+    /// allocated for before it has passed here.
+    ///
+    /// As with ``checkCount(_:bytesEach:)``, the storage is asked for its
+    /// length only when the array does not fit in the length known so far:
+    /// on a file that is a system call, and a read of a byte array would
+    /// otherwise make one each time. An array that fits a length the
+    /// storage once had is let through. If the storage has been cut since,
+    /// by another process, the read that follows comes short and says so
+    /// itself, with ``XitDBError/endOfStream``, and what was allocated for
+    /// it is no more than the storage once held.
+    ///
+    /// - Throws: `endOfStream` for an array that reaches past the end of
+    ///   the storage as it is now, and the storage's errors.
+    @inline(__always)
+    func checkExtent(from start: UInt64, size: UInt64) throws(XitDBError) {
+        let known = knownLength.load(ordering: .relaxed)
+        if start > known || size > known - start {
+            try checkExtentAgainstTheStorage(from: start, size: size)
+        }
+    }
+
+    /// What ``checkExtent(from:size:)`` does for an array that does not fit
+    /// the length known so far: asks the storage again, and refuses the
+    /// array if it still does not fit.
+    @inline(never)
+    func checkExtentAgainstTheStorage(from start: UInt64, size: UInt64) throws(XitDBError) {
+        let length = try lengthNow()
+        guard start <= length, size <= length - start else { throw .endOfStream }
+    }
+
     /// The most pieces of `byteCount` bytes the file has room for: its
     /// length as it is now over the size of one, for a walk that enters
     /// blocks or nodes each of which is a piece of the file of its own.
@@ -411,7 +444,20 @@ final class DatabaseReader {
         let header = identity.header
         let fileSize = try committedSizeField(of: header)
         if fileSize < header.minimumFileSize { throw .invalidDatabase }
-        if try storage.length < fileSize { throw .truncatedDatabase }
+        // The storage is asked for its length HERE, every time, and this is
+        // not to be answered from a length known earlier, though on a file
+        // it is a system call for every operation that starts at the root.
+        // It is the guard of a reader through a memory map: a file cut
+        // below its committed size by another process, with the header
+        // still saying the old size, is refused here, at the next operation
+        // through the root, before a mapped page past the file's end is
+        // touched, which would be a signal and no error. Committed size and
+        // length are both read new, so that when this passes every position
+        // below the size is in the file as it is now. The length it brings
+        // back is kept, so that what an operation begun here reads is held
+        // against what the system has just said (``checkExtent(from:size:)``,
+        // ``checkCount(_:bytesEach:)``).
+        if try lengthNow() < fileSize { throw .truncatedDatabase }
         // The committed bytes must end with a trailer.
         let root = try rootTrailer(endingAt: fileSize).root
         // They are verified now: a file storage that only reads may read

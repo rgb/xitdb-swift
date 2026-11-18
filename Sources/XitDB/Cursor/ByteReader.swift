@@ -123,10 +123,10 @@ public struct ByteReader {
         if let maxCount, remaining > UInt64(max(maxCount, 0)) { throw .streamTooLong }
         if shortBytes == nil {
             // A size that the storage cannot hold comes from a damaged file.
-            // It must not be allocated.
+            // It must not be allocated: it is held to the storage's length,
+            // as the reader knows it or as the storage says it now.
             let start = try startPosition.offset(by: position)
-            let length = try database.reader.storage.length
-            guard start <= length, remaining <= length - start else { throw .endOfStream }
+            try database.reader.checkExtent(from: start, size: remaining)
         }
         guard let count = Int(exactly: remaining) else { throw .endOfStream }
         var value = [UInt8](repeating: 0, count: count)
