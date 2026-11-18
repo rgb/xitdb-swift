@@ -180,6 +180,12 @@ private struct RolledBack: Error {}
         #expect(counts.reads == 0)
 
         try file.truncate(to: UInt64(page + 10))
+        // The limit is down with the cut. Held before anything is read past
+        // the cut: with the limit left where it was, that read would be of
+        // a mapped page beyond the file's end, and no expectation would be
+        // left to say so.
+        #expect(file.mappedLimit == UInt64(page + 10))
+        guard file.mappedLimit == UInt64(page + 10) else { return }
         #expect(try readBytes(file, at: UInt64(2 * page), count: 16) == [])
         #expect(try readBytes(file, at: UInt64(page + 10), count: 16) == [])
         #expect(counts.reads == 2, "what was cut away is asked of the file")
@@ -197,6 +203,42 @@ private struct RolledBack: Error {}
         #expect(counts.reads == reads, "what was written again is read through the map")
         #expect(counts.maps == 4, "through the segments mapped before the cut")
         #expect(try directory.contents() == whole)
+    }
+
+    /// A replacement of the file that is given up puts back the view and
+    /// the limit the storage had: while it is under way the storage reads
+    /// the new file, through a view of its own with nothing known to be in
+    /// it at first; afterwards the old file is read through its map again,
+    /// through the segments it had, with no file call and nothing mapped
+    /// anew.
+    @Test(arguments: maps)
+    func aReplacementThatIsGivenUpPutsTheViewAndTheLimitBack(reading: FileReading) throws {
+        let directory = try TemporaryDirectory()
+        let (file, counts) = try Self.mapped(directory, reading)
+        let page = Self.page
+        let bytes = Self.pattern(4 * page)
+        try writeBytes(file, bytes, at: 0)
+        #expect(try Self.afterTheHeaders(file, bytes.count) == Array(bytes[Self.headers...]))
+        #expect(counts.reads == 0)
+        #expect(counts.maps == 4)
+        #expect(file.mappedLimit == UInt64(bytes.count))
+
+        try file.beginReplacement()
+        #expect(file.mappedLimit == 0, "nothing is known to be in the new file")
+        #expect(try file.length == 0)
+        let incoming = Self.pattern(page + 100, seed: 5)
+        try writeBytes(file, incoming, at: 0)
+        #expect(file.mappedLimit == UInt64(incoming.count))
+        #expect(try Self.afterTheHeaders(file, incoming.count) == Array(incoming[Self.headers...]))
+        #expect(counts.reads == 0, "the new file is read through a map of its own")
+        #expect(counts.maps == 6)
+
+        file.abandonReplacement()
+        #expect(file.mappedLimit == UInt64(bytes.count))
+        #expect(try Self.afterTheHeaders(file, bytes.count) == Array(bytes[Self.headers...]))
+        #expect(counts.reads == 0, "the old file is read through its map again")
+        #expect(counts.maps == 6, "through the segments it had: nothing is mapped anew")
+        #expect(try directory.contents() == bytes)
     }
 
     /// With the switch that lets the limit follow commits only, what is
@@ -715,6 +757,80 @@ private struct RolledBack: Error {}
         #expect(watched.maps == maps + granted + 1)
         #expect(watched.told == told)
         #expect(watched.reads - reads > plainReads, "what the second view lacks came by file calls")
+    }
+
+    /// What the second view lacks is not mapped into the storage's own
+    /// view while the compaction runs: the storage's own view stays as it
+    /// was, and a refusal of the system for the second view is not a
+    /// refusal for the storage's map. Shown on a storage opened anew on a
+    /// file, whose own view holds only what opening the database mapped:
+    /// with the second view's second mapping refused, the compaction asks
+    /// for two mappings and no more, the rest of the source comes by file
+    /// calls, and the storage reads through its map afterwards as before.
+    @Test(arguments: [false, true])
+    func whatTheSecondViewLacksIsNotMappedIntoTheStoragesOwnView(buffered: Bool) throws {
+        let directory = try TemporaryDirectory()
+        let walk: String
+        do {
+            let first = try Self.filled(
+                in: try FileStorage(path: directory.path(), access: .create, durability: .none))
+            walk = try StructureWalk.describe(first.rootCursor.readOnly)
+        }
+        let file = try readThroughTheMap(
+            try FileStorage(
+                path: directory.path(), access: .readWrite, durability: .none, lock: .exclusive,
+                reading: .memoryMap, segmentSize: Self.page), at: directory.path())
+        let watched = Self.watch(file)
+        let storage: any WritableStorage = buffered ? BufferedFileStorage(file) : file
+        let database = try Database(opening: storage, hashSize: 20)
+        let segments = Self.segments(holding: try storage.length)
+        #expect(segments > 3)
+        let ownMaps = watched.maps
+        #expect(ownMaps < segments, "the storage's own view does not hold the whole file yet")
+
+        watched.grantedMaps = ownMaps + 1
+        let reads = watched.reads
+        var offsets = MemoryOffsetMap()
+        let target = try database.compact(into: MemoryStorage(), fileID: 9, offsetMap: &offsets)
+        #expect(try StructureWalk.describe(target.rootCursor.readOnly) == walk)
+        #expect(
+            watched.maps == ownMaps + 2, "one mapping of the second view granted, one refused, none for the own view")
+        #expect(watched.reads > reads, "what the second view lacks came by file calls")
+        #expect(file.isMemoryMapped, "the storage's own map was refused nothing")
+
+        // Afterwards the storage maps what it reads, into its own view.
+        watched.grantedMaps = nil
+        #expect(try StructureWalk.describe(database.rootCursor.readOnly) == walk)
+        #expect(watched.maps > ownMaps + 2)
+    }
+
+    /// A snapshot taken WHILE a compaction runs gets the storage's own
+    /// view, as one taken at any other time does, and not the second view
+    /// the storage is reading through just then: none of its segments is
+    /// one of the second view's, which are unmapped when the compaction
+    /// ends, and it reads its commit after that.
+    @Test(arguments: mappedKinds)
+    func aSnapshotTakenWhileACompactionRunsGetsTheStoragesOwnView(kind: StorageKind) throws {
+        let (subject, file, _, database, walk) = try Self.watchedSubject(kind)
+        let segments = Self.segments(holding: try subject.storage.length)
+        var taken: Snapshot?
+        var shared = -1
+        var held = -1
+        var offsets = HookedOffsetMap {
+            let snapshot = try database.snapshot()
+            taken = snapshot
+            guard case .file(_, _, let view?) = snapshot.storage.source else { return }
+            let second = file.compactionView?.segments ?? []
+            held = view.segments.count
+            shared = view.segments.count { mine in second.contains { $0 === mine } }
+        }
+        let target = try database.compact(into: MemoryStorage(), fileID: 9, offsetMap: &offsets)
+        #expect(try StructureWalk.describe(target.rootCursor.readOnly) == walk)
+        #expect(held == segments)
+        #expect(shared == 0, "the snapshot holds segments of the compaction's second view")
+        #expect(file.compactionView == nil)
+        let snapshot = try #require(taken)
+        #expect(try StructureWalk.describe(snapshot.rootCursor) == walk)
     }
 
     /// A snapshot taken before a compaction reads through the storage's

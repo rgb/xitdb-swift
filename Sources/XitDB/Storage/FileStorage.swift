@@ -366,6 +366,14 @@ public final class FileStorage: WritableStorage {
         var secondViewInPlace = false
     }
 
+    /// The number of bytes at the start of the file that a read may take
+    /// through the map, or `nil` where the storage has no map: the limit a
+    /// read goes by, for the tests, which hold it where a read past it
+    /// would be a signal and no error.
+    var mappedLimit: UInt64? {
+        map == nil ? nil : unsafe readLimit
+    }
+
     /// The second view of the file that the storage reads through while a
     /// compaction of a database in it runs; `nil` at every other time.
     var compactionView: FileMapView? {
