@@ -280,7 +280,7 @@ import XitDBHashing
     @Test(arguments: [FileReading.fileCalls, .memoryMap, .memoryMapReadAhead], [false, true])
     func aFileCutBelowItsCommittedSizeIsRefusedAtTheRoot(reading: FileReading, buffered: Bool) throws {
         let directory = try TemporaryDirectory()
-        try Self.write(at: directory.path(), texts: 3, values: 3)
+        try Self.write(at: directory.path(), texts: 3, values: 40)
         let file = try FileStorage(
             path: directory.path(), access: .readOnly, reading: reading, segmentSize: Platform.pageSize)
         guard file.isMemoryMapped == (reading != .fileCalls) else {
@@ -294,12 +294,17 @@ import XitDBHashing
         let history = try ArrayList(database.rootCursor)
         let moment = try Self.moment(of: database)
         let values = try ArrayList(try #require(try moment.cursor(forKey: "values")))
-        #expect(try values.value(at: 2, as: [UInt8].self) == Self.large(2))
+        for index in 0..<40 { #expect(try values.value(at: index, as: [UInt8].self) == Self.large(index)) }
         let committed = try database.committedSize
 
-        // Another descriptor cuts the file inside the last value, well
-        // below the committed size; the header still says the old size.
-        try Self.cut(directory.path(), to: committed - 6_000)
+        // Another descriptor cuts the file to half, far below the
+        // committed size; the header still says the old size. The half
+        // that is gone is many whole pages, the commit's trailer among
+        // them: a read of any of them through the map would be the signal.
+        // (A cut that stays inside the file's last page is not: the rest
+        // of that page reads as zeros.)
+        #expect(committed > 400_000)
+        try Self.cut(directory.path(), to: committed / 2)
 
         #expect(throws: XitDBError.truncatedDatabase) { try history.cursor(at: -1) }
         #expect(throws: XitDBError.truncatedDatabase) { try history.count }
