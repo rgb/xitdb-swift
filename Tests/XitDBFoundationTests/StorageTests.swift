@@ -44,9 +44,11 @@ import XitDBHashing
         return try HashMap(database.rootCursor).value(forKey: "answer", as: UInt64.self)
     }
 
-    /// A URL opens the file its path names, whatever the name holds: what
-    /// was written through a storage opened by the URL is read through one
-    /// opened by the path, and the reverse, on both file storages.
+    /// A URL opens the file its path names, whatever the name holds: a
+    /// storage opened by the URL to be made makes the file of that name
+    /// and no other, what it wrote is read through a storage opened by the
+    /// path, and a file made by the path is opened by the URL, on both
+    /// file storages.
     @Test func aURLOpensTheFileItsPathNames() throws {
         let folder = try Folder()
         let url = folder.url.appendingPathComponent(Self.name)
@@ -54,27 +56,42 @@ import XitDBHashing
         #expect(path.hasSuffix("/" + Self.name))
         #expect(url.absoluteString.contains("%20"))
 
-        #expect(
-            try Self.writeAndReadBack(
-                try FileStorage(url: url, access: .create), try FileStorage(path: path, access: .readOnly)) == 42)
-        #expect(FileManager.default.fileExists(atPath: path))
-        try FileManager.default.removeItem(atPath: path)
-        #expect(
-            try Self.writeAndReadBack(
-                try BufferedFileStorage(url: url, access: .create),
-                try BufferedFileStorage(path: path, access: .readOnly)) == 42)
-        try FileManager.default.removeItem(atPath: path)
-        #expect(
-            try Self.writeAndReadBack(
-                try BufferedFileStorage(path: path, access: .create),
-                try FileStorage(url: url, access: .readOnly)) == 42)
-        #expect(
-            try BufferedFileStorage(url: url, access: .readOnly).length
-                == FileStorage(url: url, access: .readOnly).length)
-        // Only the one file is in the folder: nothing was opened under the
-        // name as the URL writes it.
-        #expect(
-            try FileManager.default.contentsOfDirectory(atPath: folder.url.path(percentEncoded: false)) == [Self.name])
+        /// The names of the files in the folder.
+        func names() throws -> [String] {
+            try FileManager.default.contentsOfDirectory(atPath: folder.url.path(percentEncoded: false)).sorted()
+        }
+        /// The value a database in a storage holds under "answer".
+        func answer(in storage: any ReadableStorage) throws -> UInt64? {
+            let database = try ReadOnlyDatabase(opening: storage, hashing: SHA256.self)
+            return try HashMap(database.rootCursor).value(forKey: "answer", as: UInt64.self)
+        }
+
+        for buffered in [false, true] {
+            // Made by the URL: the one file in the folder has the name, and
+            // not the name as the URL writes it.
+            do {
+                let made: any WritableStorage =
+                    buffered
+                    ? try BufferedFileStorage(url: url, access: .create) : try FileStorage(url: url, access: .create)
+                let database = try Database(creating: made, hashing: SHA256.self)
+                try HashMap(database.rootCursor).put(UInt64(42), forKey: "answer")
+            }
+            #expect(try names() == [Self.name], "made by its URL, buffered: \(buffered)")
+            guard try names() == [Self.name] else { return }
+            // Read by the path.
+            #expect(try answer(in: try FileStorage(path: path, access: .readOnly)) == 42)
+            // And a file that is there by its path is opened by the URL.
+            #expect(throws: Never.self) {
+                let byURL: any ReadableStorage =
+                    buffered
+                    ? try BufferedFileStorage(url: url, access: .readOnly)
+                    : try FileStorage(url: url, access: .readOnly)
+                let read = try answer(in: byURL)
+                #expect(read == 42)
+            }
+            try FileManager.default.removeItem(atPath: path)
+        }
+        #expect(try names().isEmpty)
     }
 
     /// A URL that is not a file's is refused before anything is opened.
