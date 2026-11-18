@@ -44,10 +44,11 @@ description, so it shows an error by its line; a test target that would sooner s
 conformance to Swift Testing's `CustomTestStringConvertible` whose `testDescription` is the error's `debugDescription`
 (marked `@retroactive`, the type being another package's), as this package's own tests do.
 
-What Foundation's `localizedDescription` says of an error is not its line unless the program says so: the library imports
-no Foundation, so an ``XitDBError`` caught as `any Error` gives "The operation couldn't be completed", with the type's name
-and a number. A program that depends on the package's `XitDBFoundation` product and imports it gets the line, with the
-system's words for a storage failure's number after it; the conformance to `LocalizedError` is there.
+What Foundation's `localizedDescription` says of an error is not its line unless the program says so: the library imports no
+Foundation, so an ``XitDBError`` caught as `any Error` gives Foundation's stock sentence, "The operation couldn't be completed"
+on Apple's platforms, with the type's name and a number. A program that depends on the package's `XitDBFoundation` product and
+imports it gets the line, with the system's words for a storage failure's number after it; the conformance to `LocalizedError`
+is there.
 
 Its ``XitDBError/kind`` says whose it is, one ``XitDBError/Kind`` for each of the four headings below, for a program that
 treats the errors of a kind alike. It is the code's ``XitDBError/Code/kind``. A case has one kind, by its commoner meaning;
@@ -104,13 +105,15 @@ the end of the last commit that verifies, and leaves the decision to recover to 
 
 ### The storage
 
-``XitDBError/storageFailure(errno:)`` is the system's refusal, or the one the system would have made, with its error
-number: a memory storage that has to grow asks the system for the memory first, and reports a refusal this way, with
-`ENOMEM`. ``XitDBError/maxSizeExceeded`` is a write that would pass a memory storage's limit, which is the machine's
+``XitDBError/storageFailure(errno:)`` is the system's refusal, or the one the system would have made, with its error number: a
+memory storage that has to grow asks the system for the memory first, and reports a refusal this way, with `ENOMEM`. The
+commonest others are `ENOENT` for a missing file, `EWOULDBLOCK` for a lock that is held, `EACCES` for a file the process may not
+open as asked, `ENOSPC` for a full disk, and `EINVAL` for a path with a NUL byte in it and, from `XitDBFoundation`, for a URL
+that is no file's. ``XitDBError/maxSizeExceeded`` is a write that would pass a memory storage's limit, which is the machine's
 physical memory where none was named, or what an array can hold if it has none. Their ``XitDBError/kind`` is
-``XitDBError/Kind/storage``. A transaction that fails this way rolls back like any other. The exception is the second
-sync of a commit, which comes after the root header has been rewritten. If that one fails, the call throws, and the commit
-stands, but it may not survive a crash or a power loss.
+``XitDBError/Kind/storage``. A transaction that fails this way rolls back like any other. The exception is the second sync of a
+commit, which comes after the root header has been rewritten. If that one fails, the call throws, and the commit stands, but it
+may not survive a crash or a power loss.
 
 ### Your own types
 

@@ -36,8 +36,9 @@ Use ``BufferedFileStorage`` for a database in a file. Writes collect in a window
 fills up or a commit syncs. The window holds up to ``BufferedFileStorage/bufferLimit``, 2 MiB by default, and a write larger than
 that goes straight to the file.
 
-``FileStorage`` makes a system call for every read and write. On one machine that made 100,000 puts in one transaction
-about three times as slow as through the buffer, and reading no slower, since the buffer only holds writes.
+``FileStorage`` makes a system call for every read and write, unless it reads through a memory map. On one machine that
+made 100,000 puts in one transaction about three times as slow as through the buffer, and reading no slower, since the
+buffer only holds writes.
 
 ``ReadOnlyFileStorage`` is a file opened to be read, for a reader of a file that another database writes and for any
 file a program only looks at: see The reader pattern below. It has no way to write, so a ``Database`` does not open over
@@ -97,6 +98,11 @@ exists and fails if it does not.
 
 A failure to open, including a missing file, throws ``XitDBError/storageFailure(errno:)``.
 
+A file storage reads its file by file calls unless it is opened with `reading:` for a memory map, which makes a read a copy from
+memory: ``FileReading/memoryMap``, the one to take for reads by key, or ``FileReading/memoryMapReadAhead``. A map asks for the
+exclusive lock of a storage that writes, and which of the two suits a program depends on whether its file fits in memory: see
+<doc:HowAFileIsRead>.
+
 The path is a `String`. A program that has Foundation opens a file by its `URL` with the package's `XitDBFoundation` module,
 and on Apple's platforms by a `FilePath`.
 
@@ -115,14 +121,16 @@ let database =
     : Database(opening: storage, hashing: SHA256.self)
 ```
 
-A creation or a copy that did not finish leaves a storage that is neither empty nor a whole database. A process that died
-while creating a database leaves its header and nothing committed. Opening refuses that with ``XitDBError/endOfStream``,
-``XitDBError/invalidDatabase`` or, where the first commit's trailer is whole,
-``XitDBError/untrustedRootHeader(lastVerified:)``, so the pattern above gets one of those errors. Creating accepts it, for
-the same hash size, and creates over it; where the trailer is whole, ``Database/recover(_:ignoringRootHeader:)`` finishes the creation instead.
-A sync from 0 that did not finish leaves a database without a first commit. If that is longer than a new database, it opens,
-for the next sync to replace, as <doc:Replication> says; if not, as when a copy from a ``ByteSource`` stopped within its
-first 4,096 bytes of data, which leaves the headers alone, it is taken for a creation that did not finish.
+A creation or a copy that did not finish leaves a storage that is neither empty nor a whole database. A process that died while
+creating a database leaves its header and nothing committed. Opening refuses that with ``XitDBError/endOfStream``,
+``XitDBError/invalidDatabase`` or, where the first commit's trailer is whole, ``XitDBError/untrustedRootHeader(lastVerified:)``,
+so the pattern above gets one of those errors. Creating accepts it, for the same hash size, and creates over it; where the
+trailer is whole, ``Database/recover(_:ignoringRootHeader:)`` finishes the creation instead. A sync from 0 that did not finish
+leaves a database without a first commit in memory, in a storage of your own, and in a file that the original or a version up to
+0.5.1 synced in place; this package's file storages write the copy into a new file and keep the old database. Such a database,
+if it is longer than a new one, opens, for the next sync to replace, as <doc:Replication> says; if not, as when a copy from a
+``ByteSource`` stopped within its first 4,096 bytes of data, which leaves the headers alone, it is taken for a creation that did
+not finish.
 
 A ``Durability`` says how far a commit goes to reach the disk, ``Durability/full`` by default: see <doc:Transactions>.
 
@@ -151,9 +159,11 @@ let database = try ReadOnlyDatabase(opening: storage, hashing: SHA256.self)
 let list = try ArrayList(database.rootCursor)
 ```
 
-Any number of readers can do this, in other processes or with a database of their own on other threads, without locks and
-while a writer commits. A read through the root looks at the file each time, so it sees the writer's later commits. Everything
-reached from one root comes from one commit, and is not affected by what is committed afterwards.
+Any number of readers can do this, in other processes or with a database of their own on other threads, without locks and while
+a writer commits. A read through the root looks at the file each time, so it sees the writer's later commits. Everything reached
+from one root comes from one commit, and is not affected by what is committed afterwards. Through a memory map that look costs
+several times the read, and by file calls about as much as the read: a reader that reads much takes the last moment's cursor
+once for each commit it wants to see, and reads through it, as <doc:HowAFileIsRead> shows.
 
 A ``ReadOnlyDatabase`` has no writing members, and its root is a ``Cursor`` of ``ReadOnly`` access, so the collections made
 from it are the read-only ones: a write through a reader does not compile. It reads any ``ReadableStorage``, a storage of

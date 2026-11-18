@@ -21,8 +21,9 @@ let storage = try BufferedFileStorage(url: folder.appending(path: "project.db"),
 ### An error a person can read
 
 `XitDBError` conforms to `LocalizedError` here. Without that, an error of the library's caught as `any Error` describes itself
-to Foundation as "The operation couldn't be completed", with the type's name and a number. With it, `localizedDescription`
-is the error's own line, and for a failure of the storage the system's words for its number come after it:
+to Foundation by Foundation's stock sentence, "The operation couldn't be completed" on Apple's platforms, with the type's name
+and a number. With it, `localizedDescription` is the error's own line, and for a failure of the storage the system's words for
+its number come after it:
 
 ```swift
 do {
@@ -53,7 +54,7 @@ the storage's life.
 
 On Apple's platforms the three are opened by a `FilePath` as well. The type is the System framework's there; on Linux it is
 the swift-system package's, a dependency this package does not take, so those three initialisers are Apple's platforms' only.
-A path written as a string literal is a `String`'s with this module imported as without it.
+A path written as a string literal goes to the initialiser that takes a `String`, with this module imported as without it.
 
 ### Data
 

@@ -42,29 +42,13 @@ compacting a ``SnapshotDatabase`` over one is refused with ``XitDBError/subColle
 
 ### A source read through a memory map
 
-A file storage opened with `reading: .memoryMap` tells the system that its file is read in no order (``FileReading/memoryMap``).
-That is right for reads by key and wrong for a compaction, which follows the pointers from the root: for data that was
-written in order that is the file's own order, and read so through such a map, a file that is not in memory comes in a page
-at a time. So for the length of a compaction the storage reads through a second mapping of its file, which is left to the
-system's reading ahead. Its own map stays as it was told, and reads by key beside the compaction, a snapshot's among them,
-are not read ahead of. Nothing else about the reads changes: a compaction reads what every other read of the database reads.
-Only your own offset map can read through the storage in that while, if its code reads this same storage: it gets the same
-bytes, and a snapshot it takes there is given the storage's own map.
-
-What it costs: while the compaction runs, the file takes its length in address space a second time, in whole segments of
-64 MB. Where the system refuses a part of that mapping, the storage reads that part by file calls, which is slower and gives
-the same database. A storage opened with ``FileReading/memoryMapReadAhead`` is read ahead of already, and one opened with
-``FileReading/fileCalls`` has no map: a compaction of either reads as it always did.
-
-Why it is there, for a list of 4,000,000 values of 256 bytes, 1.09 GB, compacted into a new file with none of the source
-in memory at the start, as medians of five runs. On a Linux virtual machine with four processors and a virtual disk: 8.9 s by
-file calls and 10.9 s through a map told that it is read in no order, so that a caller who had opened the map to read faster
-compacted slower than with none; and 4.9 s through a map left to the system's reading ahead, which is how the second
-mapping is read. The second mapping was not itself timed on that machine. It was on a Mac (Apple M4, macOS 27.2.1): 3.4 s
-through the second mapping, where the same takes 4.9 s by file calls with no map and took 4.2 s through the storage's own
-map; and in a Linux container on that Mac: 1.6 s, against 3.5 s and 2.4 s. With the source in memory already, where
-reading ahead buys nothing, the second mapping costs nothing that was measured: 2.34 s with it and 2.37 s without on the
-Mac, as medians of three.
+A storage opened with ``FileReading/memoryMap`` tells the system that its file is read in no order, which is right for
+reads by key and wrong for a compaction, which follows the pointers from the root, in the file's own order for data
+written in order. So for the length of a compaction of the database itself the storage reads through a second mapping of
+its file, left to the system's reading ahead: <doc:HowAFileIsRead> says what that costs and gains. Nothing else about
+the reads changes. Only your own offset map can read through the storage in that while, if its code reads this same
+storage: it gets the same bytes, and a snapshot it takes there is given the storage's own map. A ``SnapshotDatabase``
+over such a storage has no second mapping, and its compaction reads as the snapshot's map was told.
 
 ### What is kept
 
@@ -112,8 +96,11 @@ As it copies, a compaction has to remember where each object went, so that a sec
 same copy and a cycle ends. That is an ``OffsetMap``. It is reset at the start, and it holds a mapping for every object
 copied until the end, so one map can serve many compactions in turn.
 
-``MemoryOffsetMap`` is the one to use unless the mappings will not fit in memory. It needs room for two 64-bit numbers per
-object, with at least as much again free. If that is too much, keep the offsets on disk, in another database:
+``MemoryOffsetMap`` is the one to use unless the mappings will not fit in memory. It keeps two 64-bit numbers for each
+object copied in a table it holds at most half full, which it doubles as it fills, and while it doubles it holds the old
+table as well: 32 to 64 bytes an object, and up to 96 at a doubling. A compaction of a list of 4,000,000 values took 391
+MiB at the last doubling, about 100 bytes a value, and 256 MiB after it. If that is too much, keep the offsets on disk,
+in another database:
 
 ```swift
 // A scratch database holds the offsets, with hashes of eight bytes.
@@ -167,9 +154,10 @@ _ = try FileManager.default.replaceItemAt(
     withItemAt: URL(fileURLWithPath: "compact.db"))
 ```
 
-Other processes need to open the file again: one that has the old file open goes on reading the old file. So does a
-``Snapshot`` taken before the replacement. It reads through the file it was taken from, which stays open while the snapshot
-lives, so it goes on reading the old bytes and is not affected.
+Other processes need to open the file again: one that has the old file open goes on reading the old file, and its
+storage's `isStillAtPath`, such as ``ReadOnlyFileStorage/isStillAtPath``, is then `false`, which tells it to open the
+path again. A ``Snapshot`` taken before the replacement goes on reading the old file too. It reads through the file it
+was taken from, which stays open while the snapshot lives, so it reads the old bytes and is not affected.
 
 ### Forgetting one thing
 

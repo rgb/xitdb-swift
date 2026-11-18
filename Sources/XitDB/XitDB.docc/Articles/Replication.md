@@ -152,6 +152,19 @@ process has the replica open for writing. A full sync onto a file therefore need
 together, and a directory in which the process may create and rename a file: where it may not, the sync fails with
 ``XitDBError/storageFailure(errno:)`` and the replica is as it was.
 
+The new file is given the old one's permission bits before a byte is written to it, and on Apple's platforms its access control
+list, flags and extended attributes, the mark that keeps a file out of backups among them, its data protection class, and its
+owner and group where the process may set them; on Linux its owner and group where the process may. Not carried: the file's
+other names, a hard link keeping the old file; and on Linux its extended attributes, access control list, security labels and
+flags, which a program that sets them sets again after a full sync. A symbolic link at the replica's path stays a link: the new
+file takes the name of the file it leads to.
+
+Two writers of one replica without a lock, which one writer at a time rules out, can begin full copies that overlap. The later
+one removes the earlier one's new file and makes its own, and the earlier sync then fails with
+``XitDBError/storageFailure(errno:)`` carrying `ENOENT`: one copy is lost, and the earlier writer, finding its new file gone,
+gives the name to nothing and goes back to the old file. Only a lock keeps two writers' copies apart. A writer that wants a new
+file left by a process that ended gone when it opens the replica takes ``FileLock/exclusive``.
+
 In memory, and in a storage of your own, the copy is made in place, as the original makes it. The replica
 is emptied, so a copy that fails then leaves a database without a first commit: the incoming header, a committed size of
 zero, and what of the data was written. A copy from an array writes all of its bytes before it checks the trailer, so bytes
