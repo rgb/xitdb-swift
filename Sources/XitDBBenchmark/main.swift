@@ -56,6 +56,12 @@
 // the map's advice to the system and without it; `--cold report <folder>`
 // runs all of them and prints the machine they ran on (ColdLines.swift).
 //
+// `--read-path` runs other workloads than the usual ones, each at one size
+// on every kind of storage, read through the storage, a snapshot of it
+// (`--snapshot`) or a reader of its own (`--reader`): what a read through a
+// storage costs beside the same read through its snapshot (ReadPath.swift).
+// Without the word the benchmark is what it was.
+//
 // With `--kind <kind>` the workloads run on that kind of storage alone,
 // `memory`, `file` or `buffered_file`, and a workload that does not have
 // the kind prints nothing. The gate's count of instructions
@@ -111,7 +117,8 @@ final class RunStorage {
     let storage: any WritableStorage
     /// The file under the storage, for `--count` to put its counters on.
     let file: FileStorage?
-    private let path: String?
+    /// The file's path, for a reader of its own to open; `nil` in memory.
+    let path: String?
 
     init(_ kind: StorageKind) throws {
         self.kind = kind
@@ -1060,7 +1067,7 @@ let divide: Int = {
 /// A workload's size under `--divide`, never below one.
 func sized(_ size: Int) -> Int { max(size / divide, 1) }
 
-let workloads: [Workload] = [
+let usualWorkloads: [Workload] = [
     mapInsert(sized(100_000), kinds: [.memory, .bufferedFile]),
     mapInsert(sized(10_000), kinds: [.file]),
     mapByHash(sized(100_000), kinds: [.memory, .bufferedFile]),
@@ -1095,6 +1102,10 @@ let workloads: [Workload] = [
     snapshotTake(sized(1_000), kinds: [.file]),
     mapTransactionsSnapshot(sized(2_000), kinds: [.memory, .bufferedFile]),
 ]
+
+/// The workloads of this run: the usual ones, or with `--read-path` the
+/// read path's (ReadPath.swift).
+let workloads: [Workload] = readPathRun ? readPathWorkloads() : usualWorkloads
 
 func median(_ values: [Double]) -> Double {
     values.sorted()[values.count / 2]
@@ -1168,10 +1179,24 @@ func run(_ workload: Workload) throws {
                 try workload.afterWrite(database, prepared)
                 try workload.beforeRead(database, prepared)
                 // With --snapshot the reading phases see one snapshot, taken
-                // off the clock, through a fresh read-only database.
-                let reading =
-                    readThroughSnapshot && !workload.readPhasesNeedDatabase
-                    ? try Reading(snapshotOf: database) : Reading(database)
+                // off the clock, through a fresh read-only database; with
+                // --reader, in the read path's mode, a reader of its own on
+                // the run's file, where there is one.
+                let reading: Reading
+                if workload.readPhasesNeedDatabase {
+                    reading = Reading(database)
+                } else if readThroughReader, storage.path != nil {
+                    reading = try Reading(readerOf: storage)
+                } else if readThroughSnapshot {
+                    reading = try Reading(snapshotOf: database)
+                } else {
+                    reading = Reading(database)
+                }
+                if readPathRun {
+                    // off the clock: every page a phase reads has been read
+                    try workload.read(reading, keys, prepared)
+                    try workload.iterate(reading, keys, prepared)
+                }
                 reads.append(try measured { try workload.read(reading, keys, prepared) })
                 try workload.afterRead(database, prepared)
                 iterates.append(try measured { try workload.iterate(reading, keys, prepared) })
@@ -1394,9 +1419,18 @@ let arguments: [String] = {
     if let index = arguments.firstIndex(of: "--kind"), index + 1 < arguments.count {
         arguments.removeSubrange(index...(index + 1))
     }
-    arguments.removeAll { $0 == "--snapshot" || $0 == "--mapped" || $0 == "--map-at-commits" }
+    if let index = arguments.firstIndex(of: "--limit"), index + 1 < arguments.count {
+        arguments.removeSubrange(index...(index + 1))
+    }
+    arguments.removeAll {
+        $0 == "--snapshot" || $0 == "--mapped" || $0 == "--map-at-commits" || $0 == "--read-path" || $0 == "--reader"
+    }
     return arguments
 }()
+if readPathRun {
+    // a run in the read path's mode is ended when it has taken too long
+    alarm(readPathLimit)
+}
 if arguments.first == "--cold" {
     // the cold lines of the memory map (ColdLines.swift)
     // a failure is said in a line and is status 1: the report is run by
