@@ -17,7 +17,7 @@ import XitDB
 func sent<Value: Sendable & ~Copyable>(_ value: borrowing Value) {}
 
 func refused(
-    database: Database, snapshotDatabase: SnapshotDatabase,
+    database: Database, readOnlyDatabase: ReadOnlyDatabase, snapshotDatabase: SnapshotDatabase,
     memory: MemoryStorage, file: FileStorage, buffered: BufferedFileStorage,
     cursor: Cursor<ReadOnly>, writing: Cursor<ReadWrite>, entry: Entry,
     iterator: CollectionIterator, entries: EntryIterator, elements: ElementIterator<UInt64>,
@@ -28,6 +28,7 @@ func refused(
     sortedMap: SortedMap<ReadOnly>, sortedSet: SortedSet<ReadWrite>
 ) {
     sent(database)  // must not compile: Database
+    sent(readOnlyDatabase)  // must not compile: ReadOnlyDatabase
     sent(snapshotDatabase)  // must not compile: SnapshotDatabase
     sent(memory)  // must not compile: MemoryStorage
     sent(file)  // must not compile: FileStorage

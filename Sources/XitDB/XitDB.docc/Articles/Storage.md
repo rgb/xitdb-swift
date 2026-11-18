@@ -127,24 +127,36 @@ offset 24, a multiple of eight, and the data starts at 32. A new database is 57 
 
 ### The reader pattern
 
-A reader opens the file read-only, with a storage of its own, and reads through read-only collections:
+A reader opens the file read-only, with a storage of its own, and a ``ReadOnlyDatabase`` over it:
 
 ```swift
-// The reader: a storage of its own, opened read-only.
+// The reader: a storage of its own, opened read-only, and a database that only reads.
 let storage = try FileStorage(path: "main.db", access: .readOnly)
+let database = try ReadOnlyDatabase(opening: storage, hashing: SHA256.self)
+let list = try ArrayList(database.rootCursor)
+```
+
+Any number of readers can do this, in other processes or with a database of their own on other threads, without locks and
+while a writer commits. A read through the root looks at the file each time, so it sees the writer's later commits. Everything
+reached from one root comes from one commit, and is not affected by what is committed afterwards.
+
+A ``ReadOnlyDatabase`` has no writing members, and its root is a ``Cursor`` of ``ReadOnly`` access, so the collections made
+from it are the read-only ones: a write through a reader does not compile. It reads any ``ReadableStorage``, a storage of
+your own that can only read included, and serves what a database serves a reader: a ``Snapshot`` for other tasks, the
+reading side of <doc:Replication>, and <doc:Compaction> into a target.
+
+A ``Database`` opens a storage that was opened read-only as well, as the original's does:
+
+```swift
+// A database over the reader's kind of storage: its root can be written through, and the write fails.
 let database = try Database(opening: storage, hashing: SHA256.self)
 let list = try ArrayList<ReadOnly>(database.rootCursor)
 ```
 
-Any number of readers can do this, in other processes or with a ``Database`` of their own on other threads, without locks and
-while a writer commits. A read through the root looks at the file each time, so it sees the writer's later commits. Everything
-reached from one root comes from one commit, and is not affected by what is committed afterwards.
-
-``Database/rootCursor`` is a ``Cursor`` of ``ReadWrite`` access on every storage, including a read-only one. Pass it straight to a read-only
-collection, as above, or take ``Cursor/readOnly`` first. A write through it on a read-only storage fails at once with
-``XitDBError/storageFailure(errno:)`` carrying `EBADF`, and it truncates nothing.
-
-The read-only access mode is the protection. A reader that opened the file read-write is a second writer, and making a read-write
+``Database/rootCursor`` is a ``Cursor`` of ``ReadWrite`` access on every storage, including a read-only one. Pass it straight
+to a read-only collection, as here, or take ``Cursor/readOnly`` first. A write through it on a read-only storage fails at
+once with ``XitDBError/storageFailure(errno:)`` carrying `EBADF`, and it truncates nothing. There the read-only access mode
+is the protection: a reader that opened the file read-write with a ``Database`` is a second writer, and making a read-write
 collection on its root cursor discards whatever the real writer's transaction has written so far.
 
 ### The lock

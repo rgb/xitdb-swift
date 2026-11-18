@@ -1,30 +1,32 @@
-// The reading side of a database, shared by the live `Database` and a
-// `SnapshotDatabase`. It lives in this layer because it names
-// the replication's `ReplicaState` and the compaction's `OffsetMap`, which
-// are this layer's; the extension that types a read-only cursor's database
-// with it is here for the same reason.
+// The reading side of a database, shared by the live `Database`, a
+// `ReadOnlyDatabase` and a `SnapshotDatabase`. It lives in this layer
+// because it names the replication's `ReplicaState` and the compaction's
+// `OffsetMap`, which are this layer's; the extension that types a read-only
+// cursor's database with it is here for the same reason.
 
-/// What a live ``Database`` and a ``SnapshotDatabase`` share: the root
-/// cursor, the header and committed size, taking a snapshot, the reading
-/// side of replication, and compaction into a target.
+/// What a live ``Database``, a ``ReadOnlyDatabase`` and a
+/// ``SnapshotDatabase`` share: the root cursor, the header and committed
+/// size, taking a snapshot, the reading side of replication, and compaction
+/// into a target.
 ///
 /// Code that only reads a database takes `some ReadableDatabase` and works
-/// on either. The access of the root cursor is the type's own: a live
-/// database's is read-write, a snapshot database's read-only, so a holder
-/// who knows it has a reader can write `any ReadableDatabase<ReadOnly>` and
-/// call ``rootCursor`` on it; on the plain `any ReadableDatabase`, which is
-/// what a read-only cursor's `database` is, the root is reached
-/// through ``snapshot()``.
+/// on any of them. The access of the root cursor is the type's own: a live
+/// database's is read-write, a read-only database's and a snapshot
+/// database's read-only, so a holder who knows it has a reader can write
+/// `any ReadableDatabase<ReadOnly>` and call ``rootCursor`` on it; on the
+/// plain `any ReadableDatabase`, which is what a read-only cursor's
+/// `database` is, the root is reached through ``snapshot()``.
 ///
 /// Every member is as it is on ``Database``; nothing here writes.
 public protocol ReadableDatabase<RootAccess>: AnyObject {
     /// The access of the root cursor: ``ReadWrite`` for a live database,
-    /// ``ReadOnly`` for a snapshot's.
+    /// ``ReadOnly`` for a database opened to be read and for a snapshot's.
     associatedtype RootAccess: CursorAccess
 
     /// A cursor at the root, which every read starts from. On a live
-    /// database it reads the last commit at the time of the read; on a
-    /// snapshot's it reads the snapshot's commit.
+    /// database and on one opened to be read it reads the last commit at
+    /// the time of the read; on a snapshot's it reads the snapshot's
+    /// commit.
     var rootCursor: Cursor<RootAccess> { get }
 
     /// The header at the start of the database: its file ID, hash size
@@ -93,9 +95,12 @@ extension Database: ReadableDatabase {}
 
 extension Cursor where Access == ReadOnly {
     /// The database the cursor reads from: the live ``Database`` for a
-    /// cursor of one, the ``SnapshotDatabase`` for a cursor read from a
-    /// snapshot. A read-only cursor may come from either, so this is the
-    /// protocol's existential; a holder who needs the live type casts.
+    /// cursor of one, the ``ReadOnlyDatabase`` for a cursor of one, the
+    /// ``SnapshotDatabase`` for a cursor read from a snapshot. A read-only
+    /// cursor may come from any of them, so this is the protocol's
+    /// existential; a holder who needs the type casts. A cursor of a
+    /// ``ReadOnlyDatabase`` never gives a ``Database``: there is none to
+    /// write through.
     ///
     /// The root is reached through `database.snapshot().rootCursor`, the
     /// root of a commit pinned at that moment: the one a reader wants, since
@@ -104,6 +109,9 @@ extension Cursor where Access == ReadOnly {
     public var database: any ReadableDatabase {
         if engine.readsSnapshot {
             return (engine.readingOwner as? SnapshotDatabase) ?? SnapshotDatabase(engine: engine)
+        }
+        if engine.servesAReadOnlyDatabase {
+            return (engine.readingOwner as? ReadOnlyDatabase) ?? ReadOnlyDatabase(engine: engine)
         }
         return engine
     }

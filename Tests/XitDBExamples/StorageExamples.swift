@@ -98,8 +98,35 @@ import XitDBHashing
         let history = try ArrayList<ReadWrite>(writer.rootCursor)
         try history.append(.slot(nil))
 
-        // The reader: a storage of its own, opened read-only.
+        // The reader: a storage of its own, opened read-only, and a database that only reads.
         let storage = try FileStorage(path: scratch.path("main.db"), access: .readOnly)
+        let database = try ReadOnlyDatabase(opening: storage, hashing: SHA256.self)
+        let list = try ArrayList(database.rootCursor)
+        #expect(try list.count == 1)
+
+        // A read through the root sees the writer's later commits.
+        try history.append(.slot(nil))
+        #expect(try list.count == 2)
+
+        // It serves what a database serves a reader: here a snapshot, for another task.
+        let snapshot = try database.snapshot()
+        try history.append(.slot(nil))
+        #expect(try ArrayList(snapshot.rootCursor).count == 2)
+        #expect(try list.count == 3)
+    }
+
+    @Test func aDatabaseOverAStorageOpenedReadOnly() throws {
+        let scratch = ScratchDirectory()
+        defer { scratch.remove() }
+
+        // The writer.
+        let writerStorage = try BufferedFileStorage(path: scratch.path("main.db"), access: .create)
+        let writer = try Database(creating: writerStorage, hashSize: 32)
+        let history = try ArrayList<ReadWrite>(writer.rootCursor)
+        try history.append(.slot(nil))
+
+        let storage = try FileStorage(path: scratch.path("main.db"), access: .readOnly)
+        // A database over the reader's kind of storage: its root can be written through, and the write fails.
         let database = try Database(opening: storage, hashing: SHA256.self)
         let list = try ArrayList<ReadOnly>(database.rootCursor)
         #expect(try list.count == 1)
@@ -109,7 +136,7 @@ import XitDBHashing
         #expect(try list.count == 2)
 
         // A write through the root fails, and changes nothing.
-        #expect(throws: XitDBError.self) {
+        #expect(throws: XitDBError.storageFailure(errno: EBADF)) {
             try ArrayList<ReadWrite>(database.rootCursor).append(.uint(1))
         }
         #expect(try list.count == 2)

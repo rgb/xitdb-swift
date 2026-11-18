@@ -56,10 +56,18 @@ public final class Database {
     /// point past the record the writer is filling.
     var openByteWriters = 0
 
-    /// For an engine under a ``SnapshotDatabase``, that database, so that a
-    /// read-only cursor's `database` is the one its holder made.
-    /// Weak: the snapshot database owns its engine, not the other way.
+    /// For an engine under a ``SnapshotDatabase`` or a ``ReadOnlyDatabase``,
+    /// that database, so that a read-only cursor's `database` is the one
+    /// its holder made. Weak: the database owns its engine, not the other
+    /// way.
     weak var readingOwner: AnyObject?
+
+    /// Whether this engine is the one under a ``ReadOnlyDatabase``, which
+    /// outlives that database where a cursor holds the engine on: a
+    /// read-only cursor's `database` is then a database that only reads,
+    /// made again over the engine, and never the engine, whose root is
+    /// read-write. Set once, when the read-only database is made.
+    var servesAReadOnlyDatabase = false
 
     /// The number of commits this object has made. A write looks at it
     /// before and after, to know whether it committed anything.

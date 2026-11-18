@@ -6,9 +6,15 @@
 //     XitDBConformanceReader --kinds
 //     XitDBConformanceReader <kind> <file>
 //
-// `--kinds` prints the kinds of file storage the port has, one word to a
-// line: the two file storages, each read by file calls and through a memory
-// map in either of its two ways. The suite runs its three runs on each.
+// `--kinds` prints the reader's kinds, one word to a line. Six are the kinds
+// of file storage the port has, the two file storages, each read by file
+// calls and through a memory map in either of its two ways, with the
+// database opened as a reader opens one: a `ReadOnlyDatabase`, whose root
+// is read-only. Two more open a `Database` over a storage opened to be
+// read, as a reader did before there was a database that only reads and as
+// the first client does on 0.5.1: `file-as-database`, by file calls, and
+// `file-map-as-database`, through a memory map. The suite runs its three
+// runs on each of the eight.
 //
 // With a kind and a file it opens the file once, to be read, with no lock,
 // and prints `open`, or `error <name>` and ends. Then, for each line on its
@@ -32,20 +38,23 @@ import Foundation
 import XitDB
 import XitDBHashing
 
-/// The port's kinds of file storage, each by the reader's own word for it,
-/// in the order `--kinds` prints them: the two file storages, each read by
-/// file calls and through a memory map in either of its two ways.
+/// The reader's kinds, each by its own word, in the order `--kinds` prints
+/// them: the port's six kinds of file storage, the two file storages, each
+/// read by file calls and through a memory map in either of its two ways,
+/// under a database that only reads; and two of them under a `Database`.
 enum Kind: String, CaseIterable {
     case file, buffered
     case fileMap = "file-map"
     case fileMapReadAhead = "file-map-read-ahead"
     case bufferedMap = "buffered-map"
     case bufferedMapReadAhead = "buffered-map-read-ahead"
+    case fileAsDatabase = "file-as-database"
+    case fileMapAsDatabase = "file-map-as-database"
 
     /// Whether the storage is the buffered one.
     var buffered: Bool {
         switch self {
-        case .file, .fileMap, .fileMapReadAhead: false
+        case .file, .fileMap, .fileMapReadAhead, .fileAsDatabase, .fileMapAsDatabase: false
         case .buffered, .bufferedMap, .bufferedMapReadAhead: true
         }
     }
@@ -53,9 +62,18 @@ enum Kind: String, CaseIterable {
     /// How the storage reads its file.
     var reading: FileReading {
         switch self {
-        case .file, .buffered: .fileCalls
-        case .fileMap, .bufferedMap: .memoryMap
+        case .file, .buffered, .fileAsDatabase: .fileCalls
+        case .fileMap, .bufferedMap, .fileMapAsDatabase: .memoryMap
         case .fileMapReadAhead, .bufferedMapReadAhead: .memoryMapReadAhead
+        }
+    }
+
+    /// Whether the file is read through a `Database`, whose root is
+    /// read-write on every storage, and not through a `ReadOnlyDatabase`.
+    var opensADatabase: Bool {
+        switch self {
+        case .fileAsDatabase, .fileMapAsDatabase: true
+        case .file, .buffered, .fileMap, .fileMapReadAhead, .bufferedMap, .bufferedMapReadAhead: false
         }
     }
 }
@@ -108,10 +126,10 @@ func open(_ kind: Kind, _ path: String) throws -> any WritableStorage {
     return storage
 }
 
-/// The state the database is in: everything read through one cursor at the
-/// root's last moment.
-func state(of database: Database) throws -> String {
-    guard let moment = try ArrayList<ReadOnly>(database.rootCursor.readOnly).cursor(at: -1) else {
+/// The state the database is in, read from a cursor at its root:
+/// everything through one cursor at the root's last moment.
+func state(at root: Cursor<ReadOnly>) throws -> String {
+    guard let moment = try ArrayList<ReadOnly>(root).cursor(at: -1) else {
         throw ReaderError.noMoment
     }
     let map = try HashMap<ReadOnly>(moment)
@@ -138,9 +156,19 @@ guard arguments.count == 2, let kind = Kind(rawValue: arguments[0]) else {
     fail("usage: XitDBConformanceReader --kinds\n       XitDBConformanceReader <kind> <file>", status: 2)
 }
 
-let database: Database
+/// A cursor at the root of the one database the reader opens, new at each
+/// asking: the database that only reads, or for the two kinds that say so
+/// a `Database`, whose root is viewed to be read.
+let root: () -> Cursor<ReadOnly>
 do {
-    database = try Database(opening: try open(kind, arguments[1]), hashing: Insecure.SHA1.self)
+    let storage = try open(kind, arguments[1])
+    if kind.opensADatabase {
+        let database = try Database(opening: storage, hashing: Insecure.SHA1.self)
+        root = { database.rootCursor.readOnly }
+    } else {
+        let database = try ReadOnlyDatabase(opening: storage, hashing: Insecure.SHA1.self)
+        root = { database.rootCursor }
+    }
 } catch {
     say("error \(name(of: error))")
     exit(1)
@@ -148,7 +176,7 @@ do {
 say("open")
 while readLine() != nil {
     do {
-        say(try state(of: database))
+        say(try state(at: root()))
     } catch {
         say("error \(name(of: error))")
     }

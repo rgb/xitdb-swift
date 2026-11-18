@@ -142,3 +142,32 @@ func acceptedToSend(snapshot: Snapshot, header: DatabaseHeader, slot: Slot, erro
     sent(slot)
     sent(error)
 }
+
+// The other half of `RefusedReadOnly.swift`: what a reader does through a
+// database opened to be read, where the library's error is declared. Its
+// root and everything made from it read; it gives a snapshot to send; and
+// it is taken wherever a reader's database is, with its root where the
+// root's access is named.
+
+func acceptedReads(storage: FileStorage, source: Database) throws(XitDBError) -> UInt64 {
+    let database = try ReadOnlyDatabase(opening: storage)
+    let map = try HashMap(database.rootCursor)
+    var total = try map.cursor(forHash: [UInt8](repeating: 1, count: 32))?.read(UInt64.self) ?? 0
+    let list = try ArrayList(database.rootCursor)
+    total += try list.count
+    var elements = try list.elements(as: UInt64.self)
+    while let element = try elements.next() { total += element }
+    sent(try database.snapshot())
+    total += try database.committedSize
+
+    let reader: any ReadableDatabase<ReadOnly> = database
+    total += try reader.rootCursor.count
+    let behind: any ReadableDatabase = database.rootCursor.database
+    total += try behind.committedSize
+    if behind is ReadOnlyDatabase { total += 1 }
+
+    // It is a compaction's source, never its target.
+    var offsets = MemoryOffsetMap()
+    try database.compact(into: source, offsetMap: &offsets)
+    return total
+}

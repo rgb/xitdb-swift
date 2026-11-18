@@ -810,10 +810,13 @@ extension Database {
     /// the root header.
     ///
     /// The cursor is read-write on every storage, as in the original. A reader
-    /// opens its storage with ``FileAccess/readOnly`` and wraps
-    /// ``Cursor/readOnly`` in the read-only collections, or gives the cursor to
-    /// their read-only inits; a write through the root cursor on a read-only
-    /// storage fails with the storage's write error and truncates nothing. Two
+    /// opens its storage with ``FileAccess/readOnly`` and a
+    /// ``ReadOnlyDatabase`` over it, whose root cursor is read-only, so that
+    /// a wrong write does not compile. Where a reader opens a ``Database``
+    /// all the same, it wraps ``Cursor/readOnly`` in the read-only
+    /// collections, or gives the cursor to their read-only inits; a write
+    /// through the root cursor on a read-only storage fails with the
+    /// storage's write error and truncates nothing. Two
     /// processes on one file use the file's lock: a reader that opened
     /// read-write is a second writer, and starting a write-mode collection on
     /// its root cursor discards whatever the other process's transaction has

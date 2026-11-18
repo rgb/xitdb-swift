@@ -8,6 +8,8 @@ See <doc:Storage>, and <doc:Recovery> for a file whose root header or last trail
 
 A database given a hasher takes keys; one given a hash size alone takes hashes. See <doc:Hashing>.
 
+A reader that is never to write opens a ``ReadOnlyDatabase``, which has these reading members and no others.
+
 - ``init(opening:hashing:)``
 - ``init(creating:hashing:hashID:fileID:)``
 - ``recover(_:hashing:ignoringRootHeader:)``

@@ -13,8 +13,9 @@ and everything before it never change.
 ### What can cross between tasks
 
 Plain values, such as a ``Slot``, a ``ReplicaState`` or an ``XitDBError``, are `Sendable`, and so is a ``Snapshot``, which
-is how another task reads a database. What reads or writes through a database is not: ``Database``, ``SnapshotDatabase``,
-``Cursor``, the collections, ``Entry``, ``CollectionIterator``, ``ByteReader``, ``ByteWriter`` and the storages. In Swift 6
+is how another task reads a database. What reads or writes through a database is not: ``Database``, ``ReadOnlyDatabase``,
+``SnapshotDatabase``, ``Cursor``, the collections, ``Entry``, ``CollectionIterator`` and the two iterators that read as they
+go, ``EntryIterator`` and ``ElementIterator``, ``ByteReader``, ``ByteWriter`` and the storages. In Swift 6
 mode the compiler holds you to it. A database has no lock inside, so do not get around the compiler with
 `@unchecked Sendable`.
 
@@ -65,7 +66,9 @@ new snapshot.
 
 A ``SnapshotDatabase`` has only reading members, and every cursor a snapshot gives is read-only, so nothing can write through
 one. Nothing read from a snapshot is ever stale, since nothing runs a transaction on it. Code that only reads can take
-`some ReadableDatabase`: both a ``Database`` and a ``SnapshotDatabase`` are one, as ``ReadableDatabase`` says.
+`some ReadableDatabase`: a ``Database``, a ``ReadOnlyDatabase`` and a ``SnapshotDatabase`` are each one, as
+``ReadableDatabase`` says. The second is the live reader, which follows the file as a writer commits to it
+(<doc:Storage#The-reader-pattern>); the third reads the one commit its snapshot pinned.
 
 ``Snapshot/init(_:)`` makes a snapshot of one collection inside a commit, so that one task can find it and hand it to many: the
 new snapshot's root cursor is at that collection. It throws because, for a cursor of a live database, it first takes a
