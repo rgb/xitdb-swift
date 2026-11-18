@@ -17,8 +17,9 @@
 /// bytes would lose them or keep stale ones.
 ///
 /// A ``Snapshot`` of a database in this storage reads the file through the
-/// file storage underneath, so the file stays open, and any lock held,
-/// until the storage and the last snapshot have gone. Every byte a
+/// file storage underneath, so the file stays open until the storage and
+/// the last snapshot have gone. A lock is the storage's, and is let go when
+/// the storage goes or is closed, whatever snapshots are left. Every byte a
 /// snapshot reads is in the file: a commit flushes the window before it
 /// rewrites the root header, and the window holds only what came after.
 public final class BufferedFileStorage: WritableStorage {
@@ -85,8 +86,8 @@ public final class BufferedFileStorage: WritableStorage {
     ///
     /// - Parameters:
     ///   - path: The path of the file.
-    ///   - access: Whether to open the file for reading only, and whether to
-    ///     create or empty it.
+    ///   - access: Whether the file must exist, and whether to create or
+    ///     empty it.
     ///   - durability: How far to go to put a commit on the disk.
     ///   - lock: An advisory lock to take on the file, or `nil` for none.
     ///   - reading: How the file is read, by file calls or through a
@@ -153,7 +154,7 @@ public final class BufferedFileStorage: WritableStorage {
     /// - Returns: The number of bytes read, which is less than `range.count`
     ///   only when the storage ends first.
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if reading the file
-    ///   fails.
+    ///   fails; ``XitDBError/storageClosed`` after ``close()``.
     public func read(
         into buffer: inout MutableSpan<UInt8>,
         range: Range<Int>,
@@ -209,7 +210,7 @@ public final class BufferedFileStorage: WritableStorage {
     /// buffered bytes if that is further.
     ///
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the file's length
-    ///   cannot be read.
+    ///   cannot be read; ``XitDBError/storageClosed`` after ``close()``.
     public var length: UInt64 {
         get throws(XitDBError) {
             // `??` would lose the typed error.
@@ -236,7 +237,8 @@ public final class BufferedFileStorage: WritableStorage {
     ///   be flushed or the bytes written to the file, and that failed. Also,
     ///   at once and without buffering anything, for bytes that would lie
     ///   beyond the largest offset a file can have: the same error, at the
-    ///   same moment, as ``FileStorage`` gives.
+    ///   same moment, as ``FileStorage`` gives. ``XitDBError/storageClosed``
+    ///   after ``close()``, with nothing buffered.
     public func write(_ bytes: Span<UInt8>, at offset: UInt64) throws(XitDBError) {
         guard bytes.count > 0 else { return }
         // Zig accepts these writes into the buffer and fails when it flushes.
@@ -293,7 +295,8 @@ public final class BufferedFileStorage: WritableStorage {
     ///
     /// - Throws: ``XitDBError/invalidLength`` if `length` is larger than the
     ///   storage's length, or ``XitDBError/storageFailure(errno:)`` if the
-    ///   file cannot be shortened.
+    ///   file cannot be shortened; ``XitDBError/storageClosed`` after
+    ///   ``close()``.
     public func truncate(to length: UInt64) throws(XitDBError) {
         guard length <= (try self.length) else { throw .invalidLength }
         let bufferSize = unsafe UInt64(memory.count)
@@ -341,7 +344,8 @@ public final class BufferedFileStorage: WritableStorage {
     /// not whether the file changed.
     ///
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the system cannot
-    ///   be asked about the open file or about the path.
+    ///   be asked about the open file or about the path;
+    ///   ``XitDBError/storageClosed`` after ``close()``.
     public var isStillAtPath: Bool {
         get throws(XitDBError) {
             try file.isStillAtPath

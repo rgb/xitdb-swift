@@ -131,6 +131,14 @@ public final class ReadOnlyDatabase: ReadableDatabase {
     /// Takes a snapshot of the last commit, as ``Database/snapshot()``
     /// does, with what it costs on each kind of storage.
     ///
+    /// Over a storage of your own, one that is no ``WritableStorage``, a
+    /// snapshot is a copy of every committed byte: the whole database is
+    /// read into memory to make it, a gigabyte for a database of a
+    /// gigabyte. To learn one value of such a database, read it through
+    /// ``rootCursor``, which reads only what the value's path touches; a
+    /// snapshot is for handing the commit to another thread or task. Over a
+    /// ``ReadOnlyFileStorage`` it copies nothing.
+    ///
     /// - Throws: What ``Database/snapshot()`` throws.
     public func snapshot() throws(XitDBError) -> Snapshot {
         try engine.snapshot()

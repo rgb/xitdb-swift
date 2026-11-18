@@ -1,6 +1,7 @@
 # The instructions an operation takes, by the benchmark's own count: what
 # scripts/instructions.sh holds the gate's plain release build to, within a per cent.
-# Twelve lines in memory, the least a line over eight places of the stack, twice;
+# Thirteen lines in memory, a map's compaction the last of them, the least a line
+# over eight places of the stack, twice;
 # three reads through a mapped file (`mapped_`) and a list's read by index through
 # a snapshot of a mapped file and of a database in memory (`snapshot_`), the least
 # of three runs. Taken with `scripts/instructions.sh pin`; take them again on
@@ -19,6 +20,7 @@ linked_append iterate 512.2
 sorted_insert write 40046.0
 sorted_insert read 13503.7
 sorted_insert iterate 1789.2
+map_compact write 24506.5
 mapped_map_insert read 2320.7
 mapped_list_append read 1759.2
 mapped_map_typed read 11821.1

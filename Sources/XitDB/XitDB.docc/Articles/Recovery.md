@@ -110,13 +110,16 @@ data it ends, and recovering keeps that commit with whatever the missing bytes r
 ### A replica after a failed sync at 0
 
 A sync at 0 reads and checks the source's database header before it touches the replica, and one that fails there leaves the
-replica as it was. After that it empties the replica and writes the source's file from its start, so one that fails partway
-leaves the start of the source's file: a database without a first commit, whose committed size is zero. A sync from a
-``ByteSource`` writes the data after the headers in blocks of 4,096 bytes, each once all of it has arrived, so what is left
-ends where the last whole block does; one from an array leaves all it was given (see <doc:Replication>). If that is longer than a new database, it opens, and there are
-two ways on. Its ``Database/replicaState`` is a size of zero and a checksum of zero, to which the source answers 0, so the
-next sync replaces it whole. Or, if what is left reaches past the end of one of the source's commits, it holds that commit
-whole, and recovering keeps the last such commit. The source can then send only the rest:
+replica as it was. On a file it goes on into a new file, which takes the replica's name only once it is whole, so a sync that
+fails later leaves the replica's database as it was too, and there is nothing to recover (see <doc:Replication>). In memory, and
+in a storage of your own, it empties the replica and writes the source's file from its start, as the original does, so one that
+fails partway leaves the start of the source's file: a database without a first commit, whose committed size is zero. A file
+that the original, or a version of this package up to 0.5.1, was syncing in place is left so too. A sync from a ``ByteSource``
+writes the data after the headers in blocks of 4,096 bytes, each once all of it has arrived, so what is left ends where the last
+whole block does; one from an array leaves all it was given. If that is longer than a new database, it opens, and there are two
+ways on. Its ``Database/replicaState`` is a size of zero and a checksum of zero, to which the source answers 0, so the next sync
+replaces it whole. Or, if what is left reaches past the end of one of the source's commits, it holds that commit whole, and
+recovering keeps the last such commit. The source can then send only the rest:
 
 ```swift
 // What arrived holds the source's earlier commits. Keep the last of them.
@@ -127,12 +130,12 @@ let bytes = try source.readCommitted(from: start, to: end)
 try replica.applyReplicated(at: start, bytes: bytes)
 ```
 
-Take as the source the history above with a fourth moment that stores a byte array of 5,000 bytes, which takes the file to
-6,811 bytes. A sync from a ``ByteSource`` whose connection drops after 4,500 bytes leaves the headers and the first block,
+Take as the source the history above with a fourth moment that stores a byte array of 5,000 bytes, which takes the file to 6,811
+bytes. A sync into memory from a ``ByteSource`` whose connection drops after 4,500 bytes leaves the headers and the first block,
 4,128 bytes. Recovering keeps the three moments, to 1,415, and the sync sends the last 5,396. One that stops within the first
-block leaves the headers alone, 32 bytes, and there is nothing to recover: recovering throws, and opening refuses what is left, as it refuses a creation that did not finish. The database
-that ran the sync can still take the next one from 0, and after a restart so can a database created over what is left. See
-<doc:Replication>.
+block leaves the headers alone, 32 bytes, and there is nothing to recover: recovering throws, and opening refuses what is left,
+as it refuses a creation that did not finish. The database that ran the sync can still take the next one from 0, and after a
+restart so can a database created over what is left. See <doc:Replication>.
 
 ## See Also
 

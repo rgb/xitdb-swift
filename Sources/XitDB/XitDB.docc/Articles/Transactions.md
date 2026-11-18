@@ -159,13 +159,16 @@ let storage = try BufferedFileStorage(
 
 | Level | The syncs | After a power loss | A small commit took |
 |---|---|---|---|
-| ``Durability/full`` (the default) | A barrier, then a full flush of the drive | A commit that returned is there | about 4.3 ms |
-| ``Durability/ordered`` | A barrier, twice | The file opens; the latest commits may be missing | 0.3 to 1 ms |
-| ``Durability/none`` | Nothing | The file may not open at all | about 0.008 ms |
+| ``Durability/full`` (the default) | A barrier, then a full flush of the drive | A commit that returned is there | about 4.1 ms |
+| ``Durability/ordered`` | A barrier, twice | The file opens; the latest commits may be missing | 0.2 to 0.7 ms |
+| ``Durability/none`` | Nothing | The file may not open at all | about 0.012 ms |
 
-The times are indicative: measured on 2026-11-07 on one machine, an Apple M4 with its internal SSD on APFS, committing one
-value through a ``BufferedFileStorage``. Yours will differ, by a lot on another kind of disk. What to take from them is
-the ratios: a full flush is expensive, and it is paid per commit, not per byte.
+The times are indicative: measured on 2026-11-18 on one machine, an Apple M4 with its internal SSD on APFS, macOS
+27.2.1, by `XitDBBenchmark --commit-cost`. A commit there is a small transaction through a ``BufferedFileStorage``, a
+moment appended to a history and one number put under a key; each time is the median of a run, of 300 commits at
+``Durability/full``, 999 at ``Durability/ordered`` and 19,998 at ``Durability/none``, and for ``Durability/ordered`` the
+range is the tenth to the ninetieth percentile. Yours will differ, by a lot on another kind of disk. What to take from
+them is the ratios: a full flush is expensive, and it is paid per commit, not per byte.
 
 On Apple platforms a barrier is `F_BARRIERFSYNC` and a full flush is `F_FULLFSYNC`. On Linux there is no barrier call
 and `fsync` waits for the drive to flush, so every sync there is a full flush: ``Durability/ordered`` gives what

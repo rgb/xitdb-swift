@@ -23,8 +23,10 @@ enum FileSystemKind: Hashable, Sendable {
     /// 9p, which a virtual machine's shared folder often is: `9p`.
     case plan9
     /// FUSE in every form: `fuse`, `fuseblk`, and `fuse.` with the name of
-    /// the program behind it, as in `fuse.sshfs`. A folder of the host's
-    /// mounted into a container is one.
+    /// the program behind it, as in `fuse.sshfs`. A folder of the host
+    /// passed into a Linux virtual machine, or into a container in one, is
+    /// often one, by the product that passes it (virtiofs and 9p are the
+    /// others); a bind mount on a Linux host keeps its own kind.
     case fuse
     /// virtiofs, a host's folder in a virtual machine.
     case virtiofs

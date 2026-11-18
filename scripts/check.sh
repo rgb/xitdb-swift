@@ -314,10 +314,11 @@ fi
 step "Release build"
 swift build -c release "${strict[@]}"
 
-# What a write, a read and a walk cost in memory, what three reads cost through a
-# mapped file (a map's by hash, a list's by index, typed reads of a number and a text),
-# and what a list's read by index costs through a snapshot, of a mapped file and of a
-# database in memory, in instructions, against the figures in scripts/instructions.txt:
+# What a write, a read and a walk cost in memory, and a map's compaction there, what
+# three reads cost through a mapped file (a map's by hash, a list's by index, typed
+# reads of a number and a text), and what a list's read by index costs through a
+# snapshot, of a mapped file and of a database in memory, in instructions, eighteen
+# lines against the figures in scripts/instructions.txt:
 # a line that takes more than a per cent more fails the gate, here, on the build a
 # client compiles and before the tests' build replaces it. The script says why each is
 # there, and what it does on another toolchain or system, and on Linux, where a process

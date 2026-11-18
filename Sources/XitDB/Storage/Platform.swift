@@ -614,10 +614,19 @@ enum Platform {
     /// then the group alone is asked for; where that is refused too the
     /// new file stays the process's own, which is no error.
     ///
-    /// Not carried, on any system: the file's times and its other names.
-    /// On Linux, also not: the extended attributes and the access control
-    /// list, which is one of them there (Swift is not shown the calls),
-    /// the security labels and the file's flags.
+    /// Not carried, on any system: the file's other names. On Linux, also
+    /// not: the file's times, the extended attributes and the access
+    /// control list, which is one of them there (Swift is not shown the
+    /// calls), the security labels and the file's flags.
+    ///
+    /// The times on Apple platforms, as a run on APFS showed them
+    /// (2026-11-18, macOS 27.2.1): the system's call sets the new file's
+    /// modification and access times to the old file's, and its creation
+    /// time to the old file's modification time, not to its creation
+    /// time. The copy that follows writes the new file, so at the end its
+    /// modification time is the copy's, its creation time is the old
+    /// file's last modification, and its access time is the old file's
+    /// until something reads the new file.
     ///
     /// - Parameter setOwner: Sets the owner and the group of an open file
     ///   and returns zero or the error; `uid_t.max` for the owner leaves

@@ -56,12 +56,13 @@ How a database works, in the order to read it.
 
 ### Opening a database
 
-A database keeps its bytes in a storage. ``BufferedFileStorage`` is the one to use for a file, and
-``MemoryStorage`` for a database that needs none. What opening does with a damaged file, how threads and processes
-share one, the file and the database a reader opens, neither of which can write, and the snapshot that hands one commit
-to other tasks are here too.
+A database keeps its bytes in a storage. ``BufferedFileStorage`` is the one to use for a file, and ``MemoryStorage`` for
+a database that needs none. What opening does with a damaged file, how a file is read, how threads and processes share
+one, the file and the database a reader opens, neither of which can write, and the snapshot that hands one commit to
+other tasks are here too.
 
 - <doc:Storage>
+- <doc:HowAFileIsRead>
 - <doc:Recovery>
 - <doc:ReadingAFileWithXitdbDump>
 - <doc:ConcurrencyAndSnapshots>
@@ -76,6 +77,7 @@ to other tasks are here too.
 - ``ReadOnlyFileStorage``
 - ``FileAccess``
 - ``FileLock``
+- ``FileReading``
 - ``DatabaseHeader``
 - ``HashID``
 
@@ -94,8 +96,10 @@ stale.
 
 ### Reading and writing values
 
-A cursor is a position in the database: it reads the value there, and inside a transaction it writes one.
+A cursor is a position in the database: it reads the value there, and inside a transaction it writes one. An iterator
+goes through a collection.
 
+- <doc:Iterating>
 - ``Cursor``
 - ``ReadOnly``
 - ``ReadWrite``

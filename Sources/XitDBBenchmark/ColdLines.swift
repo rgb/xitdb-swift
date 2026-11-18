@@ -31,9 +31,12 @@
 //               seconds on one thread, counted a second. It is this
 //               benchmark's line and no server's;
 //   compaction  the list's file compacted into a new file, the source read
-//               through the map. It keeps an offset map in memory, some tens
-//               of bytes an element: under a limit near that the system may
-//               end the process, so it runs last, and `--no-compaction`
+//               through the map. It keeps an offset map in memory: 32 to 64
+//               bytes for each object copied, and up to 96 while the map
+//               doubles. For the list of 4,000,000 values its two tables
+//               were 384 MiB at the last doubling, about 100 bytes a value,
+//               and 256 MiB after it. Under a limit near that the system
+//               may end the process, so it runs last, and `--no-compaction`
 //               leaves it out.
 //
 // Before each run the file's pages are dropped from memory, by the file's

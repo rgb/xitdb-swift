@@ -44,9 +44,17 @@ It builds for macOS 26, iOS 26 and Linux, and is tested on macOS, on Linux and o
 ## How it is tested
 
 - **Conformance scripts**, written from the original's source and the file format by a separate project that never reads
-  the port. In 155 of the 253 the port must write the file the original writes, byte for byte, or, where the port
-  deliberately does otherwise, the file the original writes when it is made to do the same. The other 98 must fail, as
-  they do with the original: they check that a runner catches what is wrong, such as an error nobody handles.
+  the port, against the original at `274418f`. In 162 of the 260 the port must write the file the original writes, byte
+  for byte, or, where the port deliberately does otherwise, the file the original writes when it is made to do the same.
+  The other 98 must fail, as they do with the original: they check that a runner catches what is wrong, such as an error
+  nobody handles. Two of the 162 hold the port to its rule for recovering a file whose root header is sound.
+
+- **Two processes**, on macOS and on Linux: the original commits to a file while a reader of the port's, in another
+  process, reads it by file calls and through each of the two maps, in three runs: 300 commits, each followed by a read;
+  300 commits, each with four reads sent before it and answered while it is made; and a compacted copy renamed over the
+  file, with 50 commits after it. Every answer has to be a state the writer committed, never one older than the answer
+  before, and the last state once the writer is done; a reader that kept the old file across the rename answers its last
+  state throughout.
 - **The original's own tests**, all eleven, on each kind of storage the original runs them on.
 - **The port's own tests**, for what the original does not test: damaged files, a storage that fails partway through a
   commit, the guards and recovery. A fuzzer damages files at random and checks that the library never traps or hangs on
@@ -155,9 +163,9 @@ it is, as it does in the original: `UInt64(25)` is the unsigned integer, and `pu
 
 The example's storage has the default durability, `full`: a commit waits for the disk twice, the second time until the
 drive has flushed, and on Linux both times, so that a commit that has returned is there after a power loss. That is why
-a small commit took about 4.3 ms, where one that does not sync took about 0.008 ms, in the [table of durability
-levels](Sources/XitDB/XitDB.docc/Articles/Transactions.md#durability), which was measured on one machine and gives the
-other levels.
+a small commit took about 4.1 ms, where one that does not sync took about 0.012 ms, in the [table of durability
+levels](Sources/XitDB/XitDB.docc/Articles/Transactions.md#durability), which was measured on one machine by
+`XitDBBenchmark --commit-cost` and gives the other levels.
 
 Run it twice and the second run opens the file, adds a second moment, and the first stays readable with
 `history.cursor(at: 0)`.
@@ -190,11 +198,12 @@ compile check for iOS and the tests on an iOS simulator. On macOS it runs on one
 and refuses any other; on Linux it runs on any Swift 6.4.x and skips the iOS steps.
 
 Every run of the tests has a time limit: one that does not end is ended, after a look at what its test process was
-doing, and fails the gate. On the toolchain and the system the figures in `scripts/instructions.txt` were taken on,
-the gate also holds the benchmark's twelve in-memory lines, three reads through a mapped file and a list's read by
-index through a snapshot of a mapped file and of a database in memory to the instructions an operation takes: a line
-more than a per cent over its figure fails it, and so does one more than a per cent under, until the figures are taken
-again with `scripts/instructions.sh pin`. Anywhere else it compares nothing and says so.
+doing, and fails the gate. On the toolchain, the processor and the major version of the system the figures in
+`scripts/instructions.txt` were taken on, the gate also holds eighteen of the benchmark's lines to the instructions an
+operation takes: the thirteen in memory, three reads through a mapped file, and a list's read by index through a snapshot
+of a mapped file and of a database in memory. A line more than a per cent over its figure fails it, and so does one more
+than a per cent under, until the figures are taken again with `scripts/instructions.sh pin`. Anywhere else it compares
+nothing and says so.
 
 Issues are welcome: bug reports, questions about the conformance suite, requests. The repository does not take pull
 requests, since every change goes through the gate and the conformance suite here; a reader with a fix opens an

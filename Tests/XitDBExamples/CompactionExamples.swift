@@ -39,6 +39,54 @@ import XitDBHashing
         #expect(try moment.value(forKey: "latest", as: UInt64.self) == 2)
     }
 
+    /// A server's compaction beside its writer: a storage of its own that
+    /// reads the file ahead, and the commit a snapshot pins.
+    @Test func compactingASnapshotOfAReaderThatReadsAhead() throws {
+        let scratch = ScratchDirectory()
+        defer { scratch.remove() }
+        // The writer, with its map read in no order for the reads by key.
+        let writerStorage = try BufferedFileStorage(
+            path: scratch.path("main.db"), access: .create, lock: .exclusive, reading: .memoryMap)
+        let writer = try Database(creating: writerStorage, hashing: SHA256.self)
+        let writerHistory = try ArrayList<ReadWrite>(writer.rootCursor)
+        for number in 0..<3 {
+            try writerHistory.append(.slot(try writerHistory.slot(at: -1))) { cursor in
+                try HashMap<ReadWrite>(cursor).put(UInt64(number), forKey: "latest")
+            }
+        }
+
+        // The task that compacts: the file opened to be read, through a map that reads ahead,
+        // and the commit a snapshot pins.
+        let source = try ReadOnlyFileStorage(path: scratch.path("main.db"), reading: .memoryMapReadAhead)
+        let reader = try ReadOnlyDatabase(opening: source, hashing: SHA256.self)
+        let pinned = SnapshotDatabase(try reader.snapshot())
+        let target = try BufferedFileStorage(path: scratch.path("compact.db"), access: .truncate)
+        var offsets = MemoryOffsetMap()
+        let compacted = try pinned.compact(into: target, offsetMap: &offsets)
+
+        // The reader takes no lock, so the writer's does not refuse it, and it is mapped.
+        #expect(source.isMemoryMapped)
+        let history = try ArrayList<ReadOnly>(compacted.rootCursor)
+        #expect(try history.count == 1)
+        let moment = try HashMap<ReadOnly>(history.cursor(at: 0)!)
+        #expect(try moment.value(forKey: "latest", as: UInt64.self) == 2)
+
+        // The snapshot pins its commit: the writer goes on, and a compaction of the
+        // snapshot taken before still holds the commit it pinned.
+        let later = SnapshotDatabase(try reader.snapshot())
+        try writerHistory.append(.slot(try writerHistory.slot(at: -1))) { cursor in
+            try HashMap<ReadWrite>(cursor).put(UInt64(3), forKey: "latest")
+        }
+        var laterOffsets = MemoryOffsetMap()
+        let laterCompacted = try later.compact(into: MemoryStorage(), offsetMap: &laterOffsets)
+        let laterHistory = try ArrayList<ReadOnly>(laterCompacted.rootCursor)
+        #expect(try HashMap<ReadOnly>(laterHistory.cursor(at: 0)!).value(forKey: "latest", as: UInt64.self) == 2)
+        #expect(try writerHistory.count == 4)
+        // Through the root the reader sees the writer's new commit.
+        let latest = try HashMap(ArrayList(reader.rootCursor).cursor(at: -1)!)
+        #expect(try latest.value(forKey: "latest", as: UInt64.self) == 3)
+    }
+
     /// The numbers the article quotes.
     @Test func whatItSaves() throws {
         let database = try newHistory(moments: 1000)

@@ -69,7 +69,7 @@ public enum Durability: Sendable {
 }
 
 /// An advisory lock that a file storage takes on its file when it opens it
-/// and holds until it goes away.
+/// and holds until it goes away or is closed.
 ///
 /// Locks are advisory: they keep out only other openers that ask for a lock
 /// too. The lock is never waited for. If it cannot be had at once, opening
@@ -80,11 +80,11 @@ public enum FileLock: Sendable {
     /// holds an exclusive one. For readers.
     ///
     /// A shared lock keeps the writer out for as long as it is held, which
-    /// is until the storage goes. While any opener holds one, a writer of
-    /// this package that asks for its lock is refused, and a writer that
-    /// waits for its lock, as the writer in the original's README does,
-    /// stands still. A reader reads a consistent state without a lock, so
-    /// take this one only to keep the writer out.
+    /// is until the storage goes or is closed. While any opener holds one,
+    /// a writer of this package that asks for its lock is refused, and a
+    /// writer that waits for its lock, as the writer in the original's
+    /// README does, stands still. A reader reads a consistent state without
+    /// a lock, so take this one only to keep the writer out.
     case shared
 
     /// Only one opener may hold an exclusive lock, and no shared lock may be
@@ -271,7 +271,8 @@ final class FileDescriptor: Sendable {
 ///
 /// Every read and write is a system call, which makes this the slowest
 /// storage for a database that is written to. ``BufferedFileStorage`` is the
-/// one to use for that. A file storage suits a database that is only read.
+/// one to use for that. A file that is only read is opened as a
+/// ``ReadOnlyFileStorage``.
 ///
 /// The storage owns its file descriptor and closes it when the storage and
 /// every ``Snapshot`` of a database in it have gone: a snapshot reads

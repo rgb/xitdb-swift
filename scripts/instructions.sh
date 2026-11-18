@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 #
-# The instructions a write, a read and a walk take in memory, three reads through a
-# mapped file, and a list's read by index through a snapshot of a mapped file and of a
-# database in memory, held to figures kept in the repository: scripts/instructions.txt.
+# The instructions a write, a read and a walk take in memory, a map's compaction in
+# memory, three reads through a mapped file, and a list's read by index through a
+# snapshot of a mapped file and of a database in memory, held to figures kept in the
+# repository: scripts/instructions.txt.
 #
 #   scripts/instructions.sh check [figures]
-#       runs the benchmark's four collections in memory with the release build that is
-#       there (the gate calls this right after its plain release build), eight times
-#       with the stack at eight places (forty seconds), three reads through a
-#       mapped file three times (ten seconds) and a read through each of two
-#       snapshots three times (five seconds), and compares the least
+#       runs the benchmark's four collections and a map's compaction in memory with
+#       the release build that is there (the gate calls this right after its plain
+#       release build), eight times with the stack at eight places (forty seconds),
+#       three reads through a mapped file three times (ten seconds) and a read
+#       through each of two snapshots three times (five seconds), and compares the least
 #       instructions an operation took, line by line, with the figures. A line
 #       that takes more than a per cent more fails: ROSE, status 1. A line that takes
 #       more than a per cent less fails too and says to take the figures again: FELL,
@@ -47,6 +48,7 @@ mode=${1:-}
 figures=${2:-scripts/instructions.txt}
 tolerance=1
 workloads=(map_insert list_append linked_append sorted_insert)
+compaction=map_compact
 benchmark=.build/release/XitDBBenchmark
 
 usage() {
@@ -84,6 +86,16 @@ system="macOS $(sw_vers -productVersion) ($(sw_vers -buildVersion)), $(sysctl -n
 # places; the caller's environment, which differs between a terminal, a worktree and a
 # runner, has no part in it. `measure <rounds>` goes over the eight places that many
 # times.
+#
+# The thirteenth line is `map_compact write`: a map written by two thousand
+# transactions, compacted from a database in memory into one in memory, an instruction
+# count for each transaction's worth. Why it is held: a change to the file storages
+# alone (2c69872) made that compaction 2.6% longer, because the optimiser compiled the
+# storages' read into the compactor another way, and no line here counted a compaction
+# at all; the twelve above moved by less than their per cent. Its count moves with the
+# stack as a hash map's put does (49.0, 49.3 or 50.7 million for one binary), and its least
+# over the eight places repeats within a hundredth of a per cent. The workload's read
+# and walk are those of a map, which the twelve hold, and are left out.
 places=8
 measure() {
     local round place
@@ -91,10 +103,13 @@ measure() {
         for place in $(seq 0 $((places - 1))); do
             env -i P="$(printf '%*s' $((place * 16)) '' | tr ' ' x)" \
                 "$benchmark" --kind memory "${workloads[@]}"
+            env -i P="$(printf '%*s' $((place * 16)) '' | tr ' ' x)" \
+                "$benchmark" --kind memory "$compaction"
         done
     done \
         | sed -E -n 's/.*"workload": "([a-z_]+)", "phase": "([a-z]+)", "kind": "memory", "n": ([0-9]+),.*"instructions": ([0-9]+),.*/\1 \2 \3 \4/p' \
-        | awk '
+        | awk -v compaction="$compaction" '
+            $1 == compaction && $2 != "write" { next }
             { key = $1 " " $2; each = $4 / $3
               if (!(key in least)) { order[++lines] = key; least[key] = each }
               else if (each < least[key]) least[key] = each }
@@ -167,14 +182,15 @@ if [ "$mode" = pin ]; then
         measure_mapped 3
         measure_snapshot 3
     )
-    [ "$(echo "$measured" | grep -c .)" -eq 17 ] || {
-        echo "error: the benchmark printed $(echo "$measured" | grep -c .) lines with instructions, not seventeen" >&2
+    [ "$(echo "$measured" | grep -c .)" -eq 18 ] || {
+        echo "error: the benchmark printed $(echo "$measured" | grep -c .) lines with instructions, not eighteen" >&2
         exit 1
     }
     {
         echo "# The instructions an operation takes, by the benchmark's own count: what"
         echo "# scripts/instructions.sh holds the gate's plain release build to, within a per cent."
-        echo "# Twelve lines in memory, the least a line over eight places of the stack, twice;"
+        echo "# Thirteen lines in memory, a map's compaction the last of them, the least a line"
+        echo "# over eight places of the stack, twice;"
         echo "# three reads through a mapped file (\`mapped_\`) and a list's read by index through"
         echo "# a snapshot of a mapped file and of a database in memory (\`snapshot_\`), the least"
         echo "# of three runs. Taken with \`scripts/instructions.sh pin\`; take them again on"
@@ -183,7 +199,7 @@ if [ "$mode" = pin ]; then
         echo "system: $system"
         echo "$measured"
     } >"$figures"
-    echo "seventeen figures in $figures"
+    echo "eighteen figures in $figures"
     exit 0
 fi
 

@@ -55,11 +55,12 @@ public struct ElementIterator<Value: StorableValue> {
     /// The next element, read as the iterator's type, or `nil` when there
     /// are no more.
     ///
-    /// Every element has to be of the type. One that is not ends the walk
-    /// with an error, an element that was appended and never written among
-    /// them, which is a slot set to nothing: a list that may hold such
-    /// elements, or elements of several kinds, is gone through by its
-    /// cursors, with ``CollectionIterator``.
+    /// Every element has to be of the type, as ``Cursor/read(_:)`` reads
+    /// it: one of another kind ends the walk with
+    /// ``XitDBError/unexpectedTag``. An element appended and never written,
+    /// a slot set to nothing, does so for a number, and reads as empty for
+    /// a `String`, a `[UInt8]` or ``Bytes``: a list that holds several
+    /// kinds is gone through by its cursors, with ``CollectionIterator``.
     ///
     /// - Throws: What ``CollectionIterator/next()`` throws, and what
     ///   reading the element as the type throws:
