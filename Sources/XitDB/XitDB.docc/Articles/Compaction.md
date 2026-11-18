@@ -36,9 +36,44 @@ It gets a new random file ID unless you give one, so it is a new file as far as 
 <doc:Replication>. In an empty storage, or one that holds only what a creation that did not finish left, it is created
 at format version 2, whatever this one's version is: see <doc:Storage>.
 
-The source can be a ``SnapshotDatabase``, made over a ``Snapshot``, so that another task compacts the snapshot's commit while
-the writer goes on committing. A snapshot of one collection, made with ``Snapshot/init(_:)``, is not a whole commit, and
-compacting a ``SnapshotDatabase`` over one is refused with ``XitDBError/subCollectionSnapshot``.
+The source can be a ``SnapshotDatabase``, made over a ``Snapshot``, so that another task compacts the snapshot's commit
+while the writer goes on committing. A snapshot of one collection, made with ``Snapshot/init(_:)``, is not a whole
+commit, and compacting a ``SnapshotDatabase`` over one is refused with ``XitDBError/subCollectionSnapshot``.
+
+A compaction from a snapshot reads through the map of the storage the snapshot was taken from, as that storage was
+opened, so a snapshot of a storage opened with ``FileReading/memoryMap``, the writer's way for reads by key, brings a
+cold file in a page at a time (<doc:HowAFileIsRead>). The task that compacts opens the file itself, to be read, with
+``FileReading/memoryMapReadAhead``, which tells the system nothing of how the file is read, and compacts a snapshot of
+that, beside the writer's storage in the same process. It opens the storage and the database itself, since neither is
+`Sendable`:
+
+```swift
+// The task that compacts: the file opened to be read, through a map that reads ahead,
+// and the commit a snapshot pins.
+let source = try ReadOnlyFileStorage(path: "main.db", reading: .memoryMapReadAhead)
+let reader = try ReadOnlyDatabase(opening: source, hashing: SHA256.self)
+let pinned = SnapshotDatabase(try reader.snapshot())
+let target = try BufferedFileStorage(path: "compact.db", access: .truncate)
+var offsets = MemoryOffsetMap()
+let compacted = try pinned.compact(into: target, offsetMap: &offsets)
+```
+
+The snapshot pins the commit, so the task knows which one it compacted; `reader.compact(into:offsetMap:)` reads ahead as
+well, and takes whichever commit is last when it begins. A file lock is `flock`'s, which belongs to the open file and
+not to the process, so a reader that asked for ``FileLock/shared`` would be refused beside the writer's
+``FileLock/exclusive`` even in the same process: it asks for none, which nothing refuses, and its going does not let the
+writer's lock go. The reader's map takes the file's length in address space a second time, in segments of 64 MB. What
+can go wrong:
+
+- **A full copy onto the file by the writer meanwhile.** The compaction finishes on the old database, whole, and a
+  program that then gives the compacted file the name puts the old database over the new one: ask the reader's
+  ``ReadOnlyFileStorage/isStillAtPath`` before the rename.
+- **A recovery of the file while the reader is open**, back before a commit the reader has read, takes pages from under
+  its map, which is a signal and no error: recover with no reader open.
+- **A reader opened while the writer is halfway through a commit** can be refused with ``XitDBError/invalidDatabase`` or
+  ``XitDBError/truncatedDatabase``, and is never given a wrong database: open it again.
+- **On a volume the library does not map**, the reader reads by file calls, and its
+  ``ReadOnlyFileStorage/isMemoryMapped`` says so.
 
 ### A source read through a memory map
 
@@ -48,7 +83,7 @@ written in order. So for the length of a compaction of the database itself the s
 its file, left to the system's reading ahead: <doc:HowAFileIsRead> says what that costs and gains. Nothing else about
 the reads changes. Only your own offset map can read through the storage in that while, if its code reads this same
 storage: it gets the same bytes, and a snapshot it takes there is given the storage's own map. A ``SnapshotDatabase``
-over such a storage has no second mapping, and its compaction reads as the snapshot's map was told.
+over such a storage has no second mapping: compact a snapshot of a reader of its own, as above.
 
 ### What is kept
 
@@ -98,9 +133,9 @@ copied until the end, so one map can serve many compactions in turn.
 
 ``MemoryOffsetMap`` is the one to use unless the mappings will not fit in memory. It keeps two 64-bit numbers for each
 object copied in a table it holds at most half full, which it doubles as it fills, and while it doubles it holds the old
-table as well: 32 to 64 bytes an object, and up to 96 at a doubling. A compaction of a list of 4,000,000 values took 391
-MiB at the last doubling, about 100 bytes a value, and 256 MiB after it. If that is too much, keep the offsets on disk,
-in another database:
+table as well: 32 to 64 bytes an object, and up to 96 at a doubling. A compaction of a list of 4,000,000 values took 384
+MiB for its two tables at the last doubling, about 100 bytes a value, and 256 MiB after it. If that is too much, keep
+the offsets on disk, in another database:
 
 ```swift
 // A scratch database holds the offsets, with hashes of eight bytes.

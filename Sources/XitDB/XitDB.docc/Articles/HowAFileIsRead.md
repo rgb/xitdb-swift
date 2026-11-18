@@ -67,7 +67,8 @@ in: whether the file fits is the machine's, and whether it is read by key or wal
 | **Walked in file order** | **`.memoryMapReadAhead`.** A cold walk of the list took 1.35 s against 1.94 (Mac), 0.19 against 0.72 (container), 0.57 against 6.76 (runner). By file calls it took 2.37 s (Mac) and 1.41 (container). Warm the maps are alike, 0.16 s on the Mac. | No one value serves both. A program that only walks takes `.memoryMapReadAhead`, 0.70 s a walk against 6.40 under half the file (runner). One that also reads by key takes `.memoryMap` and pays at every walk, which never finds its pages in memory. |
 
 So `.memoryMap` is the one to take unless the database is known to fit and to be walked: its worst case is a tax on a
-cold walk, the other's is a cliff. The stream of committed bytes that feeds a replica,
+cold walk, the other's is a cliff. In doubt take `.memoryMap`, whose price is a cold walk in file order and which does
+not collapse when the file outgrows memory. The stream of committed bytes that feeds a replica,
 ``Database/readCommitted(from:to:into:)-(_,_,Sink)``, reads by file calls either way, as the system reads ahead of them.
 
 The Mac's and the container's figures are of this release, taken on 2026-11-18; "under half" is a container held to half
@@ -86,11 +87,13 @@ compacted cold into a new file, took 2.39 s through `.memoryMap` and as long thr
 s by file calls (Mac); 0.96 s, 0.89 and 2.16 (container). Before this release's last change, on the runner and with no
 second mapping, the map read in no order took 10.9 s, against 8.9 by file calls and 4.9 through the map that reads
 ahead. A compaction of a ``SnapshotDatabase`` has no second mapping: it reads through the snapshot's map, as that map
-was told, and pays the price. See <doc:Compaction>.
+was told, and pays the price, so a server compacts a snapshot of a storage of its own opened with `.memoryMapReadAhead`,
+as <doc:Compaction> shows.
 
-Pages read through a map count as the process's resident memory, in `ps`, in Activity Monitor and on Linux: a server that
-has read through a file of 1 GB shows a gigabyte more than with file calls. They are the file's pages in the system's
-cache, shared, and taken back when memory is short, not memory the process allocated.
+Pages read through a map count in the process's resident size, as `ps` and Linux report it, and not in the memory
+footprint macOS reports for a process: after a mapped file of 1.09 GB was read whole, a process on the Mac had a
+resident size of 1,642 MB and a peak memory footprint of 543 MB (`/usr/bin/time -l`). They are the file's pages in the
+system's cache, shared, and taken back when memory is short, not memory the process allocated.
 
 ### What ends the process
 
@@ -111,11 +114,12 @@ is locked.
 `database.rootCursor` reads the root header to make the cursor, and every operation that starts at a root cursor, or at
 a collection made from one, reads it again: the committed size, the file's length asked of the system, and the trailer
 at that size, read and verified. That is three system calls by file calls and two through a map, since the committed
-size, which every commit rewrites in place, is always a file call. One reading took about 0.08 µs in memory, 0.63 µs
-through a map and 1.5 µs by file calls on the Mac, where a read through a map takes 0.07 to 0.13 µs, so that through a
-map it is six to ten times the read; and 0.08, 0.40 and 0.8 µs in the container. It is the price of seeing the newest
-commit, so a reader that reads much pays it once for each commit it wants to see. It keeps the history, asks it for the
-last moment, and reads that moment through the moment's cursor:
+size, which every commit rewrites in place, is always a file call. A read that starts at the root, which is one such
+reading and the step from the history down to its last moment, took about 0.08 µs longer in memory, 0.63 µs through a
+map and 1.5 µs by file calls than the same read through a cursor held at the last moment, on the Mac, where a read
+through a map takes 0.07 to 0.13 µs: through a map, six to ten times the read. In the container it took 0.08, 0.40 and
+0.8 µs longer. It is the price of seeing the newest commit, so a reader that reads much pays it once for each commit it
+wants to see. It keeps the history, asks it for the last moment, and reads that moment through the moment's cursor:
 
 ```swift
 // One reading of the root for the newest moment, and none for what is read in it.

@@ -215,6 +215,12 @@ No lock is taken unless you ask for one. Holding a lock on a file in a shared co
 terminated, so that decision is left to you: let the storage go, or close it, before the app is suspended. Elsewhere on iOS a lock
 between processes is moot, since an app's own files are not open to other processes.
 
+A program that starts child processes has one thing more to know. A child holds a copy of every open file, and a lock with it,
+from the moment it is made until it starts its own program. So a lock asked for on a file this process has just closed, as when a
+storage is opened again or a file is recovered, can be refused with `EWOULDBLOCK` for a moment while a child is being started on
+another thread. The library opens its files close-on-exec, which makes that moment short and cannot take it away: ask again, or
+start no child while a locked file is being opened again.
+
 ### Closing a file
 
 A storage's file is closed when the storage and the last snapshot of a database in it have gone, which is no sooner than the
