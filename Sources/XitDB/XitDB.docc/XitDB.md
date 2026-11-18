@@ -101,6 +101,8 @@ A cursor is a position in the database: it reads the value there, and inside a t
 - ``Slot/Tag``
 - ``Entry``
 - ``CollectionIterator``
+- ``EntryIterator``
+- ``ElementIterator``
 
 ### Lists
 

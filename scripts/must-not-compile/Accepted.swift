@@ -85,6 +85,52 @@ func acceptedThroughTheAdapter(
     try XitDBError.carrying { try cursor.writeBytes { writer in try writer.write([1, 2, 3]) } }
 }
 
+// The walks: a collection's `forEachEntry` or `forEachElement` through the
+// adapter, and beside it
+// what a typed function makes bare, since it takes no closure: whether a
+// collection is empty, and the iterators that give entries and elements
+// read as a type.
+
+func acceptedWalks(
+    list: ArrayList<ReadOnly>, linked: LinkedArrayList<ReadOnly>,
+    map: HashMap<ReadOnly>, set: HashSet<ReadOnly>,
+    countedMap: CountedHashMap<ReadOnly>, countedSet: CountedHashSet<ReadOnly>,
+    sortedMap: SortedMap<ReadOnly>, sortedSet: SortedSet<ReadOnly>
+) throws(XitDBError) -> UInt64 {
+    var total: UInt64 = 0
+    try XitDBError.carrying {
+        try list.forEachElement { element in total += try element.read(UInt64.self) }
+        try list.forEachElement(as: UInt64.self) { element in total += element }
+        try linked.forEachElement { element in total += try element.read(UInt64.self) }
+        try linked.forEachElement(as: UInt64.self) { element in total += element }
+        try map.forEachEntry { entry in total += try entry.value.read(UInt64.self) }
+        try set.forEachEntry { entry in
+            _ = entry
+            if total > 5 { throw AcceptedOwnError() }
+        }
+        try countedMap.forEachEntry { entry in total += try entry.value.read(UInt64.self) }
+        try countedSet.forEachEntry { entry in _ = entry }
+        try sortedMap.forEachEntry { entry in total += try entry.value.read(UInt64.self) }
+        try sortedSet.forEachEntry { entry in _ = entry }
+    }
+
+    let empty = [
+        try list.isEmpty, try linked.isEmpty, try map.isEmpty, try set.isEmpty, try countedMap.isEmpty,
+        try countedSet.isEmpty, try sortedMap.isEmpty, try sortedSet.isEmpty,
+    ]
+    if empty.allSatisfy({ $0 }) { return 0 }
+
+    var ages = try list.elements(as: UInt64.self)
+    while let age = try ages.next() { total += age }
+    var inferred: ElementIterator<Int64> = try linked.elements()
+    while let delta = try inferred.next() { total += UInt64(delta.magnitude) }
+    var entries = try sortedMap.entries()
+    while let entry = try entries.next() { total += try entry.value.read(UInt64.self) }
+    var members = try set.entries()
+    while try members.next() != nil { total += 1 }
+    return total
+}
+
 // The other half of `RefusedSendable.swift`: what is sent in place of a
 // database, a cursor or a collection, with the same helper.
 

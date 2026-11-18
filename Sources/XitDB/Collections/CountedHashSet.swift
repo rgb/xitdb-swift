@@ -84,6 +84,46 @@ public struct CountedHashSet<Access: CursorAccess> {
         try cursor.iterator()
     }
 
+    /// Whether the set has no member: its ``count`` is zero.
+    ///
+    /// - Throws: What ``count`` throws.
+    public var isEmpty: Bool {
+        get throws(XitDBError) {
+            try cursor.count == 0
+        }
+    }
+
+    /// An iterator over the set's members that gives each as an
+    /// ``Entry``, in the order ``iterator()`` gives them: ``iterator()``
+    /// with ``Cursor/readEntry()`` done. A member is its
+    /// entry's key.
+    ///
+    /// - Throws: What ``iterator()`` throws.
+    public func entries() throws(XitDBError) -> EntryIterator {
+        EntryIterator(try cursor.iterator())
+    }
+
+    /// Calls `body` with each of the set's members, as an ``Entry``,
+    /// in the order ``iterator()`` gives them, to the end.
+    ///
+    /// A walk by this call ends early only by `body` throwing. A loop that
+    /// is to stop where it likes takes ``entries()``.
+    ///
+    /// The call throws `any Error`, since what `body` throws comes out as
+    /// itself. Where the library's error is declared, with
+    /// `throws(XitDBError)`, make the call inside
+    /// ``XitDBError/carrying(_:)``.
+    ///
+    /// - Parameter body: Given each entry in turn.
+    /// - Throws: What `body` throws, what ``entries()`` throws, and what
+    ///   ``EntryIterator/next()`` throws.
+    public func forEachEntry(_ body: (Entry) throws -> Void) throws {
+        var entries = try entries()
+        while let entry = try entries.next() {
+            try body(entry)
+        }
+    }
+
     /// A cursor at the key stored under a hash, or `nil` if the set has no
     /// entry for it or the entry's key was never written.
     ///

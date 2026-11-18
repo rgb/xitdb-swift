@@ -14,6 +14,7 @@
 ### Reading values
 
 - ``count``
+- ``isEmpty``
 - ``value(forKey:as:)``
 - ``cursor(forKey:)``
 - ``slot(forKey:)``
@@ -25,6 +26,8 @@
 - ``entry(forHash:)-(Span<UInt8>)``
 - ``entry(forHash:)-(Sequence<UInt8>)``
 - ``iterator()``
+- ``entries()``
+- ``forEachEntry(_:)``
 
 ### Reading keys
 

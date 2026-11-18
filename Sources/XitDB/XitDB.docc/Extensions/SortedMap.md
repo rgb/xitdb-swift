@@ -26,7 +26,10 @@
 See <doc:SortingAndPaginating>.
 
 - ``count``
+- ``isEmpty``
 - ``iterator()``
+- ``entries()``
+- ``forEachEntry(_:)``
 - ``iterator(fromIndex:)``
 - ``iterator(fromKey:)-(Span<UInt8>)``
 - ``iterator(fromKey:)-(KeyRepresentable)``

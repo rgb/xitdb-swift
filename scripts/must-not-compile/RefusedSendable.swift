@@ -20,7 +20,8 @@ func refused(
     database: Database, snapshotDatabase: SnapshotDatabase,
     memory: MemoryStorage, file: FileStorage, buffered: BufferedFileStorage,
     cursor: Cursor<ReadOnly>, writing: Cursor<ReadWrite>, entry: Entry,
-    iterator: CollectionIterator, reader: ByteReader, writer: borrowing ByteWriter,
+    iterator: CollectionIterator, entries: EntryIterator, elements: ElementIterator<UInt64>,
+    reader: ByteReader, writer: borrowing ByteWriter,
     list: ArrayList<ReadOnly>, linked: LinkedArrayList<ReadOnly>,
     map: HashMap<ReadOnly>, set: HashSet<ReadOnly>,
     countedMap: CountedHashMap<ReadOnly>, countedSet: CountedHashSet<ReadOnly>,
@@ -35,6 +36,8 @@ func refused(
     sent(writing)  // must not compile: Cursor
     sent(entry)  // must not compile: Entry
     sent(iterator)  // must not compile: CollectionIterator
+    sent(entries)  // must not compile: EntryIterator
+    sent(elements)  // must not compile: ElementIterator
     sent(reader)  // must not compile: ByteReader
     sent(writer)  // must not compile: ByteWriter
     sent(list)  // must not compile: ArrayList

@@ -14,6 +14,7 @@
 ### Reading
 
 - ``count``
+- ``isEmpty``
 - ``contains(_:)``
 - ``cursor(forKey:)``
 - ``slot(forKey:)``
@@ -24,6 +25,8 @@
 - ``slot(forHash:)-(Span<UInt8>)``
 - ``slot(forHash:)-(Sequence<UInt8>)``
 - ``iterator()``
+- ``entries()``
+- ``forEachEntry(_:)``
 
 ### Writing
 

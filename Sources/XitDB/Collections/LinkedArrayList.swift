@@ -85,6 +85,78 @@ public struct LinkedArrayList<Access: CursorAccess> {
         try cursor.iterator()
     }
 
+    /// Whether the list has no element: its ``count`` is zero.
+    ///
+    /// - Throws: What ``count`` throws.
+    public var isEmpty: Bool {
+        get throws(XitDBError) {
+            try cursor.count == 0
+        }
+    }
+
+    /// An iterator over the list's elements that gives each read as a
+    /// type, in order: ``iterator()`` with the typed read done.
+    ///
+    /// Every element has to be of the type: see ``ElementIterator/next()``.
+    /// A list whose elements are of several kinds, or may never have been
+    /// written, is gone through by its cursors, with ``iterator()``.
+    ///
+    /// - Parameter type: The type to read each element as.
+    /// - Throws: What ``iterator()`` throws.
+    public func elements<Value: StorableValue>(as type: Value.Type = Value.self) throws(XitDBError)
+        -> ElementIterator<Value>
+    {
+        ElementIterator(try cursor.iterator())
+    }
+
+    /// Calls `body` with a read-only cursor at each of the list's elements,
+    /// in order, to the end.
+    ///
+    /// A walk by this call ends early only by `body` throwing. A loop that
+    /// is to stop where it likes takes ``iterator()``.
+    ///
+    /// The call throws `any Error`, since what `body` throws comes out as
+    /// itself. Where the library's error is declared, with
+    /// `throws(XitDBError)`, make the call inside
+    /// ``XitDBError/carrying(_:)``.
+    ///
+    /// - Parameter body: Given a cursor at each element in turn.
+    /// - Throws: What `body` throws, what ``iterator()`` throws, and what
+    ///   ``CollectionIterator/next()`` throws.
+    public func forEachElement(_ body: (Cursor<ReadOnly>) throws -> Void) throws {
+        var cursors = try cursor.iterator()
+        while let element = try cursors.next() {
+            try body(element)
+        }
+    }
+
+    /// Calls `body` with each of the list's elements read as a type, in
+    /// order, to the end.
+    ///
+    /// Every element has to be of the type: one that is not ends the walk
+    /// with the read's error. A walk by this call ends early only by that
+    /// or by `body` throwing. A loop that is to stop where it likes takes
+    /// ``elements(as:)``.
+    ///
+    /// The call throws `any Error`, since what `body` throws comes out as
+    /// itself. Where the library's error is declared, with
+    /// `throws(XitDBError)`, make the call inside
+    /// ``XitDBError/carrying(_:)``.
+    ///
+    /// - Parameters:
+    ///   - type: The type to read each element as.
+    ///   - body: Given each element in turn.
+    /// - Throws: What `body` throws, what ``elements(as:)`` throws, and
+    ///   what ``ElementIterator/next()`` throws.
+    public func forEachElement<Value: StorableValue>(as type: Value.Type, _ body: (Value) throws -> Void)
+        throws
+    {
+        var elements = try elements(as: type)
+        while let element = try elements.next() {
+            try body(element)
+        }
+    }
+
     /// An iterator over the list's elements from one of them on, in order.
     ///
     /// - Parameter index: The index of the first element to give. A negative

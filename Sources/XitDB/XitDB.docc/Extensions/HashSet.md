@@ -22,7 +22,10 @@
 - ``cursor(forHash:)-(Sequence<UInt8>)``
 - ``slot(forHash:)-(Span<UInt8>)``
 - ``slot(forHash:)-(Sequence<UInt8>)``
+- ``isEmpty``
 - ``iterator()``
+- ``entries()``
+- ``forEachEntry(_:)``
 
 ### Writing
 

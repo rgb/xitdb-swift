@@ -275,6 +275,66 @@ its member is its key, so ``HashSet/insert(_:)`` stores it, and an entry's key i
 whatever the collection was, since a key is what the collection is ordered or indexed by. ``Entry/hash`` gives the
 entry's hash as a new array, and ``Entry/withHash(_:)`` lets you look at it without one.
 
+Three shorter ways stand beside the cursors' iterator. Every map and set has an `entries()`, such as
+``HashMap/entries()``, which gives an ``EntryIterator``: its ``EntryIterator/next()`` gives the ``Entry`` itself. The two
+lists have an `elements(as:)`, such as ``ArrayList/elements(as:)``, which gives an ``ElementIterator``: its
+``ElementIterator/next()`` gives each element read as the type. Neither is a `Sequence`, for the reason the cursors'
+iterator is not, and a loop over either stops where it likes. Here `moment` is the map above, and `list` holds 1, 2
+and 3:
+
+```swift
+var names: [String] = []
+var entries = try moment.entries()
+while let entry = try entries.next() {
+    if try entry.key.slot.isEmpty { continue }
+    names.append(try entry.key.read(String.self))
+}
+```
+
+```swift
+var total: UInt64 = 0
+var numbers = try list.elements(as: UInt64.self)
+while let number = try numbers.next() {
+    total += number
+}
+```
+
+Every element of a list read this way has to be of the type. One of another kind, or one that was appended and never
+written, ends the loop with ``XitDBError/unexpectedTag``, after the ones before it were given: a list that holds several
+kinds is gone through by its cursors.
+
+And every collection says whether it holds anything, by an `isEmpty`, such as ``HashMap/isEmpty``. A hash map and a hash
+set keep no count, so theirs reads down to the first entry and no further. It does not walk the map, and may be asked in
+a loop:
+
+```swift
+let nothingYet = try moment.isEmpty
+```
+
+A walk to the end is also a closure's. A map or a set has a `forEachEntry(_:)`, such as ``HashMap/forEachEntry(_:)``; a
+list has a `forEachElement(_:)`, which gives each element's cursor, and a second that gives each element read as a type,
+such as ``ArrayList/forEachElement(as:_:)``:
+
+```swift
+var sum: UInt64 = 0
+try list.forEachElement(as: UInt64.self) { number in
+    sum += number
+}
+```
+
+```swift
+var values: [String] = []
+try moment.forEachEntry { entry in
+    values.append(try describe(entry.value))
+}
+```
+
+A walk by one of these ends early only by the closure throwing, and the closure's error comes out of the call as itself,
+so they throw `any Error`, as a transaction does. Where the library's error is declared they are made inside
+``XitDBError/carrying(_:)``: see <doc:Errors>. A loop that is to stop where it likes takes one of the iterators. The
+calls are not named `forEach`: the language's formatter takes any call of that name with a closure for a sequence's and
+says to write a `for` loop, which there is none to write.
+
 Iterate over a collection that is not being changed. An iterator goes through the collection as it was when the
 iterator was made, unless the collection is changed in place during the same transaction. Then it can give a mix of old
 and new elements, or throw an error; it does not stop the program.

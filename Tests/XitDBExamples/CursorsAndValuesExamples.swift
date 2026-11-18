@@ -525,6 +525,27 @@ private struct FailingRecord: StorableValue {
             values.append(try element.read(UInt64.self))
         }
         #expect(values == [1, 2, 3])
+
+        // The elements read as a type, by an iterator a loop can leave.
+        var total: UInt64 = 0
+        var numbers = try list.elements(as: UInt64.self)
+        while let number = try numbers.next() {
+            total += number
+        }
+        #expect(total == 6)
+        #expect(try !list.isEmpty)
+
+        // And by a closure, to the end.
+        var sum: UInt64 = 0
+        try list.forEachElement(as: UInt64.self) { number in
+            sum += number
+        }
+        #expect(sum == 6)
+        var seen = 0
+        try list.forEachElement { cursor in
+            seen += Int(try cursor.read(UInt64.self))
+        }
+        #expect(seen == 6)
     }
 
     @Test func iteratingOverAMapGivesEntries() throws {
@@ -542,6 +563,25 @@ private struct FailingRecord: StorableValue {
                 print(try entry.key.read(String.self), try describe(entry.value))
             }
         }
+
+        // The entries themselves, by an iterator a loop can leave: the
+        // names of the entries whose key was stored.
+        var names: [String] = []
+        var entries = try moment.entries()
+        while let entry = try entries.next() {
+            if try entry.key.slot.isEmpty { continue }
+            names.append(try entry.key.read(String.self))
+        }
+        #expect(names == ["name"])
+
+        let nothingYet = try moment.isEmpty
+        #expect(!nothingYet)
+
+        var values: [String] = []
+        try moment.forEachEntry { entry in
+            values.append(try describe(entry.value))
+        }
+        #expect(values.sorted() == ["25", "Alice"])
 
         // What the loop prints, one line for each entry.
         var lines: [String] = []

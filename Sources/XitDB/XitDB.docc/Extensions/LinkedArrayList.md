@@ -14,10 +14,14 @@
 ### Reading
 
 - ``count``
+- ``isEmpty``
 - ``value(at:as:)``
 - ``cursor(at:)``
 - ``slot(at:)``
 - ``iterator()``
+- ``elements(as:)``
+- ``forEachElement(_:)``
+- ``forEachElement(as:_:)``
 - ``iterator(fromIndex:)``
 
 ### Adding and changing elements
