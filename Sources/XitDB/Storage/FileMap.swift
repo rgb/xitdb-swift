@@ -78,6 +78,15 @@ final class MappedSegment: Sendable {
 /// storage reads through, and what a snapshot takes a copy of.
 ///
 /// A copy shares the segments, which stay mapped while any copy lives.
+///
+/// **A view is never changed.** Every stored member is a `let` and no
+/// member changes one: a view with one segment more is a new view
+/// (``with(_:at:)``). The file storage rests on that: it holds the view
+/// its reads go through in a property whose run-time check of exclusive
+/// access is off, and what makes that sound is that nothing can be written
+/// against such a property but a load of the whole view and a store of a
+/// whole new one. The gate's compile check holds it: a change of a view in
+/// place does not compile.
 struct FileMapView: Sendable {
     /// The size of every segment: a power of two and a multiple of the
     /// page size.
@@ -86,13 +95,23 @@ struct FileMapView: Sendable {
     /// The segments, each at its index times ``segmentSize`` in the file.
     /// `nil` where a segment is not mapped: not yet, or because the system
     /// refused it.
-    var segments: [MappedSegment?] = []
+    let segments: [MappedSegment?]
 
-    init(segmentSize: Int) {
+    init(segmentSize: Int, segments: [MappedSegment?] = []) {
         precondition(
             segmentSize > 0 && segmentSize & (segmentSize - 1) == 0 && segmentSize % Platform.pageSize == 0,
             "a segment's size is a power of two and a multiple of the page size")
         self.segmentSize = segmentSize
+        self.segments = segments
+    }
+
+    /// A view that has `segment` at `index` and is this one in everything
+    /// else: the segments before it that this one lacks stay lacking.
+    func with(_ segment: MappedSegment, at index: Int) -> FileMapView {
+        var segments = segments
+        while segments.count <= index { segments.append(nil) }
+        segments[index] = segment
+        return FileMapView(segmentSize: segmentSize, segments: segments)
     }
 
     /// The index of the segment that holds the byte at `offset`.

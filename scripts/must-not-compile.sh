@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # What must not compile. A test target cannot hold code the compiler has to
-# refuse, so this type-checks five files against the library the debug build
+# refuse, so this type-checks six files against the library the debug build
 # made:
 #
 #   scripts/must-not-compile/Accepted.swift   must type-check
@@ -31,6 +31,12 @@
 #                                             words", with the compiler's
 #                                             words the mark gives, and have
 #                                             no other error
+#   scripts/must-not-compile/RefusedInPlace.swift
+#                                             the same, for a change in place
+#                                             of the view a file storage reads
+#                                             through, which is the library's
+#                                             own type: imported as its tests
+#                                             import it
 #
 # The message is the one the library gives its unavailable `Int: StorableValue`,
 # read from the source, so that the check follows the text if it is reworded;
@@ -164,31 +170,46 @@ fi
 grep -q 'XitDBError\.carrying' "$accepted" || fail "$accepted makes no call through XitDBError.carrying"
 echo "ok: $(echo "$marked" | wc -l | tr -d ' ') calls that take a closure refused bare where the library's error is declared, and accepted through the adapter"
 
+# A file whose marked lines each carry the compiler's own words after the mark
+# ("// must not compile: words"): every marked line is refused with its words, and
+# nothing else in the file is refused. `refused_with_words <file> <what is counted>`.
+refused_with_words() {
+    local file=$1 what=$2 name output errors marked line words error
+    name=$(basename "$file" .swift)
+    if output=$(swiftc "${flags[@]}" "$file" 2>&1); then
+        fail "$file compiled: the compiler refused nothing in it"
+    fi
+    errors=$(printf '%s\n' "$output" | grep -E "$name\.swift:[0-9]+:[0-9]+: error: " || true)
+    marked=$(grep -n '  // must not compile: ' "$file" | sed -E 's|^([0-9]+):.*  // must not compile: (.*)$|\1:\2|' || true)
+    [ -n "$marked" ] || fail "$file marks no line"
+    while IFS=: read -r line words; do
+        printf '%s\n' "$errors" | grep -E "$name\.swift:$line:[0-9]+: error: " | grep -q -F "$words" \
+            || fail "$file:$line is not refused with the compiler's words \"$words\""
+    done <<<"$marked"
+    while read -r error; do
+        [ -n "$error" ] || continue
+        line=$(printf '%s\n' "$error" | sed -E "s/^.*$name\.swift:([0-9]+):.*/\1/")
+        if ! printf '%s\n' "$marked" | cut -d: -f1 | grep -q -x "$line"; then
+            echo "$error"
+            fail "$file is refused on a line it does not mark"
+        fi
+    done <<<"$errors"
+    echo "ok: $(printf '%s\n' "$marked" | wc -l | tr -d ' ') $what"
+}
+
 # A database opened to be read has no way to write, and the compiler says so:
 # no transaction, no freeze, no replication onto it, no recovery, no compaction
 # into it; a root that is read-only, and so everything made from it; and it is
-# no `Database`, nor does a cursor of it lead to one. Each marked line is
-# refused with the compiler's words its mark gives, and nothing else is
-# refused. What a reader does through it is in the accepted file, which
-# compiled above.
-readonly=scripts/must-not-compile/RefusedReadOnly.swift
-if output=$(swiftc "${flags[@]}" "$readonly" 2>&1); then
-    fail "$readonly compiled: the compiler refused nothing in it"
-fi
-errors=$(printf '%s\n' "$output" | grep -E 'RefusedReadOnly\.swift:[0-9]+:[0-9]+: error: ' || true)
-marked=$(grep -n '  // must not compile: ' "$readonly" | sed -E 's|^([0-9]+):.*  // must not compile: (.*)$|\1:\2|' || true)
-[ -n "$marked" ] || fail "$readonly marks no line"
-while IFS=: read -r line words; do
-    printf '%s\n' "$errors" | grep -E "RefusedReadOnly\.swift:$line:[0-9]+: error: " | grep -q -F "$words" \
-        || fail "$readonly:$line is not refused with the compiler's words \"$words\""
-done <<<"$marked"
-while read -r error; do
-    [ -n "$error" ] || continue
-    line=$(printf '%s\n' "$error" | sed -E 's/^.*RefusedReadOnly\.swift:([0-9]+):.*/\1/')
-    if ! printf '%s\n' "$marked" | cut -d: -f1 | grep -q -x "$line"; then
-        echo "$error"
-        fail "$readonly is refused on a line it does not mark"
-    fi
-done <<<"$errors"
+# no `Database`, nor does a cursor of it lead to one. What a reader does through
+# it is in the accepted file, which compiled above.
 grep -q 'ReadOnlyDatabase(opening:' "$accepted" || fail "$accepted opens no database to be read"
-echo "ok: $(printf '%s\n' "$marked" | wc -l | tr -d ' ') writes through a database opened to be read refused, each with the compiler's words for it, and its reads accepted"
+refused_with_words scripts/must-not-compile/RefusedReadOnly.swift \
+    "writes through a database opened to be read refused, each with the compiler's words for it, and its reads accepted"
+
+# The view a file storage reads through cannot be changed in place: every stored
+# member of it is a `let`. That is what the storage's two properties without a
+# run-time check of exclusive access rest on (the file says why), so it is the
+# compiler that holds it and not care. The library's own type, so the file imports
+# the library as its tests do, which the debug build allows.
+refused_with_words scripts/must-not-compile/RefusedInPlace.swift \
+    "changes of a file's view in place refused, each with the compiler's words for it"

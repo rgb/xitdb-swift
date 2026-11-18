@@ -4,10 +4,10 @@
 #
 #   1. debug build and tests, what must not compile, and the conformance suite's test
 #      of two processes with the port's reader, where the suite is beside the package
-#   2. release build and tests, the instructions of the in-memory lines against their
-#      figures (compared on macOS, on the toolchain, the processor and the major
-#      version of the system the figures were taken on), a smoke run of the benchmark
-#      and the corruption fuzzer
+#   2. release build and tests, the instructions of the in-memory lines and of three
+#      reads through a mapped file against their figures (compared on macOS, on the
+#      toolchain, the processor and the major version of the system the figures were
+#      taken on), a smoke run of the benchmark and the corruption fuzzer
 #      Every run of the tests has a time limit (scripts/limit.sh), and the limit is
 #      tried on a test planted to sleep.
 #   3. import check for Sources/XitDB, that only the tests' own target for it
@@ -313,12 +313,14 @@ fi
 step "Release build"
 swift build -c release "${strict[@]}"
 
-# What a write, a read and a walk cost in memory, in instructions, against the figures
-# in scripts/instructions.txt: a line that takes more than a per cent more fails the
-# gate, here, on the build a client compiles and before the tests' build replaces it.
-# The script says why it is there, and what it does on another toolchain or system, and
-# on Linux, where a process is given no such count: it compares nothing, and says so.
-step "Instructions in memory"
+# What a write, a read and a walk cost in memory, and what three reads cost through a
+# mapped file (a map's by hash, a list's by index, typed reads of a number and a text),
+# in instructions, against the figures in scripts/instructions.txt: a line that takes
+# more than a per cent more fails the gate, here, on the build a client compiles and
+# before the tests' build replaces it. The script says why each is there, and what it
+# does on another toolchain or system, and on Linux, where a process is given no such
+# count: it compares nothing, and says so.
+step "Instructions in memory and through a mapped file"
 scripts/instructions.sh check
 
 # The build of the tests rebuilds the library with testing enabled, so that the tests
@@ -349,10 +351,17 @@ limited "$release_limit" swift test -c release --skip-build "${strict[@]}"
 # The second run is the same workloads on files read through a memory map, with the
 # map's limit at each write and then at each commit. It fails where the temporary
 # folder is on a volume the library does not map.
+#
+# Then the read path's mode (ReadPath.swift), which the release's figures of a read
+# through a mapped storage are taken with: its workloads on every kind, and through a
+# map with the reads made through a snapshot and through a reader of its own.
 step "Benchmark smoke run"
 .build/release/XitDBBenchmark --divide 100 > /dev/null
 .build/release/XitDBBenchmark --divide 100 --mapped > /dev/null
 .build/release/XitDBBenchmark --divide 100 --mapped --map-at-commits > /dev/null
+.build/release/XitDBBenchmark --read-path --divide 100 > /dev/null
+.build/release/XitDBBenchmark --read-path --divide 100 --mapped --snapshot > /dev/null
+.build/release/XitDBBenchmark --read-path --divide 100 --mapped --reader > /dev/null
 .build/release/XitDBBenchmark --hash-cost --divide 100 > /dev/null
 if [ "$platform" = Darwin ]; then
     .build/release/XitDBBenchmark --divide 100 --stack-sweep list_append memory iterate 1 > /dev/null

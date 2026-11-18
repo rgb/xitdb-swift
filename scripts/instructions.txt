@@ -1,6 +1,7 @@
-# The instructions an operation takes in memory, by the benchmark's own count: what
+# The instructions an operation takes, by the benchmark's own count: what
 # scripts/instructions.sh holds the gate's plain release build to, within a per cent.
-# The least a line over eight places of the stack, twice. Taken with
+# Twelve lines in memory, the least a line over eight places of the stack, twice; and
+# three reads through a mapped file (`mapped_`), the least of three runs. Taken with
 # `scripts/instructions.sh pin`; take them again on another toolchain, processor or
 # major version of the system.
 toolchain: swift-driver version: 1.168.6 Apple Swift version 6.4.2 (swiftlang-6.4.2.1.9 clang-2100.4.1.1)
@@ -17,3 +18,6 @@ linked_append iterate 512.2
 sorted_insert write 40046.0
 sorted_insert read 13503.7
 sorted_insert iterate 1789.2
+mapped_map_insert read 2320.7
+mapped_list_append read 1759.2
+mapped_map_typed read 11821.1

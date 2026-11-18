@@ -276,7 +276,8 @@ public final class FileStorage: WritableStorage {
     /// descriptor, its map, and what its snapshots were given.
     private struct Replacement {
         let old: FileDescriptor
-        let oldMap: FileMap?
+        let oldMap: MapState?
+        let oldLimit: UInt64
         let oldPinnedSize: UInt64
         let oldCommittedSizePosition: UInt64
         let oldFence: SnapshotFence
@@ -302,27 +303,55 @@ public final class FileStorage: WritableStorage {
     /// The fence the snapshots taken so far check; replaced once tripped.
     private(set) var fence = SnapshotFence()
 
-    /// The memory map the storage reads through: there when it was asked
-    /// for and the file is on a volume that is mapped.
-    private var map: FileMap?
+    // The two things a read through the map goes by. The engine reads its
+    // storage several times for every slot it follows, and the run-time
+    // check of exclusive access on what a read looked at here was all that
+    // a read through the storage cost over a read through its snapshot: one
+    // check a read, a tenth to a third of a read's time (brief 36, part
+    // one). The check is off for these two properties, which makes every
+    // use of them `unsafe` to the compiler.
+    //
+    // Safe: what the check catches is an access to a property that begins
+    // while another one, a modification, is still under way on the same
+    // thread. Neither of these can be modified in place. The view's type
+    // has no member that can be changed (``FileMapView``), so the only
+    // things that can be written against `readView` are a load of the
+    // whole view and a store of a whole new one; the limit is a number, and
+    // every change of it below is a plain store. A load or a store is over
+    // before anything else runs, so no access can begin inside another.
+    // (The check says nothing about two threads; the class is not
+    // `Sendable`.) Every change of what a read goes by is therefore a new
+    // value put in place whole: the file growing, a replacement beginning
+    // or being given up, a compaction's second view put in and taken out.
+    // A read loads each once, at its start, and goes by what it loaded.
 
-    /// A second view of the file, which the storage reads through in place
-    /// of its own while a compaction of a database in it runs
-    /// (``beginCompactionReads()``); `nil` at every other time.
-    private(set) var compactionView: FileMapView?
+    /// The view a read goes through: the storage's own view of its file,
+    /// or, while a compaction of a database in it runs, a second view
+    /// (``beginCompactionReads()``). A view with no segments where the
+    /// storage has no map.
+    @exclusivity(unchecked) private var readView = FileMapView(segmentSize: Platform.pageSize)
 
-    /// The storage's side of its memory map.
-    private struct FileMap {
-        /// The segments mapped so far.
+    /// The number of bytes at the start of the file that are known to be in
+    /// it, and so may be read through ``readView``: the file's length when
+    /// the storage opened it, raised by what the storage has itself
+    /// written, and lowered before the storage cuts the file; for a
+    /// storage that only reads, what its engine has verified to be
+    /// committed. Zero where the storage has no map. The one thread that
+    /// may cut the file is the one that reads through this.
+    @exclusivity(unchecked) private var readLimit: UInt64 = 0
+
+    /// The rest of the storage's memory map, which no read that succeeds
+    /// through the map looks at: there when a map was asked for and the
+    /// file is on a volume that is mapped.
+    private var map: MapState?
+
+    /// The storage's side of its memory map, beside what a read goes by.
+    private struct MapState {
+        /// The storage's own view: the segments mapped so far, which grow
+        /// as reads reach further, and which a snapshot takes a copy of.
+        /// It is the view a read goes through except while a second view
+        /// is in place.
         var view: FileMapView
-
-        /// The number of bytes at the start of the file that are known to
-        /// be in it, and so may be read through the map: the file's length
-        /// when the storage opened it, raised by what the storage has
-        /// itself written, and lowered before the storage cuts the file.
-        /// The one thread that may cut the file is the one that reads
-        /// through this.
-        var limit: UInt64
 
         /// The end of what the storage has written, which becomes the
         /// limit at a commit when only committed bytes are to be read
@@ -332,6 +361,16 @@ public final class FileStorage: WritableStorage {
         /// Whether the system has refused a segment. No further segment is
         /// asked for then; the ones that are mapped go on being read.
         var refused = false
+
+        /// Whether a compaction's second view is the one read through.
+        var secondViewInPlace = false
+    }
+
+    /// The second view of the file that the storage reads through while a
+    /// compaction of a database in it runs; `nil` at every other time.
+    var compactionView: FileMapView? {
+        guard let map, map.secondViewInPlace else { return nil }
+        return unsafe readView
     }
 
     /// Whether the map's limit follows only what is committed, and not
@@ -358,8 +397,8 @@ public final class FileStorage: WritableStorage {
     /// A storage that writes follows its own writes and takes nothing from
     /// this.
     func committedBytesVerified(upTo size: UInt64) {
-        guard map != nil, isReadOnly, size > map!.limit else { return }
-        map!.limit = size
+        guard map != nil, isReadOnly, size > (unsafe readLimit) else { return }
+        unsafe readLimit = size
         map!.writtenEnd = size
     }
 
@@ -481,14 +520,17 @@ public final class FileStorage: WritableStorage {
             throw error
         }
         replacement = Replacement(
-            old: descriptor, oldMap: map, oldPinnedSize: pinnedSize,
+            old: descriptor, oldMap: map, oldLimit: unsafe readLimit, oldPinnedSize: pinnedSize,
             oldCommittedSizePosition: committedSizePosition, oldFence: fence, incomingPath: incomingPath)
         descriptor = incoming
         // The new file has a map of its own, with nothing known to be in
         // it, and no snapshot reads it: the snapshots taken so far keep the
         // old file's descriptor, segments and fence.
         if map != nil {
-            map = FileMap(view: FileMapView(segmentSize: map!.view.segmentSize), limit: 0, writtenEnd: 0)
+            let view = FileMapView(segmentSize: map!.view.segmentSize)
+            unsafe readLimit = 0
+            unsafe readView = view
+            map = MapState(view: view, writtenEnd: 0)
         }
         pinnedSize = 0
         committedSizePosition = 0
@@ -552,6 +594,13 @@ public final class FileStorage: WritableStorage {
         // storage's to remove.
         let isStillItsOwn = (try? Platform.leads(replacement.incomingPath, to: descriptor.rawValue)) == true
         descriptor = replacement.old
+        // The old file's view and limit are put back as they were. No
+        // second view was in place: a compaction does not run across a
+        // replacement.
+        if let oldMap = replacement.oldMap {
+            unsafe readView = oldMap.view
+            unsafe readLimit = replacement.oldLimit
+        }
         map = replacement.oldMap
         pinnedSize = replacement.oldPinnedSize
         committedSizePosition = replacement.oldCommittedSizePosition
@@ -708,7 +757,10 @@ public final class FileStorage: WritableStorage {
             // each committed size it has verified.
             let length = try Platform.fileLength(descriptor.rawValue)
             let limit: UInt64 = if case .readOnly = access { 0 } else { length }
-            map = FileMap(view: FileMapView(segmentSize: segmentSize), limit: limit, writtenEnd: limit)
+            let view = FileMapView(segmentSize: segmentSize)
+            unsafe readView = view
+            unsafe readLimit = limit
+            map = MapState(view: view, writtenEnd: limit)
         }
     }
 
@@ -777,19 +829,23 @@ public final class FileStorage: WritableStorage {
     ///   system's reading ahead already, has nothing to read through it
     ///   yet, or is reading through a second view as it is.
     func beginCompactionReads() -> Bool {
-        guard map != nil, requestedReading == .memoryMap, compactionView == nil else { return false }
-        let limit = map!.limit
+        guard map != nil, requestedReading == .memoryMap, !map!.secondViewInPlace else { return false }
+        let limit = unsafe readLimit
         guard limit > Self.headerBytes else { return false }
-        var view = FileMapView(segmentSize: map!.view.segmentSize)
-        for index in 0...view.segmentIndex(of: limit - 1) {
+        let size = map!.view.segmentSize
+        var segments: [MappedSegment?] = []
+        for index in 0...map!.view.segmentIndex(of: limit - 1) {
             guard
                 let segment = MappedSegment(
-                    descriptor: descriptor.rawValue, offset: UInt64(index) * UInt64(view.segmentSize),
-                    length: view.segmentSize, map: calls.map, advise: { (_: UInt, _: Int) in })
+                    descriptor: descriptor.rawValue, offset: UInt64(index) * UInt64(size), length: size,
+                    map: calls.map, advise: { (_: UInt, _: Int) in })
             else { break }
-            view.segments.append(segment)
+            segments.append(segment)
         }
-        compactionView = view
+        // The second view is put in place whole, and is what a read goes
+        // through from its next load on.
+        unsafe readView = FileMapView(segmentSize: size, segments: segments)
+        map!.secondViewInPlace = true
         return true
     }
 
@@ -797,7 +853,11 @@ public final class FileStorage: WritableStorage {
     /// again, and the second view's segments are unmapped, which are the
     /// storage's alone.
     func endCompactionReads() {
-        compactionView = nil
+        guard map != nil, map!.secondViewInPlace else { return }
+        // The storage's own view is put back, as it is now: it may have
+        // grown meanwhile, for a snapshot.
+        unsafe readView = map!.view
+        map!.secondViewInPlace = false
     }
 
     /// The segment at `index`, mapped now if it was not: `nil` if the
@@ -819,39 +879,45 @@ public final class FileStorage: WritableStorage {
             map!.refused = true
             return nil
         }
-        while map!.view.segments.count <= index { map!.view.segments.append(nil) }
-        map!.view.segments[index] = segment
+        // A view with the segment in it takes the place of the storage's
+        // own, and of the one a read goes through unless that is a
+        // compaction's second view.
+        let grown = map!.view.with(segment, at: index)
+        map!.view = grown
+        if !map!.secondViewInPlace { unsafe readView = grown }
         return segment
     }
 
-    /// Reads through the memory map the bytes at `offset` that are known
-    /// to be in the file, from the first on, mapping the segments they are
-    /// in where they were not.
+    /// What a read does that the view it loaded did not give whole, below
+    /// the limit: maps the segments its bytes are in where they were not,
+    /// reads through the view again, and takes the rest by a file call,
+    /// which is also what says where the file ends.
     ///
-    /// - Returns: The number of bytes read, less than `range.count` where
-    ///   the limit comes first or the system refuses a segment.
-    /// - Precondition: The storage has a memory map.
-    private func readThroughMap(into buffer: inout MutableSpan<UInt8>, range: Range<Int>, at offset: UInt64) -> Int {
-        let limit = map!.limit
-        // A read that starts in the two headers takes nothing from the map
-        // and is a file call for all of it: the root header's committed
-        // size is rewritten in place by every commit, of this process or
-        // another, and a reader that takes it by a file call takes it
-        // whole.
-        guard offset >= Self.headerBytes, offset < limit, range.count > 0 else { return 0 }
-        // While a compaction runs, through its view, by the same limit.
-        // Nothing is mapped on demand there: what that view lacks is left
-        // to the file call, as a segment the system refused is.
-        if compactionView != nil {
-            return compactionView!.read(into: &buffer, range: range, at: offset, limit: limit)
+    /// Kept out of ``read(into:range:at:)``, which is compiled into the
+    /// engine's descents: this is what a read comes to once for each
+    /// segment of a file, and at the end of what is known to be in it.
+    ///
+    /// - Precondition: The storage has a memory map, `offset` is below
+    ///   `limit`, and `range` is not empty.
+    @inline(never)
+    private func readMappingWhatIsNot(
+        into buffer: inout MutableSpan<UInt8>, range: Range<Int>, at offset: UInt64, limit: UInt64
+    ) throws(XitDBError) -> Int {
+        // While a compaction runs nothing is mapped on demand: what its
+        // view lacks is left to the file call, as a segment the system
+        // refused is.
+        if !map!.secondViewInPlace {
+            let end = offset + min(UInt64(range.count), limit - offset)
+            let first = map!.view.segmentIndex(of: offset)
+            let last = map!.view.segmentIndex(of: end - 1)
+            for index in first...last where index >= map!.view.segments.count || map!.view.segments[index] == nil {
+                if segment(at: index) == nil { break }
+            }
         }
-        let end = offset + min(UInt64(range.count), limit - offset)
-        let first = map!.view.segmentIndex(of: offset)
-        let last = map!.view.segmentIndex(of: end - 1)
-        for index in first...last where index >= map!.view.segments.count || map!.view.segments[index] == nil {
-            if segment(at: index) == nil { break }
-        }
-        return map!.view.read(into: &buffer, range: range, at: offset, limit: limit)
+        let mapped = unsafe readView.read(into: &buffer, range: range, at: offset, limit: limit)
+        if mapped == range.count { return mapped }
+        let rest = (range.lowerBound + mapped)..<range.upperBound
+        return mapped + (try calls.read(descriptor.rawValue, &buffer, rest, offset + UInt64(mapped)))
     }
 
     /// Trips the fence of every snapshot taken so far, before a write or a
@@ -889,14 +955,21 @@ public final class FileStorage: WritableStorage {
         range: Range<Int>,
         at offset: UInt64
     ) throws(XitDBError) -> Int {
-        guard map != nil else { return try calls.read(descriptor.rawValue, &buffer, range, offset) }
-        // What is known to be in the file comes from the map, and anything
-        // after it by a file call, which is also what says where the file
-        // ends.
-        let mapped = readThroughMap(into: &buffer, range: range, at: offset)
-        if mapped == range.count { return mapped }
-        let rest = (range.lowerBound + mapped)..<range.upperBound
-        return mapped + (try calls.read(descriptor.rawValue, &buffer, rest, offset + UInt64(mapped)))
+        // What is known to be in the file comes from the map: the limit
+        // and the view are loaded once, here, and the read goes by them.
+        // The limit is zero where there is no map. A read that starts in
+        // the two headers takes nothing from the map and is a file call for
+        // all of it: the root header's committed size is rewritten in place
+        // by every commit, of this process or another, and a reader that
+        // takes it by a file call takes it whole.
+        let limit = unsafe readLimit
+        if offset >= Self.headerBytes, offset < limit {
+            let mapped = unsafe readView.read(into: &buffer, range: range, at: offset, limit: limit)
+            if mapped == range.count { return mapped }
+            // A segment is not mapped yet, or the limit comes first.
+            return try readMappingWhatIsNot(into: &buffer, range: range, at: offset, limit: limit)
+        }
+        return try calls.read(descriptor.rawValue, &buffer, range, offset)
     }
 
     /// The length of the file.
@@ -925,8 +998,9 @@ public final class FileStorage: WritableStorage {
         if map != nil {
             // The bytes are in the file now. They may be read through the
             // map at once, or from the commit on.
-            map!.writtenEnd = max(map!.writtenEnd, offset + UInt64(bytes.count))
-            if !mapsCommittedBytesOnly { map!.limit = map!.writtenEnd }
+            let writtenEnd = max(map!.writtenEnd, offset + UInt64(bytes.count))
+            map!.writtenEnd = writtenEnd
+            if !mapsCommittedBytesOnly { unsafe readLimit = writtenEnd }
         }
     }
 
@@ -986,7 +1060,7 @@ public final class FileStorage: WritableStorage {
         if map != nil {
             // Before the cut: nothing is read through the map beyond the
             // new end from here on.
-            map!.limit = min(map!.limit, length)
+            unsafe readLimit = min(unsafe readLimit, length)
             map!.writtenEnd = min(map!.writtenEnd, length)
         }
         try calls.setLength(descriptor.rawValue, length)
@@ -1003,7 +1077,7 @@ public final class FileStorage: WritableStorage {
     public func sync(_ point: SyncPoint) throws(XitDBError) {
         if case .afterRootHeader = point, map != nil {
             // The commit is in the file: all that was written is committed.
-            map!.limit = map!.writtenEnd
+            unsafe readLimit = map!.writtenEnd
         }
         let order = Self.syncOrder(durability, point)
         for index in order.indices {

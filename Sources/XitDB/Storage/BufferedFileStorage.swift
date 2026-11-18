@@ -25,13 +25,33 @@ public final class BufferedFileStorage: WritableStorage {
     /// The file underneath, which a snapshot reads through.
     let file: FileStorage
 
+    // The window's two properties are looked at by every read, before the
+    // file is: the window holds what is not yet written. The run-time check
+    // of exclusive access on them was two checks a read, half of what a
+    // read through a buffered file cost over one through its file (brief
+    // 36, part one). The check is off for the two, as it is for the memory
+    // storage's buffer, which makes every use of them `unsafe` to the
+    // compiler.
+    //
+    // Safe: what the check catches is an access to one of them that begins
+    // while another one, a modification, is still going on on the same
+    // thread. Every modification is in a method below and lasts only while
+    // that method runs `MemoryBuffer` code (a write into the window, a cut
+    // of it, its emptying) or is a plain store of a number; none of that
+    // takes a closure or calls anything of the caller's. The one access
+    // that lasts across other code is the READ of the window in
+    // `flush()`, while the write to the file runs, which reaches neither
+    // property. So no access can begin while a modification is in
+    // progress. (The check says nothing about two threads; the class is
+    // not `Sendable`.)
+
     /// The window: bytes written and not yet flushed, which belong in the
     /// file from `memoryPosition` on.
-    private(set) var memory = MemoryBuffer()
+    @exclusivity(unchecked) private(set) var memory = MemoryBuffer()
 
     /// Where in the file the window starts. It keeps its value while the
     /// window is empty, and can then be beyond the end of the file.
-    private(set) var memoryPosition: UInt64 = 0
+    @exclusivity(unchecked) private(set) var memoryPosition: UInt64 = 0
 
     /// The file's length, cached so that `length` need not ask the
     /// operating system each time. Another process may write to the file
@@ -146,11 +166,11 @@ public final class BufferedFileStorage: WritableStorage {
             if overflow { break }
             let remaining = range.count - total
             let destination = range.lowerBound + total
-            let windowEnd = memoryPosition + UInt64(memory.count)
+            let windowEnd = unsafe memoryPosition + UInt64(memory.count)
 
-            if position >= memoryPosition && position < windowEnd {
+            if unsafe position >= memoryPosition && position < windowEnd {
                 // from the window
-                let read = memory.read(
+                let read = unsafe memory.read(
                     into: &buffer,
                     range: destination..<range.upperBound,
                     at: position - memoryPosition
@@ -165,7 +185,7 @@ public final class BufferedFileStorage: WritableStorage {
 
             // from the file, stopping where the window starts
             let wanted =
-                position < memoryPosition
+                unsafe position < memoryPosition
                 ? Int(min(UInt64(remaining), memoryPosition - position))
                 : remaining
             let read = try file.read(into: &buffer, range: destination..<(destination + wanted), at: position)
@@ -176,7 +196,7 @@ public final class BufferedFileStorage: WritableStorage {
             // and holds bytes, the storage goes on: the gap up to the window
             // will be zeros once the window is flushed, so it reads as zeros
             // now. Zig reports the end of the stream here.
-            guard position < memoryPosition && memory.count > 0 else { break }
+            guard unsafe position < memoryPosition && memory.count > 0 else { break }
             for index in (destination + read)..<(destination + wanted) {
                 buffer[index] = 0
             }
@@ -201,8 +221,8 @@ public final class BufferedFileStorage: WritableStorage {
             }
             // A failed write or a rollback can leave an empty window positioned
             // beyond the end of the file.
-            if memory.count == 0 { return fileLength }
-            return max(memoryPosition + UInt64(memory.count), fileLength)
+            if unsafe memory.count == 0 { return fileLength }
+            return unsafe max(memoryPosition + UInt64(memory.count), fileLength)
         }
     }
 
@@ -229,23 +249,23 @@ public final class BufferedFileStorage: WritableStorage {
         // `memoryPosition`. Start a new window at this write if the buffer
         // is empty, the write is beyond the end of the window, or the write
         // would grow the window beyond the limit.
-        let bufferSize = UInt64(memory.count)
-        if bufferSize == 0
+        let bufferSize = unsafe UInt64(memory.count)
+        if unsafe bufferSize == 0
             || offset > memoryPosition + bufferSize
             || (offset >= memoryPosition && offset - memoryPosition + count > bufferLimit)
         {
             try flush()
-            memoryPosition = offset
+            unsafe memoryPosition = offset
         }
 
-        if offset >= memoryPosition && offset - memoryPosition + count <= bufferLimit {
+        if unsafe offset >= memoryPosition && offset - memoryPosition + count <= bufferLimit {
             // into the buffer
-            try memory.write(bytes, at: offset - memoryPosition)
+            try unsafe memory.write(bytes, at: offset - memoryPosition)
         } else {
             // to the file. A direct write that overlaps the buffered bytes
             // would be overwritten by a later flush of what the buffer holds
             // for the same place, so flush first.
-            if offset < memoryPosition + UInt64(memory.count) && end > memoryPosition {
+            if unsafe offset < memoryPosition + UInt64(memory.count) && end > memoryPosition {
                 try flush()
             }
             try writeToFile(bytes, at: offset)
@@ -281,11 +301,11 @@ public final class BufferedFileStorage: WritableStorage {
     ///   file cannot be shortened.
     public func truncate(to length: UInt64) throws(XitDBError) {
         guard length <= (try self.length) else { throw .invalidLength }
-        let bufferSize = UInt64(memory.count)
-        if length <= memoryPosition {
-            memory.removeAll()
-        } else if length < memoryPosition + bufferSize {
-            try memory.truncate(to: length - memoryPosition)
+        let bufferSize = unsafe UInt64(memory.count)
+        if unsafe length <= memoryPosition {
+            unsafe memory.removeAll()
+        } else if unsafe length < memoryPosition + bufferSize {
+            try unsafe memory.truncate(to: length - memoryPosition)
         }
         fileLength = nil
         // This can lengthen the file: when the window started beyond the end
@@ -301,7 +321,7 @@ public final class BufferedFileStorage: WritableStorage {
         into buffer: inout MutableSpan<UInt8>, range: Range<Int>, at offset: UInt64
     ) throws(XitDBError) -> Int {
         let (end, overflow) = offset.addingReportingOverflow(UInt64(range.count))
-        if memory.count == 0 || (!overflow && end <= memoryPosition) {
+        if unsafe memory.count == 0 || (!overflow && end <= memoryPosition) {
             return try file.readForStream(into: &buffer, range: range, at: offset)
         }
         return try read(into: &buffer, range: range, at: offset)
@@ -340,8 +360,8 @@ public final class BufferedFileStorage: WritableStorage {
     /// get it.
     func beginReplacement() throws(XitDBError) {
         try file.beginReplacement()
-        memory.removeAll()
-        memoryPosition = 0
+        unsafe memory.removeAll()
+        unsafe memoryPosition = 0
         fileLength = nil
     }
 
@@ -357,8 +377,8 @@ public final class BufferedFileStorage: WritableStorage {
     /// (``FileStorage/abandonReplacement()``). What the window holds was to
     /// go into the new file, and is thrown away with it.
     func abandonReplacement() {
-        memory.removeAll()
-        memoryPosition = 0
+        unsafe memory.removeAll()
+        unsafe memoryPosition = 0
         fileLength = nil
         file.abandonReplacement()
     }
@@ -369,12 +389,12 @@ public final class BufferedFileStorage: WritableStorage {
     ///   bytes stay in the buffer, and a later flush tries again.
     public func flush() throws(XitDBError) {
         fileLength = nil
-        if memory.count > 0 {
-            let position = memoryPosition
-            try memory.withBytes { (bytes: Span<UInt8>) throws(XitDBError) in
+        if unsafe memory.count > 0 {
+            let position = unsafe memoryPosition
+            try unsafe memory.withBytes { (bytes: Span<UInt8>) throws(XitDBError) in
                 try writeToFile(bytes, at: position)
             }
-            memory.removeAll()
+            unsafe memory.removeAll()
         }
     }
 

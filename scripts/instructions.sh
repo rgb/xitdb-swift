@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 #
-# The instructions a write, a read and a walk take in memory, held to figures kept in
-# the repository: scripts/instructions.txt.
+# The instructions a write, a read and a walk take in memory, and three reads through a
+# mapped file, held to figures kept in the repository: scripts/instructions.txt.
 #
 #   scripts/instructions.sh check [figures]
 #       runs the benchmark's four collections in memory with the release build that is
 #       there (the gate calls this right after its plain release build), eight times
-#       with the stack at eight places (forty seconds), and compares the least
+#       with the stack at eight places (forty seconds), and three reads through a
+#       mapped file three times (ten seconds), and compares the least
 #       instructions an operation took, line by line, with the figures. A line
 #       that takes more than a per cent more fails: ROSE, status 1. A line that takes
 #       more than a per cent less fails too and says to take the figures again: FELL,
@@ -98,24 +99,56 @@ measure() {
             END { for (line = 1; line <= lines; line++) printf "%s %.1f\n", order[line], least[order[line]] }'
 }
 
+# "mapped_<workload> read instructions-an-operation" for three reads through a mapped
+# file: a hash map read by hash, an array list read by index, and typed reads of a
+# number and a text by key (the benchmark's read-path mode, at a tenth of its size, on a
+# file storage that reads through its memory map). The least over `measure_mapped
+# <runs>` runs.
+#
+# Why these are held: a read through a mapped storage once made a run-time check of
+# exclusive access for every read of the storage (one for each of the seven a list's
+# read by index makes), and a system call for every byte array, and neither showed in
+# the lines in memory (brief 36). Their read phases make no system call once the file
+# is mapped, and repeat within three tenths of a per cent with the stack wherever it is,
+# so they need no eight places. They need a temporary folder on a volume the library
+# maps: where it is not, the benchmark says so and the lines are missing, which fails
+# the check.
+mapped=(map_insert list_append map_typed)
+measure_mapped() {
+    local run
+    for run in $(seq "$1"); do
+        env -i "$benchmark" --read-path --mapped --kind mapped_file --divide 10 "${mapped[@]}"
+    done \
+        | sed -E -n 's/.*"workload": "([a-z_]+)", "phase": "read", "kind": "mapped_file", "n": ([0-9]+),.*"instructions": ([0-9]+),.*/mapped_\1 read \2 \3/p' \
+        | awk '
+            { key = $1 " " $2; each = $4 / $3
+              if (!(key in least)) { order[++lines] = key; least[key] = each }
+              else if (each < least[key]) least[key] = each }
+            END { for (line = 1; line <= lines; line++) printf "%s %.1f\n", order[line], least[order[line]] }'
+}
+
 if [ "$mode" = pin ]; then
     swift build -c release --product XitDBBenchmark -Xswiftc -warnings-as-errors >/dev/null
-    measured=$(measure 2)
-    [ "$(echo "$measured" | grep -c .)" -eq 12 ] || {
-        echo "error: the benchmark printed $(echo "$measured" | grep -c .) lines with instructions, not twelve" >&2
+    measured=$(
+        measure 2
+        measure_mapped 3
+    )
+    [ "$(echo "$measured" | grep -c .)" -eq 15 ] || {
+        echo "error: the benchmark printed $(echo "$measured" | grep -c .) lines with instructions, not fifteen" >&2
         exit 1
     }
     {
-        echo "# The instructions an operation takes in memory, by the benchmark's own count: what"
+        echo "# The instructions an operation takes, by the benchmark's own count: what"
         echo "# scripts/instructions.sh holds the gate's plain release build to, within a per cent."
-        echo "# The least a line over eight places of the stack, twice. Taken with"
+        echo "# Twelve lines in memory, the least a line over eight places of the stack, twice; and"
+        echo "# three reads through a mapped file (\`mapped_\`), the least of three runs. Taken with"
         echo "# \`scripts/instructions.sh pin\`; take them again on another toolchain, processor or"
         echo "# major version of the system."
         echo "toolchain: $toolchain"
         echo "system: $system"
         echo "$measured"
     } >"$figures"
-    echo "twelve figures in $figures"
+    echo "fifteen figures in $figures"
     exit 0
 fi
 
@@ -149,7 +182,10 @@ if [ "$pinned_system" != "$system" ]; then
     echo "  the same toolchain, processor and major version, so compared"
 fi
 
-measured=$(measure 1)
+measured=$(
+    measure 1
+    measure_mapped 3
+)
 # Each line beside its figure; the status says whether any rose or fell past the tolerance.
 status=0
 echo "$measured" | awk -v figures="$figures" -v tolerance="$tolerance" '
@@ -165,12 +201,12 @@ echo "$measured" | awk -v figures="$figures" -v tolerance="$tolerance" '
     {
         key = $1 " " $2
         seen++
-        if (!(key in pinned)) { printf "  %-14s %-8s %10.1f  has no figure\n", $1, $2, $3; missing++; next }
+        if (!(key in pinned)) { printf "  %-18s %-8s %10.1f  has no figure\n", $1, $2, $3; missing++; next }
         change = ($3 - pinned[key]) / pinned[key] * 100
         mark = ""
         if (change > tolerance) { mark = "  ROSE"; rose = rose (rose ? ", " : "") $1 " " $2 }
         if (change < -tolerance) { mark = "  FELL"; fell = fell (fell ? ", " : "") $1 " " $2 }
-        printf "  %-14s %-8s %10.1f  figure %10.1f  %+6.2f%%%s\n", $1, $2, $3, pinned[key], change, mark
+        printf "  %-18s %-8s %10.1f  figure %10.1f  %+6.2f%%%s\n", $1, $2, $3, pinned[key], change, mark
     }
     END {
         if (missing || seen != expected) { printf "error: %d lines measured against %d figures\n", seen, expected; exit 3 }
@@ -181,6 +217,6 @@ echo "$measured" | awk -v figures="$figures" -v tolerance="$tolerance" '
         }
         if (rose) exit 1
         if (fell) exit 4
-        printf "the twelve are within %s%% of their figures\n", tolerance
+        printf "the %d are within %s%% of their figures\n", seen, tolerance
     }' || status=$?
 exit "$status"
