@@ -56,6 +56,10 @@
 // the map's advice to the system and without it; `--cold report <folder>`
 // runs all of them and prints the machine they ran on (ColdLines.swift).
 //
+// `--commit-cost` runs none of them either: how long one small commit takes
+// at each durability, which is the disk's figure and the one the
+// documentation's table of durability levels gives (CommitCost.swift).
+//
 // `--read-path` runs other workloads than the usual ones, each at one size
 // on every kind of storage, read through the storage, a snapshot of it
 // (`--snapshot`) or a reader of its own (`--reader`): what a read through a
@@ -1439,6 +1443,16 @@ if arguments.first == "--cold" {
         try runColdLines(Array(CommandLine.arguments.dropFirst().drop { $0 != "--cold" }.dropFirst()))
     } catch {
         FileHandle.standardError.write(Data("XitDBBenchmark --cold: \(error)\n".utf8))
+        exit(1)
+    }
+    exit(0)
+}
+if arguments.first == "--commit-cost" {
+    // what a commit costs at each durability (CommitCost.swift)
+    do {
+        try runCommitCost(Array(arguments.dropFirst()))
+    } catch {
+        FileHandle.standardError.write(Data("XitDBBenchmark --commit-cost: \(error)\n".utf8))
         exit(1)
     }
     exit(0)

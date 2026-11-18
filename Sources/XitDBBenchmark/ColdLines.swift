@@ -2,12 +2,15 @@
 // none of a file's pages is in memory, with the advice the map gives the
 // system ("read in no order") and without it. With the advice is a storage
 // opened with `reading: .memoryMap`; without it, one opened with
-// `reading: .memoryMapReadAhead`, which tells the system nothing.
+// `reading: .memoryMapReadAhead`, which tells the system nothing. The walk
+// and the compaction have a third way beside the two maps, for what the
+// map is measured against: a storage opened with `reading: .fileCalls`,
+// which has no map and reads by file calls.
 //
 //     XitDBBenchmark --cold report <folder> [--elements <n>] [--keys <n>] [--passes <n>]
 //                                           [--seconds <n>] [--under-limit] [--no-compaction]
 //     XitDBBenchmark --cold prepare <path> <elements>
-//     XitDBBenchmark --cold walk <path> [--no-advice] [--warm]
+//     XitDBBenchmark --cold walk <path> [--no-advice | --file-calls] [--warm]
 //     XitDBBenchmark --cold stream <path> [--no-advice] [--warm]
 //
 // `report` is the whole of it as one command, for a machine that is asked
@@ -15,7 +18,8 @@
 // system and the device under the folder, how far the system reads ahead
 // there, the memory limit it finds itself under), makes two files in the
 // folder if they are not there, and runs four lines, each with the advice
-// and without, `--passes` times, the order turned from pass to pass:
+// and without, and the walk and the compaction by file calls as well,
+// `--passes` times, the order turned from pass to pass:
 //
 //   walk        a walk of a list of `--elements` values of 256 bytes, written
 //               in order, so that the walk goes through the file from its
@@ -236,12 +240,51 @@ private struct CountingSink: ByteSink {
 /// The lines a run can be of.
 private enum ColdLine: String, CaseIterable {
     case walk, stream, random, compaction
+
+    /// The ways a line's file is read: through the map with the advice and
+    /// without it, and for the walk and the compaction by file calls as
+    /// well. The stream reads by file calls whatever the storage's way, and
+    /// the reads by key are the map's own line.
+    var ways: [ColdWay] {
+        switch self {
+        case .walk, .compaction: [.advised, .notAdvised, .fileCalls]
+        case .stream, .random: [.advised, .notAdvised]
+        }
+    }
+}
+
+/// How a run's file is read.
+private enum ColdWay: String, CaseIterable {
+    /// Through the map, which the system is told is read in no order.
+    case advised = "with the advice"
+    /// Through the map, left to the system's own reading ahead.
+    case notAdvised = "without the advice"
+    /// By file calls, with no map.
+    case fileCalls = "by file calls, with no map"
+
+    /// How a storage is opened for it.
+    var reading: FileReading {
+        switch self {
+        case .advised: .memoryMap
+        case .notAdvised: .memoryMapReadAhead
+        case .fileCalls: .fileCalls
+        }
+    }
+
+    /// The word for it in a run's line of JSON.
+    var word: String {
+        switch self {
+        case .advised: "memory_map"
+        case .notAdvised: "memory_map_read_ahead"
+        case .fileCalls: "file_calls"
+        }
+    }
 }
 
 /// One run of a line, as it is printed.
 private struct ColdRun {
     let line: ColdLine
-    let advised: Bool
+    let way: ColdWay
     /// The part of the file in memory before the run, after its pages were
     /// dropped; `nil` for a run that dropped nothing.
     let before: Double?
@@ -262,7 +305,7 @@ private struct ColdRun {
 
     var json: String {
         var fields = [
-            #""line": "\#(line.rawValue)""#, #""advice": \#(advised)"#,
+            #""line": "\#(line.rawValue)""#, #""reading": "\#(way.word)""#, #""advice": \#(way == .advised)"#,
             String(format: #""seconds": %.4f"#, seconds), #""done": \#(done)"#, #""major_faults": \#(faults)"#,
             #""in_memory_before": \#(before.map { String(format: "%.4f", $0) } ?? "null")"#,
             #""file_size": \#(fileSize)"#,
@@ -286,7 +329,7 @@ private struct ColdTask {
     let line: ColdLine
     /// The file the line reads.
     let path: String
-    var advised = true
+    var way = ColdWay.advised
     var warm = false
     /// For the random line: how many keys the map has, and for how long.
     var keys = 0
@@ -297,7 +340,7 @@ private struct ColdTask {
 
 /// Runs one line once: drops the file's pages and checks that they are
 /// gone, opens the file to be read through a memory map, with the advice
-/// or without, and times the line.
+/// or without, or by file calls, and times the line.
 ///
 /// - Throws: `NotCold` if more than one page in two hundred is still in
 ///   memory after the pages were dropped.
@@ -308,13 +351,13 @@ private func run(_ task: ColdTask) throws -> ColdRun {
         guard part <= 0.005 else { throw NotCold(part: part) }
         before = part
     }
-    var result = ColdRun(line: task.line, advised: task.advised, before: before)
+    var result = ColdRun(line: task.line, way: task.way, before: before)
 
     // with the advice, the map as it is read unless told otherwise; without
-    // it, the map left to the system's own reading ahead
-    let file = try ReadOnlyFileStorage(
-        path: task.path, lock: .shared, reading: task.advised ? .memoryMap : .memoryMapReadAhead)
-    guard file.isMemoryMapped else {
+    // it, the map left to the system's own reading ahead; by file calls, no
+    // map at all
+    let file = try ReadOnlyFileStorage(path: task.path, lock: .shared, reading: task.way.reading)
+    guard file.isMemoryMapped == (task.way != .fileCalls) else {
         throw BenchmarkFailure(description: "the file at \(task.path) is on a volume that is not read through a map")
     }
     let database = try ReadOnlyDatabase(opening: file, hashSize: 20)
@@ -435,7 +478,8 @@ private func report(folder: String, _ options: ReportOptions) throws {
     let machine = ColdMachine(directory: folder)
     say("THE COLD LINES OF THE MEMORY MAP")
     say("what a read through the map costs when none of a file's pages is in memory, with the advice the map")
-    say("gives the system (\"read in no order\") and without it. Say which commit of xitdb-swift this was built from.")
+    say("gives the system (\"read in no order\") and without it; and, for the walk and the compaction, what the")
+    say("same costs by file calls, with no map. Say which commit of xitdb-swift this was built from.")
     say()
     say("THE MACHINE")
     for line in machine.lines { say("  " + line) }
@@ -489,8 +533,10 @@ private func report(folder: String, _ options: ReportOptions) throws {
     for line in lines {
         for pass in 0..<options.passes {
             // the order turned from pass to pass
-            for advised in pass % 2 == 0 ? [true, false] : [false, true] {
-                var task = ColdTask(line: line, path: line == .random ? map : list, advised: advised)
+            let ways = line.ways
+            let turn = pass % ways.count
+            for way in ways[turn...] + ways[..<turn] {
+                var task = ColdTask(line: line, path: line == .random ? map : list, way: way)
                 task.keys = options.keys
                 task.seconds = options.seconds
                 task.target = folder + "/cold-compacted.db"
@@ -503,14 +549,14 @@ private func report(folder: String, _ options: ReportOptions) throws {
                     say(
                         String(
                             format: "  NOT COLD, and not timed: %@ %@, %.2f%% of the file's pages still in memory",
-                            line.rawValue, advised ? "with the advice" : "without the advice", error.part * 100))
+                            line.rawValue, way.rawValue, error.part * 100))
                 }
             }
         }
     }
-    // the walk once more with nothing dropped, for what the advice costs when the pages are there
-    for advised in [true, false] {
-        var task = ColdTask(line: .walk, path: list, advised: advised)
+    // the walk once more with nothing dropped, for what each way costs when the pages are there
+    for way in ColdLine.walk.ways {
+        var task = ColdTask(line: .walk, path: list, way: way)
         task.warm = true
         let result = try run(task)
         say("  " + result.json + "   (nothing dropped before this one)")
@@ -522,21 +568,24 @@ private func report(folder: String, _ options: ReportOptions) throws {
             ?? "SUMMARY, NOT UNDER A LIMIT")
     say("  seconds, or for the random line reads a second: median (least to most) of the runs that were cold")
     for line in lines {
-        var medians: [Bool: Double] = [:]
-        for advised in [true, false] {
-            let figures = runs.filter { $0.line == line && $0.advised == advised }.map(\.figure)
-            let name = "\(line.rawValue), \(advised ? "with the advice" : "without the advice")"
+        var medians: [ColdWay: Double] = [:]
+        for way in line.ways {
+            let figures = runs.filter { $0.line == line && $0.way == way }.map(\.figure)
+            let name = "\(line.rawValue), \(way.rawValue)"
             guard !figures.isEmpty else {
                 say("  \(name): no cold run")
                 continue
             }
             let (least, median, most) = spread(figures)
-            medians[advised] = median
+            medians[way] = median
             let format = line == .random ? "  %@: %.0f (%.0f to %.0f), %d runs" : "  %@: %.3f (%.3f to %.3f), %d runs"
             say(String(format: format, name, median, least, most, figures.count))
         }
-        if let with = medians[true], let without = medians[false], with > 0, without > 0 {
+        if let with = medians[.advised], let without = medians[.notAdvised], with > 0, without > 0 {
             say(String(format: "  %@: with the advice over without, %.2f", line.rawValue, with / without))
+        }
+        if let with = medians[.advised], let calls = medians[.fileCalls], with > 0, calls > 0 {
+            say(String(format: "  %@: with the advice over by file calls, %.2f", line.rawValue, with / calls))
         }
     }
     say("  the ratio is of times for the walk, the stream and the compaction, and of rates for the random line,")
@@ -552,7 +601,7 @@ func runColdLines(_ arguments: [String]) throws {
             usage: --cold report <folder> [--elements <n>] [--keys <n>] [--passes <n>] [--seconds <n>]
                                           [--under-limit] [--no-compaction]
                    --cold prepare <path> <elements>
-                   --cold walk <path> [--no-advice] [--warm]
+                   --cold walk <path> [--no-advice | --file-calls] [--warm]
                    --cold stream <path> [--no-advice] [--warm]
             To run the report under a memory limit, run it inside one: it finds the limit and prints it.
             """)
@@ -582,7 +631,10 @@ func runColdLines(_ arguments: [String]) throws {
         return
     }
 
-    let advised = !flag("--no-advice")
+    let noAdvice = flag("--no-advice")
+    let fileCalls = flag("--file-calls")
+    guard !(noAdvice && fileCalls) else { throw usage }
+    let way: ColdWay = fileCalls ? .fileCalls : noAdvice ? .notAdvised : .advised
     let warm = flag("--warm")
     guard arguments.count >= 2 else { throw usage }
     let path = arguments[1]
@@ -595,7 +647,9 @@ func runColdLines(_ arguments: [String]) throws {
     guard arguments.count == 2, let line = ColdLine(rawValue: line), line == .walk || line == .stream else {
         throw usage
     }
-    var task = ColdTask(line: line, path: path, advised: advised)
+    // the stream reads by file calls whatever the storage's way
+    guard line.ways.contains(way) else { throw usage }
+    var task = ColdTask(line: line, path: path, way: way)
     task.warm = warm
     do {
         print(try run(task).json)
