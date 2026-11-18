@@ -35,6 +35,9 @@ wins and the director is told.
 
 `Sources/XitDB` imports only the standard library, `Synchronization` and the platform C library, the last
 in one file only. No Foundation. Tests may import Foundation and CryptoKit.
+`Sources/XitDBFoundation` is the one library target that imports Foundation. It holds only what needs Foundation
+(`LocalizedError`, the `URL` and `FilePath` initialisers, `Data` as a value and a key) and nothing the library needs to
+work; nothing in `Sources/XitDB` or `Sources/XitDBHashing` may depend on it.
 
 ## The gate
 

@@ -34,8 +34,10 @@ take. A keyed call hashes the key with the database's hasher and writes what the
 the files are the same either way. A put or a put cursor given `storingKey: true` stores the key beside the value as
 well, as the original's `putKey` does.
 
-The package declares three products. `XitDB` is the library. `XitDBHashing` has SHA-256 and SHA-1, the same on every
-platform, to give a database as the hasher of its keys. `xitdb-dump` is a tool that prints a file as it is on disk.
+The package declares four products. `XitDB` is the library, which imports no Foundation. `XitDBHashing` has SHA-256 and
+SHA-1, the same on every platform, to give a database as the hasher of its keys. `XitDBFoundation` is for a program that
+has Foundation: with it an error's `localizedDescription` is the error's own line, a file storage is opened by a `URL`, and
+`Data` is a value and a key. `xitdb-dump` is a tool that prints a file as it is on disk.
 
 It builds for macOS 26, iOS 26 and Linux, and is tested on macOS, on Linux and on an iOS simulator.
 
@@ -163,16 +165,17 @@ Run it twice and the second run opens the file, adds a second moment, and the fi
 ## Documentation
 
 The documentation is a DocC catalogue for each library: [`Sources/XitDB/XitDB.docc`](Sources/XitDB/XitDB.docc), a
-reference curated by task and articles for the concepts, and
-[`Sources/XitDBHashing/XitDBHashing.docc`](Sources/XitDBHashing/XitDBHashing.docc), a page for the hashes. Read it through
-DocC, where the links between articles resolve and the diagrams appear. Start with the article "Moments and history". To
-read it in a browser:
+reference curated by task and articles for the concepts,
+[`Sources/XitDBHashing/XitDBHashing.docc`](Sources/XitDBHashing/XitDBHashing.docc), a page for the hashes, and
+[`Sources/XitDBFoundation/XitDBFoundation.docc`](Sources/XitDBFoundation/XitDBFoundation.docc), a page for what a program
+with Foundation gets. Read it through DocC, where the links between articles resolve and the diagrams appear. Start with
+the article "Moments and history". To read it in a browser:
 
 ```sh
 swift package --disable-sandbox preview-documentation --target XitDB
 ```
 
-with `--target XitDBHashing` for the other.
+with `--target XitDBHashing` or `--target XitDBFoundation` for the others.
 
 To look at a file itself, `swift run xitdb-dump FILE` prints it as it is on disk: its header, the last moment or any
 other, and with `--verify` its commits. Built once with `swift build -c release --product xitdb-dump`, it runs as

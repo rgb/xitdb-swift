@@ -7,9 +7,10 @@ import Testing
 /// out twice: here, where it is compiled and run, and there, where it is
 /// read. This suite is what stops the two from drifting apart: every fenced
 /// `swift` block of the README, of every module's catalogue, and of the
-/// documentation comments in the libraries' sources (`Sources/XitDB` and
-/// `Sources/XitDBHashing`) must appear in this target's sources line for
-/// line. The comments' blocks have their code in `CommentExamples.swift`.
+/// documentation comments in the libraries' sources (`Sources/XitDB`,
+/// `Sources/XitDBHashing` and `Sources/XitDBFoundation`) must appear in this
+/// target's sources line for line. The comments' blocks have their code in
+/// `CommentExamples.swift`.
 ///
 /// A block marked ` ```swift manifest ` is a package manifest and not a use of
 /// the library, and is not checked; that is the only exception.
@@ -131,7 +132,7 @@ import Testing
     }
 
     /// The libraries whose documentation comments are checked.
-    private static let librarySources = ["XitDB", "XitDBHashing"].map {
+    private static let librarySources = ["XitDB", "XitDBHashing", "XitDBFoundation"].map {
         packageRoot.appendingPathComponent("Sources/\($0)")
     }
 
@@ -177,7 +178,7 @@ import Testing
         #expect(shown.count > 0)
         #expect(shown.contains { $0.place.hasPrefix("README.md") })
         #expect(shown.contains { $0.place.contains(".docc/Articles/") })
-        for module in ["XitDB", "XitDBHashing"] {
+        for module in ["XitDB", "XitDBHashing", "XitDBFoundation"] {
             #expect(shown.contains { $0.place.hasPrefix("Sources/\(module)/\(module).docc/") }, "\(module)'s catalogue")
         }
         // The libraries' documentation comments, outside the catalogues.

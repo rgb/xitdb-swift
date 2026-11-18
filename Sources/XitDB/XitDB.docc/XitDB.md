@@ -36,8 +36,10 @@ A database whose root header or last trailer is damaged does not open. Opening n
 verifies, and one explicit call cuts the file back to it, which can lose the commits after it: see <doc:Recovery>.
 
 The package's `XitDBHashing` module, which has documentation of its own, has SHA-256 and SHA-1, the same on every
-platform, to give a database as the hasher of its keys. The package's `xitdb-dump` prints a file as it is on disk: see
-<doc:ReadingAFileWithXitdbDump>.
+platform, to give a database as the hasher of its keys. This library imports no Foundation; the package's
+`XitDBFoundation` module, with documentation of its own too, is for a program that has it: an error's
+`localizedDescription` is then the error's own line, a file storage is opened by a `URL`, and `Data` is a value and a key.
+The package's `xitdb-dump` prints a file as it is on disk: see <doc:ReadingAFileWithXitdbDump>.
 
 To start, read the four articles under Essentials in order. After those, each article stands on its own.
 

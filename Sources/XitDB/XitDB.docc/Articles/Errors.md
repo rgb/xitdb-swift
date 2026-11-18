@@ -44,6 +44,11 @@ description, so it shows an error by its line; a test target that would sooner s
 conformance to Swift Testing's `CustomTestStringConvertible` whose `testDescription` is the error's `debugDescription`
 (marked `@retroactive`, the type being another package's), as this package's own tests do.
 
+What Foundation's `localizedDescription` says of an error is not its line unless the program says so: the library imports
+no Foundation, so an ``XitDBError`` caught as `any Error` gives "The operation couldn't be completed", with the type's name
+and a number. A program that depends on the package's `XitDBFoundation` product and imports it gets the line, with the
+system's words for a storage failure's number after it; the conformance to `LocalizedError` is there.
+
 Its ``XitDBError/kind`` says whose it is, one ``XitDBError/Kind`` for each of the four headings below, for a program that
 treats the errors of a kind alike. It is the code's ``XitDBError/Code/kind``. A case has one kind, by its commoner meaning;
 where a case has a second meaning under another heading, the text below says so and the kind does not.

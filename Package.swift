@@ -26,6 +26,7 @@ let package = Package(
     products: [
         .library(name: "XitDB", targets: ["XitDB"]),
         .library(name: "XitDBHashing", targets: ["XitDBHashing"]),
+        .library(name: "XitDBFoundation", targets: ["XitDBFoundation"]),
         .executable(name: "xitdb-dump", targets: ["XitDBDump"]),
     ],
     dependencies: [
@@ -48,6 +49,18 @@ let package = Package(
         // KeyHashing. No dependency: the package takes none (D15).
         .target(
             name: "XitDBHashing",
+            dependencies: ["XitDB"],
+            swiftSettings: languageSettings + [.strictMemorySafety()]
+        ),
+        // What a program that has Foundation wants of XitDB, which imports
+        // none: the library's error as a `LocalizedError`, the file storages
+        // opened by a `URL` (and by a `FilePath` where the system has one),
+        // and `Data` as a value and as a key. A product of its own, so that a
+        // client of the product XitDB alone does not compile it and XitDB
+        // links no Foundation. No dependency: Foundation comes with the
+        // toolchain.
+        .target(
+            name: "XitDBFoundation",
             dependencies: ["XitDB"],
             swiftSettings: languageSettings + [.strictMemorySafety()]
         ),
@@ -108,6 +121,11 @@ let package = Package(
             swiftSettings: languageSettings
         ),
         .testTarget(
+            name: "XitDBFoundationTests",
+            dependencies: ["XitDBFoundation", "XitDB", "XitDBHashing", "XitDBTestSupport"],
+            swiftSettings: languageSettings
+        ),
+        .testTarget(
             name: "XitDBTests",
             dependencies: ["XitDB", "XitDBHashing", "XitDBDumpKit", "XitDBTestSupport"],
             exclude: ["Resources/fixtures-source.txt"],
@@ -124,7 +142,7 @@ let package = Package(
         // The examples hash through XitDBHashing, as the articles' readers do.
         .testTarget(
             name: "XitDBExamples",
-            dependencies: ["XitDB", "XitDBHashing", "XitDBTestSupport"],
+            dependencies: ["XitDB", "XitDBHashing", "XitDBFoundation", "XitDBTestSupport"],
             swiftSettings: languageSettings
         ),
         // The tests that start another process, alone in a target and so in

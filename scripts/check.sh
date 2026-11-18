@@ -516,6 +516,7 @@ step "Documentation build"
 remove_kept_symbol_graphs
 swift package generate-documentation --target XitDB --warnings-as-errors
 swift package generate-documentation --target XitDBHashing --warnings-as-errors
+swift package generate-documentation --target XitDBFoundation --warnings-as-errors
 swift scripts/check-curation.swift
 
 # The rest needs Xcode, which only macOS has; the Linux gate ends with the documentation

@@ -86,6 +86,9 @@ path makes an empty file and the program goes on to the next error. With ``FileA
 
 A failure to open, including a missing file, throws ``XitDBError/storageFailure(errno:)``.
 
+The path is a `String`. A program that has Foundation opens a file by its `URL` with the package's `XitDBFoundation` module,
+and on Apple's platforms by a `FilePath`.
+
 A database is then either opened or created, and these are different calls. ``Database/init(opening:hashing:)`` throws
 ``XitDBError/invalidDatabase`` on an empty storage, and ``Database/init(creating:hashing:hashID:fileID:)`` throws
 ``XitDBError/storageNotEmpty`` on one with anything in it but what a creation that did not finish left (see below), so
