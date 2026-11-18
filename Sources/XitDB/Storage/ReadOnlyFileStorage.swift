@@ -138,6 +138,7 @@ public final class ReadOnlyFileStorage: ReadableStorage {
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the system cannot
     ///   be asked about the open file or about the path. That no file is at
     ///   the path is not an error: it is `false`.
+    ///   ``XitDBError/storageClosed`` after ``close()``.
     public var isStillAtPath: Bool {
         get throws(XitDBError) {
             try file.isStillAtPath
@@ -154,7 +155,8 @@ public final class ReadOnlyFileStorage: ReadableStorage {
     ///   - offset: The position in the file of the first byte to read.
     /// - Returns: The number of bytes read, which is less than `range.count`
     ///   only when the file ends first.
-    /// - Throws: ``XitDBError/storageFailure(errno:)`` if reading fails.
+    /// - Throws: ``XitDBError/storageFailure(errno:)`` if reading fails;
+    ///   ``XitDBError/storageClosed`` after ``close()``.
     public func read(
         into buffer: inout MutableSpan<UInt8>,
         range: Range<Int>,
@@ -166,11 +168,38 @@ public final class ReadOnlyFileStorage: ReadableStorage {
     /// The length of the file.
     ///
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the file's length
-    ///   cannot be read.
+    ///   cannot be read; ``XitDBError/storageClosed`` after ``close()``.
     public var length: UInt64 {
         get throws(XitDBError) {
             try file.length
         }
+    }
+
+    /// Closes the storage, which gives up its file now.
+    ///
+    /// The lock, if the storage holds one, is let go at once. Every later
+    /// read and write of the storage throws ``XitDBError/storageClosed``,
+    /// and so does every call on a database opened over it and on the
+    /// cursors, collections and iterators made from that database, as soon
+    /// as it comes to read or write; nothing ends the process. What such an
+    /// object read before and holds, it still gives: a number in a
+    /// cursor's own slot, the elements an iterator had read. The file itself is
+    /// closed, and its memory map unmapped, at once if no ``Snapshot`` of a
+    /// database in it is alive, and otherwise when the last such snapshot
+    /// goes: a snapshot is read on other threads, and a file is not taken
+    /// from under a read. A snapshot taken before goes on reading its
+    /// commit. A program that wants the file closed now lets its snapshots
+    /// go first. Closing twice does nothing more.
+    ///
+    /// Without this call the file is closed when the storage and the last
+    /// snapshot have gone, which is no sooner than the last reference to
+    /// its database, a cursor or a collection.
+    ///
+    /// - Returns: `true` if the file is closed as the call returns, and
+    ///   `false` if a snapshot holds it open still.
+    @discardableResult
+    public func close() -> Bool {
+        file.close()
     }
 }
 

@@ -171,7 +171,7 @@ import XitDBHashing
         // The way back from a word, and the original's name for a code.
         #expect(XitDBError.Code(rawValue: "endOfStream") == .endOfStream)
         #expect(XitDBError.Code(rawValue: "no such case") == nil)
-        #expect(XitDBError.Code.allCases.count == 41)
+        #expect(XitDBError.Code.allCases.count == 42)
         #expect(XitDBError.Code.endOfStream.originalName == "EndOfStream")
         #expect(XitDBError.Code.staleCursor.originalName == nil)
         #expect(XitDBError.storageFailure(errno: 28).code == .storageFailure)

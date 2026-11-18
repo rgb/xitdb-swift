@@ -44,7 +44,7 @@ import Testing
         .endOfStream, .unexpectedWriterPosition, .pathPartMustBeAtEnd, .notImplemented, .storageFailure(errno: 5),
         .callerError(Thrown(description: "one")), .invalidCount, .staleCursor, .immutableBytes, .byteWriterOpen,
         .snapshotOverwritten, .memoryMapNeedsLock, .subCollectionSnapshot, .structuralSlot, .poisonedTransaction,
-        .noKeyHashing, .invalidUTF8, .untrustedRootHeader(lastVerified: 57),
+        .noKeyHashing, .invalidUTF8, .untrustedRootHeader(lastVerified: 57), .storageClosed,
     ]
 
     /// Whether the list above has an error of this case: written as a
@@ -58,7 +58,7 @@ import Testing
             .streamTooLong, .endOfStream, .unexpectedWriterPosition, .pathPartMustBeAtEnd, .notImplemented,
             .storageFailure, .callerError, .invalidCount, .staleCursor, .immutableBytes, .byteWriterOpen,
             .snapshotOverwritten, .memoryMapNeedsLock, .subCollectionSnapshot, .structuralSlot, .poisonedTransaction,
-            .noKeyHashing, .invalidUTF8, .untrustedRootHeader:
+            .noKeyHashing, .invalidUTF8, .untrustedRootHeader, .storageClosed:
             true
         }
     }
@@ -67,7 +67,7 @@ import Testing
     /// it is on.
     @Test func everyCaseIsEqualToItselfAndToNoOther() {
         let errors = Self.everyCase
-        #expect(errors.count == 41)
+        #expect(errors.count == 42)
         #expect(errors.allSatisfy(Self.isListed))
         for (i, left) in errors.enumerated() {
             for (j, right) in errors.enumerated() {

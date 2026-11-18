@@ -744,6 +744,8 @@ final class ScriptRunner {
         // Nothing a script runs gives the database a type of the script's
         // own; the runner's offset maps and sinks never throw.
         case .callerError: "CallerError"
+        // No script closes a storage that it goes on using.
+        case .storageClosed: "StorageClosed"
         }
     }
 

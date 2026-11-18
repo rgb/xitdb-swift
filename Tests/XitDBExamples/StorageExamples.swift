@@ -162,6 +162,30 @@ import XitDBHashing
         _ = writer
     }
 
+    @Test func closingAFile() throws {
+        let scratch = ScratchDirectory()
+        defer { scratch.remove() }
+
+        let storage = try BufferedFileStorage(path: scratch.path("main.db"), access: .create, lock: .exclusive)
+        let database = try Database(creating: storage, hashing: SHA256.self)
+        try HashMap<ReadWrite>(database.rootCursor).put(UInt64(42), forKey: "answer")
+        let snapshot: Snapshot? = try database.snapshot()
+
+        // Give the file up now: the lock is let go, and nothing reads or writes through the storage any more.
+        let closedNow = storage.close()
+
+        // A snapshot taken before keeps the file open and reads its commit; the storage and its database are refused.
+        #expect(closedNow == false)
+        #expect(try HashMap(try #require(snapshot).rootCursor).value(forKey: "answer", as: UInt64.self) == 42)
+        #expect(throws: XitDBError.storageClosed) { try database.committedSize }
+        #expect(throws: XitDBError.storageClosed) { try storage.length }
+        // The lock went at once: the next writer has it while the snapshot lives.
+        let next = try BufferedFileStorage(path: scratch.path("main.db"), access: .readWrite, lock: .exclusive)
+        #expect(try Database(opening: next, hashing: SHA256.self).committedSize > 57)
+        // With no snapshot left, the file is closed as `close()` returns.
+        #expect(next.close())
+    }
+
     @Test func aMemoryStorageIsBytes() throws {
         // A database as a value to send.
         let source = MemoryStorage()

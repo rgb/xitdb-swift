@@ -13,8 +13,8 @@
 /// ``poisonedTransaction``, ``staleCursor``, ``immutableBytes``,
 /// ``byteWriterOpen``, ``structuralSlot``, ``emptyLastMoment``,
 /// ``storageNotEmpty``, ``invalidCount``, ``invalidUTF8``,
-/// ``noKeyHashing``, ``subCollectionSnapshot``, ``snapshotOverwritten``
-/// and ``memoryMapNeedsLock``.
+/// ``noKeyHashing``, ``subCollectionSnapshot``, ``snapshotOverwritten``,
+/// ``memoryMapNeedsLock`` and ``storageClosed``.
 ///
 /// Two errors are equal when they are the same case with the same values.
 /// Two ``callerError(_:)`` are equal when the errors they carry are of the
@@ -371,6 +371,16 @@ public enum XitDBError: Error, Sendable {
     /// A committed size of zero in a file longer than a new database is not
     /// refused: it is a full copy that did not finish, which opens.
     case untrustedRootHeader(lastVerified: UInt64)
+
+    /// A file storage was used after its `close()`: every read and write
+    /// of it fails with this from then on, and so does every call of a
+    /// database opened over it and of the cursors, collections and
+    /// iterators made from that database, as soon as it comes to read or
+    /// write. Nothing was read or written by the call that reports it.
+    ///
+    /// A ``Snapshot`` taken before the close is not the storage: it goes
+    /// on reading its commit, and never reports this.
+    case storageClosed
 }
 
 extension XitDBError: Equatable {
@@ -465,6 +475,7 @@ extension XitDBError: Equatable {
         case .noKeyHashing: 38
         case .invalidUTF8: 39
         case .untrustedRootHeader: 40
+        case .storageClosed: 41
         }
     }
 }

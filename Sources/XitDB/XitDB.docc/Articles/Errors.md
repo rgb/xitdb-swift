@@ -67,8 +67,8 @@ These mean the code asked for something it should not have, and their ``XitDBErr
 ``XitDBError/snapshotOverwritten``, ``XitDBError/subCollectionSnapshot``, ``XitDBError/byteWriterOpen``,
 ``XitDBError/structuralSlot``, ``XitDBError/poisonedTransaction``, ``XitDBError/streamTooLong``,
 ``XitDBError/unexpectedWriterPosition``, ``XitDBError/storageNotEmpty``, ``XitDBError/targetNotEmpty``,
-``XitDBError/emptyLastMoment``, ``XitDBError/invalidRange``, ``XitDBError/invalidLength`` and
-``XitDBError/memoryMapNeedsLock``.
+``XitDBError/emptyLastMoment``, ``XitDBError/invalidRange``, ``XitDBError/invalidLength``,
+``XitDBError/memoryMapNeedsLock`` and ``XitDBError/storageClosed``.
 
 ``XitDBError/invalidHashSize`` is the one error for a hash size, as it is in the original: a hasher or a stated size
 that is not the file's when it is opened or recovered, a size no database can have, or a storage that holds an

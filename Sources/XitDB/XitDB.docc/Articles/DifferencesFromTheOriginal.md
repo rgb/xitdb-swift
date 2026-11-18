@@ -193,6 +193,10 @@ The file format and the operations are the same, and the API follows Swift:
   read-only file of its own, `CoreReadOnlyFile`; and the Go and Java READMEs tell a process that only reads to open its
   file read-only. The price is two types where a program decides while it runs whether it only reads: it holds
   `any ReadableStorage`, as <doc:Storage> shows.
+- **A storage opens its file and closes it.** The original is given a file its caller opened, and the caller closes it
+  (`defer file.close(io)` in its README). Here a storage owns its file: it is closed when the storage and the last
+  snapshot of a database in it have gone, or when the program says so with `close()` on a file storage, as the Java
+  port's file cores have one; whatever reads or writes through a closed storage throws ``XitDBError/storageClosed``.
 - **Values are Swift types** beside ``WritableData``: `UInt64`, `Int64`, `Double`, `String`, `[UInt8]`, ``Bytes``, and any
   ``StorableValue`` of your own, each written as the format's own slot: see <doc:CursorsAndValues>.
 - **A byte writer is a closure**, ``Cursor/writeBytes(formatTag:_:)``. There is no `finish` to forget.

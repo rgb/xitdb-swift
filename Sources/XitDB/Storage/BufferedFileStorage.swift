@@ -382,6 +382,7 @@ public final class BufferedFileStorage: WritableStorage {
     ///
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if writing fails. The
     ///   bytes stay in the buffer, and a later flush tries again.
+    ///   ``XitDBError/storageClosed`` after ``close()``.
     public func flush() throws(XitDBError) {
         fileLength = nil
         if unsafe memory.count > 0 {
@@ -391,6 +392,9 @@ public final class BufferedFileStorage: WritableStorage {
             }
             unsafe memory.removeAll()
         }
+        // Nothing of the file's own to do, but for a storage that was
+        // closed, which says so.
+        try file.flush()
     }
 
     /// Flushes, then asks the operating system to put the file's data on the
@@ -398,10 +402,32 @@ public final class BufferedFileStorage: WritableStorage {
     ///
     /// - Parameter point: Which of a commit's two syncs this is.
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if flushing or syncing
-    ///   fails.
+    ///   fails; ``XitDBError/storageClosed`` after ``close()``.
     public func sync(_ point: SyncPoint) throws(XitDBError) {
         try flush()
         try file.sync(point)
+    }
+
+    /// Closes the storage, which gives up its file now: ``FileStorage/close()``
+    /// of the file storage underneath, with everything said there.
+    ///
+    /// What the buffer holds and has not yet written to the file is
+    /// dropped, as it is when a process ends: flush first to keep it, and
+    /// a commit has flushed already. The lock is let go at once, and every
+    /// later read and write throws ``XitDBError/storageClosed``, of the
+    /// storage and through a database opened over it and what was made
+    /// from that database. A
+    /// ``Snapshot`` taken before goes on reading its commit, and keeps the
+    /// file open until the last one goes. Closing twice does nothing more.
+    ///
+    /// - Returns: `true` if the file is closed as the call returns, and
+    ///   `false` if a snapshot holds it open still.
+    @discardableResult
+    public func close() -> Bool {
+        unsafe memory.removeAll()
+        unsafe memoryPosition = 0
+        fileLength = nil
+        return file.close()
     }
 
     private func writeToFile(_ bytes: Span<UInt8>, at position: UInt64) throws(XitDBError) {

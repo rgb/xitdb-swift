@@ -196,6 +196,35 @@ package struct FileCalls {
     }
 
     package init() {}
+
+    /// The calls of a storage that was closed: none of them is made. Each
+    /// that can throw refuses with `storageClosed`; the others answer that
+    /// nothing was done, with the system's number for a file that is not
+    /// open. A storage puts these in the place of its own when it is
+    /// closed, so that whatever comes to a system call afterwards is
+    /// refused there, and what a read or a write does on the way to its
+    /// call is not a line longer for it.
+    static var ofAClosedStorage: FileCalls {
+        var calls = FileCalls()
+        calls.sync = { (_: Int32, _: SyncCall) in Platform.notOpenForWriting }
+        calls.write = { (_: Int32, _: Span<UInt8>, _: UInt64) throws(XitDBError) in throw .storageClosed }
+        calls.read = {
+            (_: Int32, _: inout MutableSpan<UInt8>, _: Range<Int>, _: UInt64) throws(XitDBError) -> Int in
+            throw .storageClosed
+        }
+        calls.length = { (_: Int32) throws(XitDBError) -> UInt64 in throw .storageClosed }
+        calls.setLength = { (_: Int32, _: UInt64) throws(XitDBError) in throw .storageClosed }
+        calls.map = { (_: Int32, _: UInt64, _: Int) in (address: 0, error: Platform.notOpenForWriting) }
+        calls.isLocal = { (_: Int32) in false }
+        calls.open = { (_: String, _: FileAccess) throws(XitDBError) -> Int32 in throw .storageClosed }
+        calls.lock = { (_: Int32, _: FileLock) throws(XitDBError) in throw .storageClosed }
+        calls.rename = { (_: String, _: String) throws(XitDBError) in throw .storageClosed }
+        calls.syncDirectory = { (_: String, _: SyncCall) in Platform.notOpenForWriting }
+        calls.remove = { (_: String) throws(XitDBError) -> Bool in throw .storageClosed }
+        calls.advise = { (_: UInt, _: Int) in }
+        calls.carryAttributes = { (_: Int32, _: Int32) throws(XitDBError) in throw .storageClosed }
+        return calls
+    }
 }
 
 /// How a file storage's file is opened: to be read, which is the mode a
@@ -228,8 +257,13 @@ final class FileDescriptor: Sendable {
         self.rawValue = rawValue
     }
 
+    /// No file: what a storage that was closed holds in the place of its
+    /// file, so that the file's own owner goes when its last holder does.
+    /// Its number is none a file has, and nothing is closed for it.
+    static let none = FileDescriptor(adopting: -1)
+
     deinit {
-        Platform.closeFile(rawValue)
+        if rawValue >= 0 { Platform.closeFile(rawValue) }
     }
 }
 
@@ -429,10 +463,80 @@ public final class FileStorage: WritableStorage {
     deinit {
         // The lock is the storage's: let go now, though a snapshot may keep
         // the file open after it. During a replacement the storage holds
-        // the old file's lock and the new file's, and lets both go.
-        guard lock != nil else { return }
+        // the old file's lock and the new file's, and lets both go. A
+        // storage that was closed let its lock go then.
+        guard lock != nil, !isClosed else { return }
         Platform.unlockFile(descriptor.rawValue)
         if let replacement { Platform.unlockFile(replacement.old.rawValue) }
+    }
+
+    // MARK: Closing
+
+    /// Whether ``close()`` was called. A closed storage has no map and a
+    /// limit of zero, so that no read goes through a view, and it has the
+    /// calls of a closed storage in the place of its own
+    /// (``FileCalls/ofAClosedStorage``), so that whatever comes to a
+    /// system call is refused there: a read and a write ask nothing more
+    /// on their way than they did. The few members that would go to the
+    /// system by another way ask this first.
+    private(set) var isClosed = false
+
+    /// The file the storage had open when it was closed, for as long as a
+    /// snapshot keeps it open: `nil` once the file is closed, and before
+    /// the storage is.
+    private weak var fileLeftToSnapshots: FileDescriptor?
+
+    /// Closes the storage, which gives up its file now.
+    ///
+    /// The lock, if the storage holds one, is let go at once. Every later
+    /// read and write of the storage throws ``XitDBError/storageClosed``,
+    /// and so does every call on a database opened over it and on the
+    /// cursors, collections and iterators made from that database, as soon
+    /// as it comes to read or write; nothing ends the process. What such an
+    /// object read before and holds, it still gives: a number in a
+    /// cursor's own slot, the elements an iterator had read. The file itself is
+    /// closed, and its memory map unmapped, at once if no ``Snapshot`` of a
+    /// database in it is alive, and otherwise when the last such snapshot
+    /// goes: a snapshot is read on other threads, and a file is not taken
+    /// from under a read. A snapshot taken before goes on reading its
+    /// commit. A program that wants the file closed now lets its snapshots
+    /// go first.
+    ///
+    /// Closing twice does nothing more. Closed inside a transaction, the
+    /// transaction's next write fails and nothing of it is committed: what
+    /// it had written lies past the last commit, where the next writer
+    /// discards it, as after a process that ended. Closed while a full
+    /// copy onto it is under way, which only the copy's own source could
+    /// do, the copy is given up as one that failed is: the new file is
+    /// removed, and the old one keeps the name.
+    ///
+    /// Without this call a storage's file is closed when the storage and
+    /// the last snapshot have gone, which is no sooner than the last
+    /// reference to its database, a cursor or a collection.
+    ///
+    /// - Returns: `true` if the file is closed as the call returns, and
+    ///   `false` if a snapshot holds it open still.
+    @discardableResult
+    public func close() -> Bool {
+        if !isClosed {
+            // A full copy under way is given up first, as a failed one is.
+            abandonReplacement()
+            if lock != nil { Platform.unlockFile(descriptor.rawValue) }
+            // What a read goes by is put in place whole: no view, and a
+            // limit of zero, so that no read goes through a map. The
+            // segments are the snapshots' alone from here on, and so is
+            // the file. And the calls are those of a closed storage: none
+            // is made.
+            unsafe readLimit = 0
+            unsafe readView = FileMapView(segmentSize: unsafe readView.segmentSize)
+            map = nil
+            pinnedSize = 0
+            calls = .ofAClosedStorage
+            isClosed = true
+            fileLeftToSnapshots = descriptor
+            descriptor = .none
+        }
+        return fileLeftToSnapshots == nil
     }
 
     // MARK: A read in file order
@@ -466,7 +570,8 @@ public final class FileStorage: WritableStorage {
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the system cannot
     ///   be asked about the open file or the path.
     func leadsToItsFile() throws(XitDBError) -> Bool {
-        try Platform.leads(path, to: descriptor.rawValue)
+        if isClosed { throw .storageClosed }
+        return try Platform.leads(path, to: descriptor.rawValue)
     }
 
     /// Whether the path this storage was opened with still leads to the
@@ -495,11 +600,13 @@ public final class FileStorage: WritableStorage {
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the system cannot
     ///   be asked about the open file or about the path. That no file is at
     ///   the path is not an error: it is `false`.
+    ///   ``XitDBError/storageClosed`` after ``close()``.
     public var isStillAtPath: Bool {
         get throws(XitDBError) {
+            if isClosed { throw .storageClosed }
             // While this storage itself brings a new file, the file under
             // the name is still the old one, which every other opener has.
-            try Platform.leads(path, to: (replacement?.old ?? descriptor).rawValue)
+            return try Platform.leads(path, to: (replacement?.old ?? descriptor).rawValue)
         }
     }
 
@@ -524,6 +631,7 @@ public final class FileStorage: WritableStorage {
     ///   is left.
     func beginReplacement() throws(XitDBError) {
         precondition(replacement == nil, "a replacement of this file has begun already")
+        if isClosed { throw .storageClosed }
         if isReadOnly { throw .storageFailure(errno: Platform.notOpenForWriting) }
         let incomingPath = realPath + Self.incomingSuffix
         _ = try calls.remove(incomingPath)
@@ -1010,7 +1118,8 @@ public final class FileStorage: WritableStorage {
     ///   - offset: The position in the file of the first byte to read.
     /// - Returns: The number of bytes read, which is less than `range.count`
     ///   only when the file ends first.
-    /// - Throws: ``XitDBError/storageFailure(errno:)`` if reading fails.
+    /// - Throws: ``XitDBError/storageFailure(errno:)`` if reading fails;
+    ///   ``XitDBError/storageClosed`` after ``close()``.
     public func read(
         into buffer: inout MutableSpan<UInt8>,
         range: Range<Int>,
@@ -1036,7 +1145,7 @@ public final class FileStorage: WritableStorage {
     /// The length of the file.
     ///
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if the file's length
-    ///   cannot be read.
+    ///   cannot be read; ``XitDBError/storageClosed`` after ``close()``.
     public var length: UInt64 {
         get throws(XitDBError) {
             try calls.length(descriptor.rawValue)
@@ -1050,7 +1159,7 @@ public final class FileStorage: WritableStorage {
     ///   - offset: The position in the file of the first byte written.
     /// - Throws: ``XitDBError/storageFailure(errno:)`` if writing fails. It
     ///   always does for bytes that would lie beyond the largest offset a
-    ///   file can have.
+    ///   file can have. ``XitDBError/storageClosed`` after ``close()``.
     public func write(_ bytes: Span<UInt8>, at offset: UInt64) throws(XitDBError) {
         guard bytes.count > 0 else { return }
         try checkWritable(bytes, at: offset)
@@ -1089,7 +1198,8 @@ public final class FileStorage: WritableStorage {
     ///
     /// - Throws: ``XitDBError/invalidLength`` if `length` is larger than the
     ///   file's length, or ``XitDBError/storageFailure(errno:)`` if the file
-    ///   cannot be shortened.
+    ///   cannot be shortened; ``XitDBError/storageClosed`` after
+    ///   ``close()``.
     public func truncate(to length: UInt64) throws(XitDBError) {
         guard length <= (try self.length) else { throw .invalidLength }
         try resize(to: length)
@@ -1111,6 +1221,7 @@ public final class FileStorage: WritableStorage {
     ///
     /// - Throws: What setting the file's length throws.
     func resize(to length: UInt64) throws(XitDBError) {
+        if isClosed { throw .storageClosed }
         if isReadOnly { return }
         if length < pinnedSize {
             invalidateSnapshots()
@@ -1125,14 +1236,20 @@ public final class FileStorage: WritableStorage {
     }
 
     /// Does nothing: a file storage holds no bytes back.
-    public func flush() throws(XitDBError) {}
+    ///
+    /// - Throws: ``XitDBError/storageClosed`` after ``close()``.
+    public func flush() throws(XitDBError) {
+        if isClosed { throw .storageClosed }
+    }
 
     /// Asks the operating system to put the file's data on the disk, as far
     /// as ``durability`` calls for.
     ///
     /// - Parameter point: Which of a commit's two syncs this is.
-    /// - Throws: ``XitDBError/storageFailure(errno:)`` if the sync fails.
+    /// - Throws: ``XitDBError/storageFailure(errno:)`` if the sync fails;
+    ///   ``XitDBError/storageClosed`` after ``close()``.
     public func sync(_ point: SyncPoint) throws(XitDBError) {
+        if isClosed { throw .storageClosed }
         if case .afterRootHeader = point, map != nil {
             // The commit is in the file: all that was written is committed.
             unsafe readLimit = map!.writtenEnd

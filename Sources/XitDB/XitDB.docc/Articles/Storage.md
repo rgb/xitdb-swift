@@ -6,7 +6,7 @@ Where a database keeps its bytes: the storages, how to open a file, and how to w
 
 A ``Database`` keeps its bytes in a storage, a flat run of bytes addressed by offset, and it owns that storage: it is the only
 thing that writes to it. The storage owns its file and closes it when it goes away and the last ``Snapshot`` of a database in it
-has gone.
+has gone, or when it is closed (see Closing a file, below).
 
 ```swift
 // A file, through a buffer: the one to use for a file.
@@ -185,8 +185,8 @@ A reader keeps the file it opened. When the writer brings a new file under the n
 ### The lock
 
 One writer at a time is your responsibility, and an advisory lock is the tool. A storage takes one if you ask, when it opens, and
-holds it until it goes away and the last ``Snapshot`` of a database in it has gone. A snapshot reads through the storage's own
-file descriptor, so the file stays open, and the lock held, for as long as one lives:
+holds it until it goes away or is closed. The lock is the storage's alone: a ``Snapshot`` reads through the storage's own file
+descriptor, so the file stays open for as long as one lives, but a snapshot holds no lock:
 
 ```swift
 // The writer holds an exclusive lock for as long as its storage lives.
@@ -197,13 +197,37 @@ let writer = try BufferedFileStorage(
 A ``FileLock`` is never waited for. If it cannot be had at once, opening fails with ``XitDBError/storageFailure(errno:)`` carrying
 `EWOULDBLOCK`, and you decide whether to try again. It is advisory, so it keeps out only those who ask for one too. A reader need
 not ask: it does not get in the writer's way, and it gets a consistent view without one. A reader that takes a ``FileLock/shared``
-lock does keep the writer out, and holds that lock until its storage and the last snapshot of a database in it have gone. A writer
+lock does keep the writer out, and holds that lock until its storage goes away or is closed. A writer
 of this package that asks for its lock is refused while any reader holds one; one that waits for its lock, as the writer in the
 original's README does, stands still for as long as any reader holds one.
 
 No lock is taken unless you ask for one. Holding a lock on a file in a shared container while an iOS app is suspended gets the app
-terminated, so that decision is left to you, and a snapshot kept alive holds the lock too. Elsewhere on iOS a lock between processes
-is moot, since an app's own files are not open to other processes.
+terminated, so that decision is left to you: let the storage go, or close it, before the app is suspended. Elsewhere on iOS a lock
+between processes is moot, since an app's own files are not open to other processes.
+
+### Closing a file
+
+A storage's file is closed when the storage and the last snapshot of a database in it have gone, which is no sooner than the
+last reference to its database, a cursor or a collection. A program that has to give a file up at a moment of its own, because
+the user removes it, its volume goes away or access to its folder ends, closes the storage:
+
+```swift
+// Give the file up now: the lock is let go, and nothing reads or writes through the storage any more.
+let closedNow = storage.close()
+```
+
+``BufferedFileStorage/close()``, ``FileStorage/close()`` and ``ReadOnlyFileStorage/close()`` let the lock go at once. From then
+on whatever reads or writes through the storage throws ``XitDBError/storageClosed``: the storage itself, a database opened over
+it, and the cursors, collections and iterators made from that database, as soon as they come to read or write. Nothing ends the
+process.
+
+The file is closed at once if no snapshot of a database in it is alive, and `close()` returns `true`. A snapshot is read on
+other threads, and a file is not taken from under a read: a snapshot taken before goes on reading its commit and keeps the file
+open, `close()` returns `false`, and the file is closed when the last such snapshot goes. Let your snapshots go first where
+the file has to be closed now.
+
+Close after a commit. A buffered storage drops what it holds and has not written, and a transaction that is under way fails at
+its next write and commits nothing: what it wrote lies past the last commit, where the next writer discards it.
 
 ### Writing a storage
 

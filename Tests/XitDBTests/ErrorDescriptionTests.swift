@@ -196,6 +196,10 @@ struct CarriedForDescription: Error {
             "the root header cannot be trusted; the last commit that verifies ends at byte 57"
         ),
         (
+            .storageClosed, "storageClosed", .program,
+            "the file storage was closed, and nothing can be read or written through it"
+        ),
+        (
             .callerError(CarriedForDescription(number: 3)), "callerError(XitDBTests.CarriedForDescription(number: 3))",
             .caller,
             "an error of the caller's own: CarriedForDescription(number: 3)"
@@ -226,10 +230,10 @@ struct CarriedForDescription: Error {
         let declared = source[start.upperBound..<end.lowerBound].components(separatedBy: "\n")
             .filter { $0.hasPrefix("    case ") }
             .map { String($0.dropFirst("    case ".count).prefix { $0.isLetter || $0.isNumber }) }
-        #expect(declared.count == 41)
+        #expect(declared.count == 42)
         #expect(XitDBError.Code.allCases.map(\.rawValue) == declared)
-        #expect(Set(declared).count == 41)
-        #expect(Self.table.count == 41)
+        #expect(Set(declared).count == 42)
+        #expect(Self.table.count == 42)
         #expect(Set(Self.table.map(Self.caseName)) == Set(declared))
     }
 
@@ -239,13 +243,13 @@ struct CarriedForDescription: Error {
     /// list the equality's test keeps, which a switch with no default
     /// holds to the enumeration.
     @Test func everyErrorHasTheCodeOfItsCase() {
-        #expect(Self.table.count == 41)
+        #expect(Self.table.count == 42)
         for row in Self.table {
             #expect(row.error.code.rawValue == Self.caseName(row))
             #expect(XitDBError.Code(rawValue: Self.caseName(row)) == row.error.code)
         }
         #expect(Set(Self.table.map(\.error.code)) == Set(XitDBError.Code.allCases))
-        #expect(XitDBError.Code.allCases.count == 41)
+        #expect(XitDBError.Code.allCases.count == 42)
         #expect(Set(ErrorEqualityTests.everyCase.map(\.code)) == Set(XitDBError.Code.allCases))
         #expect(ErrorEqualityTests.everyCase.count == XitDBError.Code.allCases.count)
     }
@@ -289,7 +293,7 @@ struct CarriedForDescription: Error {
     /// switches to each other.
     @Test func errorsThatCarryNothingAreEqualWhenTheirCodesAre() {
         let plain = Self.table.filter { $0.name == Self.caseName($0) }
-        #expect(plain.count == 38)
+        #expect(plain.count == 39)
         for left in plain {
             for right in plain {
                 #expect((left.error == right.error) == (left.error.code == right.error.code))
@@ -399,24 +403,25 @@ struct CarriedForDescription: Error {
             let ofTheKind = Set(XitDBError.Code.allCases.filter { $0.kind == kind })
             #expect(listed[kind] == ofTheKind, "\(Self.heading(of: kind))")
         }
-        #expect(listed.values.reduce(0) { $0 + $1.count } == 41)
+        #expect(listed.values.reduce(0) { $0 + $1.count } == 42)
     }
 
     // MARK: The original's name
 
-    /// The seventeen codes of the port's own, which the original has no
+    /// The eighteen codes of the port's own, which the original has no
     /// error of that meaning for under a name of its own.
     static let thePortsOwn: Set<XitDBError.Code> = [
         .indexOutOfRange, .storageFailure, .callerError, .untrustedRootHeader, .poisonedTransaction, .staleCursor,
         .immutableBytes, .byteWriterOpen, .structuralSlot, .emptyLastMoment, .storageNotEmpty, .invalidCount,
         .invalidUTF8, .noKeyHashing, .subCollectionSnapshot, .snapshotOverwritten, .memoryMapNeedsLock,
+        .storageClosed,
     ]
 
     /// The original's name is given for the twenty-four it has and for no
     /// other; it is the case's name with a capital, but for the one the
     /// original spells otherwise; and no two codes have the same.
     @Test func theOriginalsNameIsGivenWhereTheOriginalHasOne() {
-        #expect(Self.thePortsOwn.count == 17)
+        #expect(Self.thePortsOwn.count == 18)
         var names: [String] = []
         for code in XitDBError.Code.allCases {
             guard let name = code.originalName else {

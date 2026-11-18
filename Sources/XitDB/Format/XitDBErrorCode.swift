@@ -150,6 +150,9 @@ extension XitDBError {
         /// The code of ``XitDBError/untrustedRootHeader(lastVerified:)``.
         case untrustedRootHeader
 
+        /// The code of ``XitDBError/storageClosed``.
+        case storageClosed
+
         /// Whose an error of this code is: the heading it has in
         /// <doc:Errors>.
         ///
@@ -174,7 +177,7 @@ extension XitDBError {
                 .targetNotEmpty, .emptyLastMoment, .storageNotEmpty, .streamTooLong, .unexpectedWriterPosition,
                 .pathPartMustBeAtEnd, .notImplemented, .staleCursor, .immutableBytes, .byteWriterOpen,
                 .snapshotOverwritten, .memoryMapNeedsLock, .subCollectionSnapshot, .structuralSlot,
-                .poisonedTransaction, .noKeyHashing, .invalidUTF8:
+                .poisonedTransaction, .noKeyHashing, .invalidUTF8, .storageClosed:
                 .program
             case .invalidDatabase, .invalidVersion, .truncatedDatabase, .invalidEnumTag, .invalidBTreeNode,
                 .invalidBTreeNodeKind, .keyOffsetExceeded, .maxShiftExceeded, .endOfStream, .invalidCount,
@@ -194,7 +197,7 @@ extension XitDBError {
         /// of the original's, in its tools' output and in the conformance
         /// suite's scripts.
         ///
-        /// It is `nil` for the seventeen codes of the port's own: where the
+        /// It is `nil` for the eighteen codes of the port's own: where the
         /// port says something the original does not say, or says with a
         /// case of its own what the original says with another error's
         /// name or with several. What the original says in those places is
@@ -229,7 +232,7 @@ extension XitDBError {
             case .indexOutOfRange, .emptyLastMoment, .storageNotEmpty, .storageFailure, .callerError, .invalidCount,
                 .staleCursor, .immutableBytes, .byteWriterOpen, .snapshotOverwritten, .memoryMapNeedsLock,
                 .subCollectionSnapshot, .structuralSlot, .poisonedTransaction, .noKeyHashing, .invalidUTF8,
-                .untrustedRootHeader:
+                .untrustedRootHeader, .storageClosed:
                 nil
             }
         }
@@ -282,6 +285,7 @@ extension XitDBError {
         case .noKeyHashing: .noKeyHashing
         case .invalidUTF8: .invalidUTF8
         case .untrustedRootHeader: .untrustedRootHeader
+        case .storageClosed: .storageClosed
         }
     }
 
@@ -420,6 +424,8 @@ extension XitDBError: CustomStringConvertible {
             "the bytes read as a string are not valid UTF-8"
         case .untrustedRootHeader(let lastVerified):
             "the root header cannot be trusted; the last commit that verifies ends at byte \(lastVerified)"
+        case .storageClosed:
+            "the file storage was closed, and nothing can be read or written through it"
         }
     }
 }
@@ -446,7 +452,8 @@ extension XitDBError: CustomDebugStringConvertible {
             .emptyLastMoment, .storageNotEmpty, .keyOffsetExceeded, .maxShiftExceeded, .maxSizeExceeded,
             .streamTooLong, .endOfStream, .unexpectedWriterPosition, .pathPartMustBeAtEnd, .notImplemented,
             .invalidCount, .staleCursor, .immutableBytes, .byteWriterOpen, .snapshotOverwritten, .memoryMapNeedsLock,
-            .subCollectionSnapshot, .structuralSlot, .poisonedTransaction, .noKeyHashing, .invalidUTF8:
+            .subCollectionSnapshot, .structuralSlot, .poisonedTransaction, .noKeyHashing, .invalidUTF8,
+            .storageClosed:
             code.rawValue
         }
     }
