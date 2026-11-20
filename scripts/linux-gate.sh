@@ -23,7 +23,7 @@
 # suite is beside the package (../conformance) with its writer and its own reader built
 # for Linux (out/linux/bin, which its linux-two-processes.sh builds on the Mac), the
 # suite is mounted here to be read only, and the step is told where it and they are, so
-# that on Linux too the port's reader is held on each of its six kinds against the
+# that on Linux too the port's reader is held on each of its three kinds against the
 # original writing: Linux's files, maps and renames. Where they are not there, this
 # says so, and so does the step, as on a runner that has the package alone. Nothing is
 # written into the suite: the step's files go under the build folder.

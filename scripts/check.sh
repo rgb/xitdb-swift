@@ -51,8 +51,9 @@ debug_limit=900
 sanitizer_limit=300
 release_limit=600
 simulator_limit=1800
-# The suite's test of two processes takes about 10 seconds here with the port's eight
-# kinds and the suite's own two; the suite itself ends a reader that stops answering.
+# The suite's test of two processes took about 10 seconds here when the port's reader
+# had eight kinds; it has three now, beside the suite's own two, and was not timed
+# again. The suite itself ends a reader that stops answering.
 two_processes_limit=300
 
 step "Toolchain"
@@ -203,12 +204,14 @@ scripts/must-not-compile.sh
 # reader that kept the old file has to go on answering the old file's last state.
 #
 # The reader is the port's (Sources/XitDBConformanceReader), the one the debug build
-# made, on each of its eight kinds. Six are the kinds of file storage, the two storages,
-# each read by file calls and through a memory map in either of its two ways, under the
-# database a reader opens, which only reads (ReadOnlyDatabase). Two more are a Database
-# over a storage opened to be read, by file calls and through a map: what a reader
-# opened before there was a database that only reads, which stays public and is what the
-# first client runs on 0.5.1. The writer and the rule are
+# made, on each of its three kinds: a file opened to be read (ReadOnlyFileStorage), read
+# by file calls and through a memory map in either of its two ways, under the database
+# a reader opens, which only reads (ReadOnlyDatabase). A reader has no other way to
+# open a file since D67: a file opened to be read is a type of its own, with no
+# buffered form, and a Database does not open over it, so what the first client ran on
+# 0.5.1, a Database over a storage opened read-only, no longer compiles and has no kind
+# here. Beside the port's reader the suite runs its own, the original's, on a file and
+# on a buffered file. The writer and the rule are
 # the suite's (its two-processes.sh, section 15 of its SCRIPT-FORMAT.md), so the step
 # runs where the suite and its built driver are beside the package, or where
 # XITDB_CONFORMANCE names them, and says aloud where they are not, as in a container

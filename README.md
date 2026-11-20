@@ -68,7 +68,7 @@ platforms the toolchain may build it for are neither declared in the manifest no
 
 ```swift manifest
 dependencies: [
-    .package(url: "https://github.com/rgb/xitdb-swift", from: "0.5.1")
+    .package(url: "https://github.com/rgb/xitdb-swift", from: "0.6.0")
 ],
 targets: [
     .target(
@@ -80,7 +80,7 @@ targets: [
 ]
 ```
 
-Until 1.0 a minor release, such as 0.6.0, may change source, and `from:` takes it: the release's notes say what changed.
+Until 1.0 a minor release, such as 0.7.0, may change source, and `from:` takes it: the release's notes say what changed.
 
 ## A first look
 
